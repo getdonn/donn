@@ -2,7 +2,12 @@ import { existsSync } from "node:fs";
 import { access, constants } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { findBuildLeftovers, removeBuildLeftovers } from "@zzpersona/executor";
-import { resolveSecrets, SecretResolutionError } from "@zzpersona/secrets";
+import {
+  keychainParts,
+  parseSecretRef,
+  resolveSecrets,
+  SecretResolutionError,
+} from "@zzpersona/secrets";
 import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
@@ -11,7 +16,11 @@ import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { HARNESSES } from "../harness.js";
-import { backendLoader } from "../plugins.js";
+import {
+  backendLoader,
+  loadAdapters,
+  loadSecretProviders,
+} from "../plugins.js";
 import { selectPersona, type Selection } from "../select.js";
 import { readState, updateState, type State } from "../state.js";
 
@@ -51,6 +60,42 @@ async function writable(dir: string): Promise<boolean> {
     () => true,
     () => false,
   );
+}
+
+/** A POSIX-shell word: as is when plainly safe, otherwise single-quoted. */
+const shellQuote = (value: string) =>
+  /^[\w./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+
+/** For keychain items that are missing, the command that stores each one; otherwise general advice. */
+function secretsFix(
+  failures: { ref: string; reason: string }[],
+  providers: Record<string, { type: string }>,
+  platform: string,
+): string {
+  const store = failures.flatMap(({ ref, reason }) => {
+    const parsed = parseSecretRef(ref);
+    const type =
+      parsed && (providers[parsed.provider]?.type ?? parsed.provider);
+    const parts = parsed && keychainParts(parsed.path);
+    if (type !== "keychain" || !parts || reason !== "not found in the keychain")
+      return [];
+    // Names come from persona files, possibly shared: quote them for the user's shell.
+    const service = shellQuote(parts.service);
+    const account = shellQuote(parts.account);
+    return platform === "darwin"
+      ? [`security add-generic-password -s ${service} -a ${account} -w`]
+      : [
+          `secret-tool store --label=${service} service ${service} account ${account}`,
+        ];
+  });
+  if (store.length === 0) {
+    return "set the environment variables, or change the providers (spec 06 §2)";
+  }
+  const note =
+    platform === "darwin"
+      ? " (each prompts for the value; if macOS asks to allow access for security, choose Always Allow)"
+      : " (each prompts for the value)";
+  return `${store.join("; ")}${note}`;
 }
 
 export async function runChecks(
@@ -198,6 +243,39 @@ export async function runChecks(
     );
   }
 
+  // plugins: load every listed entry, so a broken one shows here and not mid-launch
+  if (config === undefined) skip("plugins", "config.yaml could not be read");
+  else if (!config.adapters?.length && !config.secretProviders?.length) {
+    add("plugins", "ok", "no plugins configured");
+  } else {
+    try {
+      const where = { home, config };
+      const lines = [
+        ...(await loadAdapters(where, io.env)).map(
+          (p) =>
+            `${p.entry} → ${p.resolved}${p.version ? ` (${p.version})` : ""} adapter ${p.plugin.id}`,
+        ),
+        ...(await loadSecretProviders(where, io.env)).map(
+          (p) =>
+            `${p.entry} → ${p.resolved}${p.version ? ` (${p.version})` : ""} secret provider ${p.plugin.type}`,
+        ),
+      ];
+      add("plugins", "ok", `${lines.length} plugin(s): ${lines.join("; ")}`);
+    } catch (error) {
+      if (!(error instanceof CliError && error.code === "plugin-load"))
+        throw error;
+      const entry = String(error.details.entry);
+      add(
+        "plugins",
+        "error",
+        error.message,
+        error.details.reason === "not-installed"
+          ? `npm install --prefix ${join(home, "adapters")} ${entry}`
+          : `fix or remove ${entry} in ${join(home, "config.yaml")}`,
+      );
+    }
+  }
+
   // persona
   let ctx: Context | undefined;
   let selection: Selection | undefined;
@@ -301,13 +379,21 @@ export async function runChecks(
       );
       add("secrets", "ok", `${build.secretRefs.length} secret(s) resolve`);
     } catch (error) {
-      if (!(error instanceof SecretResolutionError)) throw error;
-      add(
-        "secrets",
-        "error",
-        error.failures.map((f) => `${f.ref}: ${f.reason}`).join("; "),
-        "set the environment variables, or change the providers (spec 06 §2)",
-      );
+      if (error instanceof CliError && error.code === "plugin-load") {
+        add("secrets", "error", error.message, "see the plugins check");
+      } else {
+        if (!(error instanceof SecretResolutionError)) throw error;
+        add(
+          "secrets",
+          "error",
+          error.failures.map((f) => `${f.ref}: ${f.reason}`).join("; "),
+          secretsFix(
+            error.failures,
+            build.result.ir.secrets.providers,
+            io.probe.platform,
+          ),
+        );
+      }
     }
   }
 

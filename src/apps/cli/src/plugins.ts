@@ -227,7 +227,7 @@ function asProvider(entry: string, value: unknown): SecretProvider {
 
 /** Every listed adapter, validated: contract version, no built-in or duplicate ids. */
 export async function loadAdapters(
-  ctx: Context,
+  ctx: Pick<Context, "home" | "config">,
   env: Env,
 ): Promise<LoadedPlugin<HarnessAdapter>[]> {
   const loaded: LoadedPlugin<HarnessAdapter>[] = [];
@@ -250,7 +250,7 @@ export async function loadAdapters(
 
 /** Every listed secret provider, validated: contract version, no built-in or duplicate types. */
 export async function loadSecretProviders(
-  ctx: Context,
+  ctx: Pick<Context, "home" | "config">,
   env: Env,
 ): Promise<LoadedPlugin<SecretProvider>[]> {
   const loaded: LoadedPlugin<SecretProvider>[] = [];

@@ -58,6 +58,7 @@ const IDS = [
   "config",
   "personas",
   "state",
+  "plugins",
   "persona",
   "resolve",
   "claude",
@@ -92,6 +93,7 @@ describe("zzpersona doctor", () => {
       config: "warn",
       personas: "skipped",
       state: "ok",
+      plugins: "ok",
       persona: "warn",
       resolve: "skipped",
       claude: "ok",
@@ -257,5 +259,97 @@ describe("zzpersona doctor (spec 08 hardening)", () => {
     expect(claude.status).toBe("warn");
     expect(claude.message).toContain("2.1.0");
     expect(claude.message).toContain("partial mode");
+  });
+});
+
+describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
+  const configure = (lines: string) =>
+    writeFileSync(
+      join(s.home, "config.yaml"),
+      `personas: ${s.personas}\n${lines}\n`,
+    );
+
+  it("lists each plugin with what it resolved to", async () => {
+    const env = healthy();
+    const adapter = join(import.meta.dirname, "test/plugins/class-adapter");
+    configure(`adapters: [${adapter}]`);
+    const { checks } = await doctor([], { env });
+    const plugins = checks.find((c) => c.id === "plugins")!;
+    expect(plugins.status).toBe("ok");
+    expect(plugins.message).toContain(
+      `${adapter} → ${join(adapter, "index.js")}`,
+    );
+    expect(plugins.message).toContain("fake");
+  });
+
+  it("is ok with no plugins, and an error naming the install command for a missing one", async () => {
+    const env = healthy();
+    expect((await doctor([], { env })).checks).toContainEqual(
+      expect.objectContaining({ id: "plugins", status: "ok" }),
+    );
+    configure("secretProviders: [acme-missing]");
+    const { checks } = await doctor([], { env });
+    const plugins = checks.find((c) => c.id === "plugins")!;
+    expect(plugins.status).toBe("error");
+    expect(plugins.fix).toContain(
+      `npm install --prefix ${join(s.home, "adapters")} acme-missing`,
+    );
+  });
+
+  /** Fixture 002's vault as the keychain, with the item missing. */
+  function keychainVault(platform: "darwin" | "linux"): Probe {
+    const base = join(s.personas, "org/base.yaml");
+    writeFileSync(
+      base,
+      readFileSync(base, "utf8").replace(
+        "vault: { type: hashicorp-vault, address: https://vault.corp }",
+        "vault: { type: keychain }",
+      ),
+    );
+    return {
+      ...installedProbe,
+      platform,
+      run: async (command) =>
+        command === "claude"
+          ? { exitCode: 0, stdout: "2.1.306 (Claude Code)\n", stderr: "" }
+          : {
+              exitCode: platform === "darwin" ? 44 : 1,
+              stdout: "",
+              stderr: "",
+            },
+    };
+  }
+
+  it("gives the command that stores a missing macOS keychain secret", async () => {
+    const { checks } = await doctor([], { probe: keychainVault("darwin") });
+    const secrets = checks.find((c) => c.id === "secrets")!;
+    expect(secrets.status).toBe("error");
+    expect(secrets.fix).toContain(
+      "security add-generic-password -s payments -a schema-token -w",
+    );
+    expect(secrets.fix).toContain("Always Allow");
+  });
+
+  it("gives the secret-tool command on Linux", async () => {
+    const { checks } = await doctor([], { probe: keychainVault("linux") });
+    expect(checks.find((c) => c.id === "secrets")!.fix).toContain(
+      "secret-tool store --label=payments service payments account schema-token",
+    );
+  });
+
+  it("quotes service and account names in the commands it suggests", async () => {
+    const probe = keychainVault("darwin");
+    const team = join(s.personas, "team/payments.yaml");
+    writeFileSync(
+      team,
+      readFileSync(team, "utf8").replace(
+        "secret://vault/payments/schema-token",
+        "secret://vault/My App/$(touch pwned)",
+      ),
+    );
+    const { checks } = await doctor([], { probe });
+    expect(checks.find((c) => c.id === "secrets")!.fix).toContain(
+      "security add-generic-password -s 'My App' -a '$(touch pwned)' -w",
+    );
   });
 });
