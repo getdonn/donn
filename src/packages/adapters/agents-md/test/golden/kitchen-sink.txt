@@ -28,11 +28,11 @@ report (24)
   dropped  mcp.servers.jira  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
   dropped  mcp.servers.remote  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
   advisory  knowledge[wiki]  listed as pointers in AGENTS.md
-  dropped  mcp.servers.db.args.3  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
-  dropped  mcp.servers.db.env.TOKEN  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
-  dropped  mcp.servers.db.env.TOKEN_AGAIN  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
-  dropped  mcp.servers.db.env.URL  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
-  dropped  mcp.servers.remote.headers.Authorization  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
+  dropped  mcp.servers.db.args.3  AGENTS.md is plain text; use a harness adapter for secrets  locked: mcp.servers by org/base
+  dropped  mcp.servers.db.env.TOKEN  AGENTS.md is plain text; use a harness adapter for secrets  locked: mcp.servers by org/base
+  dropped  mcp.servers.db.env.TOKEN_AGAIN  AGENTS.md is plain text; use a harness adapter for secrets  locked: mcp.servers by org/base
+  dropped  mcp.servers.db.env.URL  AGENTS.md is plain text; use a harness adapter for secrets  locked: mcp.servers by org/base
+  dropped  mcp.servers.remote.headers.Authorization  AGENTS.md is plain text; use a harness adapter for secrets  locked: mcp.servers by org/base
   approximated  permissions.allow[Read(./**)]  rendered as guidance; not enforced
   approximated  permissions.deny[Bash(rm -rf:*)]  rendered as guidance; not enforced  locked: permissions.deny by org/base
   approximated  permissions.ask[Bash(git push:*)]  rendered as guidance; not enforced

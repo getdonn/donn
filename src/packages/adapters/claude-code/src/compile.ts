@@ -13,6 +13,7 @@ import {
   type SecretRef,
 } from "@zzpersona/adapter-sdk";
 import type { HookEvent, McpServer, ResolvedPersona } from "@zzpersona/spec";
+import { capabilities } from "./capabilities.js";
 
 // A resolved persona as a Claude Code build for the relaunch path: a plugin (skills, hooks), a
 // settings fragment (permissions, targets), an MCP config, and a system prompt. See
@@ -198,10 +199,6 @@ function settings(ir: ResolvedPersona, entries: ReportEntry[]) {
 
 export type Mode = "relaunch" | "partial" | "relaunch-no-mcp";
 
-const SIDELOAD_BLOCKED =
-  "disableSideloadFlags blocks --plugin-dir and --mcp-config";
-const MANAGED_MCP = "managed-mcp.json makes --mcp-config exit";
-
 /** Managed settings decide what the launch may carry; sideload blocking wins. */
 export function modeFor(detection: Detection): Mode {
   if (detection.facts.sideloadBlocked === true) return "partial";
@@ -294,12 +291,14 @@ export function compile(
   const entries: ReportEntry[] = [];
   const files: Record<string, FileEntry> = {};
 
+  // Field-level reasons are the matrix's notes, so the report and the matrix agree.
+  const notes = capabilities(input.detection).fields;
   files["system-prompt.md"] = { content: systemPrompt(personaId, ir, texts) };
   for (const k of ir.knowledge) {
     entries.push({
       path: `knowledge[${k.id}]`,
       outcome: "advisory",
-      reason: "rendered as text in the system prompt",
+      reason: notes.knowledge!.note!,
     });
   }
 
@@ -309,7 +308,7 @@ export function compile(
     dropAll(
       entries,
       [...skillPaths(ir), ...hookPaths(ir), ...serverPaths(ir)],
-      SIDELOAD_BLOCKED,
+      notes.skills!.note!,
     );
   } else {
     pluginFiles(ir, personaId, files, entries);
@@ -319,7 +318,7 @@ export function compile(
     secretEnv = mcp.secretEnv;
     files["mcp.json"] = asJson({ mcpServers: mcp.servers });
   } else if (mode === "relaunch-no-mcp") {
-    dropAll(entries, serverPaths(ir), MANAGED_MCP);
+    dropAll(entries, serverPaths(ir), notes["mcp.servers"]!.note!);
   }
 
   files["settings.json"] = asJson(settings(ir, entries));

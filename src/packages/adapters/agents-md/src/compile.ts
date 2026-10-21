@@ -17,22 +17,6 @@ import { capabilities } from "./capabilities.js";
 export const BLOCK_FILE = "AGENTS.md.block";
 const SIZE_LIMIT = 24 * 1024;
 
-const reasons: Record<string, string> = {
-  skills: "skills",
-  mcp: "MCP servers",
-  secrets: "secrets",
-  hooks: "hooks",
-  targets: "harness settings",
-};
-
-function reasonFor(entry: { path: string; outcome: ReportEntry["outcome"] }) {
-  if (entry.outcome === "approximated")
-    return "rendered as guidance; not enforced";
-  if (entry.outcome === "advisory") return "listed as pointers in AGENTS.md";
-  const what = reasons[entry.path.split(/[.[]/)[0]!] ?? entry.path;
-  return `AGENTS.md is plain text; use a harness adapter for ${what}`;
-}
-
 function rules(title: string, list: readonly string[]): string[] {
   return list.length === 0
     ? []
@@ -78,16 +62,12 @@ export function compile(
     parts.push(["## Tool rules", ...toolRules].join("\n\n"));
   const content = `${parts.join("\n\n")}\n`;
 
-  const entries: ReportEntry[] = requiredEntries(
-    self.id,
-    capabilities(),
-    ir,
-  ).map((required) => ({ ...required, reason: reasonFor(required) }));
+  const entries: ReportEntry[] = requiredEntries(self.id, capabilities(), ir);
   if (ir.mcp.gateway !== undefined) {
     entries.push({
       path: "mcp.gateway",
       outcome: "dropped",
-      reason: reasonFor({ path: "mcp.gateway", outcome: "dropped" }),
+      reason: "AGENTS.md is plain text; use a harness adapter for MCP servers",
     });
   }
   const bytes = Buffer.byteLength(content);

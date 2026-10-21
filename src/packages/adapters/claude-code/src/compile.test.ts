@@ -1,4 +1,5 @@
 import {
+  requiredEntries,
   AdapterInputError,
   type CompileInput,
   type CompileOutput,
@@ -367,4 +368,29 @@ describe("spec 08 hardening", () => {
     expect(settings.keep).toEqual({});
     expect(settings.model).toBe("opus");
   });
+});
+
+describe("reasons from the capability matrix", () => {
+  const check = (facts: Record<string, boolean>) => {
+    const { personaId, ir, texts } = corpus.find(
+      (e) => e.name === "kitchen-sink",
+    )!;
+    const detection = { installed: true, version: "9.9.9", facts };
+    const output = adapter.compile({ personaId, ir, texts, detection });
+    const matrix = adapter.capabilities(detection);
+    const required = requiredEntries(adapter.id, matrix, ir);
+    expect(required.length).toBeGreaterThan(0);
+    for (const { path, reason } of required) {
+      const entry = output.report.entries.find((e) => e.path === path);
+      // A required value may be covered by its parent (a dropped server), with the parent's reason.
+      if (entry) expect(entry.reason, path).toBe(reason);
+    }
+  };
+
+  it("reports field-level drops with the matrix note", () => check({}));
+
+  it("reports partial-mode drops with the matrix note", () =>
+    check({ sideloadBlocked: true }));
+  it("reports relaunch-no-mcp drops with the matrix note", () =>
+    check({ managedMcp: true }));
 });
