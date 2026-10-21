@@ -4,6 +4,7 @@ import { Command, CommanderError, Option } from "commander";
 import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
 import { resolveCommand } from "./commands/resolve.js";
+import { switchCommand } from "./commands/switch.js";
 import { CliError, report } from "./errors.js";
 
 // The zzpersona command line. Everything goes through createCli(io) so tests run commands
@@ -123,6 +124,22 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
             () => claudeCommand(io, persona, options, passthrough),
             { passthrough: true },
           ),
+        );
+
+      program
+        .command("switch")
+        .description(
+          "Choose the persona for this project, or your default outside projects",
+        )
+        .argument(
+          "[persona]",
+          "a ref or bare name; omit to show what is in use",
+        )
+        .option("--default", "set or clear the default even inside a project")
+        .option("--clear", "remove this project's switch (or the default)")
+        .option("--json", "print the result as JSON")
+        .action((persona: string | undefined, options) =>
+          handle(options.json, () => switchCommand(io, persona, options)),
         );
 
       try {
