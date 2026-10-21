@@ -33,7 +33,7 @@ function describe(error: unknown): {
   if (error instanceof CliError) {
     return {
       text: error.message,
-      json: { code: error.code, ...error.details },
+      json: { code: error.code, message: error.message, ...error.details },
     };
   }
   if (error instanceof StoreError) {

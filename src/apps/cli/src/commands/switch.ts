@@ -1,8 +1,9 @@
 import { dirname } from "node:path";
 import type { CliIo } from "../cli.js";
 import { createContext, resolvePersona, type Context } from "../context.js";
+import { CliError } from "../errors.js";
 import { selectPersona } from "../select.js";
-import { projectKey, writeState } from "../state.js";
+import { projectKey, updateState } from "../state.js";
 
 // zzpersona switch: choose the persona for this project, or the default for everywhere else.
 // See docs/planning/07-cli-daily-use.md, section 1.
@@ -37,17 +38,24 @@ export async function switchCommand(
     );
 
   if (options.clear) {
+    if (persona !== undefined) {
+      throw new CliError(
+        "usage",
+        "switch --clear takes no persona; it clears this project's switch, or the default with --default",
+      );
+    }
     const target = await scopeFor(ctx, options.default === true);
-    const state = ctx.state;
-    const previous =
-      target.scope === "project" ? state.projects[target.key] : state.default;
+    let previous: string | undefined;
+    await updateState(ctx.home, (state) => {
+      previous =
+        target.scope === "project" ? state.projects[target.key] : state.default;
+      if (target.scope === "project") delete state.projects[target.key];
+      else delete state.default;
+    });
     if (previous === undefined) {
       print("nothing to clear", { scope: target.scope, persona: null });
       return 0;
     }
-    if (target.scope === "project") delete state.projects[target.key];
-    else delete state.default;
-    await writeState(ctx.home, state);
     print(
       target.scope === "project"
         ? `cleared the switch for ${target.repo}`
@@ -58,6 +66,15 @@ export async function switchCommand(
         ...(target.scope === "project" && { project: target.key }),
       },
     );
+    return 0;
+  }
+
+  if (persona === undefined && options.default) {
+    const ref = ctx.state.default;
+    print(ref === undefined ? "no default set" : `${ref} (default)`, {
+      persona: ref ?? null,
+      source: "default",
+    });
     return 0;
   }
 
@@ -79,12 +96,19 @@ export async function switchCommand(
 
   // Resolve before saving, so a typo or a broken persona is never stored.
   const selection = await selectPersona(persona, ctx);
-  await resolvePersona(ctx, selection, true);
   const target = await scopeFor(ctx, options.default === true);
-  const state = ctx.state;
-  if (target.scope === "project") state.projects[target.key] = selection.ref;
-  else state.default = selection.ref;
-  await writeState(ctx.home, state);
+  if (target.scope === "default" && selection.ref.startsWith("project/")) {
+    throw new CliError(
+      "invalid-default",
+      "a project persona cannot be the default: it only exists inside its project",
+      { persona: selection.ref },
+    );
+  }
+  await resolvePersona(ctx, selection, true);
+  await updateState(ctx.home, (state) => {
+    if (target.scope === "project") state.projects[target.key] = selection.ref;
+    else state.default = selection.ref;
+  });
   print(
     target.scope === "project"
       ? `${selection.ref} is now used for ${target.repo}`

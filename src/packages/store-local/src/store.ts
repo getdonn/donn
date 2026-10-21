@@ -99,7 +99,8 @@ export function createLocalStore(mounts: Mounts): LocalStore {
     if (layer === "project") {
       return mounts.project === undefined
         ? undefined
-        : { path: join(mounts.project, tail), root: mounts.project };
+        : // Contained by the repo, not .zzpersona: a project file may link to ../AGENTS.md.
+          { path: join(mounts.project, tail), root: dirname(mounts.project) };
     }
     if (layer === "user") {
       if (tail === "overrides.yaml") {

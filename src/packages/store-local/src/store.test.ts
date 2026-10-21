@@ -54,11 +54,11 @@ describe("locate", () => {
     });
     expect(store.locate("project/persona.yaml")).toEqual({
       path: join(m.project, "persona.yaml"),
-      root: m.project,
+      root: dirname(m.project),
     });
     expect(store.locate("project/instructions/a.md")).toEqual({
       path: join(m.project, "instructions/a.md"),
-      root: m.project,
+      root: dirname(m.project),
     });
     expect(store.locate("user/overrides.yaml")).toEqual({
       path: join(m.user, "overrides.yaml"),
@@ -237,5 +237,18 @@ describe("hardening (spec 07)", () => {
     expect(error).toBeInstanceOf(StoreError);
     expect((error as Error).message).toContain("outside");
     expect(await store.readText("project/instructions/ok.md")).toBe("fine");
+  });
+});
+
+describe("project containment", () => {
+  it("reads a project file linked to a file elsewhere in the repo", async () => {
+    const m = mounts();
+    put(join(dirname(m.project), "AGENTS.md"), "shared agents text");
+    mkdirSync(join(m.project, "instructions"), { recursive: true });
+    symlinkSync("../../AGENTS.md", join(m.project, "instructions/agents.md"));
+    const store = createLocalStore(m);
+    expect(await store.readText("project/instructions/agents.md")).toBe(
+      "shared agents text",
+    );
   });
 });

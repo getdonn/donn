@@ -164,3 +164,60 @@ describe("zzpersona init", () => {
     expect(JSON.parse(r.stdout).error.code).toBe("init-needs-flags");
   });
 });
+
+describe("zzpersona init (spec 08 hardening)", () => {
+  it("reports what it created before a later step failed", async () => {
+    const r = await zz(
+      [
+        "init",
+        "--personas",
+        join(s.root, "mine"),
+        "--extends",
+        "team/nope",
+        "--json",
+      ],
+      { cwd: s.root, home },
+    );
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error.created).toContain(
+      join(home, "config.yaml"),
+    );
+  });
+
+  it("re-runs an identical init with a trailing slash", async () => {
+    const at = { cwd: s.root, home, env: { HOME: s.root } };
+    expect((await zz(["init", "--personas", "~/p/"], at)).code).toBe(0);
+    const again = await zz(["init", "--personas", "~/p/"], at);
+    expect(again.code, again.stdout).toBe(0);
+  });
+
+  it("replaces an unparseable config with --force", async () => {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "config.yaml"), "personas: [unclosed\n");
+    const r = await zz(["init", "--personas", join(s.root, "p"), "--force"], {
+      cwd: s.root,
+      home,
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(config()).toEqual({ personas: join(s.root, "p") });
+  });
+});
+
+describe("zzpersona init keeps the rest of config.yaml", () => {
+  it("keeps plugin lists when it repoints the personas folder", async () => {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(home, "config.yaml"),
+      `personas: ${join(s.root, "a")}\nadapters: [acme-zzp-x]\n`,
+    );
+    const r = await zz(["init", "--personas", join(s.root, "b"), "--force"], {
+      cwd: s.root,
+      home,
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(config()).toEqual({
+      personas: join(s.root, "b"),
+      adapters: ["acme-zzp-x"],
+    });
+  });
+});

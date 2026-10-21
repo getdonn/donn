@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createLocalStore } from "@zzpersona/store-local";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import type { CliIo } from "../cli.js";
 import { expandPath, loadConfig } from "../config.js";
 import { createContext, homeOf, resolvePersona } from "../context.js";
 import { CliError } from "../errors.js";
-import { writeFileAtomic } from "../fs.js";
+import { fsStep, writeFileAtomic } from "../fs.js";
 import { selectPersona } from "../select.js";
 
 // zzpersona init, flags only: --personas sets up this machine, --extends sets up a project.
@@ -36,17 +36,15 @@ permissions:
     - "Bash(rm -rf:*)"
 `;
 
-/** Run a filesystem step; an OS error becomes a `filesystem` error naming the path. */
-async function fsStep<T>(path: string, step: () => Promise<T>): Promise<T> {
+/** The config's other keys (adapters, …), kept when init rewrites personas. */
+async function otherConfigKeys(file: string): Promise<Record<string, unknown>> {
   try {
-    return await step();
-  } catch (error) {
-    const errno = (error as NodeJS.ErrnoException).code;
-    if (errno === undefined) throw error;
-    throw new CliError("filesystem", `could not write ${path}: ${errno}`, {
-      path,
-      errno,
-    });
+    const raw: unknown = parse(await readFile(file, "utf8"));
+    return raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
   }
 }
 
@@ -66,7 +64,18 @@ async function initPersonas(
   const target = expandPath(dir, io.cwd, io.env);
   const configFile = join(home, "config.yaml");
   const hadConfig = existsSync(configFile);
-  const current = (await loadConfig(home, io.env)).personas;
+  let current: string | undefined;
+  try {
+    current = (await loadConfig(home, io.env)).personas;
+  } catch (error) {
+    // --force replaces a config that does not parse; without it, report the config.
+    if (!(
+      force &&
+      error instanceof CliError &&
+      error.code === "invalid-config"
+    ))
+      throw error;
+  }
   if (current !== undefined && current !== target && !force) {
     throw new CliError(
       "config-exists",
@@ -77,8 +86,9 @@ async function initPersonas(
   // The folder first: a folder that cannot be created leaves the config as it was.
   await fsStep(target, () => mkdir(target, { recursive: true }));
   if (current !== target) {
+    const others = await otherConfigKeys(configFile);
     await fsStep(configFile, () =>
-      writeFileAtomic(configFile, stringify({ personas: target })),
+      writeFileAtomic(configFile, stringify({ ...others, personas: target })),
     );
     (hadConfig ? out.updated : out.created).push(configFile);
   }
@@ -157,7 +167,29 @@ export async function initCommand(
     await initPersonas(io, options.personas, options.force === true, out);
   }
   if (options.extends !== undefined) {
-    await initProject(io, options.extends, options.force === true, out);
+    try {
+      await initProject(io, options.extends, options.force === true, out);
+    } catch (error) {
+      // Report what --personas already did, so a half-finished init is visible.
+      const done = [...out.created, ...out.updated];
+      if (done.length > 0 && error instanceof CliError) {
+        throw new CliError(
+          error.code,
+          `${error.message}\n(--personas had already written ${done.join(", ")})`,
+          {
+            ...error.details,
+            created: out.created,
+            updated: out.updated,
+          },
+        );
+      }
+      if (done.length > 0) {
+        io.stderr.write(
+          `${[...out.created.map((p) => `created ${p}`), ...out.updated.map((p) => `updated ${p}`)].join("\n")}\n`,
+        );
+      }
+      throw error;
+    }
   }
   if (options.json) {
     io.stdout.write(
