@@ -20,6 +20,7 @@ function engine(
   const hooks = new Map<string, Hook>();
   const runs: (readonly string[])[] = [];
   const statuses: (string | undefined)[] = [];
+  const invalidated: string[] = [];
   const $ = {
     env: { get: async (name: string) => env[name] },
     session: { cwd },
@@ -31,7 +32,7 @@ function engine(
     },
     ui: {
       status: (text: string | undefined) => statuses.push(text),
-      invalidate: () => {},
+      invalidate: (event: string) => invalidated.push(event),
       resolve: () => ({ Box: "Box", Text: "Text" }),
     },
     command: { register: async () => undefined },
@@ -41,16 +42,16 @@ function engine(
       hooks.set(event, (hook ?? matcherOrHook) as Hook),
     options,
   );
-  const call = (event: string, e: unknown = {}) =>
+  const call = (event: string, e: unknown = {}, below: unknown = "BELOW") =>
     (
       hooks.get(event)! as (
         $: Mod$,
         e: unknown,
         next: (e: unknown) => Promise<unknown>,
       ) => Promise<unknown>
-    )($, e, async () => "BELOW");
+    )($, e, async () => below);
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-  return { call, settle, runs, statuses };
+  return { call, settle, runs, statuses, invalidated };
 }
 
 const json = (value: unknown): ProcessRunResult => ({
@@ -242,23 +243,29 @@ describe("live switching", () => {
       });
     return FOLDER;
   };
-  const sections = async (
-    e: ReturnType<typeof engine>,
-  ): Promise<{ id: string; text: string }[]> =>
+  const COMPOSED = {
+    sections: [
+      { id: "lean_body", scope: "shared", text: "body" },
+      { id: "env_info_simple", scope: "session", text: "env" },
+    ],
+  };
+  /** The text the engine would send for a section, after the mod's prompt.section hook. */
+  const sectionText = async (e: ReturnType<typeof engine>, name: string) =>
     (
-      (await e.call("prompt.compose", {})) as {
-        sections: { id: string; text: string }[];
+      (await e.call("prompt.section", { name }, { text: "core" })) as {
+        text: string;
       }
-    ).sections;
+    ).text;
 
-  it("applies /persona use live and adds the superseding section", async () => {
+  it("applies /persona use live and appends to the session's last section", async () => {
     const e = engine(
       { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
     await e.settle();
-    expect(await e.call("prompt.compose", {})).toBe("BELOW");
+    expect(await e.call("prompt.compose", {}, COMPOSED)).toBe(COMPOSED);
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
     const out = (await e.call("command.run", {
       command: "persona",
       args: "use team/platform",
@@ -272,9 +279,15 @@ describe("live switching", () => {
       "--json",
     ]);
     expect(out.text).toContain("team/platform is now live in this session");
-    const list = await sections(e);
-    expect(list.at(-1)!.id).toBe("zzpersona:live-persona");
-    expect(list.at(-1)!.text).toContain("Be team/platform.");
+    expect(e.invalidated).toContain("prompt.section");
+    const text = await sectionText(e, "env_info_simple");
+    expect(
+      text.startsWith(
+        "core\n\nThe persona for this session is now team/platform.",
+      ),
+    ).toBe(true);
+    expect(text).toContain("Be team/platform.");
+    expect(await sectionText(e, "memory")).toBe("core");
   });
 
   it("switching back to the launched persona drops the section", async () => {
@@ -284,6 +297,7 @@ describe("live switching", () => {
     );
     await e.call("session.start");
     await e.settle();
+    await e.call("prompt.compose", {}, COMPOSED);
     await e.call("command.run", {
       command: "persona",
       args: "use team/platform",
@@ -292,7 +306,7 @@ describe("live switching", () => {
       command: "persona",
       args: "use team/payments",
     });
-    expect(await e.call("prompt.compose", {})).toBe("BELOW");
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
     const tree = (await e.call("ui.render", {
       component: "AbovePrompt",
     })) as Tree;
@@ -337,6 +351,10 @@ describe("live switching", () => {
     );
     await e.call("session.start");
     await e.settle();
-    expect((await sections(e)).at(-1)!.id).toBe("zzpersona:live-persona");
+    expect(e.invalidated).toContain("prompt.section");
+    await e.call("prompt.compose", {}, COMPOSED);
+    expect(await sectionText(e, "env_info_simple")).toContain(
+      "Be team/platform.",
+    );
   });
 });

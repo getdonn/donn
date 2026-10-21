@@ -21,7 +21,7 @@ export interface Mod$ {
   };
   ui: {
     status(text: string | undefined): void;
-    invalidate(event: "ui.render"): void;
+    invalidate(event: "ui.render" | "prompt.section"): void;
     resolve(e: unknown): { Box: unknown; Text: unknown };
   };
   command: {

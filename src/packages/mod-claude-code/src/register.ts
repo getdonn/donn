@@ -87,6 +87,7 @@ async function onStart(
         );
         if (shown.ok) live = asLive(shown.json);
         $.ui.invalidate("ui.render");
+        if (live) $.ui.invalidate("prompt.section");
       }
       const text = nudgeText(launched, here, live);
       if (showNudge && !nudged && text !== undefined) {
@@ -158,17 +159,40 @@ async function applyLive(
     );
   live = asLive(result.json);
   $.ui.invalidate("ui.render");
+  $.ui.invalidate("prompt.section");
   return live
     ? liveText(live, saved)
     : `zzpersona: unexpected answer from live`;
 }
 
-/** While a live switch is in effect, the section that supersedes the launch instructions. */
+/**
+ * Where the superseding instructions go: the last session-scope section of the system prompt,
+ * as composed for this session. Claude Code fixes the composed list after the first request, but
+ * re-reads a section's text after $.ui.invalidate("prompt.section") (spikes/live-smoke).
+ */
+let anchor = "env_info_simple";
+
 async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
-  const result = (await next(e)) as { sections?: readonly unknown[] };
+  const result = (await next(e)) as {
+    sections?: readonly { id: string; scope: string }[];
+  };
+  const last = [...(result.sections ?? [])]
+    .reverse()
+    .find((section) => section.scope === "session");
+  if (last) anchor = last.id;
+  return result;
+}
+
+/** While a live switch is in effect, the anchor section carries the superseding text. */
+async function onSection(
+  $: Mod$,
+  e: { name?: string },
+  next: Next,
+): Promise<unknown> {
+  const result = (await next(e)) as { text?: string | null };
   const section = live && liveSection(live);
-  if (!section) return result;
-  return { ...result, sections: [...(result.sections ?? []), section] };
+  if (!section || e.name !== anchor) return result;
+  return { ...result, text: `${result.text ?? ""}\n\n${section.text}` };
 }
 
 export function register(on: On, options: Options = {}): void {
@@ -179,8 +203,10 @@ export function register(on: On, options: Options = {}): void {
   nudged = false;
   session = undefined;
   live = undefined;
+  anchor = "env_info_simple";
   on("session.start", onStart as Hook);
   on("ui.render", { component: "AbovePrompt" }, onBand as Hook);
   on("command.run", { command: "persona" }, onPersona as Hook);
   on("prompt.compose", onCompose as Hook);
+  on("prompt.section", onSection as Hook);
 }
