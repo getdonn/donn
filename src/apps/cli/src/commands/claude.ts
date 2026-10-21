@@ -1,18 +1,10 @@
-import { dirname } from "node:path";
-import { renderBuild, type Detection } from "@zzpersona/adapter-sdk";
-import { runPlan, writeBuild } from "@zzpersona/executor";
-import { resolveSecrets } from "@zzpersona/secrets";
-import { backendLoader } from "../plugins.js";
-import { prepareBuild, printReport } from "../build.js";
+import type { Detection } from "@zzpersona/adapter-sdk";
 import type { CliIo } from "../cli.js";
-import { secretContext } from "../secret-context.js";
-import { createContext } from "../context.js";
-import { CliError } from "../errors.js";
+import { launch } from "../launch.js";
 import { createSession, removeSession, sessionPlugins } from "../session.js";
-import { selectPersona } from "../select.js";
 
-// The core loop: resolve → detect → compile → write → resolve secrets → launch claude.
-// See docs/planning/06-cli-core-loop.md, section 4.
+// `zzpersona claude`: the shared launch path, plus the session folder that `zzpersona live` swaps
+// and the managed-settings hint. See docs/planning/06-cli-core-loop.md, section 4.
 
 export type Mode = "partial" | "relaunch-no-mcp";
 
@@ -39,119 +31,63 @@ export async function claudeCommand(
   options: ClaudeOptions,
   passthrough: string[],
 ): Promise<number> {
-  const ctx = await createContext(io);
-  const selection = await selectPersona(persona, ctx);
-  const build = await prepareBuild(ctx, io, {
-    selection,
-    harness: "claude-code",
-    overlay: options.overlay,
-    passthrough,
-    ...(options.mode && { facts: MODE_FACTS[options.mode] }),
-  });
-  printReport(io, build.output);
-  // Tell the session which persona it runs, for the mod (spec 09 §1). Refs and paths only.
-  const launchEnv: Record<string, string> = {
-    ZZPERSONA_PERSONA: selection.ref,
-    ZZPERSONA_SOURCE: selection.source,
-    ...(ctx.projectDir !== undefined && {
-      ZZPERSONA_PROJECT: dirname(ctx.projectDir),
-    }),
-  };
-  build.plan = {
-    ...build.plan,
-    steps: build.plan.steps.map((step) =>
-      step.kind === "launch"
-        ? { ...step, env: { ...step.env, ...launchEnv } }
-        : step,
-    ),
-  };
-
-  if (options.json) {
-    const { buildDir, output, secretRefs, plan } = build;
-    io.stdout.write(
-      `${JSON.stringify({ buildDir, report: output.report, secretRefs, plan }, null, 2)}\n`,
-    );
-    return 0;
-  }
-  if (options.dryRun) {
-    io.stdout.write(renderBuild(build.output, build.plan));
-    return 0;
-  }
-  if (!build.detection.installed) {
-    throw new CliError(
-      "claude-not-installed",
-      "claude is not installed (or not on PATH)",
-    );
-  }
-
-  const values = await resolveSecrets(
-    build.secretRefs,
-    build.result.ir.secrets.providers,
-    secretContext(io),
-    { loadBackend: backendLoader(ctx, io.env) },
-  );
-  const secretEnv = Object.fromEntries(
-    Object.entries(build.output.secretEnv).map(([name, ref]) => [
-      name,
-      values[ref]!,
-    ]),
-  );
-  await writeBuild(build.output, {
-    buildDir: build.buildDir,
-    store: ctx.store,
-  });
-
-  // Relaunch mode passes the persona plugin with --plugin-dir: launch with a session folder of
-  // plugins instead, so `zzpersona live` can swap it mid-session (spec 10 §1).
-  const launch = build.plan.steps.find((step) => step.kind === "launch");
-  const pluginArg = launch ? launch.args.indexOf("--plugin-dir") : -1;
-  let session: string | undefined;
-  if (launch && pluginArg !== -1) {
-    session = await createSession(
-      ctx.home,
-      launch.args[pluginArg + 1]!,
-      {
-        persona: selection.ref,
-        source: selection.source,
-        overlay: options.overlay,
-        snapshot: {
-          mcp: build.result.ir.mcp,
-          permissions: build.result.ir.permissions,
-          settings: build.result.ir.targets["claude-code"] ?? {},
-        },
+  return launch(
+    io,
+    {
+      harness: "claude-code",
+      binary: "claude",
+      notInstalled: "claude-not-installed",
+      ...(persona !== undefined && { persona }),
+      ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
+      ...(options.json !== undefined && { json: options.json }),
+      overlay: options.overlay,
+      ...(options.mode && { facts: MODE_FACTS[options.mode] }),
+      passthrough,
+    },
+    {
+      // Relaunch mode passes the persona plugin with --plugin-dir: launch with a session folder
+      // of plugins instead, so `zzpersona live` can swap it mid-session (spec 10 §1).
+      async beforeRun(build, ctx, selection) {
+        const step = build.plan.steps.find((s) => s.kind === "launch");
+        const pluginArg = step ? step.args.indexOf("--plugin-dir") : -1;
+        if (!step || pluginArg === -1) return undefined;
+        const session = await createSession(
+          ctx.home,
+          step.args[pluginArg + 1]!,
+          {
+            persona: selection.ref,
+            source: selection.source,
+            overlay: options.overlay,
+            snapshot: {
+              mcp: build.result.ir.mcp,
+              permissions: build.result.ir.permissions,
+              settings: build.result.ir.targets["claude-code"] ?? {},
+            },
+          },
+          process.pid,
+        );
+        const args = [...step.args];
+        args[pluginArg + 1] = sessionPlugins(session);
+        build.plan = {
+          ...build.plan,
+          steps: build.plan.steps.map((s) =>
+            s === step
+              ? {
+                  ...step,
+                  args,
+                  env: { ...step.env, ZZPERSONA_SESSION: session },
+                }
+              : s,
+          ),
+        };
+        return () => removeSession(session);
       },
-      process.pid,
-    );
-    const args = [...launch.args];
-    args[pluginArg + 1] = sessionPlugins(session);
-    build.plan = {
-      ...build.plan,
-      steps: build.plan.steps.map((step) =>
-        step === launch
-          ? {
-              ...launch,
-              args,
-              env: { ...launch.env, ZZPERSONA_SESSION: session! },
-            }
-          : step,
-      ),
-    };
-  }
-
-  const now = io.now ?? Date.now;
-  const started = now();
-  let code: number;
-  try {
-    code = await (io.runPlan ?? runPlan)(build.plan, {
-      secretEnv,
-      env: io.env,
-    });
-  } finally {
-    if (session !== undefined) await removeSession(session);
-  }
-  // A signal exit (> 128) was the user or the system, not managed settings.
-  if (code !== 0 && code <= 128 && now() - started < QUICK_FAILURE_MS) {
-    io.stderr.write(`${MANAGED_HINT}\n`);
-  }
-  return code;
+      // A signal exit (> 128) was the user or the system, not managed settings.
+      afterRun(code, elapsedMs) {
+        if (code !== 0 && code <= 128 && elapsedMs < QUICK_FAILURE_MS) {
+          io.stderr.write(`${MANAGED_HINT}\n`);
+        }
+      },
+    },
+  );
 }
