@@ -121,6 +121,12 @@ function runPlan(plan: ActivationPlan, options: { secretEnv: Record<string, stri
   followed) of the source, and of every entry inside a copied directory, must stay inside the
   real path of its mount, or the build fails. `overlay` steps are refused ("not supported
   until the agents-md adapter").
+- *Amended 2026-10-21 (whole-stack review):* the build directory is a **symlink** to a version
+  directory (`<buildDir>.v-<random>`). `writeBuild` writes the new version, then, under a
+  per-build `mkdir` lock (`<buildDir>.lock`, owner pid recorded, a dead owner's lock taken over,
+  30 s timeout), atomically repoints the symlink and removes the previous version. Two
+  concurrent builds of one persona no longer crash, and the build directory is never missing
+  while a session starts. Filesystem errors become `ExecutorError`s naming the source.
 - **`runPlan`** spawns each `launch` step with `stdio: "inherit"`, env = current env + step env +
   resolved secrets, and the step's `cwd`; forwards `SIGINT`/`SIGTERM`; resolves to the child's
   exit code.
