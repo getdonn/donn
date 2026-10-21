@@ -22,9 +22,13 @@ export interface Context {
   state: State;
 }
 
+/** ZZPERSONA_HOME, or ~/.zzpersona. An empty ZZPERSONA_HOME counts as unset. */
+export function homeOf(io: CliIo): string {
+  return io.env.ZZPERSONA_HOME || join(io.env.HOME ?? homedir(), ".zzpersona");
+}
+
 export async function createContext(io: CliIo): Promise<Context> {
-  const home =
-    io.env.ZZPERSONA_HOME || join(io.env.HOME ?? homedir(), ".zzpersona");
+  const home = homeOf(io);
   const config = await loadConfig(home, io.env);
   const projectDir = findProject(io.cwd);
   const store = createLocalStore({

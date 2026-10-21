@@ -3,6 +3,7 @@ import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
+import { initCommand } from "./commands/init.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
 import { CliError, report } from "./errors.js";
@@ -140,6 +141,28 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print the result as JSON")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => switchCommand(io, persona, options)),
+        );
+
+      program
+        .command("init")
+        .description(
+          "Set up this machine (--personas) and/or a project (--extends)",
+        )
+        .option(
+          "--personas <dir>",
+          "your personas folder; written to config.yaml",
+        )
+        .option(
+          "--extends <persona>",
+          "write .zzpersona/persona.yaml here extending it",
+        )
+        .option(
+          "--force",
+          "replace an existing config value or project persona",
+        )
+        .option("--json", "print { created, updated } as JSON")
+        .action((options) =>
+          handle(options.json, () => initCommand(io, options)),
         );
 
       try {
