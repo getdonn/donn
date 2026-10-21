@@ -12,3 +12,6 @@ docs/
 
 # Throwaway
 spikes/
+
+# Local agent scratch (git-ignored)
+.superpowers/
