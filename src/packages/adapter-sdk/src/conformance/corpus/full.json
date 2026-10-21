@@ -1,0 +1,149 @@
+{
+  "irVersion": 0,
+  "layers": [
+    "org/base",
+    "area/fintech",
+    "team/payments",
+    "project/checkout-api",
+    "user/overrides"
+  ],
+  "metadata": {
+    "name": "checkout-api",
+    "version": 1,
+    "description": "Checkout API service repo",
+    "labels": {
+      "org": "corp",
+      "area": "fintech",
+      "team": "payments",
+      "repo": "checkout-api"
+    }
+  },
+  "instructions": [
+    {
+      "id": "org-conduct",
+      "file": "org/instructions/conduct.md"
+    },
+    {
+      "id": "org-security",
+      "inline": "Never paste credentials, tokens or customer data into prompts.\n"
+    },
+    {
+      "id": "fintech-compliance",
+      "inline": "This area is PCI-DSS scoped. Treat card data as restricted.\n"
+    },
+    {
+      "id": "checkout-overview",
+      "file": "project/instructions/checkout-overview.md"
+    },
+    {
+      "id": "coding-standards",
+      "inline": "Use the shared error envelope. Never log PANs.\n"
+    },
+    {
+      "id": "checkout-context",
+      "inline": "This repo is the checkout API. Run `pnpm sim` before touching settlement code.\n"
+    }
+  ],
+  "skills": [
+    {
+      "name": "pr-review",
+      "source": "registry://org/skills/pr-review@^2"
+    },
+    {
+      "name": "run-payment-sim",
+      "source": "team/skills/run-payment-sim"
+    }
+  ],
+  "mcp": {
+    "gateway": "bifrost://corp",
+    "servers": {
+      "jira": {
+        "ref": "gateway://jira"
+      },
+      "payments-schema": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@corp/payments-schema-mcp"
+        ],
+        "env": {
+          "SCHEMA_TOKEN": "secret://vault/payments/schema-token"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(pnpm sim:*)",
+      "Read(./**)"
+    ],
+    "deny": [
+      "Bash(curl:*)",
+      "Bash(rm -rf:*)",
+      "Read(./.env)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(pnpm test:*)"
+    ]
+  },
+  "hooks": {
+    "pre-tool-use": [
+      {
+        "id": "block-prod-db",
+        "run": "org/hooks/block-prod-db.sh",
+        "matcher": "Bash"
+      }
+    ],
+    "post-tool-use": [
+      {
+        "id": "format-on-write",
+        "run": "project/hooks/format.sh",
+        "matcher": "Edit|Write"
+      }
+    ]
+  },
+  "knowledge": [
+    {
+      "id": "pci-handbook",
+      "source": "mcp://confluence?space=PCI"
+    },
+    {
+      "id": "payments-runbooks",
+      "source": "mcp://confluence?space=PAY"
+    },
+    {
+      "id": "schema-docs",
+      "source": "https://docs.corp/payments/schema"
+    }
+  ],
+  "secrets": {
+    "providers": {
+      "vault": {
+        "type": "hashicorp-vault",
+        "address": "https://vault.corp"
+      }
+    }
+  },
+  "locks": [
+    {
+      "path": "permissions.deny",
+      "layer": "org/base"
+    },
+    {
+      "path": "mcp.gateway",
+      "layer": "org/base"
+    },
+    {
+      "path": "hooks.pre-tool-use[block-prod-db]",
+      "layer": "org/base"
+    }
+  ],
+  "targets": {
+    "claude-code": {
+      "model": "opus",
+      "outputStyle": "concise"
+    }
+  }
+}
