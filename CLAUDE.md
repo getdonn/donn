@@ -31,6 +31,7 @@ overrides them.
 9. `docs/planning/09-mod-claude-code.md` — the Claude Code mod: band with the active persona, folder-mismatch nudge, `/persona list|switch|clear`, `zzpersona mod install`
 10. `docs/planning/10-live-switching.md` — live in-session switching: session plugin folders, `zzpersona live`, `/persona use`, the superseding instructions section
 11. `docs/planning/11-agents-md.md` — Phase 2 starts: the `agents-md` adapter, a committed `AGENTS.md` block from the project persona, `zzpersona write [--check]`
+12. `docs/planning/12-codex.md` — the Codex adapter (relaunch model: `-c developer_instructions`, MCP with `env_vars`, sandbox defaults) and `zzpersona codex`
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
