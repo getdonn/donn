@@ -169,4 +169,38 @@ describe("zzpersona claude", () => {
     expect(launched.code).toBe(1);
     expect(launched.stderr).toContain("claude is not installed");
   });
+
+  it("tells the session which persona it runs", async () => {
+    useEnvVault();
+    const { calls, runPlan } = recorder();
+    const r = await zz(["claude"], {
+      cwd: s.repo,
+      home: s.home,
+      env: SECRET_ENV,
+      runPlan,
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(launchArgs(calls[0]!.plan).env).toMatchObject({
+      ZZPERSONA_PERSONA: "project/persona",
+      ZZPERSONA_SOURCE: "project",
+      ZZPERSONA_PROJECT: s.repo,
+    });
+    const json = await zz(["claude", "org/base", "--json"], {
+      cwd: s.root,
+      home: s.home,
+    });
+    const step = JSON.parse(json.stdout).plan.steps[0];
+    expect(step.env).toMatchObject({
+      ZZPERSONA_PERSONA: "org/base",
+      ZZPERSONA_SOURCE: "argument",
+    });
+    expect(step.env).not.toHaveProperty("ZZPERSONA_PROJECT");
+    const dry = await zz(["claude", "--dry-run"], {
+      cwd: s.repo,
+      home: s.home,
+    });
+    expect(dry.stdout).toContain(
+      "ZZPERSONA_PERSONA, ZZPERSONA_PROJECT, ZZPERSONA_SOURCE",
+    );
+  });
 });

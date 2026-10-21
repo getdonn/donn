@@ -5,6 +5,7 @@ import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { listCommand } from "./commands/list.js";
 import { initCommand } from "./commands/init.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
@@ -96,6 +97,14 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
         .action((persona: string, other: string | undefined, options) =>
           handle(options.json, () => diffCommand(io, persona, other, options)),
+        );
+
+      program
+        .command("list")
+        .description("List every available persona with its layer")
+        .option("--json", "print the personas as JSON")
+        .action((options) =>
+          handle(options.json, () => listCommand(io, options)),
         );
 
       program
