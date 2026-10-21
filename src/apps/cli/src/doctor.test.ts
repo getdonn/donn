@@ -336,4 +336,20 @@ describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
       "secret-tool store --label=payments service payments account schema-token",
     );
   });
+
+  it("quotes service and account names in the commands it suggests", async () => {
+    const probe = keychainVault("darwin");
+    const team = join(s.personas, "team/payments.yaml");
+    writeFileSync(
+      team,
+      readFileSync(team, "utf8").replace(
+        "secret://vault/payments/schema-token",
+        "secret://vault/My App/$(touch pwned)",
+      ),
+    );
+    const { checks } = await doctor([], { probe });
+    expect(checks.find((c) => c.id === "secrets")!.fix).toContain(
+      "security add-generic-password -s 'My App' -a '$(touch pwned)' -w",
+    );
+  });
 });

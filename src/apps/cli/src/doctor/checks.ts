@@ -62,6 +62,10 @@ async function writable(dir: string): Promise<boolean> {
   );
 }
 
+/** A POSIX-shell word: as is when plainly safe, otherwise single-quoted. */
+const shellQuote = (value: string) =>
+  /^[\w./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+
 /** For keychain items that are missing, the command that stores each one; otherwise general advice. */
 function secretsFix(
   failures: { ref: string; reason: string }[],
@@ -75,7 +79,9 @@ function secretsFix(
     const parts = parsed && keychainParts(parsed.path);
     if (type !== "keychain" || !parts || reason !== "not found in the keychain")
       return [];
-    const { service, account } = parts;
+    // Names come from persona files, possibly shared: quote them for the user's shell.
+    const service = shellQuote(parts.service);
+    const account = shellQuote(parts.account);
     return platform === "darwin"
       ? [`security add-generic-password -s ${service} -a ${account} -w`]
       : [
