@@ -1,0 +1,21 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t          target
+  3  user/overrides  overlay
+
+mcp (1)
+  gateway  bifrost://corp  org/base  locked: mcp.gateway by org/base
+
+permissions (2)
+  deny   Bash(rm -rf:*)    org/base        locked: permissions.deny by org/base
+  allow  Bash(git status)  user/overrides
+
+locks (2)
+  mcp.gateway       org/base
+  permissions.deny  org/base
+
+warnings (2)
+  overlay-lock-ignored  mcp.gateway                       from user/overrides
+  overlay-lock-ignored  permissions.deny[Bash(rm -rf:*)]  from user/overrides

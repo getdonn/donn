@@ -1,0 +1,11 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+instructions (4)
+  o1  inline "org one"     org/base
+  t2  inline "team two"    team/t
+  o3  inline "team three"  team/t
+  t1  inline "team one"    team/t

@@ -1,0 +1,11 @@
+p
+
+layers (merge order)
+  1  org/base
+  2  team/t
+  3  project/p  target
+
+skills (3)
+  alpha  registry://org/skills/alpha@^1  org/base
+  beta   registry://org/skills/beta@^1   project/p
+  gamma  team/skills/gamma               team/t

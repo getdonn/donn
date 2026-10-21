@@ -1,0 +1,9 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+labels (2)
+  org   corp  org/base
+  tier  team  team/t

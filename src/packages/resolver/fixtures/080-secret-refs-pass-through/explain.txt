@@ -1,0 +1,12 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+mcp (1)
+  schema  npx -y @corp/schema-mcp  team/t  env: TOKEN
+
+secrets (2)
+  vault  hashicorp-vault address=https://vault-pay.c…  team/t
+  op     1password-cli account=corp                    team/t

@@ -1,0 +1,12 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+permissions (2)
+  deny  Bash(curl:*)    team/t    locked: permissions.deny by org/base
+  deny  Bash(rm -rf:*)  org/base  locked: permissions.deny by org/base
+
+locks (1)
+  permissions.deny  org/base
