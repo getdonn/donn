@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { renderBuild, type Detection } from "@zzpersona/adapter-sdk";
 import { runPlan, writeBuild } from "@zzpersona/executor";
 import { resolveSecrets } from "@zzpersona/secrets";
@@ -47,6 +48,22 @@ export async function claudeCommand(
     ...(options.mode && { facts: MODE_FACTS[options.mode] }),
   });
   printReport(io, build.output);
+  // Tell the session which persona it runs, for the mod (spec 09 §1). Refs and paths only.
+  const launchEnv: Record<string, string> = {
+    ZZPERSONA_PERSONA: selection.ref,
+    ZZPERSONA_SOURCE: selection.source,
+    ...(ctx.projectDir !== undefined && {
+      ZZPERSONA_PROJECT: dirname(ctx.projectDir),
+    }),
+  };
+  build.plan = {
+    ...build.plan,
+    steps: build.plan.steps.map((step) =>
+      step.kind === "launch"
+        ? { ...step, env: { ...step.env, ...launchEnv } }
+        : step,
+    ),
+  };
 
   if (options.json) {
     const { buildDir, output, secretRefs, plan } = build;
