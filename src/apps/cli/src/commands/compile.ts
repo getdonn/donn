@@ -18,9 +18,9 @@ export async function compileCommand(
   options: CompileOptions,
 ): Promise<number> {
   const ctx = await createContext(io);
-  const ref = await selectPersona(persona, ctx);
+  const selection = await selectPersona(persona, ctx);
   const build = await prepareBuild(ctx, io, {
-    persona: ref,
+    selection,
     harness: options.harness,
     overlay: options.overlay,
     passthrough: [],
