@@ -59,10 +59,8 @@ describe("zzpersona claude", () => {
     expect(step.args.slice(-2)).toEqual(["-p", "hi"]);
     expect(step.args[0]).toBe("--plugin-dir");
     expect(calls[0]!.secretEnv).toEqual({ ZZP_SECRET_1: "tok-value" });
-    const pluginDir = step.args[1]!;
-    expect(existsSync(join(pluginDir, ".claude-plugin/plugin.json"))).toBe(
-      true,
-    );
+    // The session folder of plugins (spec 10); removed again once claude exits.
+    expect(step.args[1]).toBe(join(step.env.ZZPERSONA_SESSION!, "plugins"));
   });
 
   it("forces partial mode with --mode", async () => {
@@ -202,5 +200,95 @@ describe("zzpersona claude", () => {
     expect(dry.stdout).toContain(
       "ZZPERSONA_PERSONA, ZZPERSONA_PROJECT, ZZPERSONA_SOURCE",
     );
+  });
+
+  it("launches with a session folder of plugins and removes it afterwards", async () => {
+    useEnvVault();
+    let seen:
+      { pluginDir: string; session: string; existed: boolean } | undefined;
+    const r = await zz(["claude"], {
+      cwd: s.repo,
+      home: s.home,
+      env: SECRET_ENV,
+      runPlan: async (plan: ActivationPlan) => {
+        const step = launchArgs(plan);
+        const pluginDir = step.args[step.args.indexOf("--plugin-dir") + 1]!;
+        seen = {
+          pluginDir,
+          session: step.env.ZZPERSONA_SESSION!,
+          existed: existsSync(
+            join(pluginDir, "zzp-project--persona/.claude-plugin/plugin.json"),
+          ),
+        };
+        return 0;
+      },
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(seen!.pluginDir).toBe(join(seen!.session, "plugins"));
+    expect(seen!.session.startsWith(join(s.home, "sessions"))).toBe(true);
+    expect(seen!.existed).toBe(true);
+    expect(existsSync(seen!.session)).toBe(false);
+  });
+
+  it("removes the session folder even when the launch fails", async () => {
+    useEnvVault();
+    for (const outcome of ["exit", "throw"] as const) {
+      let session: string | undefined;
+      await zz(["claude"], {
+        cwd: s.repo,
+        home: s.home,
+        env: SECRET_ENV,
+        runPlan: async (plan: ActivationPlan) => {
+          session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+          if (outcome === "throw") throw new Error("spawn failed");
+          return 1;
+        },
+      }).catch(() => undefined);
+      expect(session, outcome).toMatch(/\/sessions\/[0-9a-f]{16}$/);
+      expect(existsSync(session!), outcome).toBe(false);
+    }
+  });
+
+  it("creates no session folder in partial mode, or for --dry-run", async () => {
+    useEnvVault();
+    const { calls, runPlan } = recorder();
+    await zz(["claude", "--mode", "partial"], {
+      cwd: s.repo,
+      home: s.home,
+      env: SECRET_ENV,
+      runPlan,
+    });
+    expect(launchArgs(calls[0]!.plan).env).not.toHaveProperty(
+      "ZZPERSONA_SESSION",
+    );
+    await zz(["claude", "--dry-run"], { cwd: s.repo, home: s.home });
+    expect(existsSync(join(s.home, "sessions"))).toBe(false);
+  });
+
+  it("records what the session was launched with", async () => {
+    useEnvVault();
+    let launched: Record<string, unknown> | undefined;
+    await zz(["claude", "--no-overlay"], {
+      cwd: s.repo,
+      home: s.home,
+      env: SECRET_ENV,
+      runPlan: async (plan: ActivationPlan) => {
+        const session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+        launched = JSON.parse(
+          readFileSync(join(session, "launched.json"), "utf8"),
+        );
+        return 0;
+      },
+    });
+    expect(launched).toMatchObject({
+      persona: "project/persona",
+      source: "project",
+      overlay: false,
+      snapshot: {
+        mcp: { servers: { "payments-schema": expect.any(Object) } },
+        permissions: { deny: expect.arrayContaining(["Bash(rm -rf:*)"]) },
+        settings: expect.any(Object),
+      },
+    });
   });
 });
