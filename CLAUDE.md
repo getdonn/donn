@@ -12,7 +12,7 @@ Antigravity, Cursor, Gemini CLI and a generic `AGENTS.md` target are peers, not 
 
 ## Status
 
-**Planning only. No code exists yet.** Personal project, not affiliated with any employer.
+**Phase 0, early code.** Personal project, not affiliated with any employer.
 The planning docs are the source of truth; nothing in this chat history or anywhere else
 overrides them.
 
@@ -41,9 +41,12 @@ overrides them.
 
 ## Current phase
 
-Phase 0 (see roadmap): spikes + `spec` + `resolver` with a fixture suite. Next concrete steps:
-bootstrap the turborepo under the `zzpersona` placeholder, write resolver fixtures from the `02`
-example. Picking the name runs in parallel and only blocks the first `npm publish`.
+Phase 0 (see roadmap): spikes + `spec` + `resolver` with a fixture suite. Done: turborepo,
+`@zzpersona/spec`, the fixture suite (`src/packages/resolver/fixtures/`, the executable merge
+spec), and `resolve()` passing all of it. Remaining for the Phase 0 exit question: an
+`--explain` rendering of provenance a reviewer would trust, and the `spikes/claude-code` and
+`spikes/agents-md` investigations. Picking the name runs in parallel and only blocks the first
+`npm publish`.
 
 ## Conventions (once code exists)
 
