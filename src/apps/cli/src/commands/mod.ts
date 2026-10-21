@@ -6,6 +6,7 @@ import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { CliError } from "../errors.js";
 import { fsStep, writeFileAtomic } from "../fs.js";
+import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 
 // zzpersona mod install|uninstall: the Claude Code mod, registered through a local folder
 // marketplace that Claude Code reads in place. See docs/planning/09-mod-claude-code.md §1.
@@ -117,12 +118,19 @@ export async function modInstall(
       )
     ).argv,
   ];
+  // The mod runs `zzpersona` from PATH, without a shell: an alias will not do.
+  const warnings = findOnPath("zzpersona", io.env)
+    ? []
+    : [
+        `zzpersona is not on PATH, so the mod cannot run it; ${CLI_ON_PATH_FIX}`,
+      ];
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ installed: plugin, ran }, null, 2)}\n`
+      ? `${JSON.stringify({ installed: plugin, ran, warnings }, null, 2)}\n`
       : [
           `copied the mod (${source.version}) to ${plugin}`,
           ...ran.map((argv) => `ran: ${argv.join(" ")}`),
+          ...warnings.map((w) => `warning: ${w}`),
           "start a new claude session to load it",
           "",
         ].join("\n"),

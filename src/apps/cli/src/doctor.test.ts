@@ -38,7 +38,12 @@ function healthy() {
     manifest,
     JSON.stringify({ name: "zzpersona", version: bundledMod().version }),
   );
-  return { "payments/schema-token": SECRET };
+  // zzpersona on PATH, as the mod needs it.
+  const bin = join(s.root, "bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "zzpersona"), "#!/bin/sh\n");
+  chmodSync(join(bin, "zzpersona"), 0o755);
+  return { "payments/schema-token": SECRET, PATH: bin };
 }
 
 type Check = { id: string; status: string; message: string; fix?: string };
@@ -71,6 +76,7 @@ const IDS = [
   "persona",
   "resolve",
   "claude",
+  "cli",
   "mod",
   "secrets",
   "build",
@@ -107,6 +113,7 @@ describe("zzpersona doctor", () => {
       persona: "warn",
       resolve: "skipped",
       claude: "ok",
+      cli: "warn",
       mod: "warn",
       secrets: "skipped",
       build: "ok",
@@ -377,5 +384,48 @@ describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
     expect((await doctor([], { env })).status.build).toBe("warn");
     expect((await doctor(["--fix"], { env })).status.build).toBe("ok");
     expect(existsSync(orphan)).toBe(false);
+  });
+});
+
+describe("zzpersona doctor (0.3.1)", () => {
+  it("checks zzpersona is on PATH for the mod", async () => {
+    const env = healthy();
+    const ok = (await doctor([], { env })).checks.find((c) => c.id === "cli")!;
+    expect(ok).toMatchObject({
+      status: "ok",
+      message: `zzpersona on PATH: ${join(env.PATH, "zzpersona")}`,
+    });
+    const missing = (
+      await doctor([], { env: { ...env, PATH: join(s.root, "nowhere") } })
+    ).checks.find((c) => c.id === "cli")!;
+    expect(missing.status).toBe("warn");
+    expect(missing.message).toContain("zzpersona is not on PATH");
+    expect(missing.fix).toContain('pnpm add --global "link:');
+  });
+
+  it("names the claude binary it checked", async () => {
+    const env = healthy();
+    writeFileSync(join(env.PATH, "claude"), "#!/bin/sh\n");
+    chmodSync(join(env.PATH, "claude"), 0o755);
+    const claude = (await doctor([], { env })).checks.find(
+      (c) => c.id === "claude",
+    )!;
+    expect(claude.message).toContain(join(env.PATH, "claude"));
+  });
+
+  it("says what --fix removed, and its hint covers session folders", async () => {
+    const env = healthy();
+    mkdirSync(join(s.home, "build/x/claude-code.lock"), { recursive: true });
+    writeFileSync(join(s.home, "build/x/claude-code.lock/pid"), "999999");
+    const warned = (await doctor([], { env })).checks.find(
+      (c) => c.id === "build",
+    )!;
+    expect(warned.fix).toContain("session folders");
+    const fixed = (await doctor(["--fix"], { env })).checks.find(
+      (c) => c.id === "build",
+    )!;
+    expect(fixed.message).toBe(
+      "removed 1 stale lock(s), 0 orphaned version(s), 0 temporary link(s), 0 orphaned session folder(s)",
+    );
   });
 });

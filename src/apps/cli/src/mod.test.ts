@@ -71,6 +71,7 @@ describe("zzpersona mod install", () => {
     expect(JSON.parse(r.stdout)).toEqual({
       installed: join(modDir, "plugin"),
       ran: runs,
+      warnings: expect.any(Array),
     });
   });
 
@@ -223,5 +224,20 @@ describe("doctor's mod check", () => {
       message: `mod 0.0.0-old does not match the mod this zzpersona ships (${MOD_VERSION})`,
       fix: "zzpersona mod install",
     });
+  });
+});
+
+describe("zzpersona mod install, without zzpersona on PATH", () => {
+  it("installs anyway and says how to put zzpersona on PATH", async () => {
+    const r = await zz(["mod", "install", "--json"], {
+      cwd: s.root,
+      home: s.home,
+      env: { PATH: join(s.root, "nowhere") },
+      probe: recording().probe,
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout).warnings).toEqual([
+      expect.stringContaining("zzpersona is not on PATH"),
+    ]);
   });
 });
