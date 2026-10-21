@@ -25,7 +25,7 @@ export interface LiveState {
   previous: string;
   launched: string;
   instructions: string;
-  held: ("mcp" | "permissions")[];
+  held: ("mcp" | "permissions" | "settings")[];
   stricter: boolean;
   plugin: string;
   appliedAt: string;
@@ -64,10 +64,16 @@ const folderSpecific = (here: Here): here is Here & { kind: "persona" } =>
   here.kind === "persona" && here.source !== "default";
 
 const HELD_BAND = {
-  "mcp,permissions": "MCP and permissions",
   mcp: "MCP",
   permissions: "permissions",
-} as Record<string, string>;
+  settings: "settings",
+};
+
+/** "a", "a and b", "a, b and c". */
+const listing = (items: string[]) =>
+  items.length <= 1
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 
 export function bandText(
   launched: Launched | undefined,
@@ -76,7 +82,7 @@ export function bandText(
 ): string | undefined {
   const switched = activeLive(live);
   if (switched) {
-    const held = HELD_BAND[switched.held.join(",")];
+    const held = listing(switched.held.map((h) => HELD_BAND[h]));
     return `persona ${switched.persona} · live${held ? ` · ${held} from ${switched.launched}` : ""}`;
   }
   if (launched) return `persona ${launched.persona} · ${launched.source}`;
@@ -226,7 +232,11 @@ export function liveSection(
   };
 }
 
-const HELD_TEXT = { mcp: "MCP servers", permissions: "permissions" };
+const HELD_TEXT = {
+  mcp: "MCP servers",
+  permissions: "permissions",
+  settings: "Claude Code settings",
+};
 
 /** What `/persona use` and `/persona switch` print after a live switch. */
 export function liveText(live: LiveState, saved?: string): string {
@@ -236,7 +246,8 @@ export function liveText(live: LiveState, saved?: string): string {
     ...(live.held.length > 0
       ? [
           `Still from ${live.launched} until you relaunch: ${live.held.map((h) => HELD_TEXT[h]).join(", ")}.`,
-          "To apply those too, exit and run: zzpersona claude",
+          // Named: `/persona use` saves nothing, so a bare relaunch could start another persona.
+          `To apply those too, exit and run: zzpersona claude ${live.persona}`,
         ]
       : []),
     ...(live.stricter

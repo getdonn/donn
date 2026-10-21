@@ -267,8 +267,11 @@ describe("live switching", () => {
       [
         "team/platform is now live in this session (skills, hooks, agents, instructions).",
         "Still from team/payments until you relaunch: MCP servers, permissions.",
-        "To apply those too, exit and run: zzpersona claude",
+        "To apply those too, exit and run: zzpersona claude team/platform",
       ].join("\n"),
+    );
+    expect(liveText(live({ held: ["settings"] }))).toContain(
+      "Still from team/payments until you relaunch: Claude Code settings.",
     );
     expect(liveText(live({ held: ["mcp"] }))).toContain(
       "Still from team/payments until you relaunch: MCP servers.",
@@ -294,6 +297,18 @@ describe("live switching", () => {
     );
     expect(bandText(launched, folder, live({ held: ["mcp"] }))).toBe(
       "persona team/platform · live · MCP from team/payments",
+    );
+    expect(
+      bandText(
+        launched,
+        folder,
+        live({ held: ["mcp", "permissions", "settings"] }),
+      ),
+    ).toBe(
+      "persona team/platform · live · MCP, permissions and settings from team/payments",
+    );
+    expect(bandText(launched, folder, live({ held: ["settings"] }))).toBe(
+      "persona team/platform · live · settings from team/payments",
     );
     expect(bandText(launched, folder, live({ held: [] }))).toBe(
       "persona team/platform · live",
