@@ -150,3 +150,34 @@ Live permissions or MCP; live switching in partial mode; other harnesses; the da
 2. Each switch costs one prompt-cache miss.
 3. If Claude Code exposes the launch instructions as a compose section, the mod can replace them
    outright; the heading makes that a small change.
+
+## Amendments from implementation and the smoke run (2026-10-21)
+
+Made while building this spec (`docs/plans/2026-10-21-live-switching.md`); see
+`spikes/live-smoke/FINDINGS.md`. Each overrides the section it names.
+
+- **§3 instructions** are delivered through `prompt.section`, not `prompt.compose`: Claude Code
+  fixes the composed section list after a session's first request, so a section added on a later
+  switch is never sent. The mod appends the superseding text (unchanged wording) to an engine
+  section, the last composed session section that `prompt.section` is called with (not every
+  composed section is), and calls `$.ui.invalidate("prompt.section")` after each switch and after
+  restoring from a reload. Verified on Claude Code 2.1.304 and 2.1.306, including after `/compact`.
+- **§1 launch** keeps the adapter's `activate` unchanged: `zzpersona claude` replaces the plan's
+  `--plugin-dir` value with the session folder (the SDK contract stays as it is).
+  `system-prompt.md` is always written, with the heading, even for a persona with no instructions.
+- **§2** the new plugin is staged in the session folder (beside `plugins/`) and renamed in, so
+  the watcher never sees a half-copied plugin; `live --show` reports the state for the mod.
+  Errors read `live switching is unavailable: <reason>`.
+- **§3 reload** the mod reads the live state through `zzpersona live --show`, keeping spec 09's
+  rule that the mod only calls the CLI.
+- **§1 launch record** `launched.json` also holds `overlay` and a `snapshot` of what was launched
+  (`mcp`, `permissions`, and `settings` = `targets.claude-code`); **§2** `held` and `stricter`
+  compare the new persona with that snapshot, so an edited or broken launched persona neither skews
+  them nor blocks a switch, and the new persona is resolved with the launch's overlay setting.
+- **§2 `held`** gains `"settings"`: `targets.claude-code` (model, env, `permissions.defaultMode`…)
+  is in `--settings`, which does not reload. The band lists held parts ("MCP, permissions and
+  settings"); the message names them ("Claude Code settings").
+- **§2** the swap and the `live.json` write run under a lock on the session folder.
+- **§3** the relaunch advice names the persona: `To apply those too, exit and run: zzpersona claude
+  <persona>`, since `/persona use` saves nothing.
+
