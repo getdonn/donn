@@ -52,6 +52,11 @@ interface LocalStore extends PersonaSource {            // load(ref) feeds resol
 function findProject(cwd: string): string | undefined;   // nearest .zzpersona/persona.yaml, walking up
 ```
 
+*Refined 2026-10-21 (implementation plan):* `physicalPath(virtualPath): string | undefined`
+became `locate(virtualPath): { path: string; root: string } | undefined`, because the executor's
+containment check needs the mount root as well as the path. `strayLayerDirs()` reports the
+ignored `project/` and `user/` folders for the CLI's warning.
+
 | Virtual path | Physical location |
 |---|---|
 | `org/…`, `area/…`, `team/…` | `<personas>/org/…` etc. |
