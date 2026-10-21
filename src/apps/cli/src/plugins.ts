@@ -49,28 +49,89 @@ interface PackageJson {
   exports?: unknown;
 }
 
-async function readPackage(dir: string): Promise<PackageJson | undefined> {
+async function readPackage(
+  entry: string,
+  dir: string,
+): Promise<PackageJson | undefined> {
   const text = await readFile(join(dir, "package.json"), "utf8").catch(
     () => undefined,
   );
-  return text === undefined ? undefined : (JSON.parse(text) as PackageJson);
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text) as PackageJson;
+  } catch (error) {
+    return fail(
+      entry,
+      "invalid-package-json",
+      `${join(dir, "package.json")} is not valid JSON: ${(error as Error).message}`,
+    );
+  }
 }
 
-/** The package's main entry: exports ".", then main, then index.js. ESM conditions first. */
-function entryOf(pkg: PackageJson | undefined): string {
-  const exports = pkg?.exports;
-  if (typeof exports === "string") return exports;
-  const dot =
-    exports && typeof exports === "object"
-      ? (exports as Record<string, unknown>)["."]
-      : undefined;
-  if (typeof dot === "string") return dot;
-  if (dot && typeof dot === "object") {
-    const conditions = dot as Record<string, unknown>;
-    const chosen = conditions.import ?? conditions.default;
-    if (typeof chosen === "string") return chosen;
+/** The conditions a plugin import matches, as Node matches them for `import()`. */
+const CONDITIONS = new Set(["node", "import", "default"]);
+
+/** An exports target: a string, the first usable array item, or the first matching condition. */
+function target(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = target(item);
+      if (found !== undefined) return found;
+    }
+    return undefined;
   }
+  if (value !== null && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (!CONDITIONS.has(key)) continue;
+      const found = target(child);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+/** The file for `subpath` ("." or "./x"): exports first, then main, then index.js. */
+function entryOf(pkg: PackageJson | undefined, subpath: string): string {
+  const exports = pkg?.exports;
+  if (exports !== undefined && exports !== null) {
+    const isSubpathMap =
+      typeof exports === "object" &&
+      !Array.isArray(exports) &&
+      Object.keys(exports).some((key) => key.startsWith("."));
+    const found = isSubpathMap
+      ? target((exports as Record<string, unknown>)[subpath])
+      : subpath === "."
+        ? target(exports)
+        : undefined;
+    if (found !== undefined) return found;
+  }
+  if (subpath !== ".") return subpath;
   return pkg?.main ?? "index.js";
+}
+
+/** `file` as written, or with the extensions and index Node's old resolution would try. */
+function withExtension(file: string): string {
+  for (const candidate of [
+    file,
+    `${file}.js`,
+    `${file}.mjs`,
+    join(file, "index.js"),
+  ]) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  }
+  return file;
+}
+
+/** "@scope/name/sub" → the package name and "./sub"; "name" → the name and ".". */
+function splitPackage(entry: string): { name: string; subpath: string } {
+  const parts = entry.split("/");
+  const size = entry.startsWith("@") ? 2 : 1;
+  const rest = parts.slice(size);
+  return {
+    name: parts.slice(0, size).join("/"),
+    subpath: rest.length === 0 ? "." : `./${rest.join("/")}`,
+  };
 }
 
 /** Import one config entry: a path, or a package from <home>/adapters/node_modules. */
@@ -79,23 +140,30 @@ export async function loadPlugin(
   entry: string,
   env: Env,
 ): Promise<Omit<LoadedPlugin<unknown>, "plugin"> & { module: unknown }> {
-  const target = isPath(entry)
-    ? expandPath(entry, home, env)
-    : join(home, "adapters/node_modules", entry);
-  if (!existsSync(target)) {
-    if (isPath(entry)) fail(entry, "not-found", `${target} does not exist`);
-    fail(
-      entry,
-      "not-installed",
-      `not installed; run \`npm install --prefix ${join(home, "adapters")} ${entry}\``,
-    );
-  }
-  let resolved = target;
+  let resolved: string;
   let version: string | undefined;
-  if (statSync(target).isDirectory()) {
-    const pkg = await readPackage(target);
+  if (isPath(entry)) {
+    const path = expandPath(entry, home, env);
+    if (!existsSync(path)) fail(entry, "not-found", `${path} does not exist`);
+    resolved = path;
+    if (statSync(path).isDirectory()) {
+      const pkg = await readPackage(entry, path);
+      version = pkg?.version;
+      resolved = withExtension(join(path, entryOf(pkg, ".")));
+    }
+  } else {
+    const { name, subpath } = splitPackage(entry);
+    const dir = join(home, "adapters/node_modules", name);
+    if (!existsSync(dir)) {
+      fail(
+        entry,
+        "not-installed",
+        `not installed; run \`npm install --prefix ${join(home, "adapters")} ${name}\``,
+      );
+    }
+    const pkg = await readPackage(entry, dir);
     version = pkg?.version;
-    resolved = join(target, entryOf(pkg));
+    resolved = withExtension(join(dir, entryOf(pkg, subpath)));
   }
   let module: unknown;
   try {

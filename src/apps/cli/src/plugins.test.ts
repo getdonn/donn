@@ -191,3 +191,69 @@ describe("secret provider packages", () => {
     expect(Object.values(calls[0]!)).toEqual(["v-payments/schema-token"]);
   });
 });
+
+describe("package entry resolution", () => {
+  /** A provider package under <home>/adapters with the given package.json fields and files. */
+  function installProvider(
+    name: string,
+    pkg: Record<string, unknown>,
+    files: Record<string, string>,
+  ) {
+    const dir = join(s.home, "adapters/node_modules", name);
+    put(join(dir, "package.json"), JSON.stringify({ name, ...pkg }));
+    for (const [file, content] of Object.entries(files))
+      put(join(dir, file), content);
+    return dir;
+  }
+  const ESM =
+    'export default { apiVersion: 1, type: "esm-vault", resolve: async () => "x" };\n';
+  const CJS = "module.exports = { nope: true };\n";
+
+  it("follows nested and top-level export conditions, never the CJS build", async () => {
+    const shapes: Record<string, unknown>[] = [
+      {
+        type: "module",
+        main: "./lib/index.cjs",
+        exports: {
+          ".": {
+            import: { types: "./lib/index.d.ts", default: "./lib/index.js" },
+            require: "./lib/index.cjs",
+          },
+        },
+      },
+      {
+        type: "module",
+        main: "./lib/index.cjs",
+        exports: { import: "./lib/index.js", require: "./lib/index.cjs" },
+      },
+      {
+        type: "module",
+        exports: {
+          ".": {
+            node: { import: "./lib/index.js" },
+            default: "./lib/index.cjs",
+          },
+        },
+      },
+      { type: "module", main: "lib/index" },
+    ];
+    for (const [i, pkg] of shapes.entries()) {
+      const name = i === 2 ? "@acme/zzp-shape-2" : `zzp-shape-${i}`;
+      const dir = installProvider(name, pkg, {
+        "lib/index.js": ESM,
+        "lib/index.cjs": CJS,
+      });
+      configure(`secretProviders: ["${name}"]`);
+      const [loaded] = await loadSecretProviders(await context(), {});
+      expect(loaded!.resolved, name).toBe(join(dir, "lib/index.js"));
+    }
+  });
+
+  it("reports a malformed package.json as a plugin-load error", async () => {
+    const dir = join(s.home, "adapters/node_modules/zzp-broken");
+    put(join(dir, "package.json"), "{ not json");
+    configure("secretProviders: [zzp-broken]");
+    const error = await loadError(loadSecretProviders(await context(), {}));
+    expect(error.details.reason).toBe("invalid-package-json");
+  });
+});
