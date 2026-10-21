@@ -36,7 +36,10 @@ export async function runCli(
     };
   }
   if (result.exitCode === 0) return { ok: true, json };
-  const error = (json as { error?: { code?: string; message?: string } }).error;
+  const error =
+    typeof json === "object" && json !== null
+      ? (json as { error?: { code?: string; message?: string } }).error
+      : undefined;
   return {
     ok: false,
     ...(error?.code !== undefined && { code: error.code }),

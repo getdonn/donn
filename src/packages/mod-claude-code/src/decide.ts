@@ -75,7 +75,8 @@ export function personaCommand(
     return { form: "show", argv: ["switch"] };
   if (verb === "list" && rest.length === 0 && !isDefault)
     return { form: "list", argv: ["list"] };
-  if (verb === "switch" && rest.length === 1)
+  // A ref never starts with "-": `/persona switch --clear` must not reach the CLI as a flag.
+  if (verb === "switch" && rest.length === 1 && !rest[0]!.startsWith("-"))
     return { form: "switch", argv: ["switch", rest[0]!, ...flag] };
   if (verb === "clear" && rest.length === 0)
     return { form: "clear", argv: ["switch", "--clear", ...flag] };

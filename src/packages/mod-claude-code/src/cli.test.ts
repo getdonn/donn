@@ -75,4 +75,12 @@ describe("runCli", () => {
       reason: "zzpersona printed something that is not JSON",
     });
   });
+
+  it("never throws on a JSON reply that is not an object", async () => {
+    const { $ } = fake({ exitCode: 1, stdout: "null", stderr: "" });
+    expect(await runCli($, ["switch"], "/r")).toEqual({
+      ok: false,
+      reason: "zzpersona exited 1",
+    });
+  });
 });

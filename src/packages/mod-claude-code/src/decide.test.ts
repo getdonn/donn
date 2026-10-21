@@ -110,7 +110,14 @@ describe("/persona arguments", () => {
       form: "clear",
       argv: ["switch", "--clear", "--default"],
     });
-    for (const bad of ["bogus", "switch", "switch a b", "clear x"]) {
+    for (const bad of [
+      "bogus",
+      "switch",
+      "switch a b",
+      "clear x",
+      "switch --clear",
+      "switch --json",
+    ]) {
       expect(personaCommand(bad)).toEqual({
         usage:
           "usage: /persona [list | switch <persona> [--default] | clear [--default]]",

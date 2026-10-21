@@ -15,13 +15,14 @@ function engine(
   env: Record<string, string>,
   reply: (argv: readonly string[]) => ProcessRunResult,
   options: Options = {},
+  cwd: () => Promise<string> = async () => "/repo",
 ) {
   const hooks = new Map<string, Hook>();
   const runs: (readonly string[])[] = [];
   const statuses: (string | undefined)[] = [];
   const $ = {
     env: { get: async (name: string) => env[name] },
-    session: { cwd: async () => "/repo" },
+    session: { cwd },
     process: {
       run: async (argv: readonly string[]) => {
         runs.push(argv);
@@ -170,5 +171,50 @@ describe("register", () => {
     expect(out.text).toBe(
       "this session runs no persona (it was not started by zzpersona claude)\nthis folder uses no persona",
     );
+  });
+
+  it("yields the band to a survey, and stacks above other mods", async () => {
+    await e.call("session.start");
+    await e.settle();
+    expect(
+      await e.call("ui.render", {
+        component: "AbovePrompt",
+        props: { hasSurvey: true },
+      }),
+    ).toBe("BELOW");
+    const tree = (await e.call("ui.render", {
+      component: "AbovePrompt",
+      props: { hasSurvey: false },
+    })) as Tree;
+    expect(tree.props).toEqual({ flexDirection: "column" });
+  });
+
+  it("runs no CLI in a headless session", async () => {
+    await e.call("session.start", { isInteractive: false });
+    await e.settle();
+    expect(e.runs).toEqual([]);
+    expect(e.statuses).toEqual([]);
+  });
+
+  it("swallows a failure in the background refresh", async () => {
+    const broken = engine(
+      LAUNCHED,
+      () => FOLDER,
+      {},
+      async () => {
+        throw new Error("engine unloaded");
+      },
+    );
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await broken.call("session.start");
+      await broken.settle();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    expect(unhandled).toEqual([]);
   });
 });

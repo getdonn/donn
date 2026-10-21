@@ -41,7 +41,11 @@ async function refresh($: Mod$): Promise<void> {
   $.ui.invalidate("ui.render");
 }
 
-async function onStart($: Mod$, e: unknown, next: Next): Promise<unknown> {
+async function onStart(
+  $: Mod$,
+  e: { isInteractive?: boolean },
+  next: Next,
+): Promise<unknown> {
   await $.command.register({
     name: "persona",
     description: "Show, list or switch zzpersona personas",
@@ -53,22 +57,39 @@ async function onStart($: Mod$, e: unknown, next: Next): Promise<unknown> {
     await $.env.get("ZZPERSONA_SOURCE"),
     await $.env.get("ZZPERSONA_PROJECT"),
   );
-  // In the background: the session starts without waiting for the CLI.
-  void refresh($).then(() => {
-    const text = nudgeText(launched, here);
-    if (showNudge && !nudged && text !== undefined) {
-      nudged = true;
-      $.ui.status(text);
-    }
-  });
+  // Headless (`claude -p`, the SDK): nothing is drawn, so don't run the CLI.
+  if (e.isInteractive === false) return next(e);
+  // In the background: the session starts without waiting for the CLI. A failure here (the
+  // engine unloading the mod, say) has nowhere to go, and must not escape.
+  void refresh($)
+    .then(() => {
+      const text = nudgeText(launched, here);
+      if (showNudge && !nudged && text !== undefined) {
+        nudged = true;
+        $.ui.status(text);
+      }
+    })
+    .catch(() => {});
   return next(e);
 }
 
-async function onBand($: Mod$, e: unknown, next: Next): Promise<unknown> {
+async function onBand(
+  $: Mod$,
+  e: { props?: { hasSurvey?: boolean } },
+  next: Next,
+): Promise<unknown> {
+  // A survey holds the band; a hook yields to it.
+  if (e.props?.hasSurvey) return next(e);
   const text = showBand ? bandText(launched, here) : undefined;
   if (text === undefined) return next(e);
   const { Box, Text } = $.ui.resolve(e);
-  return h(Box, null, h(Text, { dimColor: true }, text), await next(e));
+  // A column, so other mods' band output stacks below this line rather than beside it.
+  return h(
+    Box,
+    { flexDirection: "column" },
+    h(Text, { dimColor: true }, text),
+    await next(e),
+  );
 }
 
 async function onPersona($: Mod$, e: { args?: string }): Promise<unknown> {
