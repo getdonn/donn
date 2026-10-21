@@ -66,6 +66,11 @@ interface Detection {
 
 Tests pass a fake probe. `detect` never throws for "not installed"; it returns `installed: false`.
 
+*Amended 2026-10-21 (implementation plan, Task 1):* `Probe` gains
+`listDir(path): Promise<string[] | undefined>`, needed to read `managed-settings.d/`. And
+`ActivateInput` (below) gains `ir: ResolvedPersona` and `output: CompileOutput`: `activate` must
+know what `compile` produced, e.g. whether `system-prompt.md` exists, to choose its flags.
+
 ### compile
 
 ```ts
