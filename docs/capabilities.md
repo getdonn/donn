@@ -14,32 +14,35 @@ Harnesses without an adapter yet: Copilot CLI, Cursor, Gemini CLI, Antigravity.
 
 | Field | claude-code | agents-md | codex |
 |---|---|---|---|
-| instructions | ● | ● | ● |
-| skills | ● | ✕ 1 | ✕ 2 |
-| mcp.servers | ●\* 3 | ✕ 4 | ●\* 5 |
-| secrets | ● | ✕ 6 | ● |
-| knowledge | ○ 7 | ○ 8 | ○ 9 |
-| permissions.allow | ● | ◐ 10 | ◐\* 11, 12 |
-| permissions.deny | ● | ◐ 10 | ◐ 11 |
-| permissions.ask | ● | ◐ 10 | ◐ 11 |
-| hooks | ● | ✕ 13 | ✕ 14 |
-| targets | ● | ✕ 15 | ●\* 16 |
+| instructions | ● | ●\* 1 | ● |
+| skills | ●\* 2 | ✕ 3 | ✕ 4 |
+| mcp.servers | ●\* 5 | ✕ 6 | ●\* 7 |
+| secrets | ● | ✕ 8 | ● |
+| knowledge | ○ 9 | ○ 10 | ○ 11 |
+| permissions.allow | ● | ◐ 12 | ◐\* 13, 14 |
+| permissions.deny | ● | ◐ 12 | ◐ 13 |
+| permissions.ask | ● | ◐ 12 | ◐ 13 |
+| hooks | ● | ✕ 15 | ✕ 16 |
+| targets | ●\* 17 | ✕ 18 | ●\* 19 |
 
 Notes:
 
-1. AGENTS.md is plain text; use a harness adapter for skills
-2. Codex has no per-launch skill root
-3. gateway:// refs are dropped until gateway resolution exists
-4. AGENTS.md is plain text; use a harness adapter for MCP servers
-5. servers whose secret cannot be forwarded by name are dropped; see the report
-6. AGENTS.md is plain text; use a harness adapter for secrets
-7. rendered as text in the system prompt
-8. listed as pointers in AGENTS.md
-9. listed as pointers in the instructions
-10. rendered as guidance; not enforced
-11. rendered as guidance; Codex enforces only its sandbox and approval policy
-12. MCP tool allow rules with bare tool names become approvals
-13. AGENTS.md is plain text; use a harness adapter for hooks
-14. untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust
-15. AGENTS.md is plain text; use a harness adapter for harness settings
-16. only sandbox, approval and model are read
+1. a block over 24 KiB is only partly read by Codex
+2. registry skills (:// sources) are dropped
+3. AGENTS.md is plain text; use a harness adapter for skills
+4. Codex has no per-launch skill root
+5. gateway:// refs are dropped until gateway resolution exists
+6. AGENTS.md is plain text; use a harness adapter for MCP servers
+7. gateway refs, URL-server headers, and servers whose secret cannot be forwarded by name are dropped; see the report
+8. AGENTS.md is plain text; use a harness adapter for secrets
+9. rendered as text in the system prompt
+10. listed as pointers in AGENTS.md
+11. listed as pointers in the instructions
+12. rendered as guidance; not enforced
+13. rendered as guidance; Codex enforces only its sandbox and approval policy
+14. MCP tool allow rules with bare tool names become approvals
+15. AGENTS.md is plain text; use a harness adapter for hooks
+16. untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust
+17. secret refs and permission lists in targets are dropped
+18. AGENTS.md is plain text; use a harness adapter for harness settings
+19. only sandbox, approval and model are read
