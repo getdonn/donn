@@ -25,6 +25,7 @@ overrides them.
 3. `docs/planning/03-architecture.md` — full system: components, harness adapter contract + capability matrix, local daemon, control plane, security, repo layout. Appendix A has verified Claude Code facts and the activation strategy.
 4. `docs/planning/04-roadmap.md` — phases with exit questions, dependency graph, team-shape notes
 5. `docs/planning/05-adapter-sdk.md` — the adapter contract (pure compile + activation plan), compile report, conformance kit, and the Claude Code adapter
+6. `docs/planning/06-cli-core-loop.md` — store-local (mounts by layer), secrets, plan executor, and `zzpersona resolve|compile|claude`
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
