@@ -18,6 +18,8 @@ export interface CliIo {
   stdout: { write(text: string): unknown };
   stderr: { write(text: string): unknown };
   probe: Probe;
+  /** Runs secret provider commands, which may wait on a keychain prompt; defaults to probe. */
+  secretProbe?: Probe;
   /** Injected in tests; defaults to the executor's runPlan. */
   runPlan?: typeof runPlan;
   /** Injected in tests; defaults to Date.now. */
