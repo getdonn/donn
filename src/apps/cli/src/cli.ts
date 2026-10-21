@@ -1,6 +1,7 @@
 import type { Probe } from "@zzpersona/adapter-sdk";
 import type { runPlan } from "@zzpersona/executor";
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
+import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { report } from "./errors.js";
@@ -24,6 +25,10 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
   return {
     async run(argv) {
       let code = 0;
+      // Everything after `--` passes through to the harness untouched.
+      const split = argv.indexOf("--");
+      const ours = split === -1 ? argv : argv.slice(0, split);
+      const passthrough = split === -1 ? [] : argv.slice(split + 1);
       const handle = async (
         json: boolean | undefined,
         command: () => Promise<number>,
@@ -77,8 +82,35 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           handle(options.json, () => compileCommand(io, persona, options)),
         );
 
+      program
+        .command("claude")
+        .description(
+          "Build a persona for Claude Code and launch claude with it",
+        )
+        .argument(
+          "[persona]",
+          "a ref like team/payments, or a bare name; defaults to the project persona",
+        )
+        .addOption(
+          new Option(
+            "--mode <mode>",
+            "override managed-settings detection",
+          ).choices(["partial", "relaunch-no-mcp"]),
+        )
+        .option(
+          "--dry-run",
+          "print the build and plan; write and launch nothing",
+        )
+        .option("--json", "print the plan as JSON; launches nothing")
+        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .action((persona: string | undefined, options) =>
+          handle(options.json, () =>
+            claudeCommand(io, persona, options, passthrough),
+          ),
+        );
+
       try {
-        await program.parseAsync(argv, { from: "user" });
+        await program.parseAsync(ours, { from: "user" });
       } catch (error) {
         if (error instanceof CommanderError) return error.exitCode;
         throw error;
