@@ -196,6 +196,9 @@ importers:
       '@zzpersona/executor':
         specifier: workspace:*
         version: link:../../packages/executor
+      '@zzpersona/mod-claude-code':
+        specifier: workspace:*
+        version: link:../../packages/mod-claude-code
       '@zzpersona/resolver':
         specifier: workspace:*
         version: link:../../packages/resolver
