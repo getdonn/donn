@@ -3,6 +3,7 @@ import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
+import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { initCommand } from "./commands/init.js";
 import { resolveCommand } from "./commands/resolve.js";
@@ -79,6 +80,22 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => resolveCommand(io, persona, options)),
+        );
+
+      program
+        .command("diff")
+        .description(
+          "Show what changes from one persona to another, with the layers that set each value",
+        )
+        .argument(
+          "<persona>",
+          "the persona to compare to; with two personas, the first is compared to the second",
+        )
+        .argument("[other]", "the persona to compare to, when two are given")
+        .option("--json", "print the changes as JSON")
+        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .action((persona: string, other: string | undefined, options) =>
+          handle(options.json, () => diffCommand(io, persona, other, options)),
         );
 
       program
