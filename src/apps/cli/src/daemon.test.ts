@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -19,12 +19,15 @@ import { zz } from "./test/seed.js";
 
 let root: string;
 let daemons: Daemon[];
+let stubborn: ChildProcess | undefined;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "zzp-daemon-"));
   daemons = [];
 });
 afterEach(async () => {
   await Promise.all(daemons.map((d) => d.close()));
+  stubborn?.kill("SIGKILL");
+  stubborn = undefined;
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -261,4 +264,33 @@ describe("zzpersona daemon", () => {
       stopped: false,
     });
   });
+
+  it("returns from stop only once the lock is released", async () => {
+    await run(["daemon", "start"]);
+    const stopped = await run(["daemon", "stop"]);
+    expect(stopped.stdout).toBe("daemon stopped\n");
+    expect(existsSync(daemonPaths(homeIn()).lock)).toBe(false);
+  });
+
+  it("reports a daemon that ignores SIGTERM as not stopped", async () => {
+    // A wedged daemon: alive, named by the pid file, holding the lock, no socket.
+    stubborn = spawn(
+      process.execPath,
+      [
+        "-e",
+        "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000);",
+      ],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    await new Promise((resolve) => stubborn!.stdout!.once("data", resolve));
+    const paths = daemonPaths(homeIn());
+    mkdirSync(paths.dir, { recursive: true });
+    writeFileSync(paths.pid, `${stubborn.pid}\n`);
+    writeFileSync(paths.lock, `${stubborn.pid}\n`);
+    const stopped = await run(["daemon", "stop", "--json"]);
+    expect(stopped.code).toBe(1);
+    expect(JSON.parse(stopped.stdout)).toMatchObject({
+      error: { code: "daemon-stop" },
+    });
+  }, 15_000);
 });

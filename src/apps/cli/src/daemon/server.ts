@@ -145,10 +145,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         server.closeAllConnections();
       });
       await Promise.all(
-        [paths.sock, paths.pid, paths.where, paths.lock].map((p) =>
-          rm(p, { force: true }),
-        ),
+        [paths.sock, paths.pid, paths.where].map((p) => rm(p, { force: true })),
       );
+      // Last: `daemon stop` waits for the lock to go before it reports stopped.
+      await rm(paths.lock, { force: true });
       await log("stopped");
       markClosed();
     })());

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -122,30 +122,33 @@ export async function daemonStop(
   const home = homeOf(io);
   const paths = daemonPaths(home);
   const client = await connectDaemon(home);
+  const pid = Number.parseInt(
+    await readFile(paths.pid, "utf8").catch(() => ""),
+    10,
+  );
+  // The pid only counts when it is another process (tests run the daemon in-process).
+  const other = pid > 0 && pid !== process.pid;
   let stopped = false;
+  let gone: () => boolean;
   if (client) {
     await client.shutdown();
     stopped = true;
+    // Stopped once the lock is released (the daemon's last step) or its process is gone.
+    gone = () => !existsSync(paths.lock) || (other && !isAlive(pid));
   } else {
     // No answer on the socket: a daemon that still runs gets SIGTERM by its pid.
-    const pid = Number.parseInt(
-      await readFile(paths.pid, "utf8").catch(() => ""),
-      10,
-    );
-    if (pid > 0 && pid !== process.pid && isAlive(pid)) {
+    if (other && isAlive(pid)) {
       process.kill(pid, "SIGTERM");
       stopped = true;
     }
+    gone = () => !isAlive(pid);
   }
-  if (stopped) {
-    const gone = await waitUntil(
-      async () => (await connectDaemon(home)) === undefined,
+  if (stopped && !(await waitUntil(async () => gone()))) {
+    throw new CliError(
+      "daemon-stop",
+      `the daemon (pid ${pid}) did not stop; kill ${pid}`,
+      { pid },
     );
-    if (!gone) {
-      throw new CliError("daemon-stop", "the daemon did not stop", {
-        pid: paths.pid,
-      });
-    }
   }
   io.stdout.write(
     options.json
