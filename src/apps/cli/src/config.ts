@@ -7,7 +7,13 @@ import { CliError } from "./errors.js";
 
 // <home>/config.yaml. See docs/planning/06-cli-core-loop.md, section 1.
 
-const Config = z.strictObject({ personas: z.string().min(1).optional() });
+const Config = z.strictObject({
+  personas: z.string().min(1).optional(),
+  /** Third-party adapters: package names (from <home>/adapters) or paths. See spec 08 §1. */
+  adapters: z.array(z.string().min(1)).optional(),
+  /** Secret provider packages, listed the same way. */
+  secretProviders: z.array(z.string().min(1)).optional(),
+});
 export type Config = z.infer<typeof Config>;
 
 /** ~ means the user's home directory; a relative path is relative to `base`. */
@@ -57,8 +63,11 @@ export async function loadConfig(
       { file, issues },
     );
   }
-  const { personas } = parsed.data;
-  return personas === undefined
-    ? {}
-    : { personas: expandPath(personas, home, env) };
+  const { personas, ...plugins } = parsed.data;
+  return {
+    ...plugins,
+    ...(personas !== undefined && {
+      personas: expandPath(personas, home, env),
+    }),
+  };
 }

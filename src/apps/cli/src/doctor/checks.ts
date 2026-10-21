@@ -11,6 +11,7 @@ import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { HARNESSES } from "../harness.js";
+import { backendLoader } from "../plugins.js";
 import { selectPersona, type Selection } from "../select.js";
 import { readState, writeState, type State } from "../state.js";
 
@@ -271,6 +272,7 @@ export async function runChecks(
         build.secretRefs,
         build.result.ir.secrets.providers,
         secretContext(io),
+        { loadBackend: backendLoader(ctx, io.env) },
       );
       add("secrets", "ok", `${build.secretRefs.length} secret(s) resolve`);
     } catch (error) {

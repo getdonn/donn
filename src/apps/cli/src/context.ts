@@ -9,7 +9,7 @@ import {
   type LocalStore,
 } from "@zzpersona/store-local";
 import type { CliIo } from "./cli.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, type Config } from "./config.js";
 import { CliError } from "./errors.js";
 import type { Selection } from "./select.js";
 import { readState, type State } from "./state.js";
@@ -20,6 +20,7 @@ export interface Context {
   projectDir?: string;
   store: LocalStore;
   state: State;
+  config: Config;
 }
 
 /** ZZPERSONA_HOME, or ~/.zzpersona. An empty ZZPERSONA_HOME counts as unset. */
@@ -46,6 +47,7 @@ export async function createContext(io: CliIo): Promise<Context> {
     home,
     store,
     state,
+    config,
     ...(projectDir !== undefined && { projectDir }),
   };
 }
