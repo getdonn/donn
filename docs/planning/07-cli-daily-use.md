@@ -102,6 +102,12 @@ owner process is gone, and version directories no build symlink points to. Build
 projects can't be traced (the directory name is a hash); `doctor` notes that deleting
 `<home>/build` is always safe, since builds are recreated on launch.
 
+> Amended 2026-10-21 (final review): a running build writes its version directory and link,
+> and creates its lock before writing the pid, so version directories, temporary links and
+> locks without a pid count as leftovers only once they are ten minutes old. A lock whose pid
+> names a dead process is stale at once. And `list()` keeps a `.yaml` that doesn't parse, so
+> selecting it reports the parse error rather than "no persona named …".
+
 Plain output, e.g.:
 
 ```
