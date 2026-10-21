@@ -1,6 +1,6 @@
 {
   "name": "@zzpersona/adapter-claude-code",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Claude Code harness adapter: compiles a resolved persona for the relaunch path",
   "license": "Apache-2.0",
