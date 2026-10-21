@@ -1,4 +1,5 @@
 import { defineAdapter } from "@zzpersona/adapter-sdk";
+import { activate } from "./activate.js";
 import { capabilities } from "./capabilities.js";
 import { compile } from "./compile.js";
 import { detect } from "./detect.js";
@@ -11,9 +12,7 @@ const adapter = defineAdapter({
   capabilities,
   detect,
   compile: (input) => compile(input, adapter),
-  activate: () => {
-    throw new Error("activate: not implemented yet");
-  },
+  activate,
 });
 
 export default adapter;

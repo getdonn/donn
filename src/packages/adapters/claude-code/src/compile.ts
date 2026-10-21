@@ -5,6 +5,7 @@ import {
   assertIrVersion,
   type CompileInput,
   type CompileOutput,
+  type Detection,
   type FileEntry,
   type HarnessAdapter,
   type ReportEntry,
@@ -108,25 +109,41 @@ function mcpConfig(ir: ResolvedPersona, dropped: ReportEntry[]) {
   return { servers, secretEnv };
 }
 
-export function compile(
-  input: CompileInput,
-  self: HarnessAdapter,
-): CompileOutput {
-  const { ir, personaId, texts } = input;
-  assertIrVersion(self, ir);
-  const entries: ReportEntry[] = [];
-  const files: Record<string, FileEntry> = {};
+export type Mode = "relaunch" | "partial" | "relaunch-no-mcp";
 
-  const prompt = systemPrompt(ir, texts);
-  if (prompt !== undefined) files["system-prompt.md"] = { content: prompt };
-  for (const k of ir.knowledge) {
-    entries.push({
-      path: `knowledge[${k.id}]`,
-      outcome: "advisory",
-      reason: "rendered as text in the system prompt",
-    });
-  }
+const SIDELOAD_BLOCKED =
+  "disableSideloadFlags blocks --plugin-dir and --mcp-config";
+const MANAGED_MCP = "managed-mcp.json makes --mcp-config exit";
 
+/** Managed settings decide what the launch may carry; sideload blocking wins. */
+export function modeFor(detection: Detection): Mode {
+  if (detection.facts.sideloadBlocked === true) return "partial";
+  if (detection.facts.managedMcp === true) return "relaunch-no-mcp";
+  return "relaunch";
+}
+
+const skillPaths = (ir: ResolvedPersona) =>
+  ir.skills.map((s) => `skills[${s.name}]`);
+const serverPaths = (ir: ResolvedPersona) =>
+  Object.keys(ir.mcp.servers)
+    .sort()
+    .map((name) => `mcp.servers.${name}`);
+const hookPaths = (ir: ResolvedPersona) =>
+  Object.entries(ir.hooks).flatMap(([event, list]) =>
+    (list ?? []).map((hook) => `hooks.${event}[${hook.id}]`),
+  );
+
+function dropAll(entries: ReportEntry[], paths: string[], reason: string) {
+  for (const path of paths) entries.push({ path, outcome: "dropped", reason });
+}
+
+/** The plugin: manifest, skills and hooks. */
+function pluginFiles(
+  ir: ResolvedPersona,
+  personaId: string,
+  files: Record<string, FileEntry>,
+  entries: ReportEntry[],
+) {
   files["plugin/.claude-plugin/plugin.json"] = asJson({
     name: pluginName(personaId),
     version: "0.0.0",
@@ -169,9 +186,45 @@ export function compile(
   }
   if (Object.keys(hooks).length > 0)
     files["plugin/hooks/hooks.json"] = asJson({ hooks });
+}
 
-  const { servers, secretEnv } = mcpConfig(ir, entries);
-  files["mcp.json"] = asJson({ mcpServers: servers });
+export function compile(
+  input: CompileInput,
+  self: HarnessAdapter,
+): CompileOutput {
+  const { ir, personaId, texts } = input;
+  assertIrVersion(self, ir);
+  const entries: ReportEntry[] = [];
+  const files: Record<string, FileEntry> = {};
+
+  const prompt = systemPrompt(ir, texts);
+  if (prompt !== undefined) files["system-prompt.md"] = { content: prompt };
+  for (const k of ir.knowledge) {
+    entries.push({
+      path: `knowledge[${k.id}]`,
+      outcome: "advisory",
+      reason: "rendered as text in the system prompt",
+    });
+  }
+
+  const mode = modeFor(input.detection);
+  let secretEnv: Record<string, SecretRef> = {};
+  if (mode === "partial") {
+    dropAll(
+      entries,
+      [...skillPaths(ir), ...hookPaths(ir), ...serverPaths(ir)],
+      SIDELOAD_BLOCKED,
+    );
+  } else {
+    pluginFiles(ir, personaId, files, entries);
+  }
+  if (mode === "relaunch") {
+    const mcp = mcpConfig(ir, entries);
+    secretEnv = mcp.secretEnv;
+    files["mcp.json"] = asJson({ mcpServers: mcp.servers });
+  } else if (mode === "relaunch-no-mcp") {
+    dropAll(entries, serverPaths(ir), MANAGED_MCP);
+  }
 
   const targets = Object.fromEntries(
     Object.entries(ir.targets["claude-code"] ?? {}).filter(
@@ -184,7 +237,7 @@ export function compile(
     files,
     secretEnv,
     report: annotateLocks(
-      { adapter: self.id, irVersion: ir.irVersion, mode: "relaunch", entries },
+      { adapter: self.id, irVersion: ir.irVersion, mode, entries },
       ir,
     ),
   };
