@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+instructions:
+  - { id: o1, inline: team version }
+  - { id: t1, inline: team one }

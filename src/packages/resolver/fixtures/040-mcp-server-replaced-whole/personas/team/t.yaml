@@ -1,0 +1,10 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+mcp:
+  servers:
+    db:
+      command: npx
+      args: ["-y", "@corp/db-mcp@2"]

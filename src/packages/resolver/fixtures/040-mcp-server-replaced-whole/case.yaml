@@ -1,0 +1,14 @@
+description: >-
+  A child's server definition replaces the inherited one whole. No deep merge: org's env does not
+  leak into team's definition, and args are not concatenated.
+resolve: team/t
+expect:
+  resolved:
+    mcp:
+      servers:
+        db:
+          command: npx
+          args: ["-y", "@corp/db-mcp@2"]
+  provenance:
+    "mcp.servers.db": team/t
+  warnings: []

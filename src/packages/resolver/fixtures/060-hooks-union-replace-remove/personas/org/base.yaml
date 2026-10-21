@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+hooks:
+  pre-tool-use:
+    - { id: audit-log, run: ./hooks/audit.sh }
+    - { id: lint-guard, run: ./hooks/lint-guard.sh, matcher: Edit }

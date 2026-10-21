@@ -1,0 +1,14 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+instructions (4)
+  o1  inline "org one"     org/base
+  t2  inline "team two"    team/t    replaces instructions[o2] from org/base
+  o3  inline "team three"  team/t    overrides org/base
+  t1  inline "team one"    team/t
+
+removed (1)
+  instructions[o2]  removed by team/t  set by org/base; replaced by instructions[t2]

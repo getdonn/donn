@@ -1,0 +1,15 @@
+description: >-
+  Skills union by name. exclude removes from that layer on; a later layer can include it again.
+  Local sources normalize to personas-root-relative paths.
+resolve: project/p
+expect:
+  resolved:
+    skills:
+      - { name: alpha, source: "registry://org/skills/alpha@^1" }
+      - { name: beta, source: "registry://org/skills/beta@^1" }
+      - { name: gamma, source: team/skills/gamma }
+  provenance:
+    "skills[alpha]": org/base
+    "skills[beta]": project/p
+    "skills[gamma]": team/t
+  warnings: []

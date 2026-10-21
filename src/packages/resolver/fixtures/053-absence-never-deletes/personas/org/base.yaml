@@ -1,0 +1,17 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+mcp:
+  gateway: bifrost://corp
+  servers:
+    jira: { ref: gateway://jira }
+permissions:
+  deny: ["Bash(rm -rf:*)"]
+hooks:
+  pre-tool-use:
+    - { id: guard, run: ./hooks/guard.sh }
+knowledge:
+  - { id: wiki, source: "mcp://confluence?space=ENG" }
+targets:
+  claude-code: { model: sonnet }

@@ -12,7 +12,7 @@ Antigravity, Cursor, Gemini CLI and a generic `AGENTS.md` target are peers, not 
 
 ## Status
 
-**Planning only. No code exists yet.** Personal project, not affiliated with any employer.
+**Phase 0, early code.** Personal project, not affiliated with any employer.
 The planning docs are the source of truth; nothing in this chat history or anywhere else
 overrides them.
 
@@ -41,9 +41,13 @@ overrides them.
 
 ## Current phase
 
-Phase 0 (see roadmap): spikes + `spec` + `resolver` with a fixture suite. Next concrete steps:
-bootstrap the turborepo under the `zzpersona` placeholder, write resolver fixtures from the `02`
-example. Picking the name runs in parallel and only blocks the first `npm publish`.
+Phase 0 (see roadmap): spikes + `spec` + `resolver` with a fixture suite. Done: turborepo,
+`@zzpersona/spec`, the fixture suite (`src/packages/resolver/fixtures/`, the executable merge
+spec), `resolve()` passing all of it, `explain()` with golden `explain.txt` per fixture, and
+`spikes/claude-code` (relaunch path verified end to end) and `spikes/agents-md` (AGENTS.md is
+repo-only; relaunch also works for Codex and Copilot); see each `FINDINGS.md`. Phase 0 work is
+complete; what remains is answering its exit question and moving to Phase 1. Picking the name
+runs in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
 
@@ -53,6 +57,9 @@ example. Picking the name runs in parallel and only blocks the first `npm publis
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
   never at the repo root. All packages `"private": true` until the name is chosen.
 - Every CLI command supports `--json`.
+- Git flow: `main` = released, `develop` = integration. All work happens on `feature/<topic>`
+  branched from `develop` and merged back into it; `release/*` and `hotfix/*` per standard
+  gitflow. Never commit directly to `main` or `develop`. Changesets `baseBranch` is `develop`.
 - Planning docs live in `docs/planning/`, numbered. Append new ones; amend old ones in place
   with a dated note rather than silently rewriting decisions.
 - Spikes go in `spikes/<topic>/` with a `FINDINGS.md`; they are throwaway and never imported.

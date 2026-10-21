@@ -1,0 +1,15 @@
+p
+
+layers (merge order)
+  1  org/base
+  2  team/t
+  3  project/p  target
+
+instructions (7)
+  p-pre   inline "project pre"   project/p
+  t-pre1  inline "team pre one"  team/t
+  t-pre2  inline "team pre two"  team/t
+  o1      inline "org one"       org/base
+  o2      inline "org two"       org/base
+  t1      inline "team one"      team/t
+  p1      inline "project one"   project/p

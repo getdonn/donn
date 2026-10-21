@@ -1,0 +1,10 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+mcp:
+  servers:
+    db:
+      command: npx
+      args: ["-y", "@corp/db-mcp"]
+      env: { DB_URL: "secret://vault/db/url", LOG_LEVEL: debug }

@@ -1,0 +1,18 @@
+description: >-
+  Hooks union by id per event; same id replaces in place; hooks.remove deletes by
+  <event>[<id>] and warns because hooks are security-relevant.
+resolve: team/t
+expect:
+  resolved:
+    hooks:
+      pre-tool-use:
+        - { id: lint-guard, run: team/hooks/lint-guard-v2.sh, matcher: "Edit|Write" }
+      post-tool-use:
+        - { id: notify, run: team/hooks/notify.sh }
+  provenance:
+    "hooks.pre-tool-use[lint-guard]": team/t
+  history:
+    - { path: "hooks.pre-tool-use[lint-guard]", layer: team/t, kind: override, from: org/base }
+    - { path: "hooks.pre-tool-use[audit-log]", layer: team/t, kind: remove, from: org/base }
+  warnings:
+    - { code: security-removal, path: "hooks.pre-tool-use[audit-log]", layer: team/t }

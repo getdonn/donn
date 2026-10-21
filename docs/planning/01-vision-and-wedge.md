@@ -130,5 +130,8 @@ The question is not "does it work." It is:
   and `00-handoff.md`.
 - Second compile target: Cursor or `AGENTS.md`-family (Codex/Copilot)? `AGENTS.md` is cheapest
   and covers several harnesses at once.
+  *2026-10-21 (spike): both. `agents-md` is a cheap repo-file target, but `AGENTS.md` cannot be
+  delivered from outside the repo. Codex takes instructions, MCP servers and approval policy
+  per launch, so it is the stronger "real" second adapter. See `spikes/agents-md/FINDINGS.md`.*
 - How much of "knowledge" is in scope for v1? Probably: pointers + an optional local indexer,
   nothing more.

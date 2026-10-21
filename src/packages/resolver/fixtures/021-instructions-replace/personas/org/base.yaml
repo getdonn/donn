@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+instructions:
+  - { id: o1, inline: org one }
+  - { id: o2, inline: org two }
+  - { id: o3, inline: org three }

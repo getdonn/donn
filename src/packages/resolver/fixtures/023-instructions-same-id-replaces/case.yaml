@@ -1,0 +1,14 @@
+description: >-
+  Reusing an inherited fragment id replaces that fragment in place, the same override-by-name
+  rule as skills, MCP servers, hooks and knowledge. replace(<id>) is only needed to swap in a
+  fragment under a new id.
+resolve: team/t
+expect:
+  resolved:
+    instructions:
+      - { id: o1, inline: team version }
+      - { id: o2, inline: org two }
+      - { id: t1, inline: team one }
+  provenance:
+    "instructions[o1]": team/t
+  warnings: []

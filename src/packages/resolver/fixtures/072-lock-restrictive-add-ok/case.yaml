@@ -1,0 +1,11 @@
+description: A lock on permissions.deny still lets lower layers add denies, since that only tightens.
+resolve: team/t
+expect:
+  resolved:
+    permissions:
+      allow: []
+      deny: ["Bash(curl:*)", "Bash(rm -rf:*)"]
+      ask: []
+    locks:
+      - { path: permissions.deny, layer: org/base }
+  warnings: []

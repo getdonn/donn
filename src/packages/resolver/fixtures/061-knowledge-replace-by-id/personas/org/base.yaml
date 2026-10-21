@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+knowledge:
+  - { id: wiki, source: "mcp://confluence?space=ENG" }
+  - { id: schema, source: https://docs.corp/schema/v1 }

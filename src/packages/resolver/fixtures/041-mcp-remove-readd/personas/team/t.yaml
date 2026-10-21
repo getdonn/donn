@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+mcp:
+  remove: [figma]

@@ -1,0 +1,12 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+permissions (2)
+  deny   Bash(rm -rf:*)  org/base
+  allow  Read(./**)      team/t
+
+warnings (1)
+  allow-shadowed-by-deny  permissions.allow[Bash(rm -rf:*)]  from team/t

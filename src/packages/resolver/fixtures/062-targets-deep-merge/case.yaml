@@ -1,0 +1,18 @@
+description: >-
+  targets deep-merge with the child winning per leaf. Arrays are leaves: replaced, never
+  concatenated.
+resolve: project/p
+expect:
+  resolved:
+    targets:
+      claude-code:
+        model: opus
+        env: { A: "1", B: "3", C: "4" }
+        extraArgs: ["--c"]
+      codex:
+        approvalPolicy: on-request
+  provenance:
+    "targets.claude-code.model": project/p
+    "targets.claude-code.env.A": org/base
+    "targets.claude-code.env.B": team/t
+  warnings: []

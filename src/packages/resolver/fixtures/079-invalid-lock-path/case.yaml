@@ -1,0 +1,7 @@
+description: A lock on a path that does not exist in the schema is an error; a typo must not silently lock nothing.
+resolve: org/base
+expect:
+  error:
+    code: invalid-lock-path
+    path: permissions.denny
+    layer: org/base

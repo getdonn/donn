@@ -1,0 +1,12 @@
+description: >-
+  Restating a locked value unchanged is not a violation. Provenance stays with the layer that
+  set it first.
+resolve: team/t
+expect:
+  resolved:
+    mcp:
+      gateway: bifrost://corp
+      servers: {}
+  provenance:
+    "mcp.gateway": org/base
+  warnings: []

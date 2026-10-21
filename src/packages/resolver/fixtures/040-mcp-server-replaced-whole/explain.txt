@@ -1,0 +1,8 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+mcp (1)
+  db  npx -y @corp/db-mcp@2  team/t  overrides org/base

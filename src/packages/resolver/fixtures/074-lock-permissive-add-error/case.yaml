@@ -1,0 +1,11 @@
+description: >-
+  A lock on permissions.allow forbids additions too, since adding to allow loosens policy. Only
+  deny and ask accept additions under a lock.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: "permissions.allow[Bash(curl:*)]"
+    lock: permissions.allow
+    lockedBy: org/base
+    layer: team/t

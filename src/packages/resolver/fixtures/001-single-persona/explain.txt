@@ -1,0 +1,10 @@
+solo — A persona with no parents
+
+layers (merge order)
+  1  team/solo  target
+
+instructions (1)
+  hello  inline "Be concise."  team/solo
+
+permissions (1)
+  allow  Read(./**)  team/solo

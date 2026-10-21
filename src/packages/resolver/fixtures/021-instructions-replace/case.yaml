@@ -1,0 +1,15 @@
+description: >-
+  replace(<id>) swaps an inherited fragment in its original position. The replacement may take a
+  new id or keep the old one.
+resolve: team/t
+expect:
+  resolved:
+    instructions:
+      - { id: o1, inline: org one }
+      - { id: t2, inline: team two }
+      - { id: o3, inline: team three }
+      - { id: t1, inline: team one }
+  provenance:
+    "instructions[t2]": team/t
+    "instructions[o3]": team/t
+  warnings: []

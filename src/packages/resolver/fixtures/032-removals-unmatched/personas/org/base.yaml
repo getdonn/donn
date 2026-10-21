@@ -1,0 +1,11 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+skills:
+  include: [registry://org/skills/alpha@^1]
+mcp:
+  servers:
+    jira: { ref: gateway://jira }
+permissions:
+  deny: ["Bash(rm -rf:*)"]

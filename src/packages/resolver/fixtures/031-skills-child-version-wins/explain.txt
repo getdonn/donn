@@ -1,0 +1,8 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+skills (1)
+  pr-review  registry://org/skills/pr-review@^2  team/t  overrides org/base

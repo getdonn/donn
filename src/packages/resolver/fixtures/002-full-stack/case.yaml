@@ -1,0 +1,104 @@
+description: >-
+  The 02-persona-spec example as a full org → area → team → project stack plus a user overlay.
+  Phase 0 exit question: does this resolve to output a reviewer would trust?
+resolve: project/checkout-api
+overlay: user/overrides
+expect:
+  resolved:
+    irVersion: 0
+    layers: [org/base, area/fintech, team/payments, project/checkout-api, user/overrides]
+    metadata:
+      name: checkout-api
+      version: 1
+      description: Checkout API service repo
+      labels: { org: corp, area: fintech, team: payments, repo: checkout-api }
+    instructions:
+      - id: org-conduct
+        file: org/instructions/conduct.md
+      - id: org-security
+        inline: |
+          Never paste credentials, tokens or customer data into prompts.
+      - id: fintech-compliance
+        inline: |
+          This area is PCI-DSS scoped. Treat card data as restricted.
+      - id: checkout-overview
+        file: project/instructions/checkout-overview.md
+      - id: coding-standards
+        inline: |
+          Use the shared error envelope. Never log PANs.
+      - id: checkout-context
+        inline: |
+          This repo is the checkout API. Run `pnpm sim` before touching settlement code.
+    skills:
+      - name: pr-review
+        source: registry://org/skills/pr-review@^2
+      - name: run-payment-sim
+        source: team/skills/run-payment-sim
+    mcp:
+      gateway: bifrost://corp
+      servers:
+        jira: { ref: gateway://jira }
+        payments-schema:
+          command: npx
+          args: ["-y", "@corp/payments-schema-mcp"]
+          env: { SCHEMA_TOKEN: "secret://vault/payments/schema-token" }
+    permissions:
+      allow: ["Bash(git status)", "Bash(pnpm sim:*)", "Read(./**)"]
+      deny: ["Bash(curl:*)", "Bash(rm -rf:*)", "Read(./.env)"]
+      ask: ["Bash(git push:*)", "Bash(pnpm test:*)"]
+    hooks:
+      pre-tool-use:
+        - id: block-prod-db
+          run: org/hooks/block-prod-db.sh
+          matcher: Bash
+      post-tool-use:
+        - id: format-on-write
+          run: project/hooks/format.sh
+          matcher: "Edit|Write"
+    knowledge:
+      - id: pci-handbook
+        source: mcp://confluence?space=PCI
+      - id: payments-runbooks
+        source: mcp://confluence?space=PAY
+      - id: schema-docs
+        source: https://docs.corp/payments/schema
+    secrets:
+      providers:
+        vault: { type: hashicorp-vault, address: https://vault.corp }
+    locks:
+      - { path: permissions.deny, layer: org/base }
+      - { path: mcp.gateway, layer: org/base }
+      - { path: "hooks.pre-tool-use[block-prod-db]", layer: org/base }
+    targets:
+      claude-code:
+        model: opus
+        outputStyle: concise
+  provenance:
+    "metadata.version": project/checkout-api
+    "metadata.labels.org": org/base
+    "instructions[checkout-overview]": project/checkout-api
+    "instructions[coding-standards]": team/payments
+    "skills[pr-review]": team/payments
+    "mcp.gateway": org/base
+    "mcp.servers.jira": org/base
+    "mcp.servers.payments-schema": team/payments
+    "permissions.deny[Bash(curl:*)]": area/fintech
+    "permissions.ask[Bash(pnpm test:*)]": project/checkout-api
+    "hooks.pre-tool-use[block-prod-db]": org/base
+    "knowledge[pci-handbook]": area/fintech
+    "targets.claude-code.model": user/overrides
+    "targets.claude-code.outputStyle": project/checkout-api
+  history:
+    - { path: "skills[pr-review]", layer: team/payments, kind: override, from: org/base }
+    - { path: "skills[frontend-storybook]", layer: team/payments, kind: remove, from: org/base }
+    - { path: mcp.servers.figma, layer: team/payments, kind: remove, from: org/base }
+    - path: "instructions[payments-overview]"
+      layer: project/checkout-api
+      kind: remove
+      from: team/payments
+      replacedBy: "instructions[checkout-overview]"
+    - { path: targets.claude-code.model, layer: user/overrides, kind: override, from: team/payments }
+  warnings:
+    - code: allow-shadowed-by-ask
+      path: "permissions.allow[Bash(pnpm test:*)]"
+      layer: team/payments

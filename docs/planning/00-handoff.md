@@ -62,6 +62,12 @@ of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
   Local marketplaces with relative-path sources load in place without version bumps.
 - `CLAUDE_CONFIG_DIR` relocates `~/.claude` but full isolation (esp. `~/.claude.json`, where MCP
   user/local scopes live) is **unverified** → spike.
+- *Spike results, 2026-10-21 (`spikes/claude-code/FINDINGS.md`, Claude Code v2.1.306):* the
+  relaunch path is **verified end to end**. Corrections to the bullets above: a `--settings`
+  file is **not** hot-reloaded (only user/project/local/managed files are), and
+  `CLAUDE_CONFIG_DIR` does move `.claude.json` but each directory has its own login, so
+  config-root swap is rejected. New: a mod's `prompt.submit` can inject instructions
+  mid-session, and plugins added to a `--plugin-dir` folder of plugins apply mid-session.
 - Managed settings can enforce `enabledPlugins`, `strictKnownMarketplaces`, `allowedMcpServers`,
   `managed-mcp.json`, `allowManagedPermissionRulesOnly`, `allowManagedHooksOnly`,
   `disableSideloadFlags`, etc. → org locks compile to a managed-settings bundle for MDM. Note
@@ -101,7 +107,8 @@ Until a name is picked:
 ## Consolidated open questions
 
 From `01`: name (Mantle / Guise / Dramatis / Roleset / Manyhats — all unverified; Hatrack taken);
-license; second compile target (lean `agents-md`).
+license; second compile target (lean `agents-md`; *2026-10-21 spike: `agents-md` as a repo-file
+target plus Codex as the real second adapter, since relaunch works for Codex and Copilot too*).
 From `02`: Claude Code switch mechanism (now mostly answered in `03` App. A, spikes remain);
 instruction token budget; skills registry (v0: git/local only); `extends` version pinning (lean:
 float locally, pin on publish); user layer cannot declare locks; provenance format; whether a lock

@@ -219,6 +219,19 @@ the current persona, the mod shows a one-line nudge. Never auto-switch silently.
   `remove: [id]` has no defined position (per event? top-level?).
 - **Linearization direction** (added 2026-10-20). Standard C3 puts the child first; merging needs
   root-first (org → … → P). Specify "reverse of C3 MRO" explicitly and cover diamonds in fixtures.
+
+> Amended 2026-10-20: the resolver fixture suite
+> (`src/packages/resolver/fixtures/README.md` → "Proposed rule decisions") proposes answers to the
+> three questions above plus eight related ambiguities, checked against Claude Code's own
+> settings layering as precedent. Notably, Python's first-parent-wins C3 makes this doc's own
+> example (`extends: [org/base, area/fintech]`) unresolvable, so the fixtures treat `extends`
+> order as ascending precedence (later parent wins).
+>
+> Accepted 2026-10-20 after review against Claude Code: (a) reusing an inherited instruction id
+> replaces it in place (override by name, as everywhere else), so `replace(<id>)` is only for a
+> new id; (b) explicit `remove` of unlocked deny/hook entries stays, deliberately looser than
+> Claude Code; (c) lock violations fail resolution except in the user overlay, where the entry
+> is dropped with a warning. Fold these into the merge table above when the resolver lands.
 - **Instruction fragment size.** Concatenation can blow up context. Do we need a budget
   (`maxInstructionTokens`) with a warning, or leave it to the user?
 - **Skills registry.** `registry://` implies a registry. v0: git URLs and local paths only.

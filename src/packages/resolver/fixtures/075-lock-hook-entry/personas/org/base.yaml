@@ -1,0 +1,9 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+hooks:
+  pre-tool-use:
+    - { id: block-prod-db, run: ./hooks/block-prod-db.sh, matcher: Bash }
+locks:
+  - hooks.pre-tool-use[block-prod-db]

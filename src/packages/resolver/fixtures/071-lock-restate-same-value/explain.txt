@@ -1,0 +1,11 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+mcp (1)
+  gateway  bifrost://corp  org/base  locked: mcp.gateway by org/base
+
+locks (1)
+  mcp.gateway  org/base

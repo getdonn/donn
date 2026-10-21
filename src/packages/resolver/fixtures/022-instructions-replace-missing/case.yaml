@@ -1,0 +1,7 @@
+description: replace(<id>) naming a fragment no ancestor declared is an error, not a silent append.
+resolve: team/t
+expect:
+  error:
+    code: replace-target-missing
+    id: nope
+    layer: team/t

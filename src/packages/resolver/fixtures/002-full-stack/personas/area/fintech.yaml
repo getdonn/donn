@@ -1,0 +1,18 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: fintech
+  description: Fintech business area
+  labels: { area: fintech }
+extends:
+  - org/base
+instructions:
+  - id: fintech-compliance
+    inline: |
+      This area is PCI-DSS scoped. Treat card data as restricted.
+permissions:
+  deny:
+    - "Bash(curl:*)"
+knowledge:
+  - id: pci-handbook
+    source: mcp://confluence?space=PCI

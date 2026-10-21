@@ -1,6 +1,6 @@
 {
   "name": "@zzpersona/resolver",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Resolves a persona's extends DAG into the harness-neutral IR",
   "license": "Apache-2.0",
@@ -24,11 +24,12 @@
     "@zzpersona/spec": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "@zzpersona/eslint-config": "workspace:*",
     "@zzpersona/typescript-config": "workspace:*",
-    "@types/node": "^24.0.0",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1"
   }
 }

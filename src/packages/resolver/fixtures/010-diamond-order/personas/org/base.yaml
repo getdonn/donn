@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+instructions:
+  - id: org-i
+    inline: org

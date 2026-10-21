@@ -1,0 +1,15 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  area/a
+  3  area/b
+  4  team/t    target
+
+instructions (3)
+  org-i  inline "org"     org/base
+  a-i    inline "area a"  area/a
+  b-i    inline "area b"  area/b
+
+mcp (1)
+  gateway  bifrost://b  area/b  overrides area/a

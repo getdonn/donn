@@ -1,0 +1,9 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+targets:
+  claude-code:
+    env: { B: "3", C: "4" }
+    extraArgs: ["--c"]

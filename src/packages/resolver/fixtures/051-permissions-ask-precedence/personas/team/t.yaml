@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+permissions:
+  deny: ["Bash(git push:*)"]
+  allow: ["Bash(npm publish)"]

@@ -1,0 +1,13 @@
+description: mcp.remove deletes an inherited server; a later layer can add one back under the same name.
+resolve: project/p
+expect:
+  resolved:
+    mcp:
+      servers:
+        jira: { ref: gateway://jira }
+        figma: { ref: gateway://figma-v2 }
+  provenance:
+    "mcp.servers.figma": project/p
+  history:
+    - { path: mcp.servers.figma, layer: team/t, kind: remove, from: org/base }
+  warnings: []

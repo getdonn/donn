@@ -1,0 +1,6 @@
+description: A persona in the user layer may not declare locks; a user never locks anything for themselves.
+resolve: user/me
+expect:
+  error:
+    code: user-layer-lock
+    layer: user/me

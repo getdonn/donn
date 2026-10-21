@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: PersonaOverlay
+permissions:
+  allow:
+    - "Bash(git status)"
+targets:
+  claude-code:
+    model: opus

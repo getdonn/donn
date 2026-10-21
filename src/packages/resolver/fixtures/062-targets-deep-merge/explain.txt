@@ -1,0 +1,14 @@
+p
+
+layers (merge order)
+  1  org/base
+  2  team/t
+  3  project/p  target
+
+targets (6)
+  claude-code.model      opus        project/p  overrides org/base
+  claude-code.env.A      1           org/base
+  claude-code.env.B      3           team/t     overrides org/base
+  claude-code.env.C      4           team/t
+  claude-code.extraArgs  ["--c"]     team/t     overrides org/base
+  codex.approvalPolicy   on-request  org/base
