@@ -124,6 +124,10 @@ prints it; the control plane stores it so policy owners can see where enforcemen
 
 ### Capability matrix (to be filled by spikes — see `spikes/`)
 
+*Amended 2026-10-21 (spec 13): superseded by `docs/capabilities.md`, generated from the adapters'
+own matrices by `zzpersona capabilities --markdown`. The tables below are kept as the planning
+record.*
+
 | IR field | claude-code | codex | antigravity | cursor | gemini-cli | agents-md (generic) |
 |---|---|---|---|---|---|---|
 | instructions | hook/system-prompt (not plugin) | native (`AGENTS.md`) | ? | native (rules) | native (`GEMINI.md`) | native |

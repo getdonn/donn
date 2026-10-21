@@ -10,7 +10,8 @@
     "format": "prettier --write .",
     "changeset": "changeset",
     "format:check": "prettier --check .",
-    "zzpersona": "node src/apps/cli/dist/bin.js"
+    "zzpersona": "node src/apps/cli/dist/bin.js",
+    "docs:capabilities": "turbo run build --filter=@zzpersona/cli && node src/apps/cli/scripts/capabilities-doc.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",

@@ -80,6 +80,12 @@ hooks do not carry over: Codex has no per-launch skill folder, and it does not r
 not been told to trust. The report lists each one. (`codex exec` is non-interactive, so Codex
 runs it with approval `never`; the sandbox still applies.)
 
+## What each harness can carry
+
+`zzpersona capabilities` shows, per harness, which persona fields are carried natively,
+approximated, advisory or not at all, and why. The same matrix is published in
+[`docs/capabilities.md`](docs/capabilities.md).
+
 ## Two Claude Code installs?
 
 `zzpersona claude` runs the `claude` that `PATH` finds, which may not be the one your shell's

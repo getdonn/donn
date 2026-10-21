@@ -1,9 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { capabilityFields, type Probe } from "@zzpersona/adapter-sdk";
 import { HOOK_EVENTS } from "@zzpersona/spec";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  capabilitiesDoc,
   firstPartyColumns,
   renderGrid,
   type Column,
@@ -214,5 +215,16 @@ describe("zzpersona capabilities", () => {
     expect(r.stdout).toContain(
       "Harnesses without an adapter yet: Copilot CLI, Cursor, Gemini CLI, Antigravity.",
     );
+  });
+});
+
+describe("docs/capabilities.md", () => {
+  it("keeps docs/capabilities.md current", () => {
+    const file = join(import.meta.dirname, "../../../../docs/capabilities.md");
+    const committed = existsSync(file) ? readFileSync(file, "utf8") : "";
+    expect(
+      committed,
+      "docs/capabilities.md is stale; run pnpm docs:capabilities",
+    ).toBe(capabilitiesDoc(firstPartyColumns()));
   });
 });
