@@ -394,3 +394,29 @@ describe("reasons from the capability matrix", () => {
   it("reports relaunch-no-mcp drops with the matrix note", () =>
     check({ managedMcp: true }));
 });
+
+describe("the matrix flags every loss", () => {
+  it("puts a caveat on a native field whenever compile still drops items under it", () => {
+    const { personaId, ir, texts } = corpus.find(
+      (e) => e.name === "kitchen-sink",
+    )!;
+    const detection = { installed: true, version: "9.9.9", facts: {} };
+    const output = adapter.compile({ personaId, ir, texts, detection });
+    const fields = adapter.capabilities(detection).fields as Record<
+      string,
+      { support: string; caveat?: string } | undefined
+    >;
+    const fieldOf = (path: string) =>
+      path.startsWith("mcp.servers.")
+        ? "mcp.servers"
+        : path.startsWith("targets.")
+          ? `targets.${adapter.id}`
+          : path.split("[")[0]!;
+    for (const entry of output.report.entries) {
+      const field = fields[fieldOf(entry.path)];
+      if (field?.support === "native") {
+        expect(field.caveat, entry.path).toBeDefined();
+      }
+    }
+  });
+});

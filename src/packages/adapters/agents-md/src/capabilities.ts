@@ -18,7 +18,10 @@ const guidance = {
 export function capabilities(): CapabilityMatrix {
   return {
     fields: {
-      instructions: native,
+      instructions: {
+        ...native,
+        caveat: "a block over 24 KiB is only partly read by Codex",
+      },
       knowledge: {
         support: "advisory",
         note: "listed as pointers in AGENTS.md",
