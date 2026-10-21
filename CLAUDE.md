@@ -53,6 +53,9 @@ example. Picking the name runs in parallel and only blocks the first `npm publis
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
   never at the repo root. All packages `"private": true` until the name is chosen.
 - Every CLI command supports `--json`.
+- Git flow: `main` = released, `develop` = integration. All work happens on `feature/<topic>`
+  branched from `develop` and merged back into it; `release/*` and `hotfix/*` per standard
+  gitflow. Never commit directly to `main` or `develop`. Changesets `baseBranch` is `develop`.
 - Planning docs live in `docs/planning/`, numbered. Append new ones; amend old ones in place
   with a dated note rather than silently rewriting decisions.
 - Spikes go in `spikes/<topic>/` with a `FINDINGS.md`; they are throwaway and never imported.
