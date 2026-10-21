@@ -84,7 +84,8 @@ export function explain({
       .map((lock) => `locked: ${lock.path} by ${lock.layer}`);
   };
 
-  /** What a surviving value displaced: the layer it overrode, or a removal it came back from. */
+  /** What a surviving value displaced: a fragment it swapped out, the layer it overrode, or a
+   * removal it came back from. */
   const historyNotes = (path: string): string[] => {
     const final = provenance[path];
     const entries = history.filter((h) => h.path === path);
@@ -92,7 +93,11 @@ export function explain({
       (h) => h.kind === "override" && h.layer === final,
     );
     const removal = entries.findLast((h) => h.kind === "remove");
+    const swapped = history.findLast(
+      (h) => h.kind === "remove" && h.replacedBy === path,
+    );
     return [
+      ...(swapped ? [`replaces ${swapped.path} from ${swapped.from}`] : []),
       ...(override ? [`overrides ${override.from}`] : []),
       ...(removal && !override
         ? [`re-added after removal by ${removal.layer}`]
@@ -205,7 +210,10 @@ export function explain({
         label: h.path,
         value: "",
         layer: `removed by ${h.layer}`,
-        notes: [`set by ${h.from}`],
+        notes: [
+          `set by ${h.from}`,
+          ...(h.replacedBy ? [`replaced by ${h.replacedBy}`] : []),
+        ],
       })),
     },
     {

@@ -216,7 +216,9 @@ export class Merge {
           continue;
         if (!this.guard(at(["instructions"], id), "set")) continue;
         this.instructions[index] = { id, source };
-        if (target !== id) this.forget(`instructions[${target}]`);
+        if (target !== id) {
+          this.forget(`instructions[${target}]`, `instructions[${id}]`);
+        }
         this.record(`instructions[${id}]`);
         continue;
       }
@@ -436,11 +438,20 @@ export class Merge {
     this.provenance.set(path, this.layer);
   }
 
-  /** This layer deleted the value at `path`. Not used for shadowed rules: those are warnings. */
-  private forget(path: string): void {
+  /**
+   * This layer deleted the value at `path`, or swapped it for the value at `replacedBy`. Not used
+   * for shadowed rules: those are warnings.
+   */
+  private forget(path: string, replacedBy?: string): void {
     const from = this.provenance.get(path);
     if (from === undefined) return;
-    this.history.push({ path, layer: this.layer, kind: "remove", from });
+    this.history.push({
+      path,
+      layer: this.layer,
+      kind: "remove",
+      from,
+      ...(replacedBy !== undefined && { replacedBy }),
+    });
     this.provenance.delete(path);
   }
 

@@ -90,7 +90,7 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 
 /**
  * A value a later layer displaced. `override`: `layer` replaced the value `from` had set.
- * `remove`: `layer` deleted it. Provenance says who set each final value; history says what
+ * `remove`: `layer` deleted it, or swapped it out (`replacedBy`). Provenance says who set each final value; history says what
  * those values replaced, so a reviewer can see removals that leave nothing behind.
  */
 export const HistoryEntry = z.strictObject({
@@ -98,6 +98,8 @@ export const HistoryEntry = z.strictObject({
   layer: Ref,
   kind: z.enum(["override", "remove"]),
   from: Ref,
+  /** For a `remove` done by `replace(<id>)` under a new id: the path of the new value. */
+  replacedBy: z.string().min(1).optional(),
 });
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 

@@ -49,7 +49,8 @@ expect:
   one. Restating an unchanged value records nothing, and rules dropped by deny > ask > allow
   are warnings, not history. Listed in 002, 031, 041 and 060; every other case is covered by
   its `explain.txt`, which renders history as `overrides …`, `re-added after removal by …`, and
-  a `removed (n)` section.
+  a `removed (n)` section. A `remove` done by `replace(<id>)` under a new id also carries
+  `replacedBy` (the new fragment's path), rendered as `replaces …` and `replaced by …`.
 - `error`: every listed key must match.
 
 ## Resolved IR shape (v0)
