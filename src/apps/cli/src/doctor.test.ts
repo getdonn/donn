@@ -1,0 +1,181 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Probe } from "@zzpersona/adapter-sdk";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
+
+let s: Seeded;
+beforeEach(() => {
+  s = seed();
+});
+afterEach(() => s.cleanup());
+
+const SECRET = "doctor-secret-value";
+
+/** Fixture 002's vault as an env provider, with its one secret set; personas tracked in git. */
+function healthy() {
+  const base = join(s.personas, "org/base.yaml");
+  writeFileSync(
+    base,
+    readFileSync(base, "utf8").replace(
+      "vault: { type: hashicorp-vault, address: https://vault.corp }",
+      "vault: { type: env }",
+    ),
+  );
+  mkdirSync(join(s.personas, ".git"));
+  return { "payments/schema-token": SECRET };
+}
+
+type Check = { id: string; status: string; message: string; fix?: string };
+async function doctor(
+  argv: string[],
+  options: {
+    cwd?: string;
+    home?: string;
+    env?: NodeJS.ProcessEnv;
+    probe?: Probe;
+  } = {},
+) {
+  const r = await zz(["doctor", "--json", ...argv], {
+    cwd: options.cwd ?? s.repo,
+    home: options.home ?? s.home,
+    ...(options.env && { env: options.env }),
+    ...(options.probe && { probe: options.probe }),
+  });
+  const checks = (JSON.parse(r.stdout) as { checks: Check[] }).checks;
+  const status = Object.fromEntries(checks.map((c) => [c.id, c.status]));
+  return { r, checks, status };
+}
+
+const IDS = [
+  "home",
+  "config",
+  "personas",
+  "state",
+  "persona",
+  "resolve",
+  "claude",
+  "secrets",
+  "build",
+];
+
+describe("zzpersona doctor", () => {
+  it("is all ok for a healthy setup", async () => {
+    const { r, checks } = await doctor([], { env: healthy() });
+    expect(checks.map((c) => c.id)).toEqual(IDS);
+    expect(checks.filter((c) => c.status !== "ok")).toEqual([]);
+    expect(r.code).toBe(0);
+  });
+
+  it("never prints a secret value", async () => {
+    const env = healthy();
+    const json = await doctor([], { env });
+    expect(json.r.stdout).not.toContain(SECRET);
+    const text = await zz(["doctor"], { cwd: s.repo, home: s.home, env });
+    expect(text.stdout + text.stderr).not.toContain(SECRET);
+    expect(text.stdout).toMatch(/^ok      config    /m);
+  });
+
+  it("warns, without failing, on a fresh machine", async () => {
+    const { r, status } = await doctor([], {
+      cwd: s.root,
+      home: join(s.root, "fresh"),
+    });
+    expect(status).toEqual({
+      home: "ok",
+      config: "warn",
+      personas: "skipped",
+      state: "ok",
+      persona: "warn",
+      resolve: "skipped",
+      claude: "ok",
+      secrets: "skipped",
+      build: "ok",
+    });
+    expect(r.code).toBe(0);
+  });
+
+  it("errors on a broken config and skips what depends on it", async () => {
+    writeFileSync(join(s.home, "config.yaml"), "personas: [oops\n");
+    const { r, status } = await doctor([]);
+    expect(status).toMatchObject({
+      config: "error",
+      personas: "skipped",
+      persona: "skipped",
+      resolve: "skipped",
+      secrets: "skipped",
+    });
+    expect(r.code).toBe(1);
+  });
+
+  it("warns when the personas folder is not a git repository", async () => {
+    const { checks } = await doctor([]);
+    const personas = checks.find((c) => c.id === "personas")!;
+    expect(personas.status).toBe("warn");
+    expect(personas.fix).toContain("git init");
+  });
+
+  it("finds orphaned switch entries and removes them with --fix", async () => {
+    const env = healthy();
+    writeFileSync(
+      join(s.home, "state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: { [join(s.root, "gone/.zzpersona")]: "team/payments" },
+      }),
+    );
+    expect((await doctor([], { env })).status.state).toBe("warn");
+    expect((await doctor(["--fix"], { env })).status.state).toBe("ok");
+    expect(
+      JSON.parse(readFileSync(join(s.home, "state.json"), "utf8")).projects,
+    ).toEqual({});
+  });
+
+  it("checks claude is installed and recent enough", async () => {
+    const missing: Probe = {
+      ...installedProbe,
+      run: async () => ({ exitCode: 127, stdout: "", stderr: "" }),
+    };
+    expect((await doctor([], { probe: missing })).status.claude).toBe("error");
+    const old: Probe = {
+      ...installedProbe,
+      run: async () => ({
+        exitCode: 0,
+        stdout: "2.1.100 (Claude Code)\n",
+        stderr: "",
+      }),
+    };
+    expect((await doctor([], { probe: old })).status.claude).toBe("warn");
+  });
+
+  it("names each secret that cannot be resolved", async () => {
+    mkdirSync(join(s.personas, ".git"));
+    const { r, checks } = await doctor([]);
+    const secrets = checks.find((c) => c.id === "secrets")!;
+    expect(secrets.status).toBe("error");
+    expect(secrets.message).toContain("secret://vault/payments/schema-token");
+    expect(r.code).toBe(1);
+  });
+
+  it("finds build leftovers and removes them with --fix", async () => {
+    const env = healthy();
+    const lock = join(s.home, "build/x/claude-code.lock");
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), "999999");
+    expect((await doctor([], { env })).status.build).toBe("warn");
+    expect((await doctor(["--fix"], { env })).status.build).toBe("ok");
+    expect(existsSync(lock)).toBe(false);
+  });
+});
+
+describe("doctor text output", () => {
+  it("keeps a space between every status and its check name", async () => {
+    const r = await zz(["doctor"], {
+      cwd: s.root,
+      home: join(s.root, "fresh"),
+    });
+    expect(r.stdout).toMatch(/^skipped personas  /m);
+    expect(r.stdout).toMatch(/^ok      home      /m);
+    expect(r.stdout).toMatch(/^ {8}fix: /m);
+  });
+});
