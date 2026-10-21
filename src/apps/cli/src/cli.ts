@@ -2,6 +2,7 @@ import type { Probe } from "@zzpersona/adapter-sdk";
 import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { claudeCommand } from "./commands/claude.js";
+import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -40,7 +41,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
       const ours = split === -1 ? argv : argv.slice(0, split);
       const passthrough = split === -1 ? [] : argv.slice(split + 1);
       const wantsJson = ours.includes("--json");
-      /** Run a command; only `claude` takes passthrough arguments after `--`. */
+      /** Run a command; only `claude` and `codex` take passthrough arguments after `--`. */
       const handle = async (
         json: boolean | undefined,
         command: () => Promise<number>,
@@ -50,7 +51,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           if (passthrough.length > 0 && !options.passthrough) {
             throw new CliError(
               "unexpected-passthrough",
-              "arguments after `--` are only passed through by zzpersona claude",
+              "arguments after `--` are only passed through by zzpersona claude and zzpersona codex",
               { args: passthrough },
             );
           }
@@ -202,6 +203,27 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           handle(
             options.json,
             () => claudeCommand(io, persona, options, passthrough),
+            { passthrough: true },
+          ),
+        );
+
+      program
+        .command("codex")
+        .description("Build a persona for Codex and launch codex with it")
+        .argument(
+          "[persona]",
+          "a ref like team/payments, or a bare name; defaults to the project persona",
+        )
+        .option(
+          "--dry-run",
+          "print the build and plan; write and launch nothing",
+        )
+        .option("--json", "print the plan as JSON; launches nothing")
+        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .action((persona: string | undefined, options) =>
+          handle(
+            options.json,
+            () => codexCommand(io, persona, options, passthrough),
             { passthrough: true },
           ),
         );

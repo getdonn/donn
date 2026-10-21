@@ -17,6 +17,7 @@
   "dependencies": {
     "@zzpersona/adapter-agents-md": "workspace:*",
     "@zzpersona/adapter-claude-code": "workspace:*",
+    "@zzpersona/adapter-codex": "workspace:*",
     "@zzpersona/adapter-sdk": "workspace:*",
     "@zzpersona/executor": "workspace:*",
     "@zzpersona/mod-claude-code": "workspace:*",
