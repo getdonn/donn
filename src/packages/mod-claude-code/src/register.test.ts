@@ -218,3 +218,125 @@ describe("register", () => {
     expect(unhandled).toEqual([]);
   });
 });
+
+describe("live switching", () => {
+  const SESSION = "/home/.zzpersona/sessions/0123456789abcdef";
+  const state = (persona: string) => ({
+    persona,
+    previous: "team/payments",
+    launched: "team/payments",
+    instructions: `## zzpersona persona: ${persona}\n\nBe ${persona}.\n`,
+    held: ["mcp"],
+    stricter: false,
+    plugin: "x",
+    appliedAt: "2026-10-21T00:00:00.000Z",
+  });
+  const reply = (shown: unknown) => (argv: readonly string[]) => {
+    if (argv[1] === "live" && argv.includes("--show")) return json(shown);
+    if (argv[1] === "live") return json(state(argv[2]!));
+    if (argv[1] === "switch" && argv.length > 3)
+      return json({
+        scope: "project",
+        persona: argv[2],
+        project: "/r/.zzpersona",
+      });
+    return FOLDER;
+  };
+  const sections = async (
+    e: ReturnType<typeof engine>,
+  ): Promise<{ id: string; text: string }[]> =>
+    (
+      (await e.call("prompt.compose", {})) as {
+        sections: { id: string; text: string }[];
+      }
+    ).sections;
+
+  it("applies /persona use live and adds the superseding section", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    expect(await e.call("prompt.compose", {})).toBe("BELOW");
+    const out = (await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    })) as { text: string };
+    expect(e.runs).toContainEqual([
+      "zzpersona",
+      "live",
+      "team/platform",
+      "--session",
+      SESSION,
+      "--json",
+    ]);
+    expect(out.text).toContain("team/platform is now live in this session");
+    const list = await sections(e);
+    expect(list.at(-1)!.id).toBe("zzpersona:live-persona");
+    expect(list.at(-1)!.text).toContain("Be team/platform.");
+  });
+
+  it("switching back to the launched persona drops the section", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    });
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/payments",
+    });
+    expect(await e.call("prompt.compose", {})).toBe("BELOW");
+    const tree = (await e.call("ui.render", {
+      component: "AbovePrompt",
+    })) as Tree;
+    expect(JSON.stringify(tree)).not.toContain("live");
+  });
+
+  it("saves and applies /persona switch", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    const out = (await e.call("command.run", {
+      command: "persona",
+      args: "switch team/platform",
+    })) as { text: string };
+    const after = e.runs.slice(-3).map((argv) => argv[1]);
+    expect(after).toEqual(["switch", "live", "switch"]);
+    expect(out.text.split("\n")[0]).toBe("team/platform is now used for /r.");
+    expect(out.text).toContain("is now live in this session");
+  });
+
+  it("explains /persona use without a session folder", async () => {
+    const e = engine(LAUNCHED, () => FOLDER);
+    await e.call("session.start");
+    await e.settle();
+    const out = (await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    })) as { text: string };
+    expect(out.text).toBe(
+      "live switching needs a session started by zzpersona claude",
+    );
+    expect(e.runs.filter((argv) => argv[1] === "live")).toEqual([]);
+  });
+
+  it("restores the live state after a reload", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply(state("team/platform")),
+    );
+    await e.call("session.start");
+    await e.settle();
+    expect((await sections(e)).at(-1)!.id).toBe("zzpersona:live-persona");
+  });
+});

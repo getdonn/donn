@@ -4,11 +4,14 @@ import {
   bandText,
   commandText,
   launchedFrom,
+  liveSection,
+  liveText,
   nudgeText,
   personaCommand,
   USAGE,
   type Here,
   type Launched,
+  type LiveState,
 } from "./decide.js";
 
 // The zzpersona mod for Claude Code: the active persona in the band above the prompt, a nudge
@@ -34,6 +37,16 @@ let showNudge = true;
 let launched: Launched | undefined;
 let here: Here = { kind: "none" };
 let nudged = false;
+/** The session folder `zzpersona claude` launched with, and the live switch, if any (spec 10). */
+let session: string | undefined;
+let live: LiveState | undefined;
+
+const NO_SESSION = "live switching needs a session started by zzpersona claude";
+
+const asLive = (json: unknown): LiveState | undefined =>
+  typeof json === "object" && json !== null && "persona" in json
+    ? (json as LiveState)
+    : undefined;
 
 /** What this folder selects, asked once at start and again after a /persona command. */
 async function refresh($: Mod$): Promise<void> {
@@ -49,7 +62,8 @@ async function onStart(
   await $.command.register({
     name: "persona",
     description: "Show, list or switch zzpersona personas",
-    argumentHint: "[list | switch <persona> [--default] | clear [--default]]",
+    argumentHint:
+      "[list | switch <persona> [--default] | use <persona> | clear [--default]]",
   });
   // Literal names: the engine lists the variables a mod reads.
   launched = launchedFrom(
@@ -57,13 +71,24 @@ async function onStart(
     await $.env.get("ZZPERSONA_SOURCE"),
     await $.env.get("ZZPERSONA_PROJECT"),
   );
+  session = (await $.env.get("ZZPERSONA_SESSION")) || undefined;
   // Headless (`claude -p`, the SDK): nothing is drawn, so don't run the CLI.
   if (e.isInteractive === false) return next(e);
   // In the background: the session starts without waiting for the CLI. A failure here (the
   // engine unloading the mod, say) has nowhere to go, and must not escape.
   void refresh($)
-    .then(() => {
-      const text = nudgeText(launched, here);
+    .then(async () => {
+      // After a reload, pick up a switch made before it.
+      if (session !== undefined) {
+        const shown = await runCli(
+          $,
+          ["live", "--show", "--session", session],
+          await $.session.cwd(),
+        );
+        if (shown.ok) live = asLive(shown.json);
+        $.ui.invalidate("ui.render");
+      }
+      const text = nudgeText(launched, here, live);
       if (showNudge && !nudged && text !== undefined) {
         nudged = true;
         $.ui.status(text);
@@ -80,7 +105,7 @@ async function onBand(
 ): Promise<unknown> {
   // A survey holds the band; a hook yields to it.
   if (e.props?.hasSurvey) return next(e);
-  const text = showBand ? bandText(launched, here) : undefined;
+  const text = showBand ? bandText(launched, here, live) : undefined;
   if (text === undefined) return next(e);
   const { Box, Text } = $.ui.resolve(e);
   // A column, so other mods' band output stacks below this line rather than beside it.
@@ -96,7 +121,20 @@ async function onPersona($: Mod$, e: { args?: string }): Promise<unknown> {
   $.ui.status(undefined);
   const command = personaCommand(e.args ?? "");
   if ("usage" in command) return { text: USAGE };
-  const result = await runCli($, command.argv, await $.session.cwd());
+  const cwd = await $.session.cwd();
+  if (command.form === "use") {
+    if (session === undefined) return { text: NO_SESSION };
+    return { text: await applyLive($, command.argv[1]!, cwd) };
+  }
+  const result = await runCli($, command.argv, cwd);
+  if (command.form === "switch" && result.ok && session !== undefined) {
+    const saved = commandText("switch", result.json, launched, here).split(
+      "\n",
+    )[0];
+    const text = await applyLive($, command.argv[1]!, cwd, saved);
+    await refresh($);
+    return { text };
+  }
   if (command.form === "show") here = toHere(result);
   // A folder with no persona is an answer for `/persona`, not an error.
   const isAnswer = command.form === "show" && here.kind === "none";
@@ -106,13 +144,43 @@ async function onPersona($: Mod$, e: { args?: string }): Promise<unknown> {
   return { text: commandText(command.form, json, launched, here) };
 }
 
+/** Run `zzpersona live` and adopt its state; the text to print either way. */
+async function applyLive(
+  $: Mod$,
+  persona: string,
+  cwd: string,
+  saved?: string,
+): Promise<string> {
+  const result = await runCli($, ["live", persona, "--session", session!], cwd);
+  if (!result.ok)
+    return [...(saved ? [saved] : []), `zzpersona: ${result.reason}`].join(
+      "\n",
+    );
+  live = asLive(result.json);
+  $.ui.invalidate("ui.render");
+  return live
+    ? liveText(live, saved)
+    : `zzpersona: unexpected answer from live`;
+}
+
+/** While a live switch is in effect, the section that supersedes the launch instructions. */
+async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
+  const result = (await next(e)) as { sections?: readonly unknown[] };
+  const section = live && liveSection(live);
+  if (!section) return result;
+  return { ...result, sections: [...(result.sections ?? []), section] };
+}
+
 export function register(on: On, options: Options = {}): void {
   showBand = options.band !== false;
   showNudge = options.nudge !== false;
   launched = undefined;
   here = { kind: "none" };
   nudged = false;
+  session = undefined;
+  live = undefined;
   on("session.start", onStart as Hook);
   on("ui.render", { component: "AbovePrompt" }, onBand as Hook);
   on("command.run", { command: "persona" }, onPersona as Hook);
+  on("prompt.compose", onCompose as Hook);
 }
