@@ -42,6 +42,7 @@ describe("compile (relaunch)", () => {
     expect(full.files["system-prompt.md"]).toEqual({
       content:
         [
+          "## zzpersona persona: project/checkout-api",
           "Review code the way you would want yours reviewed.",
           "Never paste credentials, tokens or customer data into prompts.",
           "This area is PCI-DSS scoped. Treat card data as restricted.",
@@ -53,6 +54,23 @@ describe("compile (relaunch)", () => {
             "- payments-runbooks: mcp://confluence?space=PAY\n" +
             "- schema-docs: https://docs.corp/payments/schema",
         ].join("\n\n") + "\n",
+    });
+  });
+
+  it("heads the instructions with the persona", () => {
+    const file = full.files["system-prompt.md"];
+    expect(file && "content" in file && file.content.split("\n")[0]).toBe(
+      "## zzpersona persona: project/checkout-api",
+    );
+  });
+
+  it("writes the heading when a persona has no instructions", () => {
+    const { ir } = entry("minimal");
+    const bare = adapter.compile(
+      input("minimal", { ir: { ...ir, instructions: [], knowledge: [] } }),
+    );
+    expect(bare.files["system-prompt.md"]).toEqual({
+      content: `## zzpersona persona: ${entry("minimal").personaId}\n`,
     });
   });
 
