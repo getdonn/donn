@@ -49,6 +49,11 @@ export interface CheckResult {
 export interface ConformanceOptions {
   /** The detection compile and activate receive. Defaults to an installed harness, no facts. */
   detection?: Detection;
+  /**
+   * The adapter targets a file format, not a program (agents-md): detect must report installed
+   * without running anything, instead of reporting a missing program as not installed.
+   */
+  noBinary?: boolean;
 }
 
 const DEFAULT_DETECTION: Detection = {
@@ -136,6 +141,16 @@ function wellFormed(output: CompileOutput, plan: ActivationPlan): string[] {
   for (const step of plan.steps) {
     if (step.kind === "overlay" && !isContained(step.path)) {
       problems.push(`overlay escapes the project: ${step.path}`);
+    }
+    if (step.kind === "overlay" && step.block !== undefined) {
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(step.block)) {
+        problems.push(`overlay block name is not kebab-case: ${step.block}`);
+      } else if (
+        step.content.includes(`<!-- ${step.block}:begin`) ||
+        step.content.includes(`<!-- ${step.block}:end -->`)
+      ) {
+        problems.push(`overlay content holds its own ${step.block} markers`);
+      }
     }
     if (step.kind === "launch" && step.command.trim() === "") {
       problems.push("launch step has no command");
@@ -291,14 +306,30 @@ export async function runConformance(
 
   let detected: Detection | undefined;
   let detectError: unknown;
+  let probed = false;
+  const watched: Probe = {
+    ...notInstalled,
+    run: (command, args) => {
+      probed = true;
+      return notInstalled.run(command, args);
+    },
+  };
   try {
-    detected = await adapter.detect(notInstalled);
+    detected = await adapter.detect(watched);
   } catch (error) {
     detectError = error;
   }
   results.push(
     outcome("detect-not-installed", () => {
       if (detectError) return [`threw: ${(detectError as Error).message}`];
+      if (options.noBinary) {
+        return [
+          ...(detected?.installed === true
+            ? []
+            : ["did not report installed: true"]),
+          ...(probed ? ["ran a command, but declares no binary"] : []),
+        ];
+      }
       return detected?.installed === false
         ? []
         : ["did not report installed: false"];
