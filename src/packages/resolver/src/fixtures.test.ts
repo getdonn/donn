@@ -1,34 +1,27 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import {
+  ERROR_CODES,
+  LAYERS,
+  PersonaDocument,
+  Provenance,
+  ResolvedPersona,
+  ResolveWarning,
+} from "@zzpersona/spec";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
-// Structural checks only: the fixtures must be well-formed before the resolver is written
-// against them. Resolution itself is `it.todo` until `resolve()` exists. See fixtures/README.md.
+// Structural checks only: the fixtures must be well-formed, and agree with @zzpersona/spec,
+// before the resolver is written against them. Resolution itself is `it.todo` until `resolve()`
+// exists. See fixtures/README.md.
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
-const LAYERS = new Set(["org", "area", "team", "project", "user"]);
-const WARNING_CODES = new Set([
-  "allow-shadowed-by-deny",
-  "ask-shadowed-by-deny",
-  "allow-shadowed-by-ask",
-  "security-removal",
-  "remove-unmatched",
-  "overlay-lock-ignored",
-]);
-const ERROR_CODES = new Set([
-  "missing-ref",
-  "cycle",
-  "linearization-conflict",
-  "replace-target-missing",
-  "lock-violation",
-  "invalid-lock-path",
-  "user-layer-lock",
-]);
+const IR_FIELDS = Object.keys(ResolvedPersona.shape);
 
 type Doc = Record<string, unknown>;
 
-const readYaml = (path: string): Doc => parse(readFileSync(path, "utf8")) as Doc;
+const readYaml = (path: string): Doc =>
+  parse(readFileSync(path, "utf8")) as Doc;
 
 const personaFiles = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
@@ -61,41 +54,55 @@ describe("resolver fixtures", () => {
       expect(typeof spec.resolve).toBe("string");
       expect(existsSync(refPath(spec.resolve as string))).toBe(true);
       if (spec.overlay !== undefined) {
-        expect(readYaml(refPath(spec.overlay as string)).kind).toBe("PersonaOverlay");
+        expect(readYaml(refPath(spec.overlay as string)).kind).toBe(
+          "PersonaOverlay",
+        );
       }
       expect("resolved" in exp !== "error" in exp).toBe(true);
     });
 
-    it("expects only known codes", () => {
+    it("expects output that matches the spec", () => {
       if ("error" in exp) {
         expect(ERROR_CODES).toContain((exp.error as Doc).code);
         return;
       }
+      const resolved = exp.resolved as Doc;
+      for (const [field, value] of Object.entries(resolved)) {
+        expect(IR_FIELDS, field).toContain(field);
+        const schema =
+          ResolvedPersona.shape[field as keyof typeof ResolvedPersona.shape];
+        expect(schema.safeParse(value).error, field).toBeUndefined();
+      }
+      if (Object.keys(resolved).length === IR_FIELDS.length) {
+        expect(ResolvedPersona.safeParse(resolved).error).toBeUndefined();
+      }
+      if (exp.provenance !== undefined) {
+        expect(Provenance.safeParse(exp.provenance).error).toBeUndefined();
+      }
       expect(Array.isArray(exp.warnings)).toBe(true);
       for (const w of exp.warnings as Doc[]) {
-        expect(WARNING_CODES).toContain(w.code);
+        expect(ResolveWarning.safeParse(w).error).toBeUndefined();
         expect(Object.keys(w).sort()).toEqual(["code", "layer", "path"]);
       }
     });
 
-    it("has valid persona files whose extends refs exist", () => {
+    it("has persona files that match the spec and whose extends refs exist", () => {
       const allowedMissing =
         "error" in exp && (exp.error as Doc).code === "missing-ref"
           ? (exp.error as Doc).ref
           : undefined;
       for (const file of personaFiles(root)) {
         const ref = relative(root, file).replace(/\.yaml$/, "");
-        const doc = readYaml(file);
         expect(LAYERS, ref).toContain(ref.split("/")[0]);
-        expect(doc.apiVersion, ref).toBe("zzpersona/v0");
-        if (doc.kind === "PersonaOverlay") {
-          for (const key of ["metadata", "extends", "locks"]) expect(doc, ref).not.toHaveProperty(key);
-          continue;
-        }
-        expect(doc.kind, ref).toBe("Persona");
-        expect(typeof (doc.metadata as Doc | undefined)?.name, ref).toBe("string");
-        for (const parent of (doc.extends as string[] | undefined) ?? []) {
-          if (parent !== allowedMissing) expect(existsSync(refPath(parent)), `${ref} → ${parent}`).toBe(true);
+        const parsed = PersonaDocument.safeParse(readYaml(file));
+        expect(parsed.error, ref).toBeUndefined();
+        if (parsed.data?.kind !== "Persona") continue;
+        for (const parent of parsed.data.extends ?? []) {
+          if (parent !== allowedMissing) {
+            expect(existsSync(refPath(parent)), `${ref} → ${parent}`).toBe(
+              true,
+            );
+          }
         }
       }
     });

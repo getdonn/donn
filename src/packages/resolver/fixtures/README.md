@@ -76,7 +76,12 @@ Warnings: `allow-shadowed-by-deny`, `ask-shadowed-by-deny`, `allow-shadowed-by-a
 `security-removal`, `remove-unmatched`, `overlay-lock-ignored`.
 
 Errors: `missing-ref`, `cycle`, `linearization-conflict`, `replace-target-missing`,
-`lock-violation`, `invalid-lock-path`, `user-layer-lock`.
+`lock-violation`, `invalid-lock-path`, `user-layer-lock`, `invalid-persona` (a file that fails
+the `@zzpersona/spec` schema; no fixture yet, since every fixture file must validate).
+
+`@zzpersona/spec` is the source of truth for the IR shape, path grammar and codes above;
+`src/fixtures.test.ts` validates every fixture against it, so this README and the spec cannot
+silently drift.
 
 ## Proposed rule decisions (pending review)
 

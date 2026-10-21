@@ -286,6 +286,8 @@ docs/planning/       (these documents)
 
 1. **IR stability.** The IR is the contract between resolver and every adapter *and* the control
    plane. Version it independently of the YAML `apiVersion`? (Lean: yes, `irVersion`.)
+   *Decided 2026-10-20: yes. `@zzpersona/spec` exports `IR_VERSION = 0` separately from
+   `API_VERSION = "zzpersona/v0"`; the IR carries `irVersion`.*
 2. **Multi-harness switch atomicity.** `switch --harness all` can partially fail. Per-harness
    state with a summary, or all-or-nothing? (Lean: per-harness; report.)
 3. **Where in-session UX lives for harnesses without a mod/extension API.** Likely: none, CLI only.
