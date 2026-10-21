@@ -171,6 +171,8 @@ async function applyLive(
  * re-reads a section's text after $.ui.invalidate("prompt.section") (spikes/live-smoke).
  */
 let anchor = "env_info_simple";
+/** Sections the engine has passed through prompt.section; not every composed one is. */
+const seen = new Set<string>();
 
 async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
   const result = (await next(e)) as {
@@ -178,7 +180,7 @@ async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
   };
   const last = [...(result.sections ?? [])]
     .reverse()
-    .find((section) => section.scope === "session");
+    .find((section) => section.scope === "session" && seen.has(section.id));
   if (last) anchor = last.id;
   return result;
 }
@@ -189,6 +191,7 @@ async function onSection(
   e: { name?: string },
   next: Next,
 ): Promise<unknown> {
+  if (e.name !== undefined) seen.add(e.name);
   const result = (await next(e)) as { text?: string | null };
   const section = live && liveSection(live);
   if (!section || e.name !== anchor) return result;
@@ -204,6 +207,7 @@ export function register(on: On, options: Options = {}): void {
   session = undefined;
   live = undefined;
   anchor = "env_info_simple";
+  seen.clear();
   on("session.start", onStart as Hook);
   on("ui.render", { component: "AbovePrompt" }, onBand as Hook);
   on("command.run", { command: "persona" }, onPersona as Hook);

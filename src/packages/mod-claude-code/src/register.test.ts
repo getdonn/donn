@@ -357,4 +357,34 @@ describe("live switching", () => {
       "Be team/platform.",
     );
   });
+
+  it("anchors on a section the engine passes through prompt.section", async () => {
+    // As Claude Code 2.1.306 does: sections go through prompt.section first, then compose,
+    // and the last session section (total_tokens) never goes through prompt.section.
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await sectionText(e, "env_info_simple");
+    await sectionText(e, "memory");
+    await e.call(
+      "prompt.compose",
+      {},
+      {
+        sections: [
+          { id: "env_info_simple", scope: "session", text: "env" },
+          { id: "memory", scope: "session", text: "mem" },
+          { id: "total_tokens", scope: "session", text: "tokens" },
+        ],
+      },
+    );
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    });
+    expect(await sectionText(e, "memory")).toContain("Be team/platform.");
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
+  });
 });
