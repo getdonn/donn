@@ -168,20 +168,9 @@ export function compile(
       exact.add(`permissions.allow[${rule}]`);
     }
   }
-  const reasons: Record<string, string> = {
-    skills: "Codex has no per-launch skill root",
-    hooks:
-      "untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust",
-    permissions:
-      "rendered as guidance; Codex enforces only its sandbox and approval policy",
-    knowledge: "listed as pointers in the instructions",
-  };
   for (const required of requiredEntries(self.id, capabilities(), ir)) {
     if (exact.has(required.path)) continue;
-    entries.push({
-      ...required,
-      reason: reasons[required.path.split(/[.[]/)[0]!] ?? "not carried",
-    });
+    entries.push(required);
   }
   if (ir.mcp.gateway !== undefined) {
     entries.push({

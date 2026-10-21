@@ -44,7 +44,7 @@ report (19)
   advisory  knowledge[pci-handbook]  listed as pointers in AGENTS.md
   advisory  knowledge[payments-runbooks]  listed as pointers in AGENTS.md
   advisory  knowledge[schema-docs]  listed as pointers in AGENTS.md
-  dropped  mcp.servers.payments-schema.env.SCHEMA_TOKEN  AGENTS.md is plain text; use a harness adapter for MCP servers
+  dropped  mcp.servers.payments-schema.env.SCHEMA_TOKEN  AGENTS.md is plain text; use a harness adapter for secrets
   approximated  permissions.allow[Bash(git status)]  rendered as guidance; not enforced
   approximated  permissions.allow[Bash(pnpm sim:*)]  rendered as guidance; not enforced
   approximated  permissions.allow[Read(./**)]  rendered as guidance; not enforced

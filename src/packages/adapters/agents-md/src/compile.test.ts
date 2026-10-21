@@ -1,4 +1,5 @@
 import {
+  requiredEntries,
   AdapterInputError,
   type CompileInput,
   type CompileOutput,
@@ -153,5 +154,59 @@ describe("activate", () => {
         block: "zzpersona",
       },
     ]);
+  });
+});
+
+describe("reasons from the capability matrix", () => {
+  const check = (facts: Record<string, boolean>) => {
+    const { personaId, ir, texts } = corpus.find(
+      (e) => e.name === "kitchen-sink",
+    )!;
+    const detection = { installed: true, version: "9.9.9", facts };
+    const output = adapter.compile({ personaId, ir, texts, detection });
+    const matrix = adapter.capabilities(detection);
+    const required = requiredEntries(adapter.id, matrix, ir);
+    expect(required.length).toBeGreaterThan(0);
+    for (const { path, reason } of required) {
+      const entry = output.report.entries.find((e) => e.path === path);
+      // A required value may be covered by its parent (a dropped server), with the parent's reason.
+      if (entry) expect(entry.reason, path).toBe(reason);
+    }
+  };
+
+  it("reports field-level drops with the matrix note", () => check({}));
+});
+
+describe("the matrix flags every loss", () => {
+  it("puts a caveat on a native field whenever compile still drops items under it", () => {
+    const { personaId, ir, texts } = corpus.find(
+      (e) => e.name === "kitchen-sink",
+    )!;
+    const detection = { installed: true, version: "9.9.9", facts: {} };
+    // Long enough for the 24 KiB warning on instructions.
+    const big = {
+      ...ir,
+      instructions: [{ id: "big", inline: "x".repeat(30 * 1024) }],
+    } as typeof ir;
+    const output = adapter.compile({ personaId, ir: big, texts, detection });
+    expect(
+      output.report.entries.some((e) => e.path.startsWith("instructions")),
+    ).toBe(true);
+    const fields = adapter.capabilities(detection).fields as Record<
+      string,
+      { support: string; caveat?: string } | undefined
+    >;
+    const fieldOf = (path: string) =>
+      path.startsWith("mcp.servers.")
+        ? "mcp.servers"
+        : path.startsWith("targets.")
+          ? `targets.${adapter.id}`
+          : path.split("[")[0]!;
+    for (const entry of output.report.entries) {
+      const field = fields[fieldOf(entry.path)];
+      if (field?.support === "native") {
+        expect(field.caveat, entry.path).toBeDefined();
+      }
+    }
   });
 });

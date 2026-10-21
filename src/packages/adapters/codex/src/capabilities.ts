@@ -21,7 +21,7 @@ export function capabilities(): CapabilityMatrix {
       "mcp.servers": {
         ...native,
         caveat:
-          "servers whose secret cannot be forwarded by name are dropped; see the report",
+          "gateway refs, URL-server headers, and servers whose secret cannot be forwarded by name are dropped; see the report",
       },
       secrets: native,
       knowledge: {

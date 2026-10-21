@@ -27,7 +27,10 @@ export function capabilities(detection?: Detection): CapabilityMatrix {
   return {
     fields: {
       instructions: native,
-      skills: plugin,
+      skills:
+        plugin === native
+          ? { ...native, caveat: "registry skills (:// sources) are dropped" }
+          : plugin,
       "mcp.servers":
         mcp === native
           ? {
@@ -44,7 +47,10 @@ export function capabilities(detection?: Detection): CapabilityMatrix {
         support: "advisory",
         note: "rendered as text in the system prompt",
       },
-      "targets.claude-code": native,
+      "targets.claude-code": {
+        ...native,
+        caveat: "secret refs and permission lists in targets are dropped",
+      },
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, plugin]),
       ),
