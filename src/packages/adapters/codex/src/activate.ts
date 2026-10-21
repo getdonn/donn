@@ -29,7 +29,9 @@ export function activate(input: ActivateInput): ActivationPlan {
   for (const [server, tool] of spec.approvals) {
     args.push(
       "-c",
-      `mcp_servers.${tomlKey(server)}.tools.${tomlKey(tool)}.approval_mode="approve"`,
+      tool === "*"
+        ? `mcp_servers.${tomlKey(server)}.default_tools_approval_mode="approve"`
+        : `mcp_servers.${tomlKey(server)}.tools.${tomlKey(tool)}.approval_mode="approve"`,
     );
   }
   if (spec.model) args.push("-m", spec.model);

@@ -132,6 +132,68 @@ describe("the Codex launch", () => {
     );
   });
 
+  it("approves a whole server for a wildcard rule, and only bare tool names one by one", () => {
+    const { ir } = entry("minimal");
+    const allow = ["mcp__zz__*", "mcp__zz__ns.tool", "mcp__zz__ok"];
+    const { step, output } = build("minimal", {
+      ir: {
+        ...ir,
+        mcp: { servers: { zz: { command: "node" } } },
+        permissions: { allow, deny: [], ask: [] },
+      },
+    });
+    const args = overrides(step.args);
+    expect(args).toContain(
+      'mcp_servers.zz.default_tools_approval_mode="approve"',
+    );
+    expect(args).toContain('mcp_servers.zz.tools.ok.approval_mode="approve"');
+    expect(
+      args.filter((a) => a.startsWith("mcp_servers")).join(" "),
+    ).not.toContain("ns.tool");
+    expect(
+      outcome(output, "permissions.allow[mcp__zz__ns.tool]")?.outcome,
+    ).toBe("approximated");
+    expect(outcome(output, "permissions.allow[mcp__zz__*]")).toBeUndefined();
+  });
+
+  it("drops a URL server whose URL is a secret", () => {
+    const { ir } = entry("minimal");
+    const { step, output } = build("minimal", {
+      ir: {
+        ...ir,
+        mcp: { servers: { u: { url: "secret://env/MCP_URL" } } },
+      },
+    });
+    expect(step.args.join(" ")).not.toContain("secret://");
+    expect(outcome(output, "mcp.servers.u")).toMatchObject({
+      outcome: "dropped",
+      reason: "a secret URL cannot be forwarded by name",
+    });
+  });
+
+  it("drops a server whose secret would override a variable Codex or zzpersona uses", () => {
+    const { ir } = entry("minimal");
+    const { output } = build("minimal", {
+      ir: {
+        ...ir,
+        mcp: {
+          servers: {
+            a: { command: "a", env: { OPENAI_API_KEY: "secret://env/K" } },
+            b: { command: "b", env: { https_proxy: "secret://env/P" } },
+            c: { command: "c", env: { MY_TOKEN: "secret://env/T" } },
+          },
+        },
+      },
+    });
+    expect(outcome(output, "mcp.servers.a")).toMatchObject({
+      outcome: "dropped",
+      reason:
+        "OPENAI_API_KEY is a variable Codex or zzpersona reads itself; Codex forwards secrets by name, so it would override it",
+    });
+    expect(outcome(output, "mcp.servers.b")?.outcome).toBe("dropped");
+    expect(output.secretEnv).toEqual({ MY_TOKEN: "secret://env/T" });
+  });
+
   it("applies targets.codex and reports a looser setting", () => {
     const { ir } = entry("minimal");
     const { step, output } = build("minimal", {

@@ -32,6 +32,10 @@ const SANDBOXES = ["read-only", "workspace-write", "danger-full-access"];
 const APPROVALS = ["on-request", "never"];
 const LOOSER = "looser than zzpersona's default";
 
+// Secrets reach Codex's own environment under their names: these would change how it runs.
+const RESERVED =
+  /^(PATH|HOME|SHELL|USER|TMPDIR|NODE_OPTIONS|(HTTPS?|ALL|NO)_PROXY|(CODEX|OPENAI|ZZPERSONA|ZZP)_.*)$/i;
+
 const isSecret = (value: string) => value.startsWith("secret://");
 
 function instructions(
@@ -82,6 +86,10 @@ function servers(ir: ResolvedPersona, entries: ReportEntry[]) {
       continue;
     }
     if ("url" in server) {
+      if (isSecret(server.url)) {
+        drop(name, "a secret URL cannot be forwarded by name");
+        continue;
+      }
       if (Object.values(server.headers ?? {}).some(isSecret)) {
         drop(name, "secret headers on URL servers are not passed to Codex yet");
         continue;
@@ -107,6 +115,14 @@ function servers(ir: ResolvedPersona, entries: ReportEntry[]) {
     const clash = secretVars.find(
       (v) => secretEnv[v] !== undefined && secretEnv[v] !== env[v],
     );
+    const reserved = secretVars.find((v) => RESERVED.test(v));
+    if (reserved) {
+      drop(
+        name,
+        `${reserved} is a variable Codex or zzpersona reads itself; Codex forwards secrets by name, so it would override it`,
+      );
+      continue;
+    }
     if (clash) {
       drop(
         name,
@@ -141,11 +157,12 @@ export function compile(
   const entries: ReportEntry[] = [];
   const { specs, secretEnv } = servers(ir, entries);
 
-  // MCP tool allow rules are exact: per-tool approval on a server that is launched.
+  // MCP tool allow rules are exact: per-tool approval on a server that is launched, or the
+  // whole server for `*`. Codex splits `-c` keys on dots, so other tool names stay guidance.
   const approvals: LaunchSpec["approvals"] = [];
   const exact = new Set<string>();
   for (const rule of ir.permissions.allow) {
-    const match = /^mcp__(.+?)__(.+)$/.exec(rule);
+    const match = /^mcp__(.+?)__([A-Za-z0-9_-]+|\*)$/.exec(rule);
     if (match && specs[match[1]!] && !("url" in specs[match[1]!]!)) {
       approvals.push([match[1]!, match[2]!]);
       exact.add(`permissions.allow[${rule}]`);

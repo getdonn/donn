@@ -17,9 +17,17 @@ export function tomlString(value: string): string {
   return `${out}"`;
 }
 
+const BARE = /^[A-Za-z0-9_-]+$/;
+
+/** A key in a `-c` path. Codex splits those on every dot, quotes or not, so only bare keys work. */
 export function tomlKey(key: string): string {
-  return /^[A-Za-z0-9_-]+$/.test(key) ? key : tomlString(key);
+  if (!BARE.test(key))
+    throw new Error(`${JSON.stringify(key)} is not a bare key`);
+  return key;
 }
+
+/** A key inside a value, which Codex does parse as TOML. */
+const tableKey = (key: string) => (BARE.test(key) ? key : tomlString(key));
 
 export type TomlInput = string | string[] | { [key: string]: TomlInput };
 
@@ -29,5 +37,5 @@ export function tomlValue(value: TomlInput): string {
   const keys = Object.keys(value).sort();
   return keys.length === 0
     ? "{}"
-    : `{ ${keys.map((k) => `${tomlKey(k)} = ${tomlValue(value[k]!)}`).join(", ")} }`;
+    : `{ ${keys.map((k) => `${tableKey(k)} = ${tomlValue(value[k]!)}`).join(", ")} }`;
 }

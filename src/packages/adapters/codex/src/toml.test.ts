@@ -8,11 +8,10 @@ describe("toml", () => {
     expect(parse(`v = ${tomlString(text)}`).v).toBe(text);
   });
 
-  it("quotes server names that are not bare keys", () => {
+  it("refuses keys that are not bare, since Codex splits -c keys on every dot", () => {
     expect(tomlKey("payments-schema")).toBe("payments-schema");
-    expect(tomlKey("my.server")).toBe('"my.server"');
-    expect(tomlKey("with space")).toBe('"with space"');
-    expect(parse(`${tomlKey("my.server")} = 1`)).toEqual({ "my.server": 1 });
+    expect(() => tomlKey("my.server")).toThrow(/not a bare key/);
+    expect(() => tomlKey("with space")).toThrow(/not a bare key/);
   });
 
   it("encodes arrays and inline tables with sorted keys", () => {
