@@ -17,7 +17,7 @@ instructions (6)
   org-conduct         file org/instructions/conduct.md              org/base
   org-security        inline "Never paste credentials, tokens or …  org/base
   fintech-compliance  inline "This area is PCI-DSS scoped. Treat …  area/fintech
-  checkout-overview   file project/instructions/checkout-overview…  project/checkout-api
+  checkout-overview   file project/instructions/checkout-overview…  project/checkout-api  replaces instructions[payments-overview] from team/payments
   coding-standards    inline "Use the shared error envelope. Neve…  team/payments
   checkout-context    inline "This repo is the checkout API. Run …  project/checkout-api
 
@@ -59,7 +59,7 @@ targets (2)
 removed (3)
   skills[frontend-storybook]       removed by team/payments         set by org/base
   mcp.servers.figma                removed by team/payments         set by org/base
-  instructions[payments-overview]  removed by project/checkout-api  set by team/payments
+  instructions[payments-overview]  removed by project/checkout-api  set by team/payments; replaced by instructions[checkout-overview]
 
 locks (3)
   permissions.deny                   org/base

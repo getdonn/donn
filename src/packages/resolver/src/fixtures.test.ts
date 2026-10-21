@@ -152,7 +152,7 @@ describe("resolver fixtures", () => {
       );
       if (exp.history !== undefined) {
         const change = (h: Doc) =>
-          `${h.path as string} ${h.layer as string} ${h.kind as string} ${h.from as string}`;
+          `${h.path as string} ${h.layer as string} ${h.kind as string} ${h.from as string} ${(h.replacedBy as string | undefined) ?? "-"}`;
         expect(result.history.map(change).sort()).toEqual(
           (exp.history as Doc[]).map(change).sort(),
         );

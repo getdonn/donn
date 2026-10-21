@@ -115,7 +115,17 @@ describe("explain", () => {
       /mcp\.servers\.figma\s+removed by team\/payments\s+set by org\/base/,
     );
     expect(removed).toMatch(
-      /instructions\[payments-overview\]\s+removed by project\/checkout-api\s+set by team\/payments/,
+      /instructions\[payments-overview\]\s+removed by project\/checkout-api\s+set by team\/payments; replaced by instructions\[checkout-overview\]/,
     );
+  });
+
+  it("notes which fragment a replace(<id>) under a new id swapped out", () => {
+    expect(
+      line(
+        "checkout-overview",
+        "project/checkout-api",
+        "replaces instructions[payments-overview] from team/payments",
+      ),
+    ).toBeDefined();
   });
 });

@@ -92,7 +92,11 @@ expect:
     - { path: "skills[pr-review]", layer: team/payments, kind: override, from: org/base }
     - { path: "skills[frontend-storybook]", layer: team/payments, kind: remove, from: org/base }
     - { path: mcp.servers.figma, layer: team/payments, kind: remove, from: org/base }
-    - { path: "instructions[payments-overview]", layer: project/checkout-api, kind: remove, from: team/payments }
+    - path: "instructions[payments-overview]"
+      layer: project/checkout-api
+      kind: remove
+      from: team/payments
+      replacedBy: "instructions[checkout-overview]"
     - { path: targets.claude-code.model, layer: user/overrides, kind: override, from: team/payments }
   warnings:
     - code: allow-shadowed-by-ask
