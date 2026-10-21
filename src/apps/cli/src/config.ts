@@ -10,12 +10,16 @@ import { CliError } from "./errors.js";
 const Config = z.strictObject({ personas: z.string().min(1).optional() });
 export type Config = z.infer<typeof Config>;
 
-/** ~ means the user's home directory; a relative path is relative to <home>. */
-function expand(path: string, home: string, env: NodeJS.ProcessEnv): string {
+/** ~ means the user's home directory; a relative path is relative to `base`. */
+export function expandPath(
+  path: string,
+  base: string,
+  env: NodeJS.ProcessEnv,
+): string {
   if (path === "~" || path.startsWith("~/")) {
     return join(env.HOME ?? homedir(), path.slice(1));
   }
-  return resolve(home, path);
+  return resolve(base, path);
 }
 
 export async function loadConfig(
@@ -56,5 +60,5 @@ export async function loadConfig(
   const { personas } = parsed.data;
   return personas === undefined
     ? {}
-    : { personas: expand(personas, home, env) };
+    : { personas: expandPath(personas, home, env) };
 }
