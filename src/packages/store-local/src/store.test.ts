@@ -173,3 +173,14 @@ describe("findProject", () => {
     expect(findProject(root)).toBeUndefined();
   });
 });
+
+describe("review fixes", () => {
+  it("list() names a configured personas folder that does not exist (I3)", async () => {
+    const m = mounts();
+    const error = await createLocalStore(m)
+      .list()
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(StoreError);
+    expect((error as Error).message).toContain(m.personas);
+  });
+});

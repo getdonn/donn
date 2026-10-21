@@ -85,6 +85,16 @@ export function createLocalStore(mounts: Mounts): LocalStore {
     return undefined;
   };
 
+  /** A configured personas folder must exist; a typo'd path must not look like "no personas". */
+  const assertPersonasFolder = () => {
+    if (mounts.personas !== undefined && !existsSync(mounts.personas)) {
+      throw storeError(
+        `the configured personas folder ${mounts.personas} does not exist`,
+        { configKey: "personas", file: mounts.personas },
+      );
+    }
+  };
+
   /** org/area/team need a configured personas folder that exists. */
   const requirePersonas = (ref: string) => {
     if (!SHARED_LAYERS.includes(ref.split("/")[0] ?? "")) return;
@@ -94,12 +104,7 @@ export function createLocalStore(mounts: Mounts): LocalStore {
         { configKey: "personas" },
       );
     }
-    if (!existsSync(mounts.personas)) {
-      throw storeError(
-        `the configured personas folder ${mounts.personas} does not exist`,
-        { configKey: "personas", file: mounts.personas },
-      );
-    }
+    assertPersonasFolder();
   };
 
   return {
@@ -146,6 +151,7 @@ export function createLocalStore(mounts: Mounts): LocalStore {
     },
 
     async list() {
+      assertPersonasFolder();
       const refs: string[] = [];
       if (mounts.personas !== undefined) {
         for (const layer of SHARED_LAYERS) {
