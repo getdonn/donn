@@ -9,7 +9,8 @@
     "check-types": "turbo run check-types",
     "format": "prettier --write .",
     "changeset": "changeset",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "zzpersona": "node src/apps/cli/dist/bin.js"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
