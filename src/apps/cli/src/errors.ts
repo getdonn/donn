@@ -70,6 +70,15 @@ function describe(error: unknown): {
   throw error;
 }
 
+/** One line of text for any error: the user-facing message, or the raw message for a bug. */
+export function errorText(error: unknown): string {
+  try {
+    return describe(error).text;
+  } catch {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 /** Print an error the user can act on; returns the exit code. */
 export function report(io: CliIo, json: boolean, error: unknown): number {
   const { text, json: envelope } = describe(error);

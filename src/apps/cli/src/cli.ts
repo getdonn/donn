@@ -3,6 +3,7 @@ import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
+import { doctorCommand } from "./commands/doctor.js";
 import { initCommand } from "./commands/init.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
@@ -163,6 +164,24 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { created, updated } as JSON")
         .action((options) =>
           handle(options.json, () => initCommand(io, options)),
+        );
+
+      program
+        .command("doctor")
+        .description(
+          "Check this machine and project, and explain what is wrong",
+        )
+        .argument(
+          "[persona]",
+          "check this persona instead of the one that would be used here",
+        )
+        .option(
+          "--fix",
+          "remove orphaned switches, stale locks and orphaned builds",
+        )
+        .option("--json", "print { checks } as JSON")
+        .action((persona: string | undefined, options) =>
+          handle(options.json, () => doctorCommand(io, persona, options)),
         );
 
       try {

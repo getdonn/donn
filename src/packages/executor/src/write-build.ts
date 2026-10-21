@@ -17,6 +17,7 @@ import { basename, dirname, join, sep } from "node:path";
 import type { CompileOutput } from "@zzpersona/adapter-sdk";
 import type { LocalStore } from "@zzpersona/store-local";
 import { ExecutorError } from "./errors.js";
+import { isAlive } from "./process.js";
 
 // Writes a compile output as a new version directory, then atomically repoints the build
 // directory (a symlink) at it, so the build directory is never missing or half-written, even
@@ -92,15 +93,6 @@ async function writeFiles(
     }
   }
 }
-
-const isAlive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return errnoOf(error) === "EPERM";
-  }
-};
 
 /** A directory lock: mkdir is atomic. A lock whose owner process is gone is taken over. */
 async function withLock<T>(lock: string, body: () => Promise<T>): Promise<T> {
