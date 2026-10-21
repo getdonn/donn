@@ -343,3 +343,9 @@ review. Each overrides the section it names.
 - **§1 `Probe.run` never throws for a missing command:** it returns exit code `127`, so
   `detect` keeps its promise never to throw for "not installed". Defined while building the real
   probe in `@zzpersona/executor` (`docs/planning/06-cli-core-loop.md` §3).
+- **§2 and §3 (spec 13, 2026-10-21).** A matrix declares every field (`capabilityFields(id)`:
+  the fixed fields, each hook event, its own `targets`); a non-native field carries a `note`, and
+  a native one may carry a `caveat`. The conformance kit's `complete-matrix` check enforces both.
+  `requiredEntries` returns the report `reason`, taken from the note, so the matrix and the report
+  say the same thing. `zzpersona capabilities` renders the matrices; `docs/capabilities.md` is the
+  published form.
