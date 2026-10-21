@@ -15,8 +15,8 @@ export async function resolveCommand(
   options: ResolveOptions,
 ): Promise<number> {
   const ctx = await createContext(io);
-  const ref = await selectPersona(persona, ctx);
-  const result = await resolvePersona(ctx, ref, options.overlay);
+  const selection = await selectPersona(persona, ctx);
+  const result = await resolvePersona(ctx, selection, options.overlay);
   printWarnings(io, result);
   if (options.json) {
     io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -25,7 +25,7 @@ export async function resolveCommand(
   } else {
     io.stdout.write(
       [
-        `${result.ir.metadata.name} (${ref})`,
+        `${result.ir.metadata.name} (${selection.ref})`,
         `layers: ${result.ir.layers.join(" → ")}`,
         `warnings: ${result.warnings.length}`,
         "",

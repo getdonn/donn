@@ -112,14 +112,19 @@ describe("zzpersona resolve", () => {
   });
 
   it("reports resolver errors as a JSON envelope", async () => {
-    const r = await zz(["resolve", "team/nope", "--json"], {
+    writeFileSync(
+      join(s.personas, "team/broken.yaml"),
+      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: broken\nextends: [org/nope]\n",
+    );
+    const r = await zz(["resolve", "team/broken", "--json"], {
       cwd: s.repo,
       home: s.home,
     });
     expect(r.code).toBe(1);
     expect(JSON.parse(r.stdout).error).toMatchObject({
       code: "missing-ref",
-      ref: "team/nope",
+      ref: "org/nope",
+      from: "team/broken",
     });
   });
 });

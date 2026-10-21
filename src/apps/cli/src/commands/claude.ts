@@ -36,9 +36,9 @@ export async function claudeCommand(
   passthrough: string[],
 ): Promise<number> {
   const ctx = await createContext(io);
-  const ref = await selectPersona(persona, ctx);
+  const selection = await selectPersona(persona, ctx);
   const build = await prepareBuild(ctx, io, {
-    persona: ref,
+    selection,
     harness: "claude-code",
     overlay: options.overlay,
     passthrough,

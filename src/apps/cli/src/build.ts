@@ -4,11 +4,12 @@ import type {
   Detection,
 } from "@zzpersona/adapter-sdk";
 import { buildDirFor } from "@zzpersona/executor";
-import type { Ref, ResolveResult } from "@zzpersona/spec";
+import type { ResolveResult } from "@zzpersona/spec";
 import type { CliIo } from "./cli.js";
 import { printWarnings, resolvePersona, type Context } from "./context.js";
 import { CliError } from "./errors.js";
 import { HARNESSES } from "./harness.js";
+import type { Selection } from "./select.js";
 
 export interface PreparedBuild {
   result: ResolveResult;
@@ -25,7 +26,7 @@ export async function prepareBuild(
   ctx: Context,
   io: CliIo,
   options: {
-    persona: Ref;
+    selection: Selection;
     harness: string;
     facts?: Detection["facts"];
     overlay: boolean;
@@ -40,7 +41,7 @@ export async function prepareBuild(
       { harness: options.harness, available: Object.keys(HARNESSES) },
     );
   }
-  const result = await resolvePersona(ctx, options.persona, options.overlay);
+  const result = await resolvePersona(ctx, options.selection, options.overlay);
   printWarnings(io, result);
   const detected = await adapter.detect(io.probe);
   const detection: Detection = {
@@ -53,13 +54,13 @@ export async function prepareBuild(
       texts[fragment.file] = await ctx.store.readText(fragment.file);
   }
   const output = adapter.compile({
-    personaId: options.persona,
+    personaId: options.selection.ref,
     ir: result.ir,
     detection,
     texts,
   });
   const buildDir = buildDirFor(
-    options.persona,
+    options.selection.ref,
     ctx.projectDir,
     adapter.id,
     ctx.home,

@@ -103,3 +103,18 @@ export async function zz(
   const code = await cli.run(argv);
   return { code, stdout, stderr };
 }
+
+/** A CliIo whose output is discarded, for calling CLI internals directly. */
+export function quietIo(options: {
+  cwd: string;
+  home: string;
+  env?: NodeJS.ProcessEnv;
+}) {
+  return {
+    env: { ZZPERSONA_HOME: options.home, ...options.env },
+    cwd: options.cwd,
+    stdout: { write: () => true },
+    stderr: { write: () => true },
+    probe: installedProbe,
+  };
+}
