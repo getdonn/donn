@@ -18,6 +18,7 @@
     "@zzpersona/adapter-claude-code": "workspace:*",
     "@zzpersona/adapter-sdk": "workspace:*",
     "@zzpersona/executor": "workspace:*",
+    "@zzpersona/mod-claude-code": "workspace:*",
     "@zzpersona/resolver": "workspace:*",
     "@zzpersona/secrets": "workspace:*",
     "@zzpersona/spec": "workspace:*",

@@ -11,6 +11,7 @@ import {
 import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
+import { bundledMod, installedModVersion } from "../commands/mod.js";
 import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
@@ -362,6 +363,22 @@ export async function runChecks(
         ...(fixes.length > 0 ? [fixes.join("; ")] : []),
       );
     }
+  }
+
+  // mod: the Claude Code mod this zzpersona ships, installed and current
+  const installed = await installedModVersion(home);
+  const shipped = bundledMod().version;
+  if (installed === undefined) {
+    add("mod", "warn", "the mod is not installed", "zzpersona mod install");
+  } else if (installed !== shipped) {
+    add(
+      "mod",
+      "warn",
+      `mod ${installed} does not match the mod this zzpersona ships (${shipped})`,
+      "zzpersona mod install",
+    );
+  } else {
+    add("mod", "ok", `zzpersona mod ${installed}`);
   }
 
   // secrets
