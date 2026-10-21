@@ -1,6 +1,7 @@
 import type { Probe } from "@zzpersona/adapter-sdk";
 import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
+import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
@@ -176,6 +177,19 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => compileCommand(io, persona, options)),
+        );
+
+      program
+        .command("capabilities")
+        .description(
+          "Show what each harness can carry: native, approximated, advisory or none",
+        )
+        .option("--harness <id>", "one harness, with every field and its note")
+        .option("--detect", "the matrix for this machine's install and mode")
+        .option("--markdown", "the published Markdown form")
+        .option("--json", "every field per harness as JSON")
+        .action((options) =>
+          handle(options.json, () => capabilitiesCommand(io, options)),
         );
 
       program
