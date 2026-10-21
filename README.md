@@ -72,9 +72,10 @@ zzpersona compile --harness codex   # see the build and the report without launc
 
 Carried over: instructions (as developer instructions, on top of Codex's own), knowledge pointers,
 MCP servers, with secrets resolved into the launch environment and forwarded by name, and
-MCP tool allow rules (`mcp__<server>__<tool>` runs without asking). Codex runs with
+MCP tool allow rules (`mcp__<server>__<tool>` runs without asking; `mcp__<server>__*` approves the whole server). Codex runs with
 `-s workspace-write -a on-request` unless the persona sets `targets.codex.sandbox`, `.approval`
-or `.model`. Other permission rules are guidance in the instructions, not enforced. Skills and
+or `.model` (set them there: Codex refuses `-s`, `-a` or `-m` a second time after `--`).
+Other permission rules are guidance in the instructions, not enforced. Skills and
 hooks do not carry over: Codex has no per-launch skill folder, and it does not run hooks it has
 not been told to trust. The report lists each one. (`codex exec` is non-interactive, so Codex
 runs it with approval `never`; the sandbox still applies.)

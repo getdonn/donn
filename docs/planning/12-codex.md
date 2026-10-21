@@ -126,3 +126,14 @@ names.
 - Verified (e2e, Codex 0.163.0): the instruction, the probe MCP tool's answer and the secret
   (by name) all reached Codex. `codex exec` runs with approval `never` whatever `-a` says (it is
   non-interactive); the sandbox still applies.
+- **§1 MCP servers (final review):** Codex splits `-c` keys on every dot, quoted or not, so only
+  bare keys go into `-c` paths: a tool allow rule whose tool name is not bare stays guidance
+  (`approximated`), and `mcp__<server>__*` becomes `default_tools_approval_mode="approve"`. A URL
+  server whose URL is a secret is dropped. Secrets reach Codex's own environment under their
+  names, so a server whose secret variable is one Codex or zzpersona reads (`PATH`, `HOME`,
+  proxies, `CODEX_*`, `OPENAI_*`, `ZZPERSONA_*`, …) is dropped.
+- **§2 passthrough:** Codex refuses `-s`, `-a` or `-m` twice, so they are set through
+  `targets.codex`, not after `--`.
+
+Open question 4 (from the final review): those secret variables also reach the shell commands
+Codex runs, unless its `shell_environment_policy` filters them; check before relying on it.
