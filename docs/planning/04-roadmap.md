@@ -63,6 +63,9 @@ Work:
 - `adapters/agents-md` (generic LCD — cheap, covers several tools, forces the honest-loss story).
 - One **real** second adapter with native MCP + permissions: Codex or Cursor, whichever the spike
   showed has the richer surface. Antigravity and Gemini CLI follow the same pattern afterward.
+  *Amended 2026-10-21: the agents-md spike points to **Codex**. It takes instructions, MCP
+  servers and approval policy per launch (relaunch, as for Claude Code); Copilot CLI is a close
+  third. Cursor was not probed.*
 - Fill the capability matrix from real adapters, not guesses; publish it in the docs — it is a
   marketing asset ("here is exactly what each tool can and cannot enforce").
 - `apps/daemon` (`hatrackd`): local API, cache, pre-build, watchers, harness detection, service

@@ -107,7 +107,8 @@ Until a name is picked:
 ## Consolidated open questions
 
 From `01`: name (Mantle / Guise / Dramatis / Roleset / Manyhats — all unverified; Hatrack taken);
-license; second compile target (lean `agents-md`).
+license; second compile target (lean `agents-md`; *2026-10-21 spike: `agents-md` as a repo-file
+target plus Codex as the real second adapter, since relaunch works for Codex and Copilot too*).
 From `02`: Claude Code switch mechanism (now mostly answered in `03` App. A, spikes remain);
 instruction token budget; skills registry (v0: git/local only); `extends` version pinning (lean:
 float locally, pin on publish); user layer cannot declare locks; provenance format; whether a lock
