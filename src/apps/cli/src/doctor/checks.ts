@@ -269,9 +269,7 @@ export async function runChecks(
       await resolveSecrets(
         build.secretRefs,
         build.result.ir.secrets.providers,
-        {
-          env: io.env,
-        },
+        { env: io.env, platform: io.probe.platform, run: io.probe.run },
       );
       add("secrets", "ok", `${build.secretRefs.length} secret(s) resolve`);
     } catch (error) {

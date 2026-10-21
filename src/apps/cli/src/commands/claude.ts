@@ -67,7 +67,7 @@ export async function claudeCommand(
   const values = await resolveSecrets(
     build.secretRefs,
     build.result.ir.secrets.providers,
-    { env: io.env },
+    { env: io.env, platform: io.probe.platform, run: io.probe.run },
   );
   const secretEnv = Object.fromEntries(
     Object.entries(build.output.secretEnv).map(([name, ref]) => [
