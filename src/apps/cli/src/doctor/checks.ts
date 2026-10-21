@@ -11,6 +11,8 @@ import {
 import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
+import { bundledMod, installedModVersion } from "../commands/mod.js";
+import { findOrphanSessions, removeSession } from "../session.js";
 import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
@@ -364,6 +366,22 @@ export async function runChecks(
     }
   }
 
+  // mod: the Claude Code mod this zzpersona ships, installed and current
+  const installed = await installedModVersion(home);
+  const shipped = bundledMod().version;
+  if (installed === undefined) {
+    add("mod", "warn", "the mod is not installed", "zzpersona mod install");
+  } else if (installed !== shipped) {
+    add(
+      "mod",
+      "warn",
+      `mod ${installed} does not match the mod this zzpersona ships (${shipped})`,
+      "zzpersona mod install",
+    );
+  } else {
+    add("mod", "ok", `zzpersona mod ${installed}`);
+  }
+
   // secrets
   if (build === undefined || ctx === undefined)
     skip("secrets", "no build to check");
@@ -408,19 +426,22 @@ export async function runChecks(
     );
   } else {
     const leftovers = await findBuildLeftovers(home);
+    const sessions = await findOrphanSessions(home, Date.now());
     const count =
       leftovers.staleLocks.length +
       leftovers.orphanVersions.length +
-      leftovers.tempLinks.length;
+      leftovers.tempLinks.length +
+      sessions.length;
     if (count === 0) add("build", "ok", buildRoot);
     else if (options.fix) {
       await removeBuildLeftovers(leftovers);
-      add("build", "ok", `removed ${count} leftover(s) in ${buildRoot}`);
+      for (const dir of sessions) await removeSession(dir);
+      add("build", "ok", `removed ${count} leftover(s) in ${home}`);
     } else {
       add(
         "build",
         "warn",
-        `${leftovers.staleLocks.length} stale lock(s), ${leftovers.orphanVersions.length} orphaned version(s), ${leftovers.tempLinks.length} temporary link(s)`,
+        `${leftovers.staleLocks.length} stale lock(s), ${leftovers.orphanVersions.length} orphaned version(s), ${leftovers.tempLinks.length} temporary link(s), ${sessions.length} orphaned session folder(s)`,
         `zzpersona doctor --fix (deleting ${buildRoot} entirely is also safe; builds are recreated on launch)`,
       );
     }

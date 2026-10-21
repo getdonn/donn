@@ -2,7 +2,7 @@ mode: relaunch-no-mcp
 files (7)
   plugin/.claude-plugin/plugin.json (0644)
     {
-      "name": "zzp-project-checkout-api",
+      "name": "zzp-project--checkout-api",
       "version": "0.0.0",
       "description": "Persona checkout-api"
     }
@@ -61,6 +61,8 @@ files (7)
     }
     
   system-prompt.md (0644)
+    ## zzpersona persona: project/checkout-api
+    
     Review code the way you would want yours reviewed.
     
     Never paste credentials, tokens or customer data into prompts.

@@ -5,6 +5,9 @@ import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { listCommand } from "./commands/list.js";
+import { liveCommand } from "./commands/live.js";
+import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
@@ -96,6 +99,48 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
         .action((persona: string, other: string | undefined, options) =>
           handle(options.json, () => diffCommand(io, persona, other, options)),
+        );
+
+      program
+        .command("list")
+        .description("List every available persona with its layer")
+        .option("--json", "print the personas as JSON")
+        .action((options) =>
+          handle(options.json, () => listCommand(io, options)),
+        );
+
+      const mod = program
+        .command("mod")
+        .description("Install or remove the zzpersona mod for Claude Code");
+      mod
+        .command("install")
+        .description("Register the mod with Claude Code (user scope)")
+        .option("--json", "print { installed, ran } as JSON")
+        .action((options) =>
+          handle(options.json, () => modInstall(io, options)),
+        );
+      mod
+        .command("uninstall")
+        .description("Unregister the mod and remove its folder")
+        .option("--json", "print { removed, ran } as JSON")
+        .action((options) =>
+          handle(options.json, () => modUninstall(io, options)),
+        );
+
+      program
+        .command("live")
+        .description(
+          "Switch a running zzpersona claude session's persona (skills, hooks, agents, instructions)",
+        )
+        .argument("[persona]", "the persona to switch to")
+        .requiredOption(
+          "--session <dir>",
+          "the session folder (ZZPERSONA_SESSION)",
+        )
+        .option("--show", "print the session's live state instead of switching")
+        .option("--json", "print the live state as JSON")
+        .action((persona: string | undefined, options) =>
+          handle(options.json, () => liveCommand(io, persona, options)),
         );
 
       program

@@ -3,11 +3,13 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { bundledMod } from "./commands/mod.js";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
 let s: Seeded;
@@ -29,6 +31,13 @@ function healthy() {
     ),
   );
   mkdirSync(join(s.personas, ".git"));
+  // The mod this CLI ships, as `zzpersona mod install` leaves it.
+  const manifest = join(s.home, "mod/plugin/.claude-plugin/plugin.json");
+  mkdirSync(join(manifest, ".."), { recursive: true });
+  writeFileSync(
+    manifest,
+    JSON.stringify({ name: "zzpersona", version: bundledMod().version }),
+  );
   return { "payments/schema-token": SECRET };
 }
 
@@ -62,6 +71,7 @@ const IDS = [
   "persona",
   "resolve",
   "claude",
+  "mod",
   "secrets",
   "build",
 ];
@@ -97,6 +107,7 @@ describe("zzpersona doctor", () => {
       persona: "warn",
       resolve: "skipped",
       claude: "ok",
+      mod: "warn",
       secrets: "skipped",
       build: "ok",
     });
@@ -351,5 +362,20 @@ describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
     expect(checks.find((c) => c.id === "secrets")!.fix).toContain(
       "security add-generic-password -s 'My App' -a '$(touch pwned)' -w",
     );
+  });
+
+  it("removes orphaned session folders with --fix", async () => {
+    const env = healthy();
+    const orphan = join(s.home, "sessions/0123456789abcdef");
+    mkdirSync(orphan, { recursive: true });
+    writeFileSync(
+      join(orphan, "launched.json"),
+      JSON.stringify({ persona: "x", source: "argument", pid: 999999 }),
+    );
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    utimesSync(orphan, old, old);
+    expect((await doctor([], { env })).status.build).toBe("warn");
+    expect((await doctor(["--fix"], { env })).status.build).toBe("ok");
+    expect(existsSync(orphan)).toBe(false);
   });
 });

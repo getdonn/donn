@@ -7,7 +7,7 @@ files (4)
     
   plugin/.claude-plugin/plugin.json (0644)
     {
-      "name": "zzp-team-solo",
+      "name": "zzp-team--solo",
       "version": "0.0.0",
       "description": "Persona solo"
     }
@@ -24,6 +24,8 @@ files (4)
     }
     
   system-prompt.md (0644)
+    ## zzpersona persona: team/solo
+    
     Be concise.
     
 plan (1)

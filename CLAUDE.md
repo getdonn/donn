@@ -28,6 +28,8 @@ overrides them.
 6. `docs/planning/06-cli-core-loop.md` — store-local (mounts by layer), secrets, plan executor, and `zzpersona resolve|compile|claude`
 7. `docs/planning/07-cli-daily-use.md` — `switch` (+ `state.json`) and persona selection precedence, flags-only `init`, `doctor`, CLI hardening
 8. `docs/planning/08-cli-reach.md` — third-party adapter and secret provider plugins, the built-in OS `keychain` provider, `diff`, hardening
+9. `docs/planning/09-mod-claude-code.md` — the Claude Code mod: band with the active persona, folder-mismatch nudge, `/persona list|switch|clear`, `zzpersona mod install`
+10. `docs/planning/10-live-switching.md` — live in-session switching: session plugin folders, `zzpersona live`, `/persona use`, the superseding instructions section
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
@@ -52,7 +54,7 @@ its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec)
 path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
 built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-local`,
 `secrets`, `executor` and `zzpersona resolve|compile|claude` (opt-in `ZZP_E2E=1` runs the built
-binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too. Next: the Claude Code mod spec. Picking the name runs
+binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Picking the name runs
 in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)

@@ -120,7 +120,7 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: zzpersona claude", () => {
     });
     const dry = zzpersona(["claude", "--dry-run"]);
     expect(dry.status, dry.stderr).toBe(0);
-    expect(dry.stdout).toContain("zzp-team-e2e");
+    expect(dry.stdout).toContain("zzp-team--e2e");
   });
 
   it("launches claude with the persona", () => {
@@ -217,3 +217,47 @@ describe.skipIf(process.env.ZZP_E2E !== "1" || process.platform !== "darwin")(
     }, 180_000);
   },
 );
+
+// Opt-in: the built mod passes Claude Code's own checks, and `zzpersona mod install|uninstall`
+// work against the real `claude`, in a throwaway config folder so the user's is never touched.
+describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the Claude Code mod", () => {
+  let dir: string;
+  const MOD = join(PACKAGE, "../../packages/mod-claude-code/dist/mod");
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "zzp-mod-e2e-"));
+    execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("passes claude plugin validate", () => {
+    const run = spawnSync("claude", ["plugin", "validate", MOD], {
+      encoding: "utf8",
+    });
+    expect(run.stdout, run.stderr).toContain("Validation passed");
+  });
+
+  it("installs and uninstalls with the real claude", () => {
+    const env = {
+      ...process.env,
+      ZZPERSONA_HOME: join(dir, "home"),
+      CLAUDE_CONFIG_DIR: join(dir, "claude-config"),
+    };
+    const zzp = (args: string[]) =>
+      spawnSync(process.execPath, [BIN, ...args], {
+        cwd: dir,
+        env,
+        encoding: "utf8",
+        timeout: 120_000,
+      });
+    const installed = zzp(["mod", "install"]);
+    expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+    const list = spawnSync("claude", ["plugin", "list"], {
+      env,
+      encoding: "utf8",
+    });
+    expect(list.stdout).toContain("zzpersona@zzpersona");
+    const removed = zzp(["mod", "uninstall"]);
+    expect(removed.status, removed.stdout + removed.stderr).toBe(0);
+  }, 180_000);
+});

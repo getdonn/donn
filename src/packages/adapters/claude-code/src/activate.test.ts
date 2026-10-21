@@ -88,12 +88,19 @@ describe("activate", () => {
     });
   });
 
-  it("omits the prompt file and flag when there are no instructions or knowledge", () => {
+  it("passes the headed prompt file even with no instructions or knowledge", () => {
     const empty = { ...entry("minimal").ir, instructions: [] };
     const { launch, output } = build("minimal", "relaunch", { ir: empty });
-    expect(output.files).not.toHaveProperty("system-prompt.md");
+    expect(output.files).toHaveProperty("system-prompt.md");
     expect(launch).toMatchObject({
-      args: [...PLUGIN, ...MCP, "--strict-mcp-config", ...SETTINGS],
+      args: [
+        ...PLUGIN,
+        ...MCP,
+        "--strict-mcp-config",
+        ...SETTINGS,
+        "--append-system-prompt-file",
+        "/BUILD/system-prompt.md",
+      ],
     });
   });
 
@@ -163,8 +170,8 @@ describe("review fixes", () => {
     const prompt = launch.args.indexOf("explain this repo");
     expect(launch.args[prompt - 2]).not.toBe("--mcp-config");
     expect(launch.args.slice(-3)).toEqual([
-      "--settings",
-      "/BUILD/settings.json",
+      "--append-system-prompt-file",
+      "/BUILD/system-prompt.md",
       "explain this repo",
     ]);
   });

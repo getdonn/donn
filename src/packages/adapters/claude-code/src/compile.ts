@@ -37,13 +37,19 @@ const asJson = (value: unknown): FileEntry => ({
   content: `${JSON.stringify(value, null, 2)}\n`,
 });
 
+/** `/` becomes `--`: one-to-one, since a ref segment never contains `--`. */
 export const pluginName = (personaId: string) =>
-  `zzp-${personaId.replaceAll("/", "-")}`;
+  `zzp-${personaId.replaceAll("/", "--")}`;
 
+/**
+ * The instructions, headed by the persona so a live switch can name the text it supersedes
+ * (docs/planning/10-live-switching.md). Always written, even with no instructions.
+ */
 function systemPrompt(
+  personaId: string,
   ir: ResolvedPersona,
   texts: Record<string, string>,
-): string | undefined {
+): string {
   const parts = ir.instructions.map((fragment) => {
     if ("inline" in fragment) return fragment.inline.trimEnd();
     const text = texts[fragment.file];
@@ -59,7 +65,7 @@ function systemPrompt(
       `## Knowledge sources\n${ir.knowledge.map((k) => `- ${k.id}: ${k.source}`).join("\n")}`,
     );
   }
-  return parts.length === 0 ? undefined : `${parts.join("\n\n")}\n`;
+  return `${[`## zzpersona persona: ${personaId}`, ...parts].join("\n\n")}\n`;
 }
 
 /** Servers in Claude Code's .mcp.json shape, with secret refs swapped for env placeholders. */
@@ -288,8 +294,7 @@ export function compile(
   const entries: ReportEntry[] = [];
   const files: Record<string, FileEntry> = {};
 
-  const prompt = systemPrompt(ir, texts);
-  if (prompt !== undefined) files["system-prompt.md"] = { content: prompt };
+  files["system-prompt.md"] = { content: systemPrompt(personaId, ir, texts) };
   for (const k of ir.knowledge) {
     entries.push({
       path: `knowledge[${k.id}]`,
