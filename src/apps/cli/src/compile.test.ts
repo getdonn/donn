@@ -1,4 +1,10 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seed, zz, type Seeded } from "./test/seed.js";
@@ -70,5 +76,22 @@ describe("zzpersona compile", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain("project/instructions/checkout-overview.md");
     expect(errors[0]).toContain(file);
+  });
+});
+
+describe("review fixes", () => {
+  it("reports a skill path outside the personas root as one error, no stack trace (I1)", async () => {
+    const team = join(s.personas, "team/payments.yaml");
+    writeFileSync(
+      team,
+      readFileSync(team, "utf8").replace(
+        "- ./skills/run-payment-sim",
+        "- ./skills/run-payment-sim\n    - ../../../outside",
+      ),
+    );
+    const r = await zz(["compile"], { cwd: s.repo, home: s.home });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/^error: skill outside: .* is outside the personas root$/m);
+    expect(r.stderr).not.toContain("    at ");
   });
 });
