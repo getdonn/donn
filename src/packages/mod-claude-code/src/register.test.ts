@@ -20,6 +20,7 @@ function engine(
   const hooks = new Map<string, Hook>();
   const runs: (readonly string[])[] = [];
   const statuses: (string | undefined)[] = [];
+  const invalidated: string[] = [];
   const $ = {
     env: { get: async (name: string) => env[name] },
     session: { cwd },
@@ -31,7 +32,7 @@ function engine(
     },
     ui: {
       status: (text: string | undefined) => statuses.push(text),
-      invalidate: () => {},
+      invalidate: (event: string) => invalidated.push(event),
       resolve: () => ({ Box: "Box", Text: "Text" }),
     },
     command: { register: async () => undefined },
@@ -41,16 +42,16 @@ function engine(
       hooks.set(event, (hook ?? matcherOrHook) as Hook),
     options,
   );
-  const call = (event: string, e: unknown = {}) =>
+  const call = (event: string, e: unknown = {}, below: unknown = "BELOW") =>
     (
       hooks.get(event)! as (
         $: Mod$,
         e: unknown,
         next: (e: unknown) => Promise<unknown>,
       ) => Promise<unknown>
-    )($, e, async () => "BELOW");
+    )($, e, async () => below);
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-  return { call, settle, runs, statuses };
+  return { call, settle, runs, statuses, invalidated };
 }
 
 const json = (value: unknown): ProcessRunResult => ({
@@ -216,5 +217,174 @@ describe("register", () => {
       process.off("unhandledRejection", onUnhandled);
     }
     expect(unhandled).toEqual([]);
+  });
+});
+
+describe("live switching", () => {
+  const SESSION = "/home/.zzpersona/sessions/0123456789abcdef";
+  const state = (persona: string) => ({
+    persona,
+    previous: "team/payments",
+    launched: "team/payments",
+    instructions: `## zzpersona persona: ${persona}\n\nBe ${persona}.\n`,
+    held: ["mcp"],
+    stricter: false,
+    plugin: "x",
+    appliedAt: "2026-10-21T00:00:00.000Z",
+  });
+  const reply = (shown: unknown) => (argv: readonly string[]) => {
+    if (argv[1] === "live" && argv.includes("--show")) return json(shown);
+    if (argv[1] === "live") return json(state(argv[2]!));
+    if (argv[1] === "switch" && argv.length > 3)
+      return json({
+        scope: "project",
+        persona: argv[2],
+        project: "/r/.zzpersona",
+      });
+    return FOLDER;
+  };
+  const COMPOSED = {
+    sections: [
+      { id: "lean_body", scope: "shared", text: "body" },
+      { id: "env_info_simple", scope: "session", text: "env" },
+    ],
+  };
+  /** The text the engine would send for a section, after the mod's prompt.section hook. */
+  const sectionText = async (e: ReturnType<typeof engine>, name: string) =>
+    (
+      (await e.call("prompt.section", { name }, { text: "core" })) as {
+        text: string;
+      }
+    ).text;
+
+  it("applies /persona use live and appends to the session's last section", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    expect(await e.call("prompt.compose", {}, COMPOSED)).toBe(COMPOSED);
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
+    const out = (await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    })) as { text: string };
+    expect(e.runs).toContainEqual([
+      "zzpersona",
+      "live",
+      "team/platform",
+      "--session",
+      SESSION,
+      "--json",
+    ]);
+    expect(out.text).toContain("team/platform is now live in this session");
+    expect(e.invalidated).toContain("prompt.section");
+    const text = await sectionText(e, "env_info_simple");
+    expect(
+      text.startsWith(
+        "core\n\nThe persona for this session is now team/platform.",
+      ),
+    ).toBe(true);
+    expect(text).toContain("Be team/platform.");
+    expect(await sectionText(e, "memory")).toBe("core");
+  });
+
+  it("switching back to the launched persona drops the section", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await e.call("prompt.compose", {}, COMPOSED);
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    });
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/payments",
+    });
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
+    const tree = (await e.call("ui.render", {
+      component: "AbovePrompt",
+    })) as Tree;
+    expect(JSON.stringify(tree)).not.toContain("live");
+  });
+
+  it("saves and applies /persona switch", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    const out = (await e.call("command.run", {
+      command: "persona",
+      args: "switch team/platform",
+    })) as { text: string };
+    const after = e.runs.slice(-3).map((argv) => argv[1]);
+    expect(after).toEqual(["switch", "live", "switch"]);
+    expect(out.text.split("\n")[0]).toBe("team/platform is now used for /r.");
+    expect(out.text).toContain("is now live in this session");
+  });
+
+  it("explains /persona use without a session folder", async () => {
+    const e = engine(LAUNCHED, () => FOLDER);
+    await e.call("session.start");
+    await e.settle();
+    const out = (await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    })) as { text: string };
+    expect(out.text).toBe(
+      "live switching needs a session started by zzpersona claude",
+    );
+    expect(e.runs.filter((argv) => argv[1] === "live")).toEqual([]);
+  });
+
+  it("restores the live state after a reload", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply(state("team/platform")),
+    );
+    await e.call("session.start");
+    await e.settle();
+    expect(e.invalidated).toContain("prompt.section");
+    await e.call("prompt.compose", {}, COMPOSED);
+    expect(await sectionText(e, "env_info_simple")).toContain(
+      "Be team/platform.",
+    );
+  });
+
+  it("anchors on a section the engine passes through prompt.section", async () => {
+    // As Claude Code 2.1.306 does: sections go through prompt.section first, then compose,
+    // and the last session section (total_tokens) never goes through prompt.section.
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await sectionText(e, "env_info_simple");
+    await sectionText(e, "memory");
+    await e.call(
+      "prompt.compose",
+      {},
+      {
+        sections: [
+          { id: "env_info_simple", scope: "session", text: "env" },
+          { id: "memory", scope: "session", text: "mem" },
+          { id: "total_tokens", scope: "session", text: "tokens" },
+        ],
+      },
+    );
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    });
+    expect(await sectionText(e, "memory")).toContain("Be team/platform.");
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
   });
 });

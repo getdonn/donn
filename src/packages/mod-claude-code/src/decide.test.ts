@@ -3,10 +3,14 @@ import {
   bandText,
   commandText,
   launchedFrom,
+  liveSection,
+  liveText,
   nudgeText,
   personaCommand,
+  USAGE,
   type Here,
   type Launched,
+  type LiveState,
   type Source,
 } from "./decide.js";
 
@@ -119,8 +123,7 @@ describe("/persona arguments", () => {
       "switch --json",
     ]) {
       expect(personaCommand(bad)).toEqual({
-        usage:
-          "usage: /persona [list | switch <persona> [--default] | clear [--default]]",
+        usage: USAGE,
       });
     }
   });
@@ -226,5 +229,111 @@ describe("/persona output", () => {
         kind: "none",
       }),
     ).toBe("nothing to clear\nthis folder uses no persona");
+  });
+});
+
+describe("live switching", () => {
+  const live = (over: Partial<LiveState> = {}): LiveState => ({
+    persona: "team/platform",
+    previous: "team/payments",
+    launched: "team/payments",
+    instructions:
+      "## zzpersona persona: team/platform\n\nYou are running the platform persona.\n",
+    held: ["mcp", "permissions"],
+    stricter: false,
+    plugin: "zzp-team--platform",
+    appliedAt: "2026-10-21T00:00:00.000Z",
+    ...over,
+  });
+
+  it("adds a section that supersedes the launch instructions", () => {
+    expect(liveSection(live())).toEqual({
+      id: "zzpersona:live-persona",
+      scope: "session",
+      text: [
+        "The persona for this session is now team/platform. Disregard the section headed",
+        '"## zzpersona persona: team/payments"; the instructions below replace it.',
+        "",
+        "## zzpersona persona: team/platform",
+        "",
+        "You are running the platform persona.",
+      ].join("\n"),
+    });
+    expect(liveSection(live({ persona: "team/payments" }))).toBeUndefined();
+  });
+
+  it("explains a live switch", () => {
+    expect(liveText(live())).toBe(
+      [
+        "team/platform is now live in this session (skills, hooks, agents, instructions).",
+        "Still from team/payments until you relaunch: MCP servers, permissions.",
+        "To apply those too, exit and run: zzpersona claude team/platform",
+      ].join("\n"),
+    );
+    expect(liveText(live({ held: ["settings"] }))).toContain(
+      "Still from team/payments until you relaunch: Claude Code settings.",
+    );
+    expect(liveText(live({ held: ["mcp"] }))).toContain(
+      "Still from team/payments until you relaunch: MCP servers.",
+    );
+    expect(liveText(live({ held: [] }))).toBe(
+      "team/platform is now live in this session (skills, hooks, agents, instructions).",
+    );
+    expect(liveText(live({ held: ["permissions"], stricter: true }))).toContain(
+      "team/platform denies more than team/payments; those rules apply after a relaunch.",
+    );
+    expect(
+      liveText(live({ held: [] }), "team/platform is now used for /r."),
+    ).toBe(
+      "team/platform is now used for /r.\nteam/platform is now live in this session (skills, hooks, agents, instructions).",
+    );
+  });
+
+  it("shows the live persona and what is held in the band", () => {
+    const launched: Launched = { persona: "team/payments", source: "switch" };
+    const folder = here("team/platform", "switch");
+    expect(bandText(launched, folder, live())).toBe(
+      "persona team/platform · live · MCP and permissions from team/payments",
+    );
+    expect(bandText(launched, folder, live({ held: ["mcp"] }))).toBe(
+      "persona team/platform · live · MCP from team/payments",
+    );
+    expect(
+      bandText(
+        launched,
+        folder,
+        live({ held: ["mcp", "permissions", "settings"] }),
+      ),
+    ).toBe(
+      "persona team/platform · live · MCP, permissions and settings from team/payments",
+    );
+    expect(bandText(launched, folder, live({ held: ["settings"] }))).toBe(
+      "persona team/platform · live · settings from team/payments",
+    );
+    expect(bandText(launched, folder, live({ held: [] }))).toBe(
+      "persona team/platform · live",
+    );
+    expect(bandText(launched, folder, live({ persona: "team/payments" }))).toBe(
+      "persona team/payments · switch",
+    );
+  });
+
+  it("nudges against the live persona", () => {
+    const launched: Launched = { persona: "team/payments", source: "switch" };
+    expect(
+      nudgeText(launched, here("team/platform", "switch"), live()),
+    ).toBeUndefined();
+    expect(nudgeText(launched, here("team/other", "switch"), live())).toContain(
+      "this session runs team/platform",
+    );
+  });
+
+  it("parses /persona use", () => {
+    expect(personaCommand("use team/x")).toEqual({
+      form: "use",
+      argv: ["live", "team/x"],
+    });
+    expect(personaCommand("use")).toEqual({ usage: USAGE });
+    expect(personaCommand("use --default team/x")).toEqual({ usage: USAGE });
   });
 });

@@ -17,7 +17,23 @@ export type Here =
   | { kind: "none" }
   | { kind: "unavailable"; reason: string };
 
-export type Form = "show" | "list" | "switch" | "clear";
+export type Form = "show" | "list" | "switch" | "use" | "clear";
+
+/** What `zzpersona live` reports (docs/planning/10-live-switching.md §2). */
+export interface LiveState {
+  persona: string;
+  previous: string;
+  launched: string;
+  instructions: string;
+  held: ("mcp" | "permissions" | "settings")[];
+  stricter: boolean;
+  plugin: string;
+  appliedAt: string;
+}
+
+/** A live persona other than the launched one; switching back clears it. */
+const activeLive = (live: LiveState | undefined) =>
+  live !== undefined && live.persona !== live.launched ? live : undefined;
 
 const LAYER_ORDER: readonly string[] = [
   "org",
@@ -28,7 +44,7 @@ const LAYER_ORDER: readonly string[] = [
 ];
 
 export const USAGE =
-  "usage: /persona [list | switch <persona> [--default] | clear [--default]]";
+  "usage: /persona [list | switch <persona> [--default] | use <persona> | clear [--default]]";
 
 export function launchedFrom(
   persona: string | undefined,
@@ -47,10 +63,28 @@ export function launchedFrom(
 const folderSpecific = (here: Here): here is Here & { kind: "persona" } =>
   here.kind === "persona" && here.source !== "default";
 
+const HELD_BAND = {
+  mcp: "MCP",
+  permissions: "permissions",
+  settings: "settings",
+};
+
+/** "a", "a and b", "a, b and c". */
+const listing = (items: string[]) =>
+  items.length <= 1
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+
 export function bandText(
   launched: Launched | undefined,
   here: Here,
+  live?: LiveState,
 ): string | undefined {
+  const switched = activeLive(live);
+  if (switched) {
+    const held = listing(switched.held.map((h) => HELD_BAND[h]));
+    return `persona ${switched.persona} · live${held ? ` · ${held} from ${switched.launched}` : ""}`;
+  }
   if (launched) return `persona ${launched.persona} · ${launched.source}`;
   if (folderSpecific(here))
     return `persona none · this folder uses ${here.persona}`;
@@ -58,9 +92,14 @@ export function bandText(
 }
 
 export function nudgeText(
-  launched: Launched | undefined,
+  current: Launched | undefined,
   here: Here,
+  live?: LiveState,
 ): string | undefined {
+  // After a live switch the session runs the live persona.
+  const switched = activeLive(live);
+  const launched =
+    switched && current ? { ...current, persona: switched.persona } : current;
   if (here.kind === "unavailable")
     return `zzpersona unavailable: ${here.reason}`;
   if (!folderSpecific(here)) return undefined;
@@ -84,6 +123,13 @@ export function personaCommand(
   if (verb === "list" && rest.length === 0 && !isDefault)
     return { form: "list", argv: ["list"] };
   // A ref never starts with "-": `/persona switch --clear` must not reach the CLI as a flag.
+  if (
+    verb === "use" &&
+    rest.length === 1 &&
+    !isDefault &&
+    !rest[0]!.startsWith("-")
+  )
+    return { form: "use", argv: ["live", rest[0]!] };
   if (verb === "switch" && rest.length === 1 && !rest[0]!.startsWith("-"))
     return { form: "switch", argv: ["switch", rest[0]!, ...flag] };
   if (verb === "clear" && rest.length === 0)
@@ -166,4 +212,48 @@ export function commandText(
       ? "nothing to clear"
       : `cleared ${data.scope === "project" ? "this project's switch" : "your default"} (${String(data.persona)})`;
   return `${cleared}\n${folderLine(here, here.kind === "persona")}`;
+}
+
+/** The system prompt section a live switch adds; none once back on the launched persona. */
+export function liveSection(
+  live: LiveState,
+):
+  { id: "zzpersona:live-persona"; text: string; scope: "session" } | undefined {
+  if (!activeLive(live)) return undefined;
+  return {
+    id: "zzpersona:live-persona",
+    scope: "session",
+    text: [
+      `The persona for this session is now ${live.persona}. Disregard the section headed`,
+      `"## zzpersona persona: ${live.launched}"; the instructions below replace it.`,
+      "",
+      live.instructions.trimEnd(),
+    ].join("\n"),
+  };
+}
+
+const HELD_TEXT = {
+  mcp: "MCP servers",
+  permissions: "permissions",
+  settings: "Claude Code settings",
+};
+
+/** What `/persona use` and `/persona switch` print after a live switch. */
+export function liveText(live: LiveState, saved?: string): string {
+  return [
+    ...(saved ? [saved] : []),
+    `${live.persona} is now live in this session (skills, hooks, agents, instructions).`,
+    ...(live.held.length > 0
+      ? [
+          `Still from ${live.launched} until you relaunch: ${live.held.map((h) => HELD_TEXT[h]).join(", ")}.`,
+          // Named: `/persona use` saves nothing, so a bare relaunch could start another persona.
+          `To apply those too, exit and run: zzpersona claude ${live.persona}`,
+        ]
+      : []),
+    ...(live.stricter
+      ? [
+          `${live.persona} denies more than ${live.launched}; those rules apply after a relaunch.`,
+        ]
+      : []),
+  ].join("\n");
 }
