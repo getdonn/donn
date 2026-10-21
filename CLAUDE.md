@@ -32,6 +32,7 @@ overrides them.
 10. `docs/planning/10-live-switching.md` — live in-session switching: session plugin folders, `zzpersona live`, `/persona use`, the superseding instructions section
 11. `docs/planning/11-agents-md.md` — Phase 2 starts: the `agents-md` adapter, a committed `AGENTS.md` block from the project persona, `zzpersona write [--check]`
 12. `docs/planning/12-codex.md` — the Codex adapter (relaunch model: `-c developer_instructions`, MCP with `env_vars`, sandbox defaults) and `zzpersona codex`
+13. `docs/planning/13-capability-matrix.md` — every adapter declares every field with reasons; `zzpersona capabilities` and the generated `docs/capabilities.md`
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
