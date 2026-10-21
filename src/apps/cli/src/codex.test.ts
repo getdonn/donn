@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ActivationPlan, Probe } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,6 +65,36 @@ describe("zzpersona codex", () => {
     expect(step.args.join(" ")).not.toContain("tok-value");
     expect(step.args.join(" ")).toContain('env_vars = ["SCHEMA_TOKEN"]');
     expect(step.env.ZZPERSONA_PERSONA).toBe("project/persona");
+  });
+
+  it("registers a session while codex runs and removes it after", async () => {
+    useEnvVault();
+    const dir = join(s.home, "sessions");
+    let during: { name: string; launched: Record<string, unknown> }[] = [];
+    const r = await zz(["codex"], {
+      cwd: s.repo,
+      home: s.home,
+      env: SECRET_ENV,
+      runPlan: async () => {
+        during = readdirSync(dir).map((name) => ({
+          name,
+          launched: JSON.parse(
+            readFileSync(join(dir, name, "launched.json"), "utf8"),
+          ),
+        }));
+        return 0;
+      },
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(during).toHaveLength(1);
+    expect(during[0]!.launched).toMatchObject({
+      persona: "project/persona",
+      harness: "codex",
+      project: s.repo,
+      pid: process.pid,
+      buildHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(existsSync(join(dir, during[0]!.name))).toBe(false);
   });
 
   it("passes passthrough arguments last", async () => {

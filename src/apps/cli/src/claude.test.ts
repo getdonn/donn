@@ -284,6 +284,10 @@ describe("zzpersona claude", () => {
       persona: "project/persona",
       source: "project",
       overlay: false,
+      harness: "claude-code",
+      project: s.repo,
+      startedAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+      buildHash: expect.stringMatching(/^[0-9a-f]{64}$/),
       snapshot: {
         mcp: { servers: { "payments-schema": expect.any(Object) } },
         permissions: { deny: expect.arrayContaining(["Bash(rm -rf:*)"]) },
