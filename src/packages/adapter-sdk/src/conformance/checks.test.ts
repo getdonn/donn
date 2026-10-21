@@ -212,3 +212,29 @@ describe("overlay blocks", () => {
     ).toEqual(["well-formed-output"]);
   });
 });
+
+describe("adapters for a file format (noBinary)", () => {
+  const fileFormat: HarnessAdapter = {
+    ...good,
+    detect: async () => ({ installed: true, version: "n/a", facts: {} }),
+  };
+  const ran: string[] = [];
+  const probing: HarnessAdapter = {
+    ...good,
+    detect: async (probe) => {
+      await probe.run("toy", []);
+      ran.push("toy");
+      return { installed: true, version: "n/a", facts: {} };
+    },
+  };
+  const failed = async (adapter: HarnessAdapter, noBinary?: boolean) =>
+    (await runConformance(adapter, noBinary ? { noBinary } : {}))
+      .filter((r) => !r.passed)
+      .map((r) => r.name);
+
+  it("expects installed without running anything", async () => {
+    expect(await failed(fileFormat)).toEqual(["detect-not-installed"]);
+    expect(await failed(fileFormat, true)).toEqual([]);
+    expect(await failed(probing, true)).toEqual(["detect-not-installed"]);
+  });
+});

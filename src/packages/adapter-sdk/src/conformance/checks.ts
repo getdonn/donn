@@ -49,6 +49,11 @@ export interface CheckResult {
 export interface ConformanceOptions {
   /** The detection compile and activate receive. Defaults to an installed harness, no facts. */
   detection?: Detection;
+  /**
+   * The adapter targets a file format, not a program (agents-md): detect must report installed
+   * without running anything, instead of reporting a missing program as not installed.
+   */
+  noBinary?: boolean;
 }
 
 const DEFAULT_DETECTION: Detection = {
@@ -301,14 +306,30 @@ export async function runConformance(
 
   let detected: Detection | undefined;
   let detectError: unknown;
+  let probed = false;
+  const watched: Probe = {
+    ...notInstalled,
+    run: (command, args) => {
+      probed = true;
+      return notInstalled.run(command, args);
+    },
+  };
   try {
-    detected = await adapter.detect(notInstalled);
+    detected = await adapter.detect(watched);
   } catch (error) {
     detectError = error;
   }
   results.push(
     outcome("detect-not-installed", () => {
       if (detectError) return [`threw: ${(detectError as Error).message}`];
+      if (options.noBinary) {
+        return [
+          ...(detected?.installed === true
+            ? []
+            : ["did not report installed: true"]),
+          ...(probed ? ["ran a command, but declares no binary"] : []),
+        ];
+      }
       return detected?.installed === false
         ? []
         : ["did not report installed: false"];
