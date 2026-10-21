@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { projectKey, readState } from "./state.js";
@@ -87,5 +87,51 @@ describe("zzpersona switch", () => {
       source: "switch",
       project: key,
     });
+  });
+});
+
+describe("switch edge cases (spec 08)", () => {
+  it("refuses the project persona as the default", async () => {
+    const r = await zz(["switch", "--default", "project/persona", "--json"], {
+      cwd: s.repo,
+      home: s.home,
+    });
+    expect(r.code).toBe(1);
+    expect(json(r.stdout).error).toMatchObject({ code: "invalid-default" });
+  });
+
+  it("shows the default with --default, even inside a switched project", async () => {
+    const at = { cwd: s.repo, home: s.home };
+    await zz(["switch", "--default", "team/payments"], at);
+    await zz(["switch", "org/base"], at);
+    const r = await zz(["switch", "--default", "--json"], at);
+    expect(json(r.stdout)).toMatchObject({
+      persona: "team/payments",
+      source: "default",
+    });
+  });
+
+  it("refuses a persona together with --clear", async () => {
+    const r = await zz(["switch", "--clear", "team/payments", "--json"], {
+      cwd: s.repo,
+      home: s.home,
+    });
+    expect(r.code).toBe(1);
+    expect(json(r.stdout).error).toMatchObject({ code: "usage" });
+  });
+
+  it("reports a home it cannot write as a filesystem error", async () => {
+    mkdirSync(s.home, { recursive: true });
+    chmodSync(s.home, 0o500);
+    try {
+      const r = await zz(["switch", "team/payments", "--json"], {
+        cwd: s.root,
+        home: s.home,
+      });
+      expect(r.code).toBe(1);
+      expect(json(r.stdout).error).toMatchObject({ code: "filesystem" });
+    } finally {
+      chmodSync(s.home, 0o700);
+    }
   });
 });

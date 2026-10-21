@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -177,5 +183,79 @@ describe("doctor text output", () => {
     expect(r.stdout).toMatch(/^skipped personas  /m);
     expect(r.stdout).toMatch(/^ok      home      /m);
     expect(r.stdout).toMatch(/^ {8}fix: /m);
+  });
+});
+
+describe("zzpersona doctor (spec 08 hardening)", () => {
+  it("keeps a switch whose repo still exists, removing only gone repos", async () => {
+    const env = healthy();
+    mkdirSync(join(s.root, "branch-without-zzp"));
+    const kept = join(s.root, "branch-without-zzp/.zzpersona");
+    const gone = join(s.root, "gone/.zzpersona");
+    writeFileSync(
+      join(s.home, "state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: { [kept]: "team/payments", [gone]: "team/payments" },
+      }),
+    );
+    const fixed = await doctor(["--fix"], { env });
+    expect(fixed.status.state).toBe("warn");
+    expect(
+      JSON.parse(readFileSync(join(s.home, "state.json"), "utf8")).projects,
+    ).toEqual({ [kept]: "team/payments" });
+  });
+
+  it("keeps a switch on an unmounted volume", async () => {
+    const env = healthy();
+    const unmounted = join(s.root, "Volumes/Ext/repo/.zzpersona");
+    writeFileSync(
+      join(s.home, "state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: { [unmounted]: "team/payments" },
+      }),
+    );
+    const fixed = await doctor(["--fix"], { env });
+    expect(fixed.status.state).toBe("warn");
+    expect(
+      JSON.parse(readFileSync(join(s.home, "state.json"), "utf8")).projects,
+    ).toEqual({ [unmounted]: "team/payments" });
+  });
+
+  it("checks the fallback home when ZZPERSONA_HOME is empty", async () => {
+    const fakeHome = join(s.root, "fake-user");
+    mkdirSync(join(fakeHome, ".zzpersona"), { recursive: true });
+    chmodSync(join(fakeHome, ".zzpersona"), 0o500);
+    try {
+      const { checks } = await doctor([], {
+        env: { ZZPERSONA_HOME: "", HOME: fakeHome },
+      });
+      expect(checks.find((c) => c.id === "home")).toMatchObject({
+        status: "error",
+      });
+    } finally {
+      chmodSync(join(fakeHome, ".zzpersona"), 0o700);
+    }
+  });
+
+  it("reports an old claude and a degraded mode together", async () => {
+    const probe: Probe = {
+      ...installedProbe,
+      run: async () => ({
+        exitCode: 0,
+        stdout: "2.1.0 (Claude Code)\n",
+        stderr: "",
+      }),
+      readFile: async (path) =>
+        path.endsWith("managed-settings.json")
+          ? '{"disableSideloadFlags": true}'
+          : undefined,
+    };
+    const { checks } = await doctor([], { probe });
+    const claude = checks.find((c) => c.id === "claude")!;
+    expect(claude.status).toBe("warn");
+    expect(claude.message).toContain("2.1.0");
+    expect(claude.message).toContain("partial mode");
   });
 });

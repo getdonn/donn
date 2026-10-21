@@ -13,7 +13,7 @@ import { CliError, errorText } from "../errors.js";
 import { HARNESSES } from "../harness.js";
 import { backendLoader } from "../plugins.js";
 import { selectPersona, type Selection } from "../select.js";
-import { readState, writeState, type State } from "../state.js";
+import { readState, updateState, type State } from "../state.js";
 
 // zzpersona doctor: one line per check, in a fixed order; a check whose prerequisite failed is
 // `skipped`. Never creates anything except under --fix. See docs/planning/07-cli-daily-use.md, §3.
@@ -64,22 +64,22 @@ export async function runChecks(
   const home = homeOf(io);
 
   // home
-  if (io.env.ZZPERSONA_HOME === "") {
-    add(
-      "home",
-      "warn",
-      `ZZPERSONA_HOME is set but empty; using ${home}`,
-      "unset ZZPERSONA_HOME",
-    );
-  } else if (await writable(home)) {
-    add("home", "ok", home);
-  } else {
+  if (!(await writable(home))) {
     add(
       "home",
       "error",
       `${home} is not writable`,
       `fix the permissions on ${home}`,
     );
+  } else if (io.env.ZZPERSONA_HOME === "") {
+    add(
+      "home",
+      "warn",
+      `ZZPERSONA_HOME is set but empty; using ${home}`,
+      "unset ZZPERSONA_HOME",
+    );
+  } else {
+    add("home", "ok", home);
   }
 
   // config
@@ -144,8 +144,14 @@ export async function runChecks(
   let state: State | undefined;
   try {
     state = await readState(home);
+    // Missing persona.yaml is a warning. Forget an entry only when its repo folder is gone but
+    // the folder that held it is still there: another branch or an unmounted volume (whose
+    // whole path disappears) may bring the project back.
     const orphans = Object.keys(state.projects).filter(
       (key) => !existsSync(join(key, "persona.yaml")),
+    );
+    const removable = orphans.filter(
+      (key) => !existsSync(dirname(key)) && existsSync(dirname(dirname(key))),
     );
     if (orphans.length === 0) {
       add(
@@ -153,21 +159,35 @@ export async function runChecks(
         "ok",
         `${Object.keys(state.projects).length} project switch(es)`,
       );
-    } else if (options.fix) {
-      for (const key of orphans) delete state.projects[key];
-      await writeState(home, state);
-      add(
-        "state",
-        "ok",
-        `removed ${orphans.length} switch(es) for projects that no longer exist`,
-      );
     } else {
-      add(
-        "state",
-        "warn",
-        `${orphans.length} switch(es) for projects that no longer exist: ${orphans.join(", ")}`,
-        "zzpersona doctor --fix",
-      );
+      let kept = orphans;
+      if (options.fix && removable.length > 0) {
+        await updateState(home, (fresh) => {
+          for (const key of removable) delete fresh.projects[key];
+        });
+        kept = orphans.filter((key) => !removable.includes(key));
+      }
+      const removed = orphans.length - kept.length;
+      const note =
+        removed > 0
+          ? `removed ${removed} switch(es) for repos that no longer exist`
+          : undefined;
+      if (kept.length === 0) {
+        add("state", "ok", note!);
+      } else {
+        const gone = kept.filter((key) => removable.includes(key));
+        add(
+          "state",
+          "warn",
+          [
+            ...(note ? [note] : []),
+            `${kept.length} switch(es) for projects without a persona.yaml: ${kept.join(", ")}`,
+          ].join("; "),
+          gone.length > 0
+            ? "zzpersona doctor --fix"
+            : `kept because the project may come back (its repo exists on another branch, or its volume is not mounted); delete the entry from ${join(home, "state.json")} if it is no longer needed`,
+        );
+      }
     }
   } catch (error) {
     add(
@@ -235,30 +255,35 @@ export async function runChecks(
       "claude is not installed (or not on PATH)",
       "install Claude Code",
     );
-  } else if (
-    detection.version &&
-    olderThan(detection.version, VERIFIED_CLAUDE)
-  ) {
-    add(
-      "claude",
-      "warn",
-      `claude ${detection.version} is older than ${VERIFIED_CLAUDE}, the version zzpersona was verified against`,
-      "update Claude Code",
-    );
-  } else if (detection.facts.sideloadBlocked === true) {
-    add(
-      "claude",
-      "warn",
-      "managed settings block --plugin-dir and --mcp-config; launches use partial mode",
-    );
-  } else if (detection.facts.managedMcp === true) {
-    add(
-      "claude",
-      "warn",
-      "a managed-mcp.json is deployed; launches use relaunch-no-mcp mode",
-    );
   } else {
-    add("claude", "ok", `claude ${detection.version ?? "(unknown version)"}`);
+    // Version and mode are independent findings: an old claude must not hide a degraded mode.
+    const findings: string[] = [];
+    const fixes: string[] = [];
+    if (detection.version && olderThan(detection.version, VERIFIED_CLAUDE)) {
+      findings.push(
+        `claude ${detection.version} is older than ${VERIFIED_CLAUDE}, the version zzpersona was verified against`,
+      );
+      fixes.push("update Claude Code");
+    }
+    if (detection.facts.sideloadBlocked === true) {
+      findings.push(
+        "managed settings block --plugin-dir and --mcp-config; launches use partial mode",
+      );
+    } else if (detection.facts.managedMcp === true) {
+      findings.push(
+        "a managed-mcp.json is deployed; launches use relaunch-no-mcp mode",
+      );
+    }
+    if (findings.length === 0) {
+      add("claude", "ok", `claude ${detection.version ?? "(unknown version)"}`);
+    } else {
+      add(
+        "claude",
+        "warn",
+        findings.join("; "),
+        ...(fixes.length > 0 ? [fixes.join("; ")] : []),
+      );
+    }
   }
 
   // secrets

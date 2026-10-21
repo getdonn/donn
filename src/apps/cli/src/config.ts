@@ -22,8 +22,9 @@ export function expandPath(
   base: string,
   env: NodeJS.ProcessEnv,
 ): string {
+  // resolve() drops a trailing slash, so "~/p/" and "~/p" name the same folder.
   if (path === "~" || path.startsWith("~/")) {
-    return join(env.HOME ?? homedir(), path.slice(1));
+    return resolve(env.HOME ?? homedir(), path.slice(2));
   }
   return resolve(base, path);
 }

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CliError } from "./errors.js";
-import { projectKey, readState, writeState } from "./state.js";
+import { projectKey, readState, updateState, writeState } from "./state.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -55,5 +55,27 @@ describe("state.json", () => {
     expect(await projectKey(join(root, "link/.zzpersona"))).toBe(
       await projectKey(join(root, "real/.zzpersona")),
     );
+  });
+});
+
+describe("updateState", () => {
+  it("keeps both of two concurrent updates", async () => {
+    const home = mkdtempSync(join(tmpdir(), "zzp-state-"));
+    try {
+      await Promise.all([
+        updateState(home, (state) => {
+          state.projects["/a"] = "team/a";
+        }),
+        updateState(home, (state) => {
+          state.projects["/b"] = "team/b";
+        }),
+      ]);
+      expect((await readState(home)).projects).toEqual({
+        "/a": "team/a",
+        "/b": "team/b",
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

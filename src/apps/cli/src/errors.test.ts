@@ -2,7 +2,7 @@ import { AdapterInputError } from "@zzpersona/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
 import { report } from "./errors.js";
-import { installedProbe } from "./test/seed.js";
+import { installedProbe, zz } from "./test/seed.js";
 
 function io() {
   const out = { stdout: "", stderr: "" };
@@ -32,6 +32,16 @@ describe("report", () => {
     expect(JSON.parse(json.out.stdout).error).toEqual({
       code: "adapter",
       message: "skill x: ../x is outside",
+    });
+  });
+});
+
+describe("CliError envelopes", () => {
+  it("always carry a message", async () => {
+    const r = await zz(["init", "--json"], { cwd: "/" });
+    expect(JSON.parse(r.stdout).error).toMatchObject({
+      code: "init-needs-flags",
+      message: expect.stringContaining("--personas"),
     });
   });
 });

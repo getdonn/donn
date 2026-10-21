@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Ref } from "@zzpersona/spec";
 import { z } from "zod";
 import { CliError } from "./errors.js";
-import { writeFileAtomic } from "./fs.js";
+import { fsStep, withFileLock, writeFileAtomic } from "./fs.js";
 
 // <home>/state.json: the per-project switches and the default. See
 // docs/planning/07-cli-daily-use.md, section 1.
@@ -61,6 +61,25 @@ export async function readState(home: string): Promise<State> {
 
 export async function writeState(home: string, state: State): Promise<void> {
   await writeFileAtomic(stateFile(home), `${JSON.stringify(state, null, 2)}\n`);
+}
+
+/**
+ * Read state.json, apply `change`, and write it back under a lock, so concurrent commands
+ * (switches in two projects) never lose each other's entries.
+ */
+export async function updateState(
+  home: string,
+  change: (state: State) => void,
+): Promise<State> {
+  const file = stateFile(home);
+  return fsStep(file, () =>
+    withFileLock(join(home, "state.lock"), async () => {
+      const state = await readState(home);
+      change(state);
+      await writeState(home, state);
+      return state;
+    }),
+  );
 }
 
 /** State keys are real paths, so a symlinked checkout finds its switch. */
