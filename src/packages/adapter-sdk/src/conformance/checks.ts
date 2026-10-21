@@ -137,6 +137,16 @@ function wellFormed(output: CompileOutput, plan: ActivationPlan): string[] {
     if (step.kind === "overlay" && !isContained(step.path)) {
       problems.push(`overlay escapes the project: ${step.path}`);
     }
+    if (step.kind === "overlay" && step.block !== undefined) {
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(step.block)) {
+        problems.push(`overlay block name is not kebab-case: ${step.block}`);
+      } else if (
+        step.content.includes(`<!-- ${step.block}:begin`) ||
+        step.content.includes(`<!-- ${step.block}:end -->`)
+      ) {
+        problems.push(`overlay content holds its own ${step.block} markers`);
+      }
+    }
     if (step.kind === "launch" && step.command.trim() === "") {
       problems.push("launch step has no command");
     }

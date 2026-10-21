@@ -97,7 +97,17 @@ export type Step =
       cwd?: string;
     }
   /** A project-relative file; the CLI adds the ownership marker. */
-  | { kind: "overlay"; path: string; content: string };
+  | {
+      kind: "overlay";
+      path: string;
+      /** The whole file, or with `block` the text between its markers. */
+      content: string;
+      /**
+       * Merge `content` between `<!-- <block>:begin … -->` and `<!-- <block>:end -->` in the
+       * file instead of owning it (docs/planning/11-agents-md.md). Lowercase kebab-case.
+       */
+      block?: string;
+    };
 
 export interface ActivationPlan {
   steps: Step[];

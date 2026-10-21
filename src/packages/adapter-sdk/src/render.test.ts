@@ -111,4 +111,26 @@ describe("renderCapabilities", () => {
       ].join("\n"),
     );
   });
+
+  it("shows an overlay's block", () => {
+    expect(
+      renderBuild(
+        {
+          files: {},
+          secretEnv: {},
+          report: { adapter: "x", irVersion: 0, entries: [] },
+        },
+        {
+          steps: [
+            {
+              kind: "overlay",
+              path: "AGENTS.md",
+              content: "hi",
+              block: "zzpersona",
+            },
+          ],
+        },
+      ),
+    ).toContain("  overlay AGENTS.md block zzpersona (2 chars)");
+  });
 });
