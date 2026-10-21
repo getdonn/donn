@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { PersonaSource } from "@zzpersona/resolver";
 import type { Ref } from "@zzpersona/spec";
@@ -42,6 +42,7 @@ const storeError = (message: string, fields: Partial<StoreError> = {}) =>
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");
 
+/** .yaml files under `dir`, following file symlinks (as load() does). */
 async function yamlFiles(dir: string): Promise<string[]> {
   let entries;
   try {
@@ -50,9 +51,34 @@ async function yamlFiles(dir: string): Promise<string[]> {
     if (isMissing(error)) return [];
     throw error;
   }
-  return entries
-    .filter((e) => e.isFile() && e.name.endsWith(".yaml"))
-    .map((e) => join(e.parentPath, e.name));
+  const files: string[] = [];
+  for (const e of entries) {
+    if (!e.name.endsWith(".yaml")) continue;
+    const path = join(e.parentPath, e.name);
+    if (
+      e.isFile() ||
+      (e.isSymbolicLink() &&
+        (await stat(path).catch(() => undefined))?.isFile())
+    ) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+/**
+ * Only persona files count: data files inside skills and overlays are not personas. A file
+ * that does not parse is kept, so selecting it reaches load() and reports the parse error.
+ */
+async function isPersonaFile(path: string): Promise<boolean> {
+  try {
+    const doc = parse(await readFile(path, "utf8")) as {
+      kind?: unknown;
+    } | null;
+    return doc?.kind === "Persona";
+  } catch {
+    return true;
+  }
 }
 
 const toRef = (base: string, file: string, prefix = "") =>
@@ -141,9 +167,19 @@ export function createLocalStore(mounts: Mounts): LocalStore {
         );
       }
       try {
+        const [real, realRoot] = await Promise.all([
+          realpath(location.path),
+          realpath(location.root),
+        ]);
+        if (real !== realRoot && !real.startsWith(realRoot + sep)) {
+          throw storeError(
+            `${virtualPath} resolves outside its location (${real} is outside ${realRoot})`,
+            { file: location.path },
+          );
+        }
         return await readFile(location.path, "utf8");
       } catch (error) {
-        if (!isMissing(error)) throw error;
+        if (error instanceof StoreError || !isMissing(error)) throw error;
         throw storeError(`${virtualPath} not found at ${location.path}`, {
           file: location.path,
         });
@@ -156,13 +192,16 @@ export function createLocalStore(mounts: Mounts): LocalStore {
       if (mounts.personas !== undefined) {
         for (const layer of SHARED_LAYERS) {
           for (const file of await yamlFiles(join(mounts.personas, layer))) {
-            refs.push(toRef(mounts.personas, file));
+            if (await isPersonaFile(file))
+              refs.push(toRef(mounts.personas, file));
           }
         }
       }
       const userRoot = join(mounts.user, "personas");
-      for (const file of await yamlFiles(userRoot))
-        refs.push(toRef(userRoot, file, "user/"));
+      for (const file of await yamlFiles(userRoot)) {
+        if (await isPersonaFile(file))
+          refs.push(toRef(userRoot, file, "user/"));
+      }
       if (mounts.project && existsSync(join(mounts.project, "persona.yaml"))) {
         refs.push("project/persona");
       }
