@@ -20,7 +20,7 @@ export interface Context {
 
 export async function createContext(io: CliIo): Promise<Context> {
   const home =
-    io.env.ZZPERSONA_HOME ?? join(io.env.HOME ?? homedir(), ".zzpersona");
+    io.env.ZZPERSONA_HOME || join(io.env.HOME ?? homedir(), ".zzpersona");
   const config = await loadConfig(home, io.env);
   const projectDir = findProject(io.cwd);
   const store = createLocalStore({

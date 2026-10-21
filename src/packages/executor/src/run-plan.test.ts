@@ -50,3 +50,13 @@ describe("runPlan", () => {
     ).rejects.toThrow(new ExecutorError("command not found: zz-nope"));
   });
 });
+
+describe("signals (spec 07)", () => {
+  it("reports a signal-killed child as 128 + the signal number", async () => {
+    expect(
+      await runPlan(launch(["-e", "process.kill(process.pid, 'SIGTERM')"]), {
+        secretEnv: {},
+      }),
+    ).toBe(143);
+  });
+});

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { constants } from "node:os";
 import type { ActivationPlan } from "@zzpersona/adapter-sdk";
 import { ExecutorError } from "./errors.js";
 
@@ -41,9 +42,12 @@ export async function runPlan(
             : error,
         );
       });
-      child.on("exit", (exitCode) => {
+      child.on("exit", (exitCode, signal) => {
         done();
-        resolve(exitCode ?? 1);
+        // The shell convention: a child ended by signal N exits 128 + N.
+        resolve(
+          signal ? 128 + (constants.signals[signal] ?? 0) : (exitCode ?? 1),
+        );
       });
     });
     if (code !== 0) return code;
