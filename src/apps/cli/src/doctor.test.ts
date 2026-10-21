@@ -206,6 +206,23 @@ describe("zzpersona doctor (spec 08 hardening)", () => {
     ).toEqual({ [kept]: "team/payments" });
   });
 
+  it("keeps a switch on an unmounted volume", async () => {
+    const env = healthy();
+    const unmounted = join(s.root, "Volumes/Ext/repo/.zzpersona");
+    writeFileSync(
+      join(s.home, "state.json"),
+      JSON.stringify({
+        version: 1,
+        projects: { [unmounted]: "team/payments" },
+      }),
+    );
+    const fixed = await doctor(["--fix"], { env });
+    expect(fixed.status.state).toBe("warn");
+    expect(
+      JSON.parse(readFileSync(join(s.home, "state.json"), "utf8")).projects,
+    ).toEqual({ [unmounted]: "team/payments" });
+  });
+
   it("checks the fallback home when ZZPERSONA_HOME is empty", async () => {
     const fakeHome = join(s.root, "fake-user");
     mkdirSync(join(fakeHome, ".zzpersona"), { recursive: true });

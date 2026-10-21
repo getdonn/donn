@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { PersonaSource } from "@zzpersona/resolver";
@@ -88,6 +88,14 @@ const toRef = (base: string, file: string, prefix = "") =>
   );
 
 export function createLocalStore(mounts: Mounts): LocalStore {
+  // Project files are contained by the repo, so one may link to ../AGENTS.md. A .zzpersona that
+  // is itself a symlink (dotfiles, a shared folder) lives elsewhere: it is its own root.
+  const projectRoot =
+    mounts.project === undefined
+      ? undefined
+      : lstatSync(mounts.project, { throwIfNoEntry: false })?.isSymbolicLink()
+        ? mounts.project
+        : dirname(mounts.project);
   const locate = (virtualPath: string) => {
     const [layer = "", ...rest] = virtualPath.split("/");
     const tail = rest.join("/");
@@ -99,8 +107,7 @@ export function createLocalStore(mounts: Mounts): LocalStore {
     if (layer === "project") {
       return mounts.project === undefined
         ? undefined
-        : // Contained by the repo, not .zzpersona: a project file may link to ../AGENTS.md.
-          { path: join(mounts.project, tail), root: dirname(mounts.project) };
+        : { path: join(mounts.project, tail), root: projectRoot! };
     }
     if (layer === "user") {
       if (tail === "overrides.yaml") {

@@ -144,12 +144,15 @@ export async function runChecks(
   let state: State | undefined;
   try {
     state = await readState(home);
-    // Missing persona.yaml is a warning; only a repo folder that is gone is safe to forget
-    // (an unmounted volume or another branch may bring the project back).
+    // Missing persona.yaml is a warning. Forget an entry only when its repo folder is gone but
+    // the folder that held it is still there: another branch or an unmounted volume (whose
+    // whole path disappears) may bring the project back.
     const orphans = Object.keys(state.projects).filter(
       (key) => !existsSync(join(key, "persona.yaml")),
     );
-    const removable = orphans.filter((key) => !existsSync(dirname(key)));
+    const removable = orphans.filter(
+      (key) => !existsSync(dirname(key)) && existsSync(dirname(dirname(key))),
+    );
     if (orphans.length === 0) {
       add(
         "state",
@@ -182,7 +185,7 @@ export async function runChecks(
           ].join("; "),
           gone.length > 0
             ? "zzpersona doctor --fix"
-            : `kept because the repo still exists (another branch, or an unmounted volume); delete the entry from ${join(home, "state.json")} if it is no longer needed`,
+            : `kept because the project may come back (its repo exists on another branch, or its volume is not mounted); delete the entry from ${join(home, "state.json")} if it is no longer needed`,
         );
       }
     }

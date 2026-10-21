@@ -241,6 +241,18 @@ describe("hardening (spec 07)", () => {
 });
 
 describe("project containment", () => {
+  it("reads project files when .zzpersona itself is a symlink", async () => {
+    const m = mounts();
+    const real = join(dirname(dirname(m.project)), "dotfiles/zzp");
+    put(join(real, "instructions/a.md"), "linked text");
+    mkdirSync(dirname(m.project), { recursive: true });
+    symlinkSync(real, m.project);
+    const store = createLocalStore(m);
+    expect(await store.readText("project/instructions/a.md")).toBe(
+      "linked text",
+    );
+  });
+
   it("reads a project file linked to a file elsewhere in the repo", async () => {
     const m = mounts();
     put(join(dirname(m.project), "AGENTS.md"), "shared agents text");
