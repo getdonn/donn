@@ -7,8 +7,7 @@ import { buildDirFor } from "@zzpersona/executor";
 import type { ResolveResult } from "@zzpersona/spec";
 import type { CliIo } from "./cli.js";
 import { printWarnings, resolvePersona, type Context } from "./context.js";
-import { CliError } from "./errors.js";
-import { HARNESSES } from "./harness.js";
+import { findAdapter } from "./plugins.js";
 import type { Selection } from "./select.js";
 
 export interface PreparedBuild {
@@ -33,14 +32,7 @@ export async function prepareBuild(
     passthrough: string[];
   },
 ): Promise<PreparedBuild> {
-  const adapter = HARNESSES[options.harness];
-  if (!adapter) {
-    throw new CliError(
-      "unknown-harness",
-      `unknown harness ${options.harness}; available: ${Object.keys(HARNESSES).join(", ")}`,
-      { harness: options.harness, available: Object.keys(HARNESSES) },
-    );
-  }
+  const adapter = await findAdapter(ctx, io.env, options.harness);
   const result = await resolvePersona(ctx, options.selection, options.overlay);
   printWarnings(io, result);
   const detected = await adapter.detect(io.probe);

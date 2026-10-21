@@ -1,6 +1,7 @@
 import { renderBuild, type Detection } from "@zzpersona/adapter-sdk";
 import { runPlan, writeBuild } from "@zzpersona/executor";
 import { resolveSecrets } from "@zzpersona/secrets";
+import { backendLoader } from "../plugins.js";
 import { prepareBuild, printReport } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { secretContext } from "../secret-context.js";
@@ -69,6 +70,7 @@ export async function claudeCommand(
     build.secretRefs,
     build.result.ir.secrets.providers,
     secretContext(io),
+    { loadBackend: backendLoader(ctx, io.env) },
   );
   const secretEnv = Object.fromEntries(
     Object.entries(build.output.secretEnv).map(([name, ref]) => [
