@@ -14,7 +14,7 @@ import { HARNESSES } from "../harness.js";
 
 export interface Column {
   id: string;
-  detected?: { installed: boolean; version?: string };
+  detected?: { installed: boolean; version?: string; error?: string };
   matrix: CapabilityMatrix;
 }
 
@@ -87,9 +87,11 @@ function rows(columns: Column[]): Row[] {
 const header = (column: Column) =>
   column.detected === undefined
     ? column.id
-    : column.detected.installed
-      ? `${column.id} ${column.detected.version ?? ""}`.trimEnd()
-      : `${column.id} (not installed)`;
+    : column.detected.error !== undefined
+      ? `${column.id} (detection failed)`
+      : column.detected.installed
+        ? `${column.id} ${column.detected.version ?? ""}`.trimEnd()
+        : `${column.id} (not installed)`;
 
 /** Cells with their note numbers; notes and caveats share one numbering, equal text one number. */
 function table(columns: Column[]) {

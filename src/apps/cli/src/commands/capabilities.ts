@@ -26,7 +26,20 @@ async function column(
   detect: boolean,
 ): Promise<Column> {
   if (!detect) return { id: adapter.id, matrix: adapter.capabilities() };
-  const detection = await adapter.detect(io.probe);
+  // detect must not throw, but one third-party adapter that does should not hide the others.
+  let detection;
+  try {
+    detection = await adapter.detect(io.probe);
+  } catch (error) {
+    return {
+      id: adapter.id,
+      detected: {
+        installed: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      matrix: adapter.capabilities(),
+    };
+  }
   return {
     id: adapter.id,
     detected: {

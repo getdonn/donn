@@ -145,6 +145,30 @@ describe("zzpersona capabilities", () => {
     expect(gridLines(r.stdout)[0]).toContain("claude-code 2.1.306");
   });
 
+  it("keeps the listing when one adapter's detect throws", async () => {
+    const broken: Probe = {
+      ...installedProbe,
+      run: async (command) => {
+        if (command === "codex") throw new Error("probe exploded");
+        return installedProbe.run(command, []);
+      },
+    };
+    const r = await run(["--detect"], broken);
+    expect(r.code, r.stderr).toBe(0);
+    expect(gridLines(r.stdout)[0]).toContain("codex (detection failed)");
+    expect(gridLines(r.stdout)[0]).toContain("claude-code 2.1.306");
+    const json = await run(["--detect", "--json"], broken);
+    const codex = (
+      JSON.parse(json.stdout) as {
+        harnesses: { id: string; detected?: unknown }[];
+      }
+    ).harnesses.find((h) => h.id === "codex")!;
+    expect(codex.detected).toEqual({
+      installed: false,
+      error: "probe exploded",
+    });
+  });
+
   it("shows Claude Code partial with --detect", async () => {
     const blocked: Probe = {
       ...installedProbe,
