@@ -1,3 +1,4 @@
+import { AdapterInputError } from "@zzpersona/adapter-sdk";
 import { ExecutorError } from "@zzpersona/executor";
 import { ResolveError } from "@zzpersona/resolver";
 import { SecretResolutionError } from "@zzpersona/secrets";
@@ -52,6 +53,12 @@ function describe(error: unknown): {
     return {
       text: error.message,
       json: { code: "secrets", failures: error.failures },
+    };
+  }
+  if (error instanceof AdapterInputError) {
+    return {
+      text: error.message,
+      json: { code: "adapter", message: error.message },
     };
   }
   if (error instanceof ExecutorError) {

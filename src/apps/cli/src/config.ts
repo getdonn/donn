@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { parse } from "yaml";
+import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
 import { CliError } from "./errors.js";
 
@@ -30,7 +30,19 @@ export async function loadConfig(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw error;
   }
-  const parsed = Config.safeParse(parse(text) ?? {});
+  let raw: unknown;
+  try {
+    raw = parse(text);
+  } catch (error) {
+    if (!(error instanceof YAMLParseError)) throw error;
+    const line = error.linePos?.[0].line;
+    throw new CliError(
+      "invalid-config",
+      `invalid YAML in ${file}${line ? ` at line ${line}` : ""}: ${error.message}`,
+      { file, ...(line !== undefined && { line }) },
+    );
+  }
+  const parsed = Config.safeParse(raw ?? {});
   if (!parsed.success) {
     const issues = parsed.error.issues.map(
       (i) => `${i.path.join(".") || "(root)"}: ${i.message}`,

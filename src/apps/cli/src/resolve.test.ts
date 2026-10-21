@@ -123,3 +123,31 @@ describe("zzpersona resolve", () => {
     });
   });
 });
+
+describe("review fixes", () => {
+  it("reports a YAML typo in config.yaml as invalid-config with file and line (I1)", async () => {
+    writeFileSync(join(s.home, "config.yaml"), "personas: [oops\n");
+    const r = await zz(["resolve", "--json"], { cwd: s.repo, home: s.home });
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error).toMatchObject({
+      code: "invalid-config",
+      file: join(s.home, "config.yaml"),
+    });
+    const text = await zz(["resolve"], { cwd: s.repo, home: s.home });
+    expect(text.stderr).toMatch(/^error: .*config\.yaml.*line \d+/m);
+  });
+
+  it("names a missing personas folder for bare names and no argument (I3)", async () => {
+    const missing = join(s.root, "nope");
+    writeFileSync(join(s.home, "config.yaml"), `personas: ${missing}\n`);
+    const byName = await zz(["resolve", "payments"], {
+      cwd: s.repo,
+      home: s.home,
+    });
+    expect(byName.code).toBe(1);
+    expect(byName.stderr).toContain(missing);
+    const noArg = await zz(["resolve"], { cwd: s.root, home: s.home });
+    expect(noArg.code).toBe(1);
+    expect(noArg.stderr).toContain(missing);
+  });
+});
