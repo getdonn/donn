@@ -293,6 +293,9 @@ activation path; gateway resolution; implementing `agents-md` or `codex`; skill 
 1. **`agents-md` and an existing `AGENTS.md`.** An overlay is a whole file, and the CLI refuses
    to overwrite a file it doesn't own. Should overlays support a managed block (persona text
    between markers inside the repo's own file)? Decide when building `agents-md`.
+   *Amended 2026-10-21 (spec 11): yes. An overlay step's optional `block` merges its content
+   between `<!-- <block>:begin … -->` and `<!-- <block>:end -->` in the repo's own file; without
+   it the overlay owns the whole file. The executor's `applyOverlay` does the merge.*
 2. **Codex instruction length.** `-c developer_instructions=…` puts the whole text on the
    command line. Check whether Codex has a file-based option before building `codex`; if not,
    measure the practical limit.
