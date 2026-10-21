@@ -171,7 +171,6 @@ describe("compile (relaunch)", () => {
         ask: ["Bash(git push:*)"],
       },
       model: "opus",
-      env: {},
     });
   });
 
@@ -305,5 +304,39 @@ describe("review fixes", () => {
     }).fields;
     expect(noMcp["mcp.servers"]?.support ?? "none").toBe("none");
     expect(noMcp.skills?.support).toBe("native");
+  });
+});
+
+describe("spec 08 hardening", () => {
+  const minimal = entry("minimal");
+  const compileIr = (ir: CompileInput["ir"]) =>
+    adapter.compile(input("minimal", { ir }));
+
+  it("rejects a non-boolean strictMcp", () => {
+    expect(() =>
+      compileIr({
+        ...minimal.ir,
+        targets: { "claude-code": { strictMcp: "false" } },
+      }),
+    ).toThrow("targets.claude-code.strictMcp must be true or false");
+  });
+
+  it("drops an object left empty by removing its secrets", () => {
+    const settings = json(
+      compileIr({
+        ...minimal.ir,
+        targets: {
+          "claude-code": {
+            model: "opus",
+            env: { TOKEN: "secret://env/T" },
+            keep: {},
+          },
+        },
+      }),
+      "settings.json",
+    ) as Record<string, unknown>;
+    expect(settings).not.toHaveProperty("env");
+    expect(settings.keep).toEqual({});
+    expect(settings.model).toBe("opus");
   });
 });

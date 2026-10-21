@@ -127,3 +127,29 @@ describe("detect", () => {
     expect((await adapter.detect(probe)).facts.sideloadBlocked).toBe(false);
   });
 });
+
+describe("managed-settings.d order", () => {
+  const blocked = async (base: boolean, dropIn?: boolean) => {
+    const files: Record<string, string> = {
+      [`${DARWIN}/managed-settings.json`]: JSON.stringify({
+        disableSideloadFlags: base,
+      }),
+      [`${DARWIN}/managed-settings.d/50-x.json`]: JSON.stringify(
+        dropIn === undefined
+          ? { model: "opus" }
+          : { disableSideloadFlags: dropIn },
+      ),
+    };
+    const probe = fakeProbe({
+      dirs: { [`${DARWIN}/managed-settings.d`]: ["50-x.json"] },
+      files,
+    });
+    return (await adapter.detect(probe)).facts.sideloadBlocked;
+  };
+
+  it("lets a later managed-settings.d drop-in turn sideload blocking off", async () => {
+    expect(await blocked(true, false)).toBe(false);
+    expect(await blocked(false, true)).toBe(true);
+    expect(await blocked(true)).toBe(true);
+  });
+});
