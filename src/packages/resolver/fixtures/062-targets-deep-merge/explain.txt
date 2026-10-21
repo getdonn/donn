@@ -6,9 +6,9 @@ layers (merge order)
   3  project/p  target
 
 targets (6)
-  claude-code.model      opus        project/p
+  claude-code.model      opus        project/p  overrides org/base
   claude-code.env.A      1           org/base
-  claude-code.env.B      3           team/t
+  claude-code.env.B      3           team/t     overrides org/base
   claude-code.env.C      4           team/t
-  claude-code.extraArgs  ["--c"]     team/t
+  claude-code.extraArgs  ["--c"]     team/t     overrides org/base
   codex.approvalPolicy   on-request  org/base

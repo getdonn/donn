@@ -22,7 +22,7 @@ instructions (6)
   checkout-context    inline "This repo is the checkout API. Run …  project/checkout-api
 
 skills (2)
-  pr-review        registry://org/skills/pr-review@^2  team/payments
+  pr-review        registry://org/skills/pr-review@^2  team/payments  overrides org/base
   run-payment-sim  team/skills/run-payment-sim         team/payments
 
 mcp (3)
@@ -53,8 +53,13 @@ secrets (1)
   vault  hashicorp-vault address=https://vault.corp  org/base
 
 targets (2)
-  claude-code.model        opus     user/overrides
+  claude-code.model        opus     user/overrides        overrides team/payments
   claude-code.outputStyle  concise  project/checkout-api
+
+removed (3)
+  skills[frontend-storybook]       removed by team/payments         set by org/base
+  mcp.servers.figma                removed by team/payments         set by org/base
+  instructions[payments-overview]  removed by project/checkout-api  set by team/payments
 
 locks (3)
   permissions.deny                   org/base

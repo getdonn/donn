@@ -93,4 +93,29 @@ describe("explain", () => {
       line("checkout-overview")!.indexOf("project/checkout-api"),
     );
   });
+
+  it("notes which layer a value overrode", () => {
+    expect(
+      line("pr-review", "team/payments", "overrides org/base"),
+    ).toBeDefined();
+    expect(
+      line("model", "opus", "user/overrides", "overrides team/payments"),
+    ).toBeDefined();
+    expect(line("jira", "overrides")).toBeUndefined();
+  });
+
+  it("lists removed values with who removed them and who had set them", () => {
+    const at = lines.indexOf("removed (3)");
+    expect(at).toBeGreaterThan(0);
+    const removed = lines.slice(at + 1, at + 4).join("\n");
+    expect(removed).toMatch(
+      /skills\[frontend-storybook\]\s+removed by team\/payments\s+set by org\/base/,
+    );
+    expect(removed).toMatch(
+      /mcp\.servers\.figma\s+removed by team\/payments\s+set by org\/base/,
+    );
+    expect(removed).toMatch(
+      /instructions\[payments-overview\]\s+removed by project\/checkout-api\s+set by team\/payments/,
+    );
+  });
 });

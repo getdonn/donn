@@ -7,5 +7,8 @@ layers (merge order)
 permissions (1)
   deny  Bash(rm -rf:*)  org/base
 
+removed (1)
+  permissions.deny[Bash(curl:*)]  removed by team/t  set by org/base
+
 warnings (1)
   security-removal  permissions.deny[Bash(curl:*)]  from team/t

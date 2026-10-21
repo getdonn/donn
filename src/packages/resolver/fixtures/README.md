@@ -32,6 +32,7 @@ expect:
   resolved: { ... }                # IR fields to compare (see "Comparison")
   provenance: { ... }              # optional subset of path → layer
   warnings: [ ... ]                # required with `resolved`; [] for none
+  history: [ ... ]                 # optional: every { path, layer, kind, from } displacement
 # or, for a case that must fail:
 expect:
   error: { code: ..., ... }
@@ -43,6 +44,12 @@ expect:
   listed are not compared. `001` and `002` list every field; focused cases list only what they test.
 - `provenance`: every listed path must map to the listed layer. Unlisted paths are not compared.
 - `warnings`: compared as an unordered set on `{ code, path, layer }`.
+- `history`: when listed, compared as an unordered set on `{ path, layer, kind, from }`. An
+  `override` is a layer replacing a value another layer set; a `remove` is a layer deleting
+  one. Restating an unchanged value records nothing, and rules dropped by deny > ask > allow
+  are warnings, not history. Listed in 002, 031, 041 and 060; every other case is covered by
+  its `explain.txt`, which renders history as `overrides …`, `re-added after removal by …`, and
+  a `removed (n)` section.
 - `error`: every listed key must match.
 
 ## Resolved IR shape (v0)

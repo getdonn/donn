@@ -63,7 +63,12 @@ function targetRows(value: unknown, keys: string[]): Row[] {
   ];
 }
 
-export function explain({ ir, provenance, warnings }: ResolveResult): string {
+export function explain({
+  ir,
+  provenance,
+  warnings,
+  history,
+}: ResolveResult): string {
   const target = provenance["metadata.name"];
   const targetIndex = ir.layers.indexOf(target ?? "");
   const locks = ir.locks.map((lock) => ({
@@ -78,6 +83,31 @@ export function explain({ ir, provenance, warnings }: ResolveResult): string {
       .filter((lock) => lockCovers(lock.parsed, parsed))
       .map((lock) => `locked: ${lock.path} by ${lock.layer}`);
   };
+
+  /** What a surviving value displaced: the layer it overrode, or a removal it came back from. */
+  const historyNotes = (path: string): string[] => {
+    const final = provenance[path];
+    const entries = history.filter((h) => h.path === path);
+    const override = entries.findLast(
+      (h) => h.kind === "override" && h.layer === final,
+    );
+    const removal = entries.findLast((h) => h.kind === "remove");
+    return [
+      ...(override ? [`overrides ${override.from}`] : []),
+      ...(removal && !override
+        ? [`re-added after removal by ${removal.layer}`]
+        : []),
+    ];
+  };
+
+  // Values deleted and never set again: nothing else in the output would show them.
+  const removed = [
+    ...new Map(
+      history
+        .filter((h) => h.kind === "remove" && provenance[h.path] === undefined)
+        .map((h) => [h.path, h]),
+    ).values(),
+  ];
 
   const { metadata } = ir;
   const sections: Section[] = [
@@ -170,6 +200,15 @@ export function explain({ ir, provenance, warnings }: ResolveResult): string {
       ),
     },
     {
+      title: "removed",
+      rows: removed.map((h) => ({
+        label: h.path,
+        value: "",
+        layer: `removed by ${h.layer}`,
+        notes: [`set by ${h.from}`],
+      })),
+    },
+    {
       title: "locks",
       rows: ir.locks.map((lock) => ({
         label: lock.path,
@@ -218,7 +257,12 @@ export function explain({ ir, provenance, warnings }: ResolveResult): string {
       ...row,
       value: truncate(row.value, maxValue),
       layer: row.layer ?? provenance[row.path ?? ""] ?? "?",
-      notes: [...(row.notes ?? []), ...(row.path ? lockNotes(row.path) : [])],
+      notes: [
+        ...(row.notes ?? []),
+        ...(row.path
+          ? [...historyNotes(row.path), ...lockNotes(row.path)]
+          : []),
+      ],
     }));
     const width = (pick: (row: (typeof filled)[number]) => string) =>
       Math.max(...filled.map((row) => pick(row).length));

@@ -7,4 +7,4 @@ layers (merge order)
 
 mcp (2)
   jira   gateway://jira      org/base
-  figma  gateway://figma-v2  project/p
+  figma  gateway://figma-v2  project/p  re-added after removal by team/t

@@ -5,4 +5,4 @@ layers (merge order)
   2  team/t    target
 
 skills (1)
-  pr-review  registry://org/skills/pr-review@^2  team/t
+  pr-review  registry://org/skills/pr-review@^2  team/t  overrides org/base

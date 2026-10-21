@@ -12,4 +12,4 @@ instructions (3)
   b-i    inline "area b"  area/b
 
 mcp (1)
-  gateway  bifrost://b  area/b
+  gateway  bifrost://b  area/b  overrides area/a

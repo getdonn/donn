@@ -7,5 +7,5 @@ layers (merge order)
 
 skills (3)
   alpha  registry://org/skills/alpha@^1  org/base
-  beta   registry://org/skills/beta@^1   project/p
+  beta   registry://org/skills/beta@^1   project/p  re-added after removal by team/t
   gamma  team/skills/gamma               team/t

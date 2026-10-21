@@ -8,6 +8,7 @@ import {
   parsePath,
   ResolvedPersona,
   type Hook,
+  type HistoryEntry,
   type HookEvent,
   type KnowledgePointer,
   type McpServer,
@@ -62,6 +63,7 @@ export class Merge {
 
   private readonly provenance = new Map<string, Ref>();
   private readonly warnings: ResolveWarning[] = [];
+  private readonly history: HistoryEntry[] = [];
   private readonly locks: Lock[] = [];
 
   private readonly labels = new Map<string, string>();
@@ -174,6 +176,7 @@ export class Merge {
       ir,
       provenance: Object.fromEntries(this.provenance),
       warnings: this.warnings,
+      history: this.history,
     };
   }
 
@@ -213,7 +216,7 @@ export class Merge {
           continue;
         if (!this.guard(at(["instructions"], id), "set")) continue;
         this.instructions[index] = { id, source };
-        if (target !== id) this.provenance.delete(`instructions[${target}]`);
+        if (target !== id) this.forget(`instructions[${target}]`);
         this.record(`instructions[${id}]`);
         continue;
       }
@@ -313,7 +316,7 @@ export class Merge {
       if (!this.guard(path, "remove")) continue;
       list.splice(index, 1);
       if (list.length === 0) this.hooks.delete(event);
-      this.provenance.delete(formatPath(path));
+      this.forget(formatPath(path));
       this.warn("security-removal", path);
     }
   }
@@ -330,7 +333,7 @@ export class Merge {
       const key = keys[i]!;
       if (!isPlainObject(node[key])) {
         node[key] = {};
-        this.provenance.delete(keys.slice(0, i + 1).join("."));
+        this.forget(keys.slice(0, i + 1).join("."));
       }
       node = node[key] as Record<string, unknown>;
     }
@@ -340,7 +343,7 @@ export class Merge {
     node[leaf] = value;
     const path = keys.join(".");
     for (const key of this.provenance.keys()) {
-      if (key.startsWith(`${path}.`)) this.provenance.delete(key);
+      if (key.startsWith(`${path}.`)) this.forget(key);
     }
     this.record(path);
   }
@@ -372,7 +375,7 @@ export class Merge {
     }
     if (!this.guard(path, "remove")) return;
     map.delete(key);
-    this.provenance.delete(formatPath(path));
+    this.forget(formatPath(path));
     if (security) this.warn("security-removal", path);
   }
 
@@ -424,8 +427,21 @@ export class Merge {
     return posix.join(posix.dirname(this.layer), path);
   }
 
+  /** This layer set the value at `path`; if another layer had set it, that is an override. */
   private record(path: string): void {
+    const from = this.provenance.get(path);
+    if (from !== undefined && from !== this.layer) {
+      this.history.push({ path, layer: this.layer, kind: "override", from });
+    }
     this.provenance.set(path, this.layer);
+  }
+
+  /** This layer deleted the value at `path`. Not used for shadowed rules: those are warnings. */
+  private forget(path: string): void {
+    const from = this.provenance.get(path);
+    if (from === undefined) return;
+    this.history.push({ path, layer: this.layer, kind: "remove", from });
+    this.provenance.delete(path);
   }
 
   private warn(code: WarningCode, path: PersonaPath): void {
