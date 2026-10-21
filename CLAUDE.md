@@ -29,6 +29,7 @@ overrides them.
 7. `docs/planning/07-cli-daily-use.md` — `switch` (+ `state.json`) and persona selection precedence, flags-only `init`, `doctor`, CLI hardening
 8. `docs/planning/08-cli-reach.md` — third-party adapter and secret provider plugins, the built-in OS `keychain` provider, `diff`, hardening
 9. `docs/planning/09-mod-claude-code.md` — the Claude Code mod: band with the active persona, folder-mismatch nudge, `/persona list|switch|clear`, `zzpersona mod install`
+10. `docs/planning/10-live-switching.md` — live in-session switching: session plugin folders, `zzpersona live`, `/persona use`, the superseding instructions section
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
