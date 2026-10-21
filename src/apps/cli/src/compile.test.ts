@@ -57,7 +57,7 @@ describe("zzpersona compile", () => {
   });
 
   it("rejects an unknown harness", async () => {
-    const r = await zz(["compile", "--harness", "codex", "--json"], {
+    const r = await zz(["compile", "--harness", "no-such-harness", "--json"], {
       cwd: s.repo,
       home: s.home,
     });

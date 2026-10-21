@@ -39,6 +39,7 @@ export interface Check {
 }
 
 const VERIFIED_CLAUDE = "2.1.306";
+const VERIFIED_CODEX = "0.163.0";
 
 /** Numeric, component by component: "2.1.100" < "2.1.306". */
 function olderThan(version: string, reference: string): boolean {
@@ -390,6 +391,29 @@ export async function runChecks(
         "warn",
         findings.join("; "),
         ...(fixes.length > 0 ? [fixes.join("; ")] : []),
+      );
+    }
+  }
+
+  // codex: optional; `zzpersona codex` runs the codex PATH finds
+  const codex = await HARNESSES.codex!.detect(io.probe);
+  if (!codex.installed) {
+    add("codex", "ok", "codex not installed (optional)");
+  } else {
+    const codexPath = findOnPath("codex", io.env);
+    const where = codexPath ? ` (${codexPath})` : "";
+    if (codex.version && olderThan(codex.version, VERIFIED_CODEX)) {
+      add(
+        "codex",
+        "warn",
+        `codex ${codex.version}${where} is older than ${VERIFIED_CODEX}, the version zzpersona was verified against`,
+        "update the Codex CLI that PATH finds",
+      );
+    } else {
+      add(
+        "codex",
+        "ok",
+        `codex ${codex.version ?? "(unknown version)"}${where}`,
       );
     }
   }

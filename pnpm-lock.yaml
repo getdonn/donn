@@ -193,6 +193,9 @@ importers:
       '@zzpersona/adapter-claude-code':
         specifier: workspace:*
         version: link:../../packages/adapters/claude-code
+      '@zzpersona/adapter-codex':
+        specifier: workspace:*
+        version: link:../../packages/adapters/codex
       '@zzpersona/adapter-sdk':
         specifier: workspace:*
         version: link:../../packages/adapter-sdk
