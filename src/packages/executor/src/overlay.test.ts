@@ -125,6 +125,29 @@ describe("applyOverlay, block mode", () => {
     );
   });
 
+  it("refuses content that holds its own markers, writing nothing", async () => {
+    put("# Rules\n");
+    await expect(run("write", step(`x\n${END}\n`))).rejects.toBeInstanceOf(
+      ExecutorError,
+    );
+    expect(read()).toBe("# Rules\n");
+  });
+
+  it("refuses to write through a link to a file outside the root", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "zzp-outside-"));
+    try {
+      writeFileSync(join(outside, "bashrc"), "export A=1\n");
+      symlinkSync(join(outside, "bashrc"), file());
+      await expect(run("write")).rejects.toThrow(/outside the project/);
+      expect(readFileSync(join(outside, "bashrc"), "utf8")).toBe(
+        "export A=1\n",
+      );
+      expect((await run("check")).status).toBe("stale");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a path outside the root", async () => {
     await expect(
       applyOverlay({ ...step(), path: "../AGENTS.md" }, root, {

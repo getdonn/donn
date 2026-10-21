@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { isContainedPath, type Step } from "@zzpersona/adapter-sdk";
 import { ExecutorError } from "./errors.js";
 
@@ -75,9 +75,26 @@ async function readIfPresent(path: string): Promise<string | undefined> {
   }
 }
 
-/** Atomic, and through a symlink to its target, so a linked file stays linked. */
-async function writeThrough(path: string, content: string): Promise<void> {
-  const target = await realpath(path).catch(() => path);
+/**
+ * Atomic, and through a symlink to its target, so a linked file stays linked; but only to a target
+ * inside the project: a repo's AGENTS.md linking to ~/.bashrc must not turn `write` into an append
+ * there.
+ */
+async function writeThrough(
+  path: string,
+  root: string,
+  content: string,
+): Promise<void> {
+  // A new file has no real path yet: resolve its directory instead.
+  const target = await realpath(path).catch(async () =>
+    join(await realpath(dirname(path)), basename(path)),
+  );
+  const realRoot = await realpath(root);
+  if (target !== realRoot && !target.startsWith(realRoot + sep)) {
+    throw new ExecutorError(
+      `${path} links to ${target}, outside the project; refusing to write there`,
+    );
+  }
   const tmp = join(
     dirname(target),
     `.zzpersona-${randomBytes(4).toString("hex")}.tmp`,
@@ -141,6 +158,14 @@ export async function applyOverlay(
   if (!isContainedPath(step.path)) {
     throw new ExecutorError(`overlay path ${step.path} is outside the project`);
   }
+  if (
+    step.block !== undefined &&
+    new RegExp(`^\\s*<!-- ${step.block}:(begin|end)\\b`, "m").test(step.content)
+  ) {
+    throw new ExecutorError(
+      `overlay content holds its own ${step.block} markers; refusing to write it`,
+    );
+  }
   const path = join(root, step.path);
   const current = await readIfPresent(path);
   const { mode } = options;
@@ -160,7 +185,7 @@ export async function applyOverlay(
     await rm(path, { force: true });
     return { path, status: "removed" };
   }
-  await writeThrough(path, next);
+  await writeThrough(path, root, next);
   if (mode === "remove") return { path, status: "removed" };
   return { path, status: current === undefined ? "created" : "updated" };
 }
