@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: x
+targets:
+  claude-code:
+    model: sonnet

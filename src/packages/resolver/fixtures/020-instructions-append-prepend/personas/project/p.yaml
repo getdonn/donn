@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: p
+extends: [team/t]
+instructions:
+  - { id: p-pre, inline: project pre, position: prepend }
+  - { id: p1, inline: project one, position: append }

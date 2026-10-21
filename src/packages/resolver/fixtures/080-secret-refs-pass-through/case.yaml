@@ -1,0 +1,19 @@
+description: >-
+  secret:// refs pass through the resolver untouched. Providers shallow-merge by name: a child's
+  provider replaces the inherited one whole (no namespace carried over).
+resolve: team/t
+expect:
+  resolved:
+    secrets:
+      providers:
+        vault: { type: hashicorp-vault, address: https://vault-pay.corp }
+        op: { type: 1password-cli, account: corp }
+    mcp:
+      servers:
+        schema:
+          command: npx
+          args: ["-y", "@corp/schema-mcp"]
+          env: { TOKEN: "secret://vault/payments/schema-token" }
+  provenance:
+    "secrets.providers.vault": team/t
+  warnings: []

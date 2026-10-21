@@ -1,0 +1,40 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: org-base
+  version: 7
+  description: Org-wide baseline for every engineer
+  labels: { org: corp }
+instructions:
+  - id: org-conduct
+    file: ./instructions/conduct.md
+  - id: org-security
+    inline: |
+      Never paste credentials, tokens or customer data into prompts.
+skills:
+  include:
+    - registry://org/skills/pr-review@^1
+    - registry://org/skills/frontend-storybook@^3
+mcp:
+  gateway: bifrost://corp
+  servers:
+    jira: { ref: gateway://jira }
+    figma: { ref: gateway://figma }
+permissions:
+  deny:
+    - "Bash(rm -rf:*)"
+    - "Read(./.env)"
+  ask:
+    - "Bash(git push:*)"
+hooks:
+  pre-tool-use:
+    - id: block-prod-db
+      run: ./hooks/block-prod-db.sh
+      matcher: Bash
+secrets:
+  providers:
+    vault: { type: hashicorp-vault, address: https://vault.corp }
+locks:
+  - permissions.deny
+  - mcp.gateway
+  - hooks.pre-tool-use[block-prod-db]

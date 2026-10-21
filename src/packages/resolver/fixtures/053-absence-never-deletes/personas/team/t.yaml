@@ -1,0 +1,14 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+instructions:
+  - { id: t1, inline: team only sets instructions }
+mcp:
+  servers: {}
+permissions:
+  deny: []
+hooks: {}
+knowledge: []
+targets: {}

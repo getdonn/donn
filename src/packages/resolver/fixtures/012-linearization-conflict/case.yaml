@@ -1,0 +1,8 @@
+description: >-
+  Listing org/base after area/fintech asks for the parent to outrank its own child. No consistent
+  order exists, so resolution fails rather than guessing.
+resolve: team/t
+expect:
+  error:
+    code: linearization-conflict
+    persona: team/t

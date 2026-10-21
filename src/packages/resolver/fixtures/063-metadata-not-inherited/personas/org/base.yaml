@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+  version: 7
+  description: Org baseline
+  labels: { org: corp, tier: base }

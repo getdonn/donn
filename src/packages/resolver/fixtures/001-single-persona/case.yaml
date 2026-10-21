@@ -1,0 +1,30 @@
+description: A persona with no extends resolves to itself, with every unset IR field at its empty default.
+resolve: team/solo
+expect:
+  resolved:
+    irVersion: 0
+    layers: [team/solo]
+    metadata:
+      name: solo
+      description: A persona with no parents
+      labels: {}
+    instructions:
+      - id: hello
+        inline: Be concise.
+    skills: []
+    mcp:
+      servers: {}
+    permissions:
+      allow: ["Read(./**)"]
+      deny: []
+      ask: []
+    hooks: {}
+    knowledge: []
+    secrets:
+      providers: {}
+    locks: []
+    targets: {}
+  provenance:
+    "instructions[hello]": team/solo
+    "permissions.allow[Read(./**)]": team/solo
+  warnings: []

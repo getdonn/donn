@@ -1,0 +1,9 @@
+description: Removing an entry from a locked deny list is a lock violation, not just a warning.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: "permissions.deny[Bash(rm -rf:*)]"
+    lock: permissions.deny
+    lockedBy: org/base
+    layer: team/t

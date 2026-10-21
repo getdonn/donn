@@ -1,0 +1,10 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: b
+extends: [org/base]
+instructions:
+  - id: b-i
+    inline: area b
+mcp:
+  gateway: bifrost://b

@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+skills:
+  include:
+    - registry://org/skills/pr-review@^1

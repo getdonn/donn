@@ -1,0 +1,6 @@
+description: A cycle in extends is an error that names the full loop.
+resolve: team/a
+expect:
+  error:
+    code: cycle
+    cycle: [team/a, team/b, team/a]

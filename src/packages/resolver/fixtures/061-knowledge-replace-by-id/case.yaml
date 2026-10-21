@@ -1,0 +1,11 @@
+description: Knowledge pointers union by id; a child with the same id replaces in place.
+resolve: team/t
+expect:
+  resolved:
+    knowledge:
+      - { id: wiki, source: "mcp://confluence?space=ENG" }
+      - { id: schema, source: https://docs.corp/schema/v2 }
+      - { id: runbooks, source: "mcp://confluence?space=PAY" }
+  provenance:
+    "knowledge[schema]": team/t
+  warnings: []

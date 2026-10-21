@@ -1,0 +1,12 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+skills:
+  exclude: [nope]
+mcp:
+  remove: [nope]
+permissions:
+  remove:
+    deny: ["Bash(nope)"]

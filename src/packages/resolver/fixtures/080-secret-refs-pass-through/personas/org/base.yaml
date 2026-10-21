@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+secrets:
+  providers:
+    vault: { type: hashicorp-vault, address: https://vault.corp, namespace: eng }

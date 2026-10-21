@@ -1,0 +1,11 @@
+description: >-
+  An entry lock protects one hook by id. team adding a different hook to the same event passes;
+  project replacing the locked one fails, and the error names project, not team.
+resolve: project/p
+expect:
+  error:
+    code: lock-violation
+    path: "hooks.pre-tool-use[block-prod-db]"
+    lock: "hooks.pre-tool-use[block-prod-db]"
+    lockedBy: org/base
+    layer: project/p

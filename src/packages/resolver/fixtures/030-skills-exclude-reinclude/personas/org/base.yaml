@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+skills:
+  include:
+    - registry://org/skills/alpha@^1
+    - registry://org/skills/beta@^1

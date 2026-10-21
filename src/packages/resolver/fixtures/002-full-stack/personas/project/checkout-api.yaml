@@ -1,0 +1,29 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: checkout-api
+  version: 1
+  description: Checkout API service repo
+  labels: { repo: checkout-api }
+extends:
+  - team/payments
+instructions:
+  - id: checkout-context
+    inline: |
+      This repo is the checkout API. Run `pnpm sim` before touching settlement code.
+  - id: checkout-overview
+    position: replace(payments-overview)
+    file: ./instructions/checkout-overview.md
+permissions:
+  allow:
+    - "Bash(pnpm sim:*)"
+  ask:
+    - "Bash(pnpm test:*)"
+hooks:
+  post-tool-use:
+    - id: format-on-write
+      run: ./hooks/format.sh
+      matcher: "Edit|Write"
+targets:
+  claude-code:
+    outputStyle: concise

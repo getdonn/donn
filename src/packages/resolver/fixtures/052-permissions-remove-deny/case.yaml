@@ -1,0 +1,12 @@
+description: >-
+  An unlocked deny can be removed only with an explicit permissions.remove, and doing so warns
+  so it shows up in review.
+resolve: team/t
+expect:
+  resolved:
+    permissions:
+      allow: []
+      deny: ["Bash(rm -rf:*)"]
+      ask: []
+  warnings:
+    - { code: security-removal, path: "permissions.deny[Bash(curl:*)]", layer: team/t }

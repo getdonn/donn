@@ -1,0 +1,41 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: payments-platform
+  version: 3
+  description: Payments platform team, backend services
+  labels: { area: fintech, team: payments }
+extends:
+  - org/base
+  - area/fintech
+instructions:
+  - id: payments-overview
+    file: ./instructions/overview.md
+  - id: coding-standards
+    inline: |
+      Use the shared error envelope. Never log PANs.
+skills:
+  include:
+    - registry://org/skills/pr-review@^2
+    - ./skills/run-payment-sim
+  exclude:
+    - frontend-storybook
+mcp:
+  servers:
+    payments-schema:
+      command: npx
+      args: ["-y", "@corp/payments-schema-mcp"]
+      env: { SCHEMA_TOKEN: "secret://vault/payments/schema-token" }
+  remove: [figma]
+permissions:
+  allow:
+    - "Bash(pnpm test:*)"
+    - "Read(./**)"
+knowledge:
+  - id: payments-runbooks
+    source: mcp://confluence?space=PAY
+  - id: schema-docs
+    source: https://docs.corp/payments/schema
+targets:
+  claude-code:
+    model: sonnet

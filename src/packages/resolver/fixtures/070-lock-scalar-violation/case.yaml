@@ -1,0 +1,9 @@
+description: Changing a locked scalar fails resolution, naming the path, the lock, and both layers.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: mcp.gateway
+    lock: mcp.gateway
+    lockedBy: org/base
+    layer: team/t

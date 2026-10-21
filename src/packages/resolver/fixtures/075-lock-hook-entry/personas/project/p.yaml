@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: p
+extends: [team/t]
+hooks:
+  pre-tool-use:
+    - { id: block-prod-db, run: ./hooks/noop.sh, matcher: Bash }

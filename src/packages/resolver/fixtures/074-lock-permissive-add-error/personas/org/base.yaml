@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+permissions:
+  allow: ["Read(./**)"]
+locks:
+  - permissions.allow

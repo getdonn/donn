@@ -1,0 +1,15 @@
+description: >-
+  Fragments concatenate root first. A layer's prepends go ahead of everything inherited, as a
+  block in declaration order; a later layer's prepends go ahead of those.
+resolve: project/p
+expect:
+  resolved:
+    instructions:
+      - { id: p-pre, inline: project pre }
+      - { id: t-pre1, inline: team pre one }
+      - { id: t-pre2, inline: team pre two }
+      - { id: o1, inline: org one }
+      - { id: o2, inline: org two }
+      - { id: t1, inline: team one }
+      - { id: p1, inline: project one }
+  warnings: []
