@@ -12,6 +12,7 @@ import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { bundledMod, installedModVersion } from "../commands/mod.js";
+import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
 import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
@@ -337,13 +338,18 @@ export async function runChecks(
     );
   } else {
     // Version and mode are independent findings: an old claude must not hide a degraded mode.
+    // `zzpersona claude` runs the claude PATH finds; a shell alias does not count.
+    const claudePath = findOnPath("claude", io.env);
+    const where = claudePath ? ` (${claudePath})` : "";
     const findings: string[] = [];
     const fixes: string[] = [];
     if (detection.version && olderThan(detection.version, VERIFIED_CLAUDE)) {
       findings.push(
-        `claude ${detection.version} is older than ${VERIFIED_CLAUDE}, the version zzpersona was verified against`,
+        `claude ${detection.version}${where} is older than ${VERIFIED_CLAUDE}, the version zzpersona was verified against`,
       );
-      fixes.push("update Claude Code");
+      fixes.push(
+        "update the Claude Code that PATH finds (zzpersona claude ignores shell aliases)",
+      );
     }
     if (detection.facts.sideloadBlocked === true) {
       findings.push(
@@ -355,7 +361,11 @@ export async function runChecks(
       );
     }
     if (findings.length === 0) {
-      add("claude", "ok", `claude ${detection.version ?? "(unknown version)"}`);
+      add(
+        "claude",
+        "ok",
+        `claude ${detection.version ?? "(unknown version)"}${where}`,
+      );
     } else {
       add(
         "claude",
@@ -365,6 +375,17 @@ export async function runChecks(
       );
     }
   }
+
+  // cli: the mod runs `zzpersona` from PATH without a shell
+  const cli = findOnPath("zzpersona", io.env);
+  if (cli) add("cli", "ok", `zzpersona on PATH: ${cli}`);
+  else
+    add(
+      "cli",
+      "warn",
+      "zzpersona is not on PATH, so the Claude Code mod cannot run it",
+      CLI_ON_PATH_FIX,
+    );
 
   // mod: the Claude Code mod this zzpersona ships, installed and current
   const installed = await installedModVersion(home);
@@ -427,6 +448,7 @@ export async function runChecks(
   } else {
     const leftovers = await findBuildLeftovers(home);
     const sessions = await findOrphanSessions(home, Date.now());
+    const summary = `${leftovers.staleLocks.length} stale lock(s), ${leftovers.orphanVersions.length} orphaned version(s), ${leftovers.tempLinks.length} temporary link(s), ${sessions.length} orphaned session folder(s)`;
     const count =
       leftovers.staleLocks.length +
       leftovers.orphanVersions.length +
@@ -436,13 +458,13 @@ export async function runChecks(
     else if (options.fix) {
       await removeBuildLeftovers(leftovers);
       for (const dir of sessions) await removeSession(dir);
-      add("build", "ok", `removed ${count} leftover(s) in ${home}`);
+      add("build", "ok", `removed ${summary}`);
     } else {
       add(
         "build",
         "warn",
-        `${leftovers.staleLocks.length} stale lock(s), ${leftovers.orphanVersions.length} orphaned version(s), ${leftovers.tempLinks.length} temporary link(s), ${sessions.length} orphaned session folder(s)`,
-        `zzpersona doctor --fix (deleting ${buildRoot} entirely is also safe; builds are recreated on launch)`,
+        summary,
+        `zzpersona doctor --fix (it removes only what no running session uses; deleting ${buildRoot} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
       );
     }
   }

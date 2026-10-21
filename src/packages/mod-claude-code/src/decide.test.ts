@@ -337,3 +337,35 @@ describe("live switching", () => {
     expect(personaCommand("use --default team/x")).toEqual({ usage: USAGE });
   });
 });
+
+describe("0.3.1 hints", () => {
+  const launched: Launched = { persona: "team/payments", source: "switch" };
+
+  it("suggests /persona use when the session can switch live", () => {
+    expect(
+      nudgeText(launched, here("team/platform", "switch"), undefined, true),
+    ).toBe(
+      "this folder uses team/platform (switch); this session runs team/payments. /persona use team/platform to switch now",
+    );
+    expect(
+      nudgeText(launched, here("team/platform", "switch"), undefined, false),
+    ).toContain("then relaunch");
+  });
+
+  it("gives a relaunch hint naming the persona after switch --default", () => {
+    expect(
+      commandText(
+        "switch",
+        { scope: "default", persona: "team/platform" },
+        launched,
+        here("team/platform", "default"),
+      ),
+    ).toBe(
+      [
+        "team/platform is now your default.",
+        "This session still runs team/payments. To apply it, exit and run:",
+        "  zzpersona claude team/platform",
+      ].join("\n"),
+    );
+  });
+});
