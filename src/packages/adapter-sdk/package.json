@@ -1,0 +1,52 @@
+{
+  "name": "@zzpersona/adapter-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The harness adapter contract, compile-report helpers and conformance kit",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance/index.d.ts",
+      "default": "./dist/conformance/index.js"
+    },
+    "./conformance/vitest": {
+      "types": "./dist/conformance/suite.d.ts",
+      "default": "./dist/conformance/suite.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
+    "corpus:update": "node scripts/update-corpus.mjs"
+  },
+  "dependencies": {
+    "@zzpersona/spec": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@zzpersona/eslint-config": "workspace:*",
+    "@zzpersona/typescript-config": "workspace:*",
+    "eslint": "10.13.0",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1"
+  },
+  "peerDependencies": {
+    "vitest": "^5.0.5"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
+  }
+}
