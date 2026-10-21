@@ -132,6 +132,21 @@ prints it; the control plane stores it so policy owners can see where enforcemen
 "?" means a spike is needed. The `agents-md` adapter is the lowest common denominator and should
 exist early: it covers several harnesses at once and makes the "honest loss" story concrete.
 
+*Amended 2026-10-21 (spike, `spikes/agents-md/FINDINGS.md`, Codex 0.163.0 and Copilot CLI
+1.0.78 ran):* `AGENTS.md` is only read **from the repo**. No tested tool reads one from an
+out-of-repo location without moving its whole config home (which moves its login), so
+`agents-md` is a file-overlay target for projects that commit their persona. Both Codex and
+Copilot accept a full persona **per launch**, outside the repo, so the relaunch strategy
+generalizes beyond Claude Code:
+
+| IR field | codex (per launch) | copilot CLI (per launch) |
+|---|---|---|
+| instructions | `-c developer_instructions=…` (ran) | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` with `*.instructions.md` — **not** `AGENTS.md` (ran) |
+| mcp.servers | `-c mcp_servers.<n>={…}` (ran) | `--additional-mcp-config @file` (ran) |
+| permissions | partial: `approval_policy`, `sandbox_mode` | `--allow-tool` / `--deny-tool` globs (ran) |
+
+Persona instructions are added alongside the repo's own `AGENTS.md`, never in place of it.
+
 ### Activation strategies
 
 How `activate()` makes a build live varies by harness and is the riskiest per-adapter decision:
