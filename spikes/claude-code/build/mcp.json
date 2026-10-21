@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "zz-probe": { "command": "node", "args": ["/Users/jacobjohnson/Repos/persona-ai/spikes/claude-code/build/mcp-server.mjs"] }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "allow": ["Bash(echo:*)", "mcp__zz-probe__persona_ping"],
+    "deny": ["Bash(echo zz-denied:*)"]
+  }
+}
