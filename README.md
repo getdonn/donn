@@ -59,6 +59,27 @@ Everything outside the block is left as you wrote it. The block carries instruct
 pointers and tool rules as guidance; the report lists what an `AGENTS.md` cannot carry (skills, MCP
 servers, hooks, enforced permissions).
 
+## Codex
+
+`zzpersona codex` launches Codex CLI with a persona, the way `zzpersona claude` launches Claude
+Code. Nothing is written to `~/.codex`: everything goes on the command line as `-c` overrides.
+
+```sh
+zzpersona codex                     # the project persona (or your switch or default)
+zzpersona codex team/payments -- exec "fix the failing test"   # arguments after -- go to codex
+zzpersona compile --harness codex   # see the build and the report without launching
+```
+
+Carried over: instructions (as developer instructions, on top of Codex's own), knowledge pointers,
+MCP servers, with secrets resolved into the launch environment and forwarded by name, and
+MCP tool allow rules (`mcp__<server>__<tool>` runs without asking; `mcp__<server>__*` approves the whole server). Codex runs with
+`-s workspace-write -a on-request` unless the persona sets `targets.codex.sandbox`, `.approval`
+or `.model` (set them there: Codex refuses `-s`, `-a` or `-m` a second time after `--`).
+Other permission rules are guidance in the instructions, not enforced. Skills and
+hooks do not carry over: Codex has no per-launch skill folder, and it does not run hooks it has
+not been told to trust. The report lists each one. (`codex exec` is non-interactive, so Codex
+runs it with approval `never`; the sandbox still applies.)
+
 ## Two Claude Code installs?
 
 `zzpersona claude` runs the `claude` that `PATH` finds, which may not be the one your shell's

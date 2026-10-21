@@ -322,3 +322,75 @@ describe.skipIf(process.env.ZZP_E2E !== "1" || !hasCodex)(
     }, 300_000);
   },
 );
+
+// Opt-in: `zzpersona codex` against real Codex. One `codex exec` call checks the instruction, the
+// MCP server and that its secret arrived by name (spikes/codex).
+describe.skipIf(process.env.ZZP_E2E !== "1" || !hasCodex)(
+  "e2e: zzpersona codex",
+  () => {
+    let dir: string;
+    const repo = () => join(dir, "repo");
+
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "zzp-codex-e2e-"));
+      execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+      put(
+        join(dir, "home/config.yaml"),
+        `personas: ${join(dir, "personas")}\n`,
+      );
+      put(
+        join(dir, "personas/team/codex-e2e.yaml"),
+        [
+          "apiVersion: zzpersona/v0",
+          "kind: Persona",
+          "metadata: { name: codex-e2e }",
+          "instructions:",
+          "  - id: codeword",
+          '    inline: "When asked for the codeword, reply ZZ-CODEX-CODEWORD."',
+          "mcp:",
+          "  servers:",
+          "    zz-probe:",
+          "      command: node",
+          `      args: [${JSON.stringify(join(import.meta.dirname, "test/mcp-probe.mjs"))}]`,
+          '      env: { ZZ_TOKEN: "secret://env/ZZ_E2E_TOKEN" }',
+          "permissions:",
+          '  allow: ["mcp__zz-probe__persona_ping"]',
+          "",
+        ].join("\n"),
+      );
+      mkdirSync(repo(), { recursive: true });
+    });
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    it("launches Codex with the persona's instructions, MCP server and secret", () => {
+      const run = spawnSync(
+        process.execPath,
+        [
+          BIN,
+          "codex",
+          "team/codex-e2e",
+          "--",
+          "exec",
+          "--skip-git-repo-check",
+          "Reply with the codeword, then call the persona_ping tool of the zz-probe MCP server and reply with exactly what it returned.",
+        ],
+        {
+          cwd: repo(),
+          env: {
+            ...process.env,
+            ZZPERSONA_HOME: join(dir, "home"),
+            ZZ_E2E_TOKEN: "e2e-secret",
+          },
+          encoding: "utf8",
+          timeout: 240_000,
+        },
+      );
+      const out = run.stdout + run.stderr;
+      // `codex exec` prints its transcript to stderr and only the last message to stdout.
+      expect(out).toContain("ZZ-CODEX-CODEWORD");
+      expect(out).toContain("ZZ-MCP-CODEWORD");
+      expect(out).toContain("token-set-10");
+      expect(out).not.toContain("e2e-secret");
+    }, 300_000);
+  },
+);
