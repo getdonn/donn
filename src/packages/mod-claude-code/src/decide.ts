@@ -19,6 +19,14 @@ export type Here =
 
 export type Form = "show" | "list" | "switch" | "clear";
 
+const LAYER_ORDER: readonly string[] = [
+  "org",
+  "area",
+  "team",
+  "project",
+  "user",
+];
+
 export const USAGE =
   "usage: /persona [list | switch <persona> [--default] | clear [--default]]";
 
@@ -113,7 +121,14 @@ export function commandText(
   }
   if (form === "list") {
     const personas = (data.personas ?? []) as { ref: string; layer: string }[];
-    const layers = [...new Set(personas.map((p) => p.layer))];
+    // Inheritance order, as `zzpersona list` prints it; unknown layers last.
+    const rank = (layer: string) => {
+      const i = LAYER_ORDER.indexOf(layer);
+      return i === -1 ? LAYER_ORDER.length : i;
+    };
+    const layers = [...new Set(personas.map((p) => p.layer))].sort(
+      (a, b) => rank(a) - rank(b),
+    );
     return layers
       .flatMap((layer) => [
         `${layer}:`,
@@ -141,8 +156,9 @@ export function commandText(
     return [
       saved,
       `This session still runs ${launched?.persona ?? "no persona"}. To apply it, exit and run:`,
-      "  zzpersona claude -- --continue",
-      "(--continue resumes this conversation with the new persona.)",
+      "  zzpersona claude",
+      // Verified (spikes/mod-smoke): a resumed session keeps the system prompt it began with.
+      "(zzpersona claude -- --continue keeps this conversation, but not the new persona's instructions.)",
     ].join("\n");
   }
   const cleared =

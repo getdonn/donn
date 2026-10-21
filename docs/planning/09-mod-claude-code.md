@@ -154,3 +154,20 @@ harnesses; Windows.
 3. **`process.run` blocked by policy.** The band still shows the launched persona from the
    environment; `/persona` can only explain why it is unavailable. A daemon (Phase 2) could serve
    the mod over a socket instead.
+
+## Amendments from implementation and the smoke run (2026-10-21)
+
+Made while building this spec (`docs/plans/2026-10-21-mod-claude-code.md`); see
+`spikes/mod-smoke/FINDINGS.md`. Each overrides the section it names.
+
+- **§3 after a switch** the text recommends `zzpersona claude`, and says
+  `zzpersona claude -- --continue` keeps the conversation but not the new persona's instructions:
+  a resumed session keeps the system prompt it began with. Open question 1 is answered.
+- **§3 `/persona list`** prints layers in inheritance order (org, area, team, project, user).
+- **§1 doctor's `mod` check** compares the installed mod with the mod this CLI ships, not with the
+  CLI's own version (the packages version separately).
+- **§1 failure reasons:** a refused `process.run` reads `blocked: <the refusal's message>`.
+- **§1 hooks** are top-level functions over module state, as `claude plugin validate` requires.
+- **Spec 10 inputs:** manual checks A (a child of a `--plugin-dir` folder of plugins swaps
+  mid-session, silently) and B (`prompt.submit` context survives later turns) both passed.
+
