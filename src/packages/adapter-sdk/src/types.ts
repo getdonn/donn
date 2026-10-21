@@ -18,6 +18,7 @@ export interface HarnessAdapter {
 }
 
 export interface Probe {
+  /** Runs a command. Never throws for a missing command: returns exit code 127. */
   run(
     command: string,
     args: string[],
