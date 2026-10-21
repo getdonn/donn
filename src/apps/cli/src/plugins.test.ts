@@ -150,7 +150,7 @@ describe("third-party adapters", () => {
     });
     expect(JSON.parse(bad.stdout).error).toMatchObject({
       code: "unknown-harness",
-      available: ["claude-code", "fake"],
+      available: ["claude-code", "agents-md", "fake"],
     });
   });
 });

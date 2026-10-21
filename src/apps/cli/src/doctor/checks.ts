@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { access, constants } from "node:fs/promises";
+import { access, constants, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { findBuildLeftovers, removeBuildLeftovers } from "@zzpersona/executor";
 import {
@@ -291,7 +291,25 @@ export async function runChecks(
       const where = selection.project
         ? ` for ${dirname(selection.project)}`
         : "";
-      add("persona", "ok", `${selection.ref} (${selection.source}${where})`);
+      // Claude Code reads AGENTS.md when the repo has no CLAUDE.md, so the persona's
+      // instructions would reach a zzpersona claude session twice (docs/planning/11-agents-md.md).
+      let twice = "";
+      if (ctx.projectDir !== undefined) {
+        const repo = dirname(ctx.projectDir);
+        const agents = await readFile(join(repo, "AGENTS.md"), "utf8").catch(
+          () => "",
+        );
+        if (
+          agents.includes("<!-- zzpersona:begin") &&
+          !existsSync(join(repo, "CLAUDE.md"))
+        )
+          twice = "; AGENTS.md also carries it for Claude Code";
+      }
+      add(
+        "persona",
+        "ok",
+        `${selection.ref} (${selection.source}${where})${twice}`,
+      );
     } catch (error) {
       if (error instanceof CliError && error.code === "no-persona") {
         add(

@@ -187,6 +187,9 @@ importers:
 
   src/apps/cli:
     dependencies:
+      '@zzpersona/adapter-agents-md':
+        specifier: workspace:*
+        version: link:../../packages/adapters/agents-md
       '@zzpersona/adapter-claude-code':
         specifier: workspace:*
         version: link:../../packages/adapters/claude-code

@@ -1,5 +1,5 @@
 import { AdapterInputError } from "@zzpersona/adapter-sdk";
-import { ExecutorError } from "@zzpersona/executor";
+import { ExecutorError, OverlayMarkersError } from "@zzpersona/executor";
 import { ResolveError } from "@zzpersona/resolver";
 import { SecretResolutionError } from "@zzpersona/secrets";
 import { StoreError } from "@zzpersona/store-local";
@@ -59,6 +59,17 @@ function describe(error: unknown): {
     return {
       text: error.message,
       json: { code: "adapter", message: error.message },
+    };
+  }
+  if (error instanceof OverlayMarkersError) {
+    return {
+      text: error.message,
+      json: {
+        code: "agents-md-markers",
+        message: error.message,
+        path: error.path,
+        line: error.line,
+      },
     };
   }
   if (error instanceof ExecutorError) {

@@ -6,6 +6,7 @@ import { compileCommand } from "./commands/compile.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { listCommand } from "./commands/list.js";
+import { writeCommand } from "./commands/write.js";
 import { liveCommand } from "./commands/live.js";
 import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
@@ -141,6 +142,19 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print the live state as JSON")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => liveCommand(io, persona, options)),
+        );
+
+      program
+        .command("write")
+        .description(
+          "Render the project persona into the files a harness reads from the repo (AGENTS.md)",
+        )
+        .option("--harness <id>", "the file harness", "agents-md")
+        .option("--check", "write nothing; exit 1 when the file is out of date")
+        .option("--remove", "remove the generated block")
+        .option("--json", "print { path, status, report } as JSON")
+        .action((options) =>
+          handle(options.json, () => writeCommand(io, options)),
         );
 
       program
