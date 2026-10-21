@@ -223,3 +223,29 @@ mod; `overlay` execution; publishing (blocked on the name).
 3. **Windows `keychain`.** PowerShell `CredRead`, as above.
 4. **Plugin trust.** Anything listed runs with your permissions. A pinned-hash check (a
    lockfile for `<home>/adapters`) before import matters once teams share configs.
+
+## Amendments from implementation and review (2026-10-21)
+
+Made while building this spec (`docs/plans/2026-10-21-cli-reach.md`) and fixing its whole-branch
+review. Each overrides the section it names.
+
+- **§1 `SecretContext`** also carries `platform` (a plain string), which `keychain` needs to pick
+  `security` or `secret-tool`. `env` is a plain record, so provider packages need no
+  `@types/node`. Secret commands run through their own probe with a 300 s timeout, so a
+  keychain prompt has time to be answered; a timed-out command reads "timed out waiting for
+  `<command>` (was a keychain prompt left open?)".
+- **§1 package resolution** follows `import()`: `exports` subpath maps and condition objects
+  (`node`, `import`, `default`, in key order, nested), scoped names and subpaths, then `main`, then
+  `index.js`, trying `.js`/`.mjs`/`index.js` for an extensionless target. A malformed
+  `package.json` is `plugin-load` (`invalid-package-json`).
+- **§2 Linux:** `secret-tool` exiting 1 means not found only with empty stderr; otherwise the
+  reason is its first stderr line. `doctor`'s suggested commands shell-quote service and account.
+- **§4 concurrent `switch`:** `state.json` is updated under a lock (`<home>/state.lock`), not only
+  re-read before writing.
+- **§4 project containment:** the repo is the root, unless `.zzpersona` is itself a symlink, which
+  is then its own root.
+- **§4 `doctor --fix` and switches:** an entry is removed only when its repo folder is gone but the
+  folder that held it exists; an unmounted volume (whose whole path is gone) keeps its entries.
+- **§5 testing:** the macOS keychain e2e resolves through `doctor`, since `claude --dry-run`
+  resolves no secrets.
+
