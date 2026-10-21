@@ -91,7 +91,9 @@ describe("review fixes", () => {
     );
     const r = await zz(["compile"], { cwd: s.repo, home: s.home });
     expect(r.code).toBe(1);
-    expect(r.stderr).toMatch(/^error: skill outside: .* is outside the personas root$/m);
+    expect(r.stderr).toMatch(
+      /^error: skill outside: .* is outside the personas root$/m,
+    );
     expect(r.stderr).not.toContain("    at ");
   });
 });
