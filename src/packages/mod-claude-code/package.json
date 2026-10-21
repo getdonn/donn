@@ -1,6 +1,6 @@
 {
   "name": "@zzpersona/mod-claude-code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "The Claude Code mod: the active persona above the prompt, a folder-mismatch nudge, /persona",
   "license": "Apache-2.0",
