@@ -1,0 +1,14 @@
+# Generated
+pnpm-lock.yaml
+**/CHANGELOG.md
+src/packages/adapter-sdk/src/conformance/corpus/full.json
+
+# Compared exactly by tests; hand-formatted for review
+src/packages/resolver/fixtures/
+src/packages/adapters/*/test/golden/
+
+# Hand-written prose, wrapped at 100 by convention
+docs/
+
+# Throwaway
+spikes/

@@ -59,6 +59,9 @@ in parallel and only blocks the first `npm publish`.
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
   never at the repo root. All packages `"private": true` until the name is chosen.
 - Every CLI command supports `--json`.
+- Formatting: Prettier at width 80 (`.prettierrc.json`). `pnpm format` before committing;
+  `pnpm format:check` must pass. `.prettierignore` excludes generated files, test fixtures and
+  golden files (compared exactly), `docs/` (prose wrapped at 100) and `spikes/`.
 - Git flow: `main` = released, `develop` = integration. All work happens on `feature/<topic>`
   branched from `develop` and merged back into it; `release/*` and `hotfix/*` per standard
   gitflow. Never commit directly to `main` or `develop`. Changesets `baseBranch` is `develop`.
