@@ -1,6 +1,7 @@
 import type { Probe } from "@zzpersona/adapter-sdk";
 import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError } from "commander";
+import { compileCommand } from "./commands/compile.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { report } from "./errors.js";
 
@@ -54,6 +55,26 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => resolveCommand(io, persona, options)),
+        );
+
+      program
+        .command("compile")
+        .description(
+          "Compile a persona into a harness build without launching it",
+        )
+        .argument(
+          "[persona]",
+          "a ref like team/payments, or a bare name; defaults to the project persona",
+        )
+        .option("--harness <id>", "the harness to compile for", "claude-code")
+        .option("--dry-run", "print the build and plan; write nothing")
+        .option(
+          "--json",
+          "print { buildDir, report, secretRefs, plan } as JSON",
+        )
+        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .action((persona: string | undefined, options) =>
+          handle(options.json, () => compileCommand(io, persona, options)),
         );
 
       try {
