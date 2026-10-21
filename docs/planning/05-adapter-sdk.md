@@ -299,6 +299,9 @@ activation path; gateway resolution; implementing `agents-md` or `codex`; skill 
 2. **Codex instruction length.** `-c developer_instructions=…` puts the whole text on the
    command line. Check whether Codex has a file-based option before building `codex`; if not,
    measure the practical limit.
+   *Amended 2026-10-21 (spec 12): there is no file option that keeps Codex's own instructions
+   (`model_instructions_file` replaces them), so instructions go inline; ~40 KB of
+   `developer_instructions` worked in `exec` and the TUI (`spikes/codex`).*
 3. **Plugin name.** `zzp-<personaId>` makes skills show as `zzp-project-checkout-api:<skill>`.
    Readable enough, or use the persona's `metadata.name`, which is not guaranteed unique?
    *Amended 2026-10-21 (spec 09): `/` now maps to `--` (`zzp-team--payments`), so

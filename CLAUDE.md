@@ -56,7 +56,7 @@ its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec)
 path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
 built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-local`,
 `secrets`, `executor` and `zzpersona resolve|compile|claude` (opt-in `ZZP_E2E=1` runs the built
-binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`) is built; next the Codex adapter. Picking the name runs
+binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`) and spec 12 (the Codex adapter, `zzpersona codex`) are built; next the capability matrix docs, then the daemon. Picking the name runs
 in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
