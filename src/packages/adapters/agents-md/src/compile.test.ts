@@ -105,6 +105,28 @@ describe("compile", () => {
     expect(note(sized(24577 - header))).toBe(true);
   });
 
+  it("refuses an instruction file that is the generated AGENTS.md", () => {
+    const { ir } = entry("minimal");
+    const generated = [
+      "# Repo rules",
+      "<!-- zzpersona:begin — generated; edit the source, not this block -->",
+      "old block",
+      "<!-- zzpersona:end -->",
+      "",
+    ].join("\n");
+    expect(() =>
+      adapter.compile(
+        input("minimal", {
+          ir: {
+            ...ir,
+            instructions: [{ id: "agents", file: "project/AGENTS.md" }],
+          },
+          texts: { "project/AGENTS.md": generated },
+        }),
+      ),
+    ).toThrow(/project\/AGENTS\.md holds the generated zzpersona block/);
+  });
+
   it("throws AdapterInputError when an instruction file's text is missing", () => {
     expect(() => adapter.compile(input("full", { texts: {} }))).toThrow(
       AdapterInputError,

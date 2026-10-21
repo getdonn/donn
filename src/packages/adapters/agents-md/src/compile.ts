@@ -55,6 +55,12 @@ export function compile(
           `no text supplied for instruction file ${fragment.file}`,
         );
       }
+      // An instruction file linked to the repo's AGENTS.md would inline the block into itself.
+      if (/^\s*<!-- zzpersona:(begin|end)\b/m.test(text)) {
+        throw new AdapterInputError(
+          `instruction file ${fragment.file} holds the generated zzpersona block (is it the repo's AGENTS.md?); point it at a file without the block`,
+        );
+      }
       return text.trimEnd();
     }),
   ];
