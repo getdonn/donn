@@ -1,0 +1,31 @@
+{
+  "name": "zzpersona-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "format": "prettier --write \"**/*.{ts,md,json,yaml}\"",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "prettier": "3.9.10",
+    "turbo": "^2.11.10",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^26.12.0",
+      "onFail": "download"
+    }
+  }
+}
