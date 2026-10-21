@@ -429,3 +429,24 @@ describe("zzpersona doctor (0.3.1)", () => {
     );
   });
 });
+
+describe("zzpersona doctor and AGENTS.md", () => {
+  it("notes when Claude Code also reads the generated AGENTS.md", async () => {
+    const env = healthy();
+    writeFileSync(
+      join(s.repo, "AGENTS.md"),
+      "<!-- zzpersona:begin — generated; edit the source, not this block -->\nx\n<!-- zzpersona:end -->\n",
+    );
+    const persona = (await doctor([], { env })).checks.find(
+      (c) => c.id === "persona",
+    )!;
+    expect(persona.message).toContain(
+      "AGENTS.md also carries it for Claude Code",
+    );
+    writeFileSync(join(s.repo, "CLAUDE.md"), "# Claude\n");
+    const again = (await doctor([], { env })).checks.find(
+      (c) => c.id === "persona",
+    )!;
+    expect(again.message).not.toContain("AGENTS.md");
+  });
+});
