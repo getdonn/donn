@@ -293,6 +293,15 @@ export async function findAdapter(
   );
 }
 
+/** The built-in adapters, then the ones the config lists. */
+export async function allAdapters(
+  ctx: Pick<Context, "home" | "config">,
+  env: Env,
+): Promise<HarnessAdapter[]> {
+  const loaded = await loadAdapters(ctx, env);
+  return [...Object.values(HARNESSES), ...loaded.map((l) => l.plugin)];
+}
+
 /** For resolveSecrets: loads the listed providers the first time a non-built-in type is needed. */
 export function backendLoader(
   ctx: Context,
