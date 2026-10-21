@@ -1,0 +1,12 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+hooks (2)
+  pre-tool-use   lint-guard → team/hooks/lint-guard-v2.sh  team/t  matcher: Edit|Write
+  post-tool-use  notify → team/hooks/notify.sh             team/t
+
+warnings (1)
+  security-removal  hooks.pre-tool-use[audit-log]  from team/t

@@ -1,0 +1,19 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+skills (1)
+  alpha  registry://org/skills/alpha@^1  org/base
+
+mcp (1)
+  jira  gateway://jira  org/base
+
+permissions (1)
+  deny  Bash(rm -rf:*)  org/base
+
+warnings (3)
+  remove-unmatched  skills[nope]                  from team/t
+  remove-unmatched  mcp.servers.nope              from team/t
+  remove-unmatched  permissions.deny[Bash(nope)]  from team/t

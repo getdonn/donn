@@ -1,0 +1,10 @@
+p
+
+layers (merge order)
+  1  org/base
+  2  team/t
+  3  project/p  target
+
+mcp (2)
+  jira   gateway://jira      org/base
+  figma  gateway://figma-v2  project/p

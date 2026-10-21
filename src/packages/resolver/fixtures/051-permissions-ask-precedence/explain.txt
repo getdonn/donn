@@ -1,0 +1,14 @@
+p
+
+layers (merge order)
+  1  org/base
+  2  team/t
+  3  project/p  target
+
+permissions (2)
+  deny  Bash(git push:*)   team/t
+  ask   Bash(npm publish)  project/p
+
+warnings (2)
+  ask-shadowed-by-deny   permissions.ask[Bash(git push:*)]     from org/base
+  allow-shadowed-by-ask  permissions.allow[Bash(npm publish)]  from team/t

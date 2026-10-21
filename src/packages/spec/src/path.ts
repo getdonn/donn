@@ -28,6 +28,16 @@ export function formatPath({ keys, entry }: PersonaPath): string {
   return entry === undefined ? keys.join(".") : `${keys.join(".")}[${entry}]`;
 }
 
+/** Whether a lock on `lock` protects the value at `path` (the same path, or anything under it). */
+export function lockCovers(lock: PersonaPath, path: PersonaPath): boolean {
+  return (
+    lock.keys.length <= path.keys.length &&
+    lock.keys.every((key, i) => path.keys[i] === key) &&
+    (lock.entry === undefined ||
+      (lock.keys.length === path.keys.length && lock.entry === path.entry))
+  );
+}
+
 const EVENTS: ReadonlySet<string> = new Set(HOOK_EVENTS);
 const RULE_LISTS: ReadonlySet<string> = new Set(["allow", "deny", "ask"]);
 

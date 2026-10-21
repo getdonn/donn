@@ -10,7 +10,12 @@ and the output the resolver must produce for them.
 <NNN-case-name>/
   case.yaml                 what to resolve and what to expect
   personas/<layer>/<name>.yaml
+  explain.txt               golden output of explain() (resolving cases only)
 ```
+
+`explain.txt` is generated: after an intended change to resolution or rendering, regenerate with
+`pnpm --filter @zzpersona/resolver exec vitest run -u` and review the diff like any other change.
+It is what a reviewer reads to judge whether the output is trustworthy (Phase 0 exit question).
 
 The personas root is the case's `personas/` directory. A ref like `team/payments` is the file
 `personas/team/payments.yaml`. The first path segment is the layer (`org`, `area`, `team`,

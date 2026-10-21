@@ -1,0 +1,24 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+instructions (1)
+  t1  inline "team only sets instructions"  team/t
+
+mcp (2)
+  gateway  bifrost://corp  org/base
+  jira     gateway://jira  org/base
+
+permissions (1)
+  deny  Bash(rm -rf:*)  org/base
+
+hooks (1)
+  pre-tool-use  guard → org/hooks/guard.sh  org/base
+
+knowledge (1)
+  wiki  mcp://confluence?space=ENG  org/base
+
+targets (1)
+  claude-code.model  sonnet  org/base

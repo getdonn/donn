@@ -1,0 +1,9 @@
+t
+
+layers (merge order)
+  1  area/x
+  2  area/y
+  3  team/t  target
+
+targets (1)
+  claude-code.model  opus  area/y

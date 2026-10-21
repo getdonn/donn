@@ -1,0 +1,65 @@
+checkout-api v1 — Checkout API service repo
+
+layers (merge order)
+  1  org/base
+  2  area/fintech
+  3  team/payments
+  4  project/checkout-api  target
+  5  user/overrides        overlay
+
+labels (4)
+  org   corp          org/base
+  area  fintech       area/fintech
+  team  payments      team/payments
+  repo  checkout-api  project/checkout-api
+
+instructions (6)
+  org-conduct         file org/instructions/conduct.md              org/base
+  org-security        inline "Never paste credentials, tokens or …  org/base
+  fintech-compliance  inline "This area is PCI-DSS scoped. Treat …  area/fintech
+  checkout-overview   file project/instructions/checkout-overview…  project/checkout-api
+  coding-standards    inline "Use the shared error envelope. Neve…  team/payments
+  checkout-context    inline "This repo is the checkout API. Run …  project/checkout-api
+
+skills (2)
+  pr-review        registry://org/skills/pr-review@^2  team/payments
+  run-payment-sim  team/skills/run-payment-sim         team/payments
+
+mcp (3)
+  gateway          bifrost://corp                    org/base       locked: mcp.gateway by org/base
+  jira             gateway://jira                    org/base
+  payments-schema  npx -y @corp/payments-schema-mcp  team/payments  env: SCHEMA_TOKEN
+
+permissions (8)
+  deny   Bash(curl:*)       area/fintech          locked: permissions.deny by org/base
+  deny   Bash(rm -rf:*)     org/base              locked: permissions.deny by org/base
+  deny   Read(./.env)       org/base              locked: permissions.deny by org/base
+  ask    Bash(git push:*)   org/base
+  ask    Bash(pnpm test:*)  project/checkout-api
+  allow  Bash(git status)   user/overrides
+  allow  Bash(pnpm sim:*)   project/checkout-api
+  allow  Read(./**)         team/payments
+
+hooks (2)
+  pre-tool-use   block-prod-db → org/hooks/block-prod-db.sh  org/base              matcher: Bash; locked: hooks.pre-tool-use[block-prod-db] by org/base
+  post-tool-use  format-on-write → project/hooks/format.sh   project/checkout-api  matcher: Edit|Write
+
+knowledge (3)
+  pci-handbook       mcp://confluence?space=PCI         area/fintech
+  payments-runbooks  mcp://confluence?space=PAY         team/payments
+  schema-docs        https://docs.corp/payments/schema  team/payments
+
+secrets (1)
+  vault  hashicorp-vault address=https://vault.corp  org/base
+
+targets (2)
+  claude-code.model        opus     user/overrides
+  claude-code.outputStyle  concise  project/checkout-api
+
+locks (3)
+  permissions.deny                   org/base
+  mcp.gateway                        org/base
+  hooks.pre-tool-use[block-prod-db]  org/base
+
+warnings (1)
+  allow-shadowed-by-ask  permissions.allow[Bash(pnpm test:*)]  from team/payments

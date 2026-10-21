@@ -11,10 +11,11 @@ import {
 } from "@zzpersona/spec";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ResolveError, resolve, type PersonaSource } from "./index.js";
+import { explain, ResolveError, resolve, type PersonaSource } from "./index.js";
 
 // Each fixture is checked twice: that it is well-formed and agrees with @zzpersona/spec, then
-// that resolve() produces exactly what it expects. See fixtures/README.md.
+// that resolve() produces exactly what it expects and explain() renders it as explain.txt.
+// See fixtures/README.md.
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 const IR_FIELDS = Object.keys(ResolvedPersona.shape);
@@ -130,7 +131,8 @@ describe("resolver fixtures", () => {
         return;
       }
 
-      const { ir, provenance, warnings } = await run;
+      const result = await run;
+      const { ir, provenance, warnings } = result;
       for (const [field, value] of Object.entries(exp.resolved as Doc)) {
         expect(ir[field as keyof typeof ir], field).toStrictEqual(value);
       }
@@ -143,6 +145,9 @@ describe("resolver fixtures", () => {
         `${w.code as string} ${w.path as string} ${w.layer as string}`;
       expect(warnings.map(key).sort()).toEqual(
         (exp.warnings as Doc[]).map(key).sort(),
+      );
+      await expect(explain(result)).toMatchFileSnapshot(
+        join(dir, "explain.txt"),
       );
     });
   });

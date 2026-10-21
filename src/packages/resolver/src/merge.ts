@@ -4,6 +4,7 @@ import {
   formatPath,
   IR_VERSION,
   isValidLockPath,
+  lockCovers,
   parsePath,
   ResolvedPersona,
   type Hook,
@@ -40,12 +41,6 @@ const RULE_LISTS: RuleList[] = ["allow", "deny", "ask"];
 
 const at = (keys: string[], entry?: string): PersonaPath =>
   entry === undefined ? { keys } : { keys, entry };
-
-const covers = (lock: PersonaPath, change: PersonaPath): boolean =>
-  lock.keys.length <= change.keys.length &&
-  lock.keys.every((key, i) => change.keys[i] === key) &&
-  (lock.entry === undefined ||
-    (lock.keys.length === change.keys.length && lock.entry === change.entry));
 
 /** Adding to deny or ask only tightens policy, so a lock there still allows additions. */
 const isRestrictiveAdd = ({ keys }: PersonaPath, change: Change): boolean =>
@@ -397,7 +392,7 @@ export class Merge {
   /** May this layer make this change? Throws on a lock violation; the overlay skips and warns. */
   private guard(path: PersonaPath, change: Change): boolean {
     for (const lock of this.locks) {
-      if (!covers(lock.parsed, path) || isRestrictiveAdd(path, change))
+      if (!lockCovers(lock.parsed, path) || isRestrictiveAdd(path, change))
         continue;
       if (this.isOverlay) {
         this.warn("overlay-lock-ignored", path);
