@@ -221,3 +221,24 @@ describe("zzpersona init keeps the rest of config.yaml", () => {
     });
   });
 });
+
+describe("zzpersona init keeps config comments", () => {
+  it("rewrites personas without dropping comments", async () => {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(home, "config.yaml"),
+      `# my zzpersona config\npersonas: ${join(s.root, "a")} # old folder\nadapters: [acme-zzp-x]\n`,
+    );
+    const r = await zz(["init", "--personas", join(s.root, "b"), "--force"], {
+      cwd: s.root,
+      home,
+    });
+    expect(r.code, r.stderr).toBe(0);
+    const text = readFileSync(join(home, "config.yaml"), "utf8");
+    expect(text).toContain("# my zzpersona config");
+    expect(config()).toEqual({
+      personas: join(s.root, "b"),
+      adapters: ["acme-zzp-x"],
+    });
+  });
+});

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createLocalStore } from "@zzpersona/store-local";
-import { parse, stringify } from "yaml";
+import { isMap, parseDocument, stringify } from "yaml";
 import type { CliIo } from "../cli.js";
 import { expandPath, loadConfig } from "../config.js";
 import { createContext, homeOf, resolvePersona } from "../context.js";
@@ -36,16 +36,26 @@ permissions:
     - "Bash(rm -rf:*)"
 `;
 
-/** The config's other keys (adapters, …), kept when init rewrites personas. */
-async function otherConfigKeys(file: string): Promise<Record<string, unknown>> {
-  try {
-    const raw: unknown = parse(await readFile(file, "utf8"));
-    return raw !== null && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
+/**
+ * config.yaml with `personas` set, editing the existing document so its other keys and its
+ * comments survive; a config that does not parse is replaced (`--force` got us here).
+ */
+async function configWithPersonas(
+  file: string,
+  personas: string,
+): Promise<string> {
+  const text = await readFile(file, "utf8").catch(() => undefined);
+  if (text !== undefined) {
+    const doc = parseDocument(text);
+    if (
+      doc.errors.length === 0 &&
+      (doc.contents === null || isMap(doc.contents))
+    ) {
+      doc.set("personas", personas);
+      return doc.toString();
+    }
   }
+  return stringify({ personas });
 }
 
 interface Changes {
@@ -86,10 +96,8 @@ async function initPersonas(
   // The folder first: a folder that cannot be created leaves the config as it was.
   await fsStep(target, () => mkdir(target, { recursive: true }));
   if (current !== target) {
-    const others = await otherConfigKeys(configFile);
-    await fsStep(configFile, () =>
-      writeFileAtomic(configFile, stringify({ ...others, personas: target })),
-    );
+    const content = await configWithPersonas(configFile, target);
+    await fsStep(configFile, () => writeFileAtomic(configFile, content));
     (hadConfig ? out.updated : out.created).push(configFile);
   }
   const existing = await createLocalStore({

@@ -95,6 +95,8 @@ export function nudgeText(
   current: Launched | undefined,
   here: Here,
   live?: LiveState,
+  /** The session was started by zzpersona claude with a session folder (spec 10). */
+  canLive = false,
 ): string | undefined {
   // After a live switch the session runs the live persona.
   const switched = activeLive(live);
@@ -107,7 +109,10 @@ export function nudgeText(
     return `this folder uses ${here.persona}; start with zzpersona claude to load it`;
   }
   if (here.persona === launched.persona) return undefined;
-  return `this folder uses ${here.persona} (${here.source}); this session runs ${launched.persona}. /persona switch ${here.persona}, then relaunch`;
+  const how = canLive
+    ? `/persona use ${here.persona} to switch now`
+    : `/persona switch ${here.persona}, then relaunch`;
+  return `this folder uses ${here.persona} (${here.source}); this session runs ${launched.persona}. ${how}`;
 }
 
 /** `/persona <args>` → the CLI arguments to run, or the usage line. */
@@ -198,7 +203,15 @@ export function commandText(
       data.scope === "project" && typeof data.project === "string"
         ? `${persona} is now used for ${repoOf(data.project)}.`
         : `${persona} is now your default.`;
-    if (launched?.persona === persona || data.scope !== "project") return saved;
+    if (!launched || launched.persona === persona) return saved;
+    // A new default may not be what a bare relaunch picks here (a project persona wins): name it.
+    if (data.scope !== "project") {
+      return [
+        saved,
+        `This session still runs ${launched.persona}. To apply it, exit and run:`,
+        `  zzpersona claude ${persona}`,
+      ].join("\n");
+    }
     return [
       saved,
       `This session still runs ${launched?.persona ?? "no persona"}. To apply it, exit and run:`,

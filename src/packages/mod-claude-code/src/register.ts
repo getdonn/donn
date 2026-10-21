@@ -89,7 +89,7 @@ async function onStart(
         $.ui.invalidate("ui.render");
         if (live) $.ui.invalidate("prompt.section");
       }
-      const text = nudgeText(launched, here, live);
+      const text = nudgeText(launched, here, live, session !== undefined);
       if (showNudge && !nudged && text !== undefined) {
         nudged = true;
         $.ui.status(text);
