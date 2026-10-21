@@ -2,7 +2,7 @@ mode: relaunch-no-mcp
 files (3)
   plugin/.claude-plugin/plugin.json (0644)
     {
-      "name": "zzp-team-solo",
+      "name": "zzp-team--solo",
       "version": "0.0.0",
       "description": "Persona solo"
     }

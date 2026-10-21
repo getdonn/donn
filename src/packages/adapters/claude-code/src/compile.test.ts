@@ -5,6 +5,7 @@ import {
 } from "@zzpersona/adapter-sdk";
 import { corpus } from "@zzpersona/adapter-sdk/conformance";
 import { describe, expect, it } from "vitest";
+import { pluginName } from "./compile.js";
 import adapter from "./index.js";
 
 const entry = (name: string) => corpus.find((e) => e.name === name)!;
@@ -57,7 +58,7 @@ describe("compile (relaunch)", () => {
 
   it("names the plugin after the persona id", () => {
     expect(json(full, "plugin/.claude-plugin/plugin.json")).toEqual({
-      name: "zzp-project-checkout-api",
+      name: "zzp-project--checkout-api",
       version: "0.0.0",
       description: "Persona checkout-api",
     });
@@ -65,8 +66,17 @@ describe("compile (relaunch)", () => {
       input("minimal", { personaId: "team/platform/payments" }),
     );
     expect(json(nested, "plugin/.claude-plugin/plugin.json")).toMatchObject({
-      name: "zzp-team-platform-payments",
+      name: "zzp-team--platform--payments",
     });
+  });
+
+  it("keeps nested and hyphenated refs apart in plugin names", () => {
+    expect(pluginName("team/platform-payments")).toBe(
+      "zzp-team--platform-payments",
+    );
+    expect(pluginName("team/platform/payments")).toBe(
+      "zzp-team--platform--payments",
+    );
   });
 
   it("copies local skills and drops registry skills", () => {

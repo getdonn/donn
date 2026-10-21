@@ -298,6 +298,9 @@ activation path; gateway resolution; implementing `agents-md` or `codex`; skill 
    measure the practical limit.
 3. **Plugin name.** `zzp-<personaId>` makes skills show as `zzp-project-checkout-api:<skill>`.
    Readable enough, or use the persona's `metadata.name`, which is not guaranteed unique?
+   *Amended 2026-10-21 (spec 09): `/` now maps to `--` (`zzp-team--payments`), so
+   `team/platform-payments` and `team/platform/payments` no longer share a name; ref segments
+   never contain `--`, so the mapping is one-to-one.*
 4. **Hook script paths.** Copying scripts into the build keeps builds self-contained but means
    a script edit needs a rebuild; the daemon's watchers (Phase 2) would make that automatic.
 
