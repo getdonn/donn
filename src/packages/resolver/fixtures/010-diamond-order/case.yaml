@@ -1,0 +1,17 @@
+description: >-
+  A diamond (team → a, b → org) merges the shared ancestor once, root first. The later-listed
+  parent (b) merges after a, so b wins scalars.
+resolve: team/t
+expect:
+  resolved:
+    layers: [org/base, area/a, area/b, team/t]
+    instructions:
+      - { id: org-i, inline: org }
+      - { id: a-i, inline: area a }
+      - { id: b-i, inline: area b }
+    mcp:
+      gateway: bifrost://b
+      servers: {}
+  provenance:
+    "mcp.gateway": area/b
+  warnings: []

@@ -1,0 +1,7 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: p
+extends: [team/t]
+permissions:
+  ask: ["Bash(npm publish)"]

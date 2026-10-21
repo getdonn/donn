@@ -1,0 +1,11 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+mcp:
+  gateway: bifrost://corp
+permissions:
+  deny: ["Bash(rm -rf:*)"]
+locks:
+  - mcp.gateway
+  - permissions.deny

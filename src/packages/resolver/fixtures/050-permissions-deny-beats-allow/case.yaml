@@ -1,0 +1,12 @@
+description: >-
+  An allow that exactly matches an inherited deny is dropped from the IR, with a warning naming
+  the layer that tried to allow it.
+resolve: team/t
+expect:
+  resolved:
+    permissions:
+      allow: ["Read(./**)"]
+      deny: ["Bash(rm -rf:*)"]
+      ask: []
+  warnings:
+    - { code: allow-shadowed-by-deny, path: "permissions.allow[Bash(rm -rf:*)]", layer: team/t }

@@ -1,0 +1,7 @@
+description: An extends ref with no matching persona is an error naming the ref and who asked for it.
+resolve: team/t
+expect:
+  error:
+    code: missing-ref
+    ref: org/nope
+    from: team/t

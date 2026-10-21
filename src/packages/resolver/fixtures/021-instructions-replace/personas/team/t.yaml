@@ -1,0 +1,9 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+instructions:
+  - { id: t1, inline: team one }
+  - { id: t2, inline: team two, position: replace(o2) }
+  - { id: o3, inline: team three, position: replace(o3) }

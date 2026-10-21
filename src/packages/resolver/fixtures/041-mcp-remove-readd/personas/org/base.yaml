@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+mcp:
+  servers:
+    jira: { ref: gateway://jira }
+    figma: { ref: gateway://figma }

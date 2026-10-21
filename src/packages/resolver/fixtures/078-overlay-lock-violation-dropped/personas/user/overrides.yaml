@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: PersonaOverlay
+mcp:
+  gateway: bifrost://mine
+permissions:
+  allow: ["Bash(git status)"]
+  remove:
+    deny: ["Bash(rm -rf:*)"]

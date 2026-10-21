@@ -1,0 +1,11 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: solo
+  description: A persona with no parents
+instructions:
+  - id: hello
+    inline: Be concise.
+permissions:
+  allow:
+    - "Read(./**)"

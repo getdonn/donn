@@ -1,0 +1,11 @@
+description: With unrelated parents, extends order is ascending precedence; the last-listed parent wins.
+resolve: team/t
+expect:
+  resolved:
+    layers: [area/x, area/y, team/t]
+    targets:
+      claude-code:
+        model: opus
+  provenance:
+    "targets.claude-code.model": area/y
+  warnings: []

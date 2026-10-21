@@ -1,0 +1,12 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+hooks:
+  pre-tool-use:
+    - { id: lint-guard, run: ./hooks/lint-guard-v2.sh, matcher: "Edit|Write" }
+  post-tool-use:
+    - { id: notify, run: ./hooks/notify.sh }
+  remove:
+    - "pre-tool-use[audit-log]"

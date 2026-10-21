@@ -1,0 +1,5 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: fintech
+extends: [org/base]

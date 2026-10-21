@@ -1,0 +1,10 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+skills:
+  include:
+    - ./skills/gamma
+  exclude:
+    - beta

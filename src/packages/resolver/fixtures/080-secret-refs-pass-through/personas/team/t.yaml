@@ -1,0 +1,15 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+secrets:
+  providers:
+    vault: { type: hashicorp-vault, address: https://vault-pay.corp }
+    op: { type: 1password-cli, account: corp }
+mcp:
+  servers:
+    schema:
+      command: npx
+      args: ["-y", "@corp/schema-mcp"]
+      env: { TOKEN: "secret://vault/payments/schema-token" }

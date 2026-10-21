@@ -1,0 +1,22 @@
+description: >-
+  A child that omits a field, or sets it empty, deletes nothing. Only explicit remove/exclude
+  removes.
+resolve: team/t
+expect:
+  resolved:
+    mcp:
+      gateway: bifrost://corp
+      servers:
+        jira: { ref: gateway://jira }
+    permissions:
+      allow: []
+      deny: ["Bash(rm -rf:*)"]
+      ask: []
+    hooks:
+      pre-tool-use:
+        - { id: guard, run: org/hooks/guard.sh }
+    knowledge:
+      - { id: wiki, source: "mcp://confluence?space=ENG" }
+    targets:
+      claude-code: { model: sonnet }
+  warnings: []

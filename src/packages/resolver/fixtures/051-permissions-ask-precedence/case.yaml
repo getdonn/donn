@@ -1,0 +1,13 @@
+description: >-
+  Exact-match conflicts keep only the strongest list, deny > ask > allow, regardless of which layer
+  added which. Each dropped entry warns with the layer it came from.
+resolve: project/p
+expect:
+  resolved:
+    permissions:
+      allow: []
+      deny: ["Bash(git push:*)"]
+      ask: ["Bash(npm publish)"]
+  warnings:
+    - { code: ask-shadowed-by-deny, path: "permissions.ask[Bash(git push:*)]", layer: org/base }
+    - { code: allow-shadowed-by-ask, path: "permissions.allow[Bash(npm publish)]", layer: team/t }

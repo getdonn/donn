@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+permissions:
+  deny: ["Bash(rm -rf:*)"]
+locks:
+  - permissions.deny

@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+knowledge:
+  - { id: schema, source: https://docs.corp/schema/v2 }
+  - { id: runbooks, source: "mcp://confluence?space=PAY" }

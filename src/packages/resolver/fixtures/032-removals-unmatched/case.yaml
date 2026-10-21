@@ -1,0 +1,19 @@
+description: >-
+  Removing something that is not there is not an error, but it warns: it is usually a typo or a
+  stale override.
+resolve: team/t
+expect:
+  resolved:
+    skills:
+      - { name: alpha, source: "registry://org/skills/alpha@^1" }
+    mcp:
+      servers:
+        jira: { ref: gateway://jira }
+    permissions:
+      allow: []
+      deny: ["Bash(rm -rf:*)"]
+      ask: []
+  warnings:
+    - { code: remove-unmatched, path: "skills[nope]", layer: team/t }
+    - { code: remove-unmatched, path: mcp.servers.nope, layer: team/t }
+    - { code: remove-unmatched, path: "permissions.deny[Bash(nope)]", layer: team/t }

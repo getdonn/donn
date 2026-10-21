@@ -1,0 +1,6 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+  labels: { tier: team }
+extends: [org/base]

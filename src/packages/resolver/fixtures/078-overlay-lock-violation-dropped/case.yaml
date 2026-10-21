@@ -1,0 +1,22 @@
+description: >-
+  The user overlay is checked against every lock, but a violation there drops just the offending
+  entry with a warning instead of failing resolution. The overlay applies to every switch, so one
+  bad line must not break them all. The rest of the overlay still applies. Persona files at any
+  layer, including user/, still fail on a violation (070, 073-075).
+resolve: team/t
+overlay: user/overrides
+expect:
+  resolved:
+    mcp:
+      gateway: bifrost://corp
+      servers: {}
+    permissions:
+      allow: ["Bash(git status)"]
+      deny: ["Bash(rm -rf:*)"]
+      ask: []
+  provenance:
+    "mcp.gateway": org/base
+    "permissions.allow[Bash(git status)]": user/overrides
+  warnings:
+    - { code: overlay-lock-ignored, path: mcp.gateway, layer: user/overrides }
+    - { code: overlay-lock-ignored, path: "permissions.deny[Bash(rm -rf:*)]", layer: user/overrides }

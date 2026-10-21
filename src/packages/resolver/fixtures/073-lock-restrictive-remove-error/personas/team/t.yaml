@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+permissions:
+  remove:
+    deny: ["Bash(rm -rf:*)"]

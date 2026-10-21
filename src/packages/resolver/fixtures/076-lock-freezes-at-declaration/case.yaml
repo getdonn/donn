@@ -1,0 +1,15 @@
+description: >-
+  A lock freezes the value accumulated so far. area/a merged before area/sec declared the lock,
+  so its gateway stands; any layer after area/sec would be checked.
+resolve: team/t
+expect:
+  resolved:
+    layers: [org/base, area/a, area/sec, team/t]
+    mcp:
+      gateway: bifrost://a
+      servers: {}
+    locks:
+      - { path: mcp.gateway, layer: area/sec }
+  provenance:
+    "mcp.gateway": area/a
+  warnings: []

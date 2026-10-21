@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+mcp:
+  gateway: bifrost://corp
+locks:
+  - mcp.gateway

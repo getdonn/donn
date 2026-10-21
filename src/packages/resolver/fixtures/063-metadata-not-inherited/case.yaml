@@ -1,0 +1,13 @@
+description: >-
+  metadata name/version/description come from the target persona only; labels shallow-merge
+  across layers with the child winning per key.
+resolve: team/t
+expect:
+  resolved:
+    metadata:
+      name: t
+      labels: { org: corp, tier: team }
+  provenance:
+    "metadata.labels.org": org/base
+    "metadata.labels.tier": team/t
+  warnings: []

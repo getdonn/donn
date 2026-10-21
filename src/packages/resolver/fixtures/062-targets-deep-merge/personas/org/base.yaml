@@ -1,0 +1,11 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+targets:
+  claude-code:
+    model: sonnet
+    env: { A: "1", B: "2" }
+    extraArgs: ["--a", "--b"]
+  codex:
+    approvalPolicy: on-request

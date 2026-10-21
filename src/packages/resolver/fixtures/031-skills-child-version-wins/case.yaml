@@ -1,0 +1,9 @@
+description: Same skill name in two layers; the later layer's source (and version constraint) wins.
+resolve: team/t
+expect:
+  resolved:
+    skills:
+      - { name: pr-review, source: "registry://org/skills/pr-review@^2" }
+  provenance:
+    "skills[pr-review]": team/t
+  warnings: []
