@@ -170,4 +170,14 @@ Made while building this spec (`docs/plans/2026-10-21-live-switching.md`); see
   Errors read `live switching is unavailable: <reason>`.
 - **§3 reload** the mod reads the live state through `zzpersona live --show`, keeping spec 09's
   rule that the mod only calls the CLI.
+- **§1 launch record** `launched.json` also holds `overlay` and a `snapshot` of what was launched
+  (`mcp`, `permissions`, and `settings` = `targets.claude-code`); **§2** `held` and `stricter`
+  compare the new persona with that snapshot, so an edited or broken launched persona neither skews
+  them nor blocks a switch, and the new persona is resolved with the launch's overlay setting.
+- **§2 `held`** gains `"settings"`: `targets.claude-code` (model, env, `permissions.defaultMode`…)
+  is in `--settings`, which does not reload. The band lists held parts ("MCP, permissions and
+  settings"); the message names them ("Claude Code settings").
+- **§2** the swap and the `live.json` write run under a lock on the session folder.
+- **§3** the relaunch advice names the persona: `To apply those too, exit and run: zzpersona claude
+  <persona>`, since `/persona use` saves nothing.
 
