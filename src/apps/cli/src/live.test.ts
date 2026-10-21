@@ -69,7 +69,7 @@ describe("zzpersona live", () => {
       previous: "org/base",
       launched: "org/base",
       plugin: "zzp-project--persona",
-      held: ["mcp", "permissions"],
+      held: ["mcp", "permissions", "settings"],
     });
     expect(state.instructions.split("\n")[0]).toBe(
       "## zzpersona persona: project/persona",
@@ -146,5 +146,88 @@ describe("zzpersona live", () => {
     expect(
       JSON.parse((await live(["--show", "--session", dir])).stdout),
     ).toMatchObject({ persona: "team/twin", launched: "org/base" });
+  });
+});
+
+describe("zzpersona live against the launch snapshot", () => {
+  /** A session launched on `ref`, with the snapshot zzpersona claude records. */
+  async function launchedOn(ref: string, overlay = true): Promise<string> {
+    const resolved = await zz(
+      ["resolve", ref, "--json", ...(overlay ? [] : ["--no-overlay"])],
+      { cwd: s.repo, home: s.home },
+    );
+    const { ir } = JSON.parse(resolved.stdout);
+    const plugin = join(s.root, `plugin-${ref.replace("/", "-")}`);
+    put(
+      join(plugin, ".claude-plugin/plugin.json"),
+      JSON.stringify({ name: `zzp-${ref.replace("/", "--")}` }),
+    );
+    return createSession(
+      s.home,
+      plugin,
+      {
+        persona: ref,
+        source: "argument",
+        overlay,
+        snapshot: {
+          mcp: ir.mcp,
+          permissions: ir.permissions,
+          settings: ir.targets["claude-code"] ?? {},
+        },
+      },
+      process.pid,
+    );
+  }
+  const persona = (ref: string, body: string[]) =>
+    put(
+      join(s.personas, `${ref}.yaml`),
+      [
+        "apiVersion: zzpersona/v0",
+        "kind: Persona",
+        `metadata: { name: ${ref.split("/")[1]} }`,
+        "extends: [org/base]",
+        ...body,
+        "",
+      ].join("\n"),
+    );
+
+  it("still switches when the launched persona no longer resolves", async () => {
+    persona("team/launched", []);
+    const dir = await launchedOn("team/launched");
+    rmSync(join(s.personas, "team/launched.yaml"));
+    const r = await live(["team/twin", "--session", dir]);
+    expect(r.code, r.stdout).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ held: [] });
+  });
+
+  it("holds launched Claude Code settings such as defaultMode", async () => {
+    persona("team/bypass", [
+      "targets:",
+      "  claude-code:",
+      "    permissions: { defaultMode: bypassPermissions }",
+    ]);
+    const dir = await launchedOn("team/bypass");
+    const state = JSON.parse(
+      (await live(["team/twin", "--session", dir])).stdout,
+    );
+    expect(state.held).toEqual(["settings"]);
+  });
+
+  it("resolves with the overlay setting the session was launched with", async () => {
+    const dir = await launchedOn("org/base", false);
+    const state = JSON.parse(
+      (await live(["team/twin", "--session", dir])).stdout,
+    );
+    expect(state.held).toEqual([]);
+  });
+
+  it("serializes concurrent switches, leaving exactly the recorded persona", async () => {
+    const dir = await session();
+    await Promise.all([
+      live(["team/twin", "--session", dir]),
+      live(["team/strict", "--session", dir]),
+    ]);
+    const recorded = JSON.parse(readFileSync(join(dir, "live.json"), "utf8"));
+    expect(children(dir)).toEqual([recorded.plugin]);
   });
 });

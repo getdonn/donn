@@ -3,14 +3,18 @@ import { existsSync } from "node:fs";
 import { cp, readdir, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writeBuild } from "@zzpersona/executor";
-import { diff } from "@zzpersona/resolver";
 import { prepareBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { createContext, resolvePersona } from "../context.js";
 import { CliError } from "../errors.js";
-import { writeFileAtomic } from "../fs.js";
+import { withFileLock, writeFileAtomic } from "../fs.js";
 import { selectPersona } from "../select.js";
-import { pluginNameOf, sessionPlugins, type Launched } from "../session.js";
+import {
+  pluginNameOf,
+  sessionPlugins,
+  type Launched,
+  type LaunchSnapshot,
+} from "../session.js";
 
 // zzpersona live: switch a running session's persona plugin and record what it now runs. MCP
 // servers and permissions stay as launched; `held` says which differ. No secret is resolved.
@@ -21,7 +25,7 @@ export interface LiveState {
   previous: string;
   launched: string;
   instructions: string;
-  held: ("mcp" | "permissions")[];
+  held: ("mcp" | "permissions" | "settings")[];
   stricter: boolean;
   plugin: string;
   appliedAt: string;
@@ -37,6 +41,21 @@ const unavailable = (reason: string) =>
   new CliError("live-unavailable", `live switching is unavailable: ${reason}`, {
     reason,
   });
+
+/** JSON with sorted keys, so structurally equal values compare equal. */
+const stable = (value: unknown): string =>
+  JSON.stringify(value, (_key, v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.keys(v)
+            .sort()
+            .map((k) => [k, (v as Record<string, unknown>)[k]]),
+        )
+      : v,
+  );
+
+const denyOf = (permissions: unknown): string[] =>
+  ((permissions as { deny?: string[] } | undefined)?.deny ?? []).slice();
 
 async function readJson<T>(path: string): Promise<T | undefined> {
   const text = await readFile(path, "utf8").catch(() => undefined);
@@ -86,58 +105,77 @@ export async function liveCommand(
   const build = await prepareBuild(ctx, io, {
     selection,
     harness: "claude-code",
-    overlay: true,
+    overlay: launched.overlay ?? true,
     passthrough: [],
   });
-  const from = await resolvePersona(
-    ctx,
-    { ref: launched.persona, source: "argument" },
-    true,
+  // Compare with what was launched, recorded at launch: today's files may differ or be broken.
+  let launchedSnapshot: LaunchSnapshot | undefined = launched.snapshot;
+  if (!launchedSnapshot) {
+    const { ir } = await resolvePersona(
+      ctx,
+      { ref: launched.persona, source: "argument" },
+      launched.overlay ?? true,
+    );
+    launchedSnapshot = {
+      mcp: ir.mcp,
+      permissions: ir.permissions,
+      settings: ir.targets["claude-code"] ?? {},
+    };
+  }
+  const ir = build.result.ir;
+  const now: LaunchSnapshot = {
+    mcp: ir.mcp,
+    permissions: ir.permissions,
+    settings: ir.targets["claude-code"] ?? {},
+  };
+  const held = (["mcp", "permissions", "settings"] as const).filter(
+    (part) => stable(launchedSnapshot[part]) !== stable(now[part]),
   );
-  const changes = diff(from, build.result);
-  const held = (["mcp", "permissions"] as const).filter((area) =>
-    changes.some((c) => c.path.startsWith(`${area}.`)),
-  );
-  const stricter = changes.some(
-    (c) => c.change === "added" && c.path.startsWith("permissions.deny["),
+  const launchedDeny = new Set(denyOf(launchedSnapshot.permissions));
+  const stricter = denyOf(now.permissions).some(
+    (rule) => !launchedDeny.has(rule),
   );
   await writeBuild(build.output, {
     buildDir: build.buildDir,
     store: ctx.store,
   });
 
-  // Copy the new plugin in before removing the old: the session always has one.
-  const plugins = sessionPlugins(dir);
-  const source = join(build.buildDir, "plugin");
-  const name = await pluginNameOf(source);
-  // Staged beside plugins/, not in it: the watcher must never see a half-copied plugin.
-  const staging = join(dir, `.staging-${randomBytes(4).toString("hex")}`);
-  await cp(source, staging, { recursive: true, dereference: true });
-  await rm(join(plugins, name), { recursive: true, force: true });
-  await rename(staging, join(plugins, name));
-  for (const child of await readdir(plugins)) {
-    if (child !== name)
-      await rm(join(plugins, child), { recursive: true, force: true });
-  }
+  // One switch at a time per session: two overlapping swaps could remove each other's plugin.
+  const state = await withFileLock(join(dir, "live.lock"), async () => {
+    // Copy the new plugin in before removing the old: the session always has one.
+    const plugins = sessionPlugins(dir);
+    const source = join(build.buildDir, "plugin");
+    const name = await pluginNameOf(source);
+    // Staged beside plugins/, not in it: the watcher must never see a half-copied plugin.
+    const staging = join(dir, `.staging-${randomBytes(4).toString("hex")}`);
+    await cp(source, staging, { recursive: true, dereference: true });
+    await rm(join(plugins, name), { recursive: true, force: true });
+    await rename(staging, join(plugins, name));
+    for (const child of await readdir(plugins)) {
+      if (child !== name)
+        await rm(join(plugins, child), { recursive: true, force: true });
+    }
 
-  const previous =
-    (await readJson<LiveState>(join(dir, "live.json")))?.persona ??
-    launched.persona;
-  const prompt = build.output.files["system-prompt.md"];
-  const state: LiveState = {
-    persona: selection.ref,
-    previous,
-    launched: launched.persona,
-    instructions: prompt && "content" in prompt ? prompt.content : "",
-    held: [...held],
-    stricter,
-    plugin: name,
-    appliedAt: new Date((io.now ?? Date.now)()).toISOString(),
-  };
-  await writeFileAtomic(
-    join(dir, "live.json"),
-    `${JSON.stringify(state, null, 2)}\n`,
-  );
+    const previous =
+      (await readJson<LiveState>(join(dir, "live.json")))?.persona ??
+      launched.persona;
+    const prompt = build.output.files["system-prompt.md"];
+    const state: LiveState = {
+      persona: selection.ref,
+      previous,
+      launched: launched.persona,
+      instructions: prompt && "content" in prompt ? prompt.content : "",
+      held: [...held],
+      stricter,
+      plugin: name,
+      appliedAt: new Date((io.now ?? Date.now)()).toISOString(),
+    };
+    await writeFileAtomic(
+      join(dir, "live.json"),
+      `${JSON.stringify(state, null, 2)}\n`,
+    );
+    return state;
+  });
   print(
     [
       `${state.persona} is now live in ${dir}`,
