@@ -1,6 +1,8 @@
 # 07 — CLI daily use: switch, init, doctor, and hardening
 
 > Status: design, 2026-10-21. Phase 1, third spec. Agreed in conversation section by section.
+> Amended 2026-10-21: spec 08 replaced the 1Password provider with a built-in OS keychain
+> provider and pluggable provider packages.
 > Builds on `06-cli-core-loop.md`. Spec 08 covers the "reach" half (1Password provider,
 > third-party adapter loading, `diff`, and the SDK-side deferred minors); the Claude Code mod
 > (status line, nudge, in-session switch) gets its own spec after the spike's manual checks.

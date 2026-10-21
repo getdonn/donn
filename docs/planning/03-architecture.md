@@ -74,7 +74,7 @@
 | `spec` | Persona schema (zod → JSON Schema export), IR types, versioning (`apiVersion`) | `Persona`, `ResolvedPersona`, `validate()` |
 | `resolver` | Load sources, build `extends` DAG, linearize, merge per field rules, enforce locks, emit provenance | `resolve(ref, opts) → { ir, provenance, warnings }` |
 | `store` | Where personas come from. Pluggable: `store-local` (dirs + git), `store-remote` (control plane client) | `get(ref)`, `list()`, `publish()` |
-| `secrets` | Provider interface + built-ins (env, 1Password CLI, HashiCorp Vault, AWS SM) | `resolve(secretRef) → string` |
+| `secrets` | Provider interface + built-ins (env, OS keychain); 1Password, HashiCorp Vault, AWS SM as provider packages (amended 2026-10-21, `08`) | `resolve(secretRef) → string` |
 | `gateway` | Resolve `gateway://name` MCP refs to concrete server configs via a gateway's API; enforce allowed set | `GatewayAdapter.resolve(name)`, `.list()` |
 | `adapter-sdk` | The harness adapter contract (below), shared test harness, capability-matrix types | `HarnessAdapter` |
 | `adapters/*` | One package per harness | implements `HarnessAdapter` |
