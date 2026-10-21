@@ -126,6 +126,68 @@ describe("zzpersona mod uninstall", () => {
   });
 });
 
+describe("zzpersona mod uninstall, when things go wrong", () => {
+  it("treats only claude's own not-found answers as done", async () => {
+    await zz(["mod", "install"], {
+      cwd: s.root,
+      home: s.home,
+      probe: recording().probe,
+    });
+    const notFound = recording((argv) =>
+      argv[2] === "uninstall"
+        ? {
+            exitCode: 1,
+            stderr: 'Plugin "zzpersona@zzpersona" is not installed\n',
+          }
+        : { exitCode: 1, stderr: "Marketplace 'zzpersona' not found\n" },
+    );
+    const ok = await zz(["mod", "uninstall"], {
+      cwd: s.root,
+      home: s.home,
+      probe: notFound.probe,
+    });
+    expect(ok.code, ok.stdout + ok.stderr).toBe(0);
+
+    await zz(["mod", "install"], {
+      cwd: s.root,
+      home: s.home,
+      probe: recording().probe,
+    });
+    const broken = recording(() => ({
+      exitCode: 1,
+      stderr: "error: unknown option '--scope'\n",
+    }));
+    const failed = await zz(["mod", "uninstall", "--json"], {
+      cwd: s.root,
+      home: s.home,
+      probe: broken.probe,
+    });
+    expect(failed.code).toBe(1);
+    expect(JSON.parse(failed.stdout).error.code).toBe("mod-uninstall");
+    expect(existsSync(join(s.home, "mod"))).toBe(true);
+  });
+
+  it("still removes its folder when claude is gone", async () => {
+    await zz(["mod", "install"], {
+      cwd: s.root,
+      home: s.home,
+      probe: recording().probe,
+    });
+    const gone = recording(() => ({
+      exitCode: 127,
+      stderr: "spawn claude ENOENT",
+    }));
+    const r = await zz(["mod", "uninstall"], {
+      cwd: s.root,
+      home: s.home,
+      probe: gone.probe,
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("claude is not installed");
+    expect(existsSync(join(s.home, "mod"))).toBe(false);
+  });
+});
+
 describe("doctor's mod check", () => {
   const modCheck = async () => {
     const r = await zz(["doctor", "--json"], { cwd: s.repo, home: s.home });

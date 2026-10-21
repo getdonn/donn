@@ -37,25 +37,32 @@ export async function installedModVersion(
   }
 }
 
-/** Run `claude plugin …`; "already" (on install) or "not found" (on uninstall) counts as done. */
+/**
+ * Run `claude plugin …`. Output matching `tolerate` counts as done: "already" on install, and
+ * Claude's own "not installed"/"not found" on uninstall. Exit 127 (no claude) is returned as
+ * `missing` when `allowMissing`; anything else is a `code` error.
+ */
 async function claude(
   io: CliIo,
   args: string[],
   tolerate: RegExp,
-): Promise<string[]> {
+  code: "mod-install" | "mod-uninstall",
+  allowMissing = false,
+): Promise<{ argv: string[]; missing: boolean }> {
   const argv = ["claude", ...args];
   const result = await io.probe.run("claude", args);
+  if (result.exitCode === 127 && allowMissing) return { argv, missing: true };
   const output = `${result.stdout}\n${result.stderr}`;
   if (result.exitCode !== 0 && !tolerate.test(output)) {
     const reason =
       result.exitCode === 127
         ? "claude is not installed (or not on PATH)"
         : `exited ${result.exitCode}: ${(result.stderr.trim() || result.stdout.trim()).split("\n")[0]}`;
-    throw new CliError("mod-install", `${argv.join(" ")} ${reason}`, {
+    throw new CliError(code, `${argv.join(" ")} ${reason}`, {
       command: argv,
     });
   }
-  return argv;
+  return { argv, missing: false };
 }
 
 export async function modInstall(
@@ -93,8 +100,22 @@ export async function modInstall(
   );
   const already = /already/i;
   const ran = [
-    await claude(io, ["plugin", "marketplace", "add", modDir], already),
-    await claude(io, ["plugin", "install", MOD_ID, "--scope", "user"], already),
+    (
+      await claude(
+        io,
+        ["plugin", "marketplace", "add", modDir],
+        already,
+        "mod-install",
+      )
+    ).argv,
+    (
+      await claude(
+        io,
+        ["plugin", "install", MOD_ID, "--scope", "user"],
+        already,
+        "mod-install",
+      )
+    ).argv,
   ];
   io.stdout.write(
     options.json
@@ -115,16 +136,39 @@ export async function modUninstall(
 ): Promise<number> {
   const home = homeOf(io);
   const modDir = join(home, "mod");
-  const gone = /not found|not installed|no such|unknown/i;
-  const ran = [
-    await claude(io, ["plugin", "uninstall", MOD_ID], gone),
-    await claude(io, ["plugin", "marketplace", "remove", "zzpersona"], gone),
-  ];
+  // Claude's own answers for a plugin or marketplace that is already gone.
+  const gone = /not (?:be )?(?:found|installed)/i;
+  const notes: string[] = [];
+  const ran: string[][] = [];
+  // Without claude there is nothing to unregister; still remove the folder.
+  const first = await claude(
+    io,
+    ["plugin", "uninstall", MOD_ID],
+    gone,
+    "mod-uninstall",
+    true,
+  );
+  if (first.missing) {
+    notes.push("claude is not installed; skipped unregistering the mod");
+  } else {
+    ran.push(
+      first.argv,
+      (
+        await claude(
+          io,
+          ["plugin", "marketplace", "remove", "zzpersona"],
+          gone,
+          "mod-uninstall",
+        )
+      ).argv,
+    );
+  }
   await fsStep(modDir, () => rm(modDir, { recursive: true, force: true }));
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ removed: modDir, ran }, null, 2)}\n`
+      ? `${JSON.stringify({ removed: modDir, ran, notes }, null, 2)}\n`
       : [
+          ...notes,
           ...ran.map((argv) => `ran: ${argv.join(" ")}`),
           `removed ${modDir}`,
           "",
