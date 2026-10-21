@@ -120,7 +120,7 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: zzpersona claude", () => {
     });
     const dry = zzpersona(["claude", "--dry-run"]);
     expect(dry.status, dry.stderr).toBe(0);
-    expect(dry.stdout).toContain("zzp-team-e2e");
+    expect(dry.stdout).toContain("zzp-team--e2e");
   });
 
   it("launches claude with the persona", () => {

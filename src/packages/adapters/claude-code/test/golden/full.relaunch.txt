@@ -18,7 +18,7 @@ files (8)
     
   plugin/.claude-plugin/plugin.json (0644)
     {
-      "name": "zzp-project-checkout-api",
+      "name": "zzp-project--checkout-api",
       "version": "0.0.0",
       "description": "Persona checkout-api"
     }

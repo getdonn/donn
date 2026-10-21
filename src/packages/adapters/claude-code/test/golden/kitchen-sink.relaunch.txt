@@ -31,7 +31,7 @@ files (15)
     
   plugin/.claude-plugin/plugin.json (0644)
     {
-      "name": "zzp-team-kitchen",
+      "name": "zzp-team--kitchen",
       "version": "0.0.0",
       "description": "Persona kitchen-sink"
     }

@@ -37,8 +37,9 @@ const asJson = (value: unknown): FileEntry => ({
   content: `${JSON.stringify(value, null, 2)}\n`,
 });
 
+/** `/` becomes `--`: one-to-one, since a ref segment never contains `--`. */
 export const pluginName = (personaId: string) =>
-  `zzp-${personaId.replaceAll("/", "-")}`;
+  `zzp-${personaId.replaceAll("/", "--")}`;
 
 function systemPrompt(
   ir: ResolvedPersona,
