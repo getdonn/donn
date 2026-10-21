@@ -56,14 +56,14 @@ describe("the daemon", () => {
       version: "9.9.9",
       pid: process.pid,
       startedAt: daemon.startedAt,
-      watching: [],
+      watching: expect.arrayContaining([join(homeIn(), "sessions")]),
       sessions: [],
     });
     const client = await connectDaemon(homeIn());
     expect((await client!.status()).version).toBe("9.9.9");
   });
 
-  it("reports running sessions as current", async () => {
+  it("reports running sessions with their state", async () => {
     const home = homeIn();
     const dir = join(home, "sessions/abc");
     mkdirSync(dir, { recursive: true });
@@ -87,7 +87,10 @@ describe("the daemon", () => {
         launched: "team/payments",
         startedAt: "2026-10-21T00:00:00.000Z",
         held: [],
-        state: "current",
+        // This home has no personas: the first refresh cannot compile it.
+        state: "refresh-failed",
+        at: expect.any(String),
+        error: expect.stringContaining("team/payments"),
       },
     ]);
   });
