@@ -74,7 +74,7 @@
 | `spec` | Persona schema (zod → JSON Schema export), IR types, versioning (`apiVersion`) | `Persona`, `ResolvedPersona`, `validate()` |
 | `resolver` | Load sources, build `extends` DAG, linearize, merge per field rules, enforce locks, emit provenance | `resolve(ref, opts) → { ir, provenance, warnings }` |
 | `store` | Where personas come from. Pluggable: `store-local` (dirs + git), `store-remote` (control plane client) | `get(ref)`, `list()`, `publish()` |
-| `secrets` | Provider interface + built-ins (env, 1Password CLI, HashiCorp Vault, AWS SM) | `resolve(secretRef) → string` |
+| `secrets` | Provider interface + built-ins (env, OS keychain); 1Password, HashiCorp Vault, AWS SM as provider packages (amended 2026-10-21, `08`) | `resolve(secretRef) → string` |
 | `gateway` | Resolve `gateway://name` MCP refs to concrete server configs via a gateway's API; enforce allowed set | `GatewayAdapter.resolve(name)`, `.list()` |
 | `adapter-sdk` | The harness adapter contract (below), shared test harness, capability-matrix types | `HarnessAdapter` |
 | `adapters/*` | One package per harness | implements `HarnessAdapter` |
@@ -97,6 +97,11 @@ The enterprise repo depends on **published** `@hatrack/spec`, `@hatrack/resolver
 packages. That dependency direction is the boundary and is non-negotiable.
 
 ## The harness adapter contract
+
+> *Superseded 2026-10-21 by `05-adapter-sdk.md`:* `compile` and `activate` are pure, and
+> `activate` returns a plan of steps (`launch`, `overlay`) that the CLI carries out;
+> `deactivate()` and `current()` move to the CLI; `detect` sees the machine only through a
+> probe. The sketch below is kept as the original record.
 
 This is what makes "not limited to Claude Code" real. Every adapter implements:
 

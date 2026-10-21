@@ -7,8 +7,10 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
-    "format": "prettier --write \"**/*.{ts,md,json,yaml}\"",
-    "changeset": "changeset"
+    "format": "prettier --write .",
+    "changeset": "changeset",
+    "format:check": "prettier --check .",
+    "zzpersona": "node src/apps/cli/dist/bin.js"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",

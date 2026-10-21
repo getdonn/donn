@@ -1,0 +1,40 @@
+{
+  "name": "@zzpersona/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The zzpersona command line",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zzpersona/adapter-claude-code": "workspace:*",
+    "@zzpersona/adapter-sdk": "workspace:*",
+    "@zzpersona/executor": "workspace:*",
+    "@zzpersona/resolver": "workspace:*",
+    "@zzpersona/secrets": "workspace:*",
+    "@zzpersona/spec": "workspace:*",
+    "@zzpersona/store-local": "workspace:*",
+    "commander": "^15.0.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@zzpersona/eslint-config": "workspace:*",
+    "@zzpersona/typescript-config": "workspace:*",
+    "eslint": "10.13.0",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "bin": {
+    "zzpersona": "dist/bin.js"
+  }
+}

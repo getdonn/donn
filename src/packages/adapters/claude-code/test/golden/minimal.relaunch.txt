@@ -1,0 +1,30 @@
+mode: relaunch
+files (4)
+  mcp.json (0644)
+    {
+      "mcpServers": {}
+    }
+    
+  plugin/.claude-plugin/plugin.json (0644)
+    {
+      "name": "zzp-team-solo",
+      "version": "0.0.0",
+      "description": "Persona solo"
+    }
+    
+  settings.json (0644)
+    {
+      "permissions": {
+        "allow": [
+          "Read(./**)"
+        ],
+        "deny": [],
+        "ask": []
+      }
+    }
+    
+  system-prompt.md (0644)
+    Be concise.
+    
+plan (1)
+  launch claude --plugin-dir /BUILD/plugin --mcp-config /BUILD/mcp.json --strict-mcp-config --settings /BUILD/settings.json --append-system-prompt-file /BUILD/system-prompt.md
