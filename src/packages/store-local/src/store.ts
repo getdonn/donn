@@ -66,7 +66,10 @@ async function yamlFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-/** Only persona files count: data files inside skills and overlays are not personas. */
+/**
+ * Only persona files count: data files inside skills and overlays are not personas. A file
+ * that does not parse is kept, so selecting it reaches load() and reports the parse error.
+ */
 async function isPersonaFile(path: string): Promise<boolean> {
   try {
     const doc = parse(await readFile(path, "utf8")) as {
@@ -74,7 +77,7 @@ async function isPersonaFile(path: string): Promise<boolean> {
     } | null;
     return doc?.kind === "Persona";
   } catch {
-    return false;
+    return true;
   }
 }
 

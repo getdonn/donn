@@ -205,11 +205,18 @@ describe("hardening (spec 07)", () => {
       join(m.personas, "team/overlay.yaml"),
       "apiVersion: zzpersona/v0\nkind: PersonaOverlay\n",
     );
-    put(join(m.personas, "team/broken.yaml"), "kind: [unclosed\n");
     expect(await createLocalStore(m).list()).toEqual([
       "team/linked",
       "team/source/real",
     ]);
+  });
+
+  it("lists a file that does not parse, so loading it reports the error", async () => {
+    const m = mounts();
+    put(join(m.personas, "team/broken.yaml"), "kind: [unclosed\n");
+    const store = createLocalStore(m);
+    expect(await store.list()).toEqual(["team/broken"]);
+    await expect(store.load("team/broken")).rejects.toThrow(StoreError);
   });
 
   it("refuses an instruction file that resolves outside its mount", async () => {
