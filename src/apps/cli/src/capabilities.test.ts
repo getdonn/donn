@@ -101,7 +101,7 @@ describe("zzpersona capabilities", () => {
       /^skills\s+✕ none\s+Codex has no per-launch skill root$/m,
     );
     expect(r.stdout).toMatch(
-      /^mcp\.servers\s+● native\s+\* servers whose secret cannot be forwarded/m,
+      /^mcp\.servers\s+● native\s+\* gateway refs, URL-server headers, and servers whose secret/m,
     );
   });
 
