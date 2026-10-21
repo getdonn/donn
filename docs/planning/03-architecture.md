@@ -98,6 +98,11 @@ packages. That dependency direction is the boundary and is non-negotiable.
 
 ## The harness adapter contract
 
+> *Superseded 2026-10-21 by `05-adapter-sdk.md`:* `compile` and `activate` are pure, and
+> `activate` returns a plan of steps (`launch`, `overlay`) that the CLI carries out;
+> `deactivate()` and `current()` move to the CLI; `detect` sees the machine only through a
+> probe. The sketch below is kept as the original record.
+
 This is what makes "not limited to Claude Code" real. Every adapter implements:
 
 ```ts

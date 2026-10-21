@@ -24,6 +24,7 @@ overrides them.
 2. `docs/planning/02-persona-spec.md` — persona YAML shape, layer model, **per-field merge semantics**, locks, resolution algorithm
 3. `docs/planning/03-architecture.md` — full system: components, harness adapter contract + capability matrix, local daemon, control plane, security, repo layout. Appendix A has verified Claude Code facts and the activation strategy.
 4. `docs/planning/04-roadmap.md` — phases with exit questions, dependency graph, team-shape notes
+5. `docs/planning/05-adapter-sdk.md` — the adapter contract (pure compile + activation plan), compile report, conformance kit, and the Claude Code adapter
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
@@ -41,13 +42,12 @@ overrides them.
 
 ## Current phase
 
-Phase 0 (see roadmap): spikes + `spec` + `resolver` with a fixture suite. Done: turborepo,
-`@zzpersona/spec`, the fixture suite (`src/packages/resolver/fixtures/`, the executable merge
-spec), `resolve()` passing all of it, `explain()` with golden `explain.txt` per fixture, and
-`spikes/claude-code` (relaunch path verified end to end) and `spikes/agents-md` (AGENTS.md is
-repo-only; relaunch also works for Codex and Copilot); see each `FINDINGS.md`. Phase 0 work is
-complete; what remains is answering its exit question and moving to Phase 1. Picking the name
-runs in parallel and only blocks the first `npm publish`.
+**Phase 1** (see roadmap). Phase 0 shipped as `v0.1.0`: `@zzpersona/spec`, the resolver with
+its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec) and
+`explain()`, and the `spikes/claude-code` and `spikes/agents-md` findings. Phase 1 starts with
+`docs/planning/05-adapter-sdk.md`: `@zzpersona/adapter-sdk`, then `adapters/claude-code` on the
+verified relaunch path; the CLI and its plan executor get the next spec. Picking the name runs
+in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
 
@@ -60,6 +60,8 @@ runs in parallel and only blocks the first `npm publish`.
 - Git flow: `main` = released, `develop` = integration. All work happens on `feature/<topic>`
   branched from `develop` and merged back into it; `release/*` and `hotfix/*` per standard
   gitflow. Never commit directly to `main` or `develop`. Changesets `baseBranch` is `develop`.
+  Merge style: feature → `develop` is always **squash**; `release/*` and sync PRs into `main`
+  or `develop` use a **merge commit** so the two branches keep shared history.
 - Planning docs live in `docs/planning/`, numbered. Append new ones; amend old ones in place
   with a dated note rather than silently rewriting decisions.
 - Spikes go in `spikes/<topic>/` with a `FINDINGS.md`; they are throwaway and never imported.
