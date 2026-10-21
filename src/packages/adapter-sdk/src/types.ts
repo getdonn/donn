@@ -17,6 +17,20 @@ export interface HarnessAdapter {
   activate(input: ActivateInput): ActivationPlan;
 }
 
+/** process.platform's values, without depending on @types/node. */
+export type Platform =
+  | "aix"
+  | "android"
+  | "darwin"
+  | "freebsd"
+  | "haiku"
+  | "linux"
+  | "openbsd"
+  | "sunos"
+  | "win32"
+  | "cygwin"
+  | "netbsd";
+
 export interface Probe {
   /** Runs a command. Never throws for a missing command: returns exit code 127. */
   run(
@@ -27,7 +41,7 @@ export interface Probe {
   readFile(path: string): Promise<string | undefined>;
   /** Entry names in a directory, or undefined when absent. */
   listDir(path: string): Promise<string[] | undefined>;
-  platform: NodeJS.Platform;
+  platform: Platform;
 }
 
 export interface Detection {

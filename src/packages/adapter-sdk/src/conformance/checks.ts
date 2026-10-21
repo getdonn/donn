@@ -234,18 +234,23 @@ export async function runConformance(
 
   results.push(
     outcome("declaration", () => {
-      const { apiVersion, ...declaration } = adapter;
-      defineAdapter(declaration);
-      return apiVersion === 1
+      defineAdapter(adapter);
+      return adapter.apiVersion === 1
         ? []
-        : [`apiVersion ${String(apiVersion)} is not 1`];
+        : [`apiVersion ${String(adapter.apiVersion)} is not 1`];
     }),
   );
 
   const before = process.cwd();
   const sandbox = mkdtempSync(join(tmpdir(), "zzp-conformance-"));
+  let chdirError: Error | undefined;
   try {
     process.chdir(sandbox);
+  } catch (error) {
+    // vitest's threads pool (worker threads) has no process.chdir.
+    chdirError = error as Error;
+  }
+  try {
     const [first] = corpus as [CorpusEntry];
     results.push(
       outcome("rejects-unsupported-ir", () => {
@@ -265,17 +270,22 @@ export async function runConformance(
     );
     for (const entry of corpus)
       results.push(...checkEntry(adapter, entry, detection));
-    process.chdir(before);
+    if (chdirError === undefined) process.chdir(before);
     const written = readdirSync(sandbox);
     results.push(
-      outcome("no-writes", () =>
-        written.length === 0
+      outcome("no-writes", () => {
+        if (chdirError !== undefined) {
+          return [
+            `cannot change directory (${chdirError.message}); run conformance under vitest's forks pool`,
+          ];
+        }
+        return written.length === 0
           ? []
-          : [`wrote to the working directory: ${written.join(", ")}`],
-      ),
+          : [`wrote to the working directory: ${written.join(", ")}`];
+      }),
     );
   } finally {
-    process.chdir(before);
+    if (chdirError === undefined) process.chdir(before);
     rmSync(sandbox, { recursive: true, force: true });
   }
 

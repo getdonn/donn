@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { HarnessAdapter } from "../index.js";
 import { good } from "../testing/toy.js";
 import { runConformance, type CheckName } from "./index.js";
@@ -173,5 +173,21 @@ describe("review fixes", () => {
       },
     };
     expect(await failedChecks(parentOnly)).toEqual([]);
+  });
+});
+
+describe("runConformance under a runner without chdir", () => {
+  it("reports a chdir failure as a failed no-writes check", async () => {
+    const spy = vi.spyOn(process, "chdir").mockImplementation(() => {
+      throw new TypeError("process.chdir() is not supported in workers");
+    });
+    try {
+      const results = await runConformance(good);
+      const noWrites = results.find((r) => r.name === "no-writes");
+      expect(noWrites?.passed).toBe(false);
+      expect(noWrites?.reason).toContain("vitest's forks pool");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

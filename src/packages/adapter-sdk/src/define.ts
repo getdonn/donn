@@ -45,7 +45,25 @@ export function defineAdapter(
   for (const field of Object.keys(declaration.capabilities().fields)) {
     if (!isCapabilityField(field)) fail(`unknown capability field "${field}"`);
   }
-  return { ...declaration, apiVersion: ADAPTER_API_VERSION };
+  return withApiVersion(declaration);
+}
+
+/**
+ * The adapter as a plain object built from its named fields. A spread would drop the methods
+ * of a class-based adapter, which live on its prototype.
+ */
+function withApiVersion(
+  declaration: Omit<HarnessAdapter, "apiVersion">,
+): HarnessAdapter {
+  return {
+    apiVersion: ADAPTER_API_VERSION,
+    id: declaration.id,
+    irVersions: declaration.irVersions,
+    capabilities: declaration.capabilities.bind(declaration),
+    detect: declaration.detect.bind(declaration),
+    compile: declaration.compile.bind(declaration),
+    activate: declaration.activate.bind(declaration),
+  };
 }
 
 /** Adapters call this first in compile(): an unknown IR shape must not be compiled. */
