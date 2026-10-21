@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seed, zz, type Seeded } from "./test/seed.js";
@@ -123,5 +129,56 @@ describe("zzpersona write", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toContain("AGENTS.md.block");
     expect(r.stdout).toContain("overlay AGENTS.md block zzpersona");
+  });
+
+  it("refuses an overlay without a block, so it never replaces a file it does not own", async () => {
+    const adapter = join(
+      import.meta.dirname,
+      "test/plugins/whole-file-adapter",
+    );
+    writeFileSync(
+      join(s.home, "config.yaml"),
+      `personas: ${s.personas}\nadapters: [${adapter}]\n`,
+    );
+    mkdirSync(join(s.repo, ".github"), { recursive: true });
+    writeFileSync(
+      join(s.repo, ".github/copilot-instructions.md"),
+      "hand-written\n",
+    );
+    const r = await write(["--harness", "whole-file"]);
+    expect(JSON.parse(r.stdout).error.code).toBe("overlay-needs-block");
+    expect(
+      readFileSync(join(s.repo, ".github/copilot-instructions.md"), "utf8"),
+    ).toBe("hand-written\n");
+  });
+
+  it("refuses an instruction file that is the repo's own AGENTS.md", async () => {
+    writeFileSync(agents(), "# Team rules\n");
+    mkdirSync(join(s.repo, ".zzpersona/instructions"), { recursive: true });
+    symlinkSync(
+      "../../AGENTS.md",
+      join(s.repo, ".zzpersona/instructions/agents.md"),
+    );
+    writeFileSync(
+      persona(),
+      [
+        "apiVersion: zzpersona/v0",
+        "kind: Persona",
+        "metadata: { name: repo }",
+        "extends: [org/base]",
+        "instructions:",
+        "  - { id: team, file: ./instructions/agents.md }",
+        "",
+      ].join("\n"),
+    );
+    await write();
+    const second = await write();
+    expect(second.code).toBe(1);
+    expect(JSON.parse(second.stdout).error.message).toContain(
+      "holds the generated zzpersona block",
+    );
+    expect(readFileSync(agents(), "utf8").match(/zzpersona:end/g)).toHaveLength(
+      1,
+    );
   });
 });

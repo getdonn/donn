@@ -55,6 +55,16 @@ export async function writeCommand(
       { harness: options.harness },
     );
   }
+  // A whole-file overlay would replace or delete a file whatever its owner; until overlays carry
+  // an ownership marker (spec 05 open question 1), only marked blocks are written.
+  const whole = overlays.find((step) => step.block === undefined);
+  if (whole) {
+    throw new CliError(
+      "overlay-needs-block",
+      `${options.harness} would own the whole of ${whole.path}; write only merges marked blocks, so it never replaces a file it does not own`,
+      { harness: options.harness, path: whole.path },
+    );
+  }
   const mode: OverlayMode = options.check
     ? "check"
     : options.remove
