@@ -1,0 +1,79 @@
+mode: default
+files (2)
+  instructions.md (0644)
+    ## zzpersona persona: project/checkout-api
+    
+    Review code the way you would want yours reviewed.
+    
+    Never paste credentials, tokens or customer data into prompts.
+    
+    This area is PCI-DSS scoped. Treat card data as restricted.
+    
+    The checkout API settles card payments. Settlement code lives in src/settlement.
+    
+    Use the shared error envelope. Never log PANs.
+    
+    This repo is the checkout API. Run `pnpm sim` before touching settlement code.
+    
+    ## Knowledge sources
+    - pci-handbook: mcp://confluence?space=PCI
+    - payments-runbooks: mcp://confluence?space=PAY
+    - schema-docs: https://docs.corp/payments/schema
+    
+    ## Tool rules
+    
+    Never run:
+    - Bash(curl:*)
+    - Bash(rm -rf:*)
+    - Read(./.env)
+    
+    Ask before:
+    - Bash(git push:*)
+    - Bash(pnpm test:*)
+    
+    Allowed:
+    - Bash(git status)
+    - Bash(pnpm sim:*)
+    - Read(./**)
+    
+  launch.json (0644)
+    {
+      "servers": {
+        "payments-schema": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@corp/payments-schema-mcp"
+          ],
+          "env_vars": [
+            "SCHEMA_TOKEN"
+          ]
+        }
+      },
+      "approvals": [],
+      "sandbox": "workspace-write",
+      "approval": "on-request"
+    }
+    
+secretEnv (1)
+  SCHEMA_TOKEN = secret://vault/payments/schema-token
+report (17)
+  dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet
+  dropped  skills[pr-review]  Codex has no per-launch skill root
+  dropped  skills[run-payment-sim]  Codex has no per-launch skill root
+  advisory  knowledge[pci-handbook]  listed as pointers in the instructions
+  advisory  knowledge[payments-runbooks]  listed as pointers in the instructions
+  advisory  knowledge[schema-docs]  listed as pointers in the instructions
+  approximated  permissions.allow[Bash(git status)]  rendered as guidance; Codex enforces only its sandbox and approval policy
+  approximated  permissions.allow[Bash(pnpm sim:*)]  rendered as guidance; Codex enforces only its sandbox and approval policy
+  approximated  permissions.allow[Read(./**)]  rendered as guidance; Codex enforces only its sandbox and approval policy
+  approximated  permissions.deny[Bash(curl:*)]  rendered as guidance; Codex enforces only its sandbox and approval policy  locked: permissions.deny by org/base
+  approximated  permissions.deny[Bash(rm -rf:*)]  rendered as guidance; Codex enforces only its sandbox and approval policy  locked: permissions.deny by org/base
+  approximated  permissions.deny[Read(./.env)]  rendered as guidance; Codex enforces only its sandbox and approval policy  locked: permissions.deny by org/base
+  approximated  permissions.ask[Bash(git push:*)]  rendered as guidance; Codex enforces only its sandbox and approval policy
+  approximated  permissions.ask[Bash(pnpm test:*)]  rendered as guidance; Codex enforces only its sandbox and approval policy
+  dropped  hooks.pre-tool-use[block-prod-db]  untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust  locked: hooks.pre-tool-use[block-prod-db] by org/base
+  dropped  hooks.post-tool-use[format-on-write]  untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust
+  dropped  mcp.gateway  gateway resolution is not available yet  locked: mcp.gateway by org/base
+plan (1)
+  launch codex -s workspace-write -a on-request -c developer_instructions="## zzpersona persona: project/checkout-api\n\nReview code the way you would want yours reviewed.\n\nNever paste credentials, tokens or customer data into prompts.\n\nThis area is PCI-DSS scoped. Treat card data as restricted.\n\nThe checkout API settles card payments. Settlement code lives in src/settlement.\n\nUse the shared error envelope. Never log PANs.\n\nThis repo is the checkout API. Run `pnpm sim` before touching settlement code.\n\n## Knowledge sources\n- pci-handbook: mcp://confluence?space=PCI\n- payments-runbooks: mcp://confluence?space=PAY\n- schema-docs: https://docs.corp/payments/schema\n\n## Tool rules\n\nNever run:\n- Bash(curl:*)\n- Bash(rm -rf:*)\n- Read(./.env)\n\nAsk before:\n- Bash(git push:*)\n- Bash(pnpm test:*)\n\nAllowed:\n- Bash(git status)\n- Bash(pnpm sim:*)\n- Read(./**)\n" -c mcp_servers.payments-schema={ args = ["-y", "@corp/payments-schema-mcp"], command = "npx", env_vars = ["SCHEMA_TOKEN"] }

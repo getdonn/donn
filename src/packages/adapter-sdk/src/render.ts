@@ -52,7 +52,10 @@ export function renderBuild(
       `plan (${plan.steps.length})`,
       plan.steps.flatMap((step) => {
         if (step.kind === "overlay") {
-          return [`  overlay ${step.path} (${step.content.length} chars)`];
+          const block = step.block ? ` block ${step.block}` : "";
+          return [
+            `  overlay ${step.path}${block} (${step.content.length} chars)`,
+          ];
         }
         const env = Object.keys(step.env).sort();
         return [

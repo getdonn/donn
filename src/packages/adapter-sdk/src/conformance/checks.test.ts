@@ -17,7 +17,37 @@ const failedChecks = async (adapter: HarnessAdapter) =>
   ].sort();
 
 const broken: [CheckName, HarnessAdapter][] = [
-  ["declaration", { ...good, id: "Bad_Id" }],
+  [
+    "declaration",
+    {
+      ...good,
+      id: "Bad_Id",
+      // Its own targets field, so only the id is wrong.
+      capabilities: () => {
+        const { "targets.toy": own, ...fields } = good.capabilities().fields;
+        return { fields: { ...fields, "targets.Bad_Id": own! } };
+      },
+    },
+  ],
+  [
+    "complete-matrix",
+    {
+      ...good,
+      capabilities: () => {
+        const { skills: _missing, ...fields } = good.capabilities().fields;
+        return { fields };
+      },
+    },
+  ],
+  [
+    "complete-matrix",
+    {
+      ...good,
+      capabilities: () => ({
+        fields: { ...good.capabilities().fields, skills: { support: "none" } },
+      }),
+    },
+  ],
   [
     "rejects-unsupported-ir",
     {
@@ -153,8 +183,8 @@ describe("review fixes", () => {
       // Promises advisory knowledge, but the toy's report says dropped.
       capabilities: () => ({
         fields: {
-          instructions: { support: "native" },
-          knowledge: { support: "advisory" },
+          ...good.capabilities().fields,
+          knowledge: { support: "advisory", note: "as pointers" },
         },
       }),
     };
@@ -189,5 +219,52 @@ describe("runConformance under a runner without chdir", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("overlay blocks", () => {
+  const withOverlay = (block: string, content: string): HarnessAdapter => ({
+    ...good,
+    activate: () => ({
+      steps: [{ kind: "overlay", path: "AGENTS.md", content, block }],
+    }),
+  });
+
+  it("rejects a bad block name and content holding its own markers", async () => {
+    expect(await failedChecks(withOverlay("zzpersona", "fine\n"))).toEqual([]);
+    expect(await failedChecks(withOverlay("Bad Block", "fine\n"))).toEqual([
+      "well-formed-output",
+    ]);
+    expect(
+      await failedChecks(
+        withOverlay("zzpersona", "x\n<!-- zzpersona:end -->\n"),
+      ),
+    ).toEqual(["well-formed-output"]);
+  });
+});
+
+describe("adapters for a file format (noBinary)", () => {
+  const fileFormat: HarnessAdapter = {
+    ...good,
+    detect: async () => ({ installed: true, version: "n/a", facts: {} }),
+  };
+  const ran: string[] = [];
+  const probing: HarnessAdapter = {
+    ...good,
+    detect: async (probe) => {
+      await probe.run("toy", []);
+      ran.push("toy");
+      return { installed: true, version: "n/a", facts: {} };
+    },
+  };
+  const failed = async (adapter: HarnessAdapter, noBinary?: boolean) =>
+    (await runConformance(adapter, noBinary ? { noBinary } : {}))
+      .filter((r) => !r.passed)
+      .map((r) => r.name);
+
+  it("expects installed without running anything", async () => {
+    expect(await failed(fileFormat)).toEqual(["detect-not-installed"]);
+    expect(await failed(fileFormat, true)).toEqual([]);
+    expect(await failed(probing, true)).toEqual(["detect-not-installed"]);
   });
 });

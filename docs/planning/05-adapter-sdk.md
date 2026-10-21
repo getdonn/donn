@@ -293,9 +293,15 @@ activation path; gateway resolution; implementing `agents-md` or `codex`; skill 
 1. **`agents-md` and an existing `AGENTS.md`.** An overlay is a whole file, and the CLI refuses
    to overwrite a file it doesn't own. Should overlays support a managed block (persona text
    between markers inside the repo's own file)? Decide when building `agents-md`.
+   *Amended 2026-10-21 (spec 11): yes. An overlay step's optional `block` merges its content
+   between `<!-- <block>:begin … -->` and `<!-- <block>:end -->` in the repo's own file; without
+   it the overlay owns the whole file. The executor's `applyOverlay` does the merge.*
 2. **Codex instruction length.** `-c developer_instructions=…` puts the whole text on the
    command line. Check whether Codex has a file-based option before building `codex`; if not,
    measure the practical limit.
+   *Amended 2026-10-21 (spec 12): there is no file option that keeps Codex's own instructions
+   (`model_instructions_file` replaces them), so instructions go inline; ~40 KB of
+   `developer_instructions` worked in `exec` and the TUI (`spikes/codex`).*
 3. **Plugin name.** `zzp-<personaId>` makes skills show as `zzp-project-checkout-api:<skill>`.
    Readable enough, or use the persona's `metadata.name`, which is not guaranteed unique?
    *Amended 2026-10-21 (spec 09): `/` now maps to `--` (`zzp-team--payments`), so
@@ -337,3 +343,9 @@ review. Each overrides the section it names.
 - **§1 `Probe.run` never throws for a missing command:** it returns exit code `127`, so
   `detect` keeps its promise never to throw for "not installed". Defined while building the real
   probe in `@zzpersona/executor` (`docs/planning/06-cli-core-loop.md` §3).
+- **§2 and §3 (spec 13, 2026-10-21).** A matrix declares every field (`capabilityFields(id)`:
+  the fixed fields, each hook event, its own `targets`); a non-native field carries a `note`, and
+  a native one may carry a `caveat`. The conformance kit's `complete-matrix` check enforces both.
+  `requiredEntries` returns the report `reason`, taken from the note, so the matrix and the report
+  say the same thing. `zzpersona capabilities` renders the matrices; `docs/capabilities.md` is the
+  published form.

@@ -1,6 +1,7 @@
 import {
   annotateLocks,
   assertIrVersion,
+  capabilityFields,
   requiredEntries,
   type CompileInput,
   type CompileOutput,
@@ -13,7 +14,16 @@ export const good: HarnessAdapter = {
   apiVersion: 1,
   id: "toy",
   irVersions: [0],
-  capabilities: () => ({ fields: { instructions: { support: "native" } } }),
+  capabilities: () => ({
+    fields: Object.fromEntries(
+      capabilityFields("toy").map((field) => [
+        field,
+        field === "instructions"
+          ? { support: "native" }
+          : { support: "none", note: "toy expresses instructions only" },
+      ]),
+    ),
+  }),
   detect: async (probe) => {
     const result = await probe.run("toy", ["--version"]);
     return result.exitCode === 0
@@ -25,12 +35,7 @@ export const good: HarnessAdapter = {
     const prompt = input.ir.instructions
       .map((i) => ("file" in i ? input.texts[i.file] : i.inline))
       .join("\n\n");
-    const entries = requiredEntries("toy", good.capabilities(), input.ir).map(
-      (required) => ({
-        ...required,
-        reason: "toy expresses instructions only",
-      }),
-    );
+    const entries = requiredEntries("toy", good.capabilities(), input.ir);
     return {
       files: { "prompt.md": { content: prompt } },
       secretEnv: {},

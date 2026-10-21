@@ -1,0 +1,36 @@
+{
+  "name": "@zzpersona/adapter-codex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Launches Codex CLI with a persona, as -c overrides on the command line",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zzpersona/adapter-sdk": "workspace:*",
+    "@zzpersona/spec": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@zzpersona/eslint-config": "workspace:*",
+    "@zzpersona/typescript-config": "workspace:*",
+    "eslint": "10.13.0",
+    "smol-toml": "^1.9.1",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

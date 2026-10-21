@@ -6,26 +6,51 @@ import { modeFor } from "./compile.js";
 // settings that block sideload flags lose the plugin and MCP flags; managed-mcp.json loses MCP.
 
 const native = { support: "native" } as const;
-const none = { support: "none" } as const;
+const SIDELOAD_BLOCKED = {
+  support: "none",
+  note: "disableSideloadFlags blocks --plugin-dir and --mcp-config",
+} as const;
+const MANAGED_MCP = {
+  support: "none",
+  note: "managed-mcp.json makes --mcp-config exit",
+} as const;
 
 export function capabilities(detection?: Detection): CapabilityMatrix {
   const mode = detection ? modeFor(detection) : "relaunch";
-  const plugin = mode === "partial" ? none : native;
-  const mcp = mode === "relaunch" ? native : none;
+  const plugin = mode === "partial" ? SIDELOAD_BLOCKED : native;
+  const mcp =
+    mode === "relaunch"
+      ? native
+      : mode === "partial"
+        ? SIDELOAD_BLOCKED
+        : MANAGED_MCP;
   return {
     fields: {
       instructions: native,
-      skills: plugin,
-      "mcp.servers": mcp,
+      skills:
+        plugin === native
+          ? { ...native, caveat: "registry skills (:// sources) are dropped" }
+          : plugin,
+      "mcp.servers":
+        mcp === native
+          ? {
+              ...native,
+              caveat:
+                "gateway:// refs are dropped until gateway resolution exists",
+            }
+          : mcp,
       secrets: mcp,
       "permissions.allow": native,
       "permissions.deny": native,
       "permissions.ask": native,
       knowledge: {
         support: "advisory",
-        note: "listed as pointers in the system prompt",
+        note: "rendered as text in the system prompt",
       },
-      "targets.claude-code": native,
+      "targets.claude-code": {
+        ...native,
+        caveat: "secret refs and permission lists in targets are dropped",
+      },
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, plugin]),
       ),

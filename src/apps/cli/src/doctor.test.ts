@@ -76,6 +76,7 @@ const IDS = [
   "persona",
   "resolve",
   "claude",
+  "codex",
   "cli",
   "mod",
   "secrets",
@@ -113,6 +114,7 @@ describe("zzpersona doctor", () => {
       persona: "warn",
       resolve: "skipped",
       claude: "ok",
+      codex: "ok",
       cli: "warn",
       mod: "warn",
       secrets: "skipped",
@@ -172,6 +174,29 @@ describe("zzpersona doctor", () => {
       }),
     };
     expect((await doctor([], { probe: old })).status.claude).toBe("warn");
+  });
+
+  it("checks codex: optional, and recent enough when installed", async () => {
+    const codex = (stdout: string, exitCode = 0): Probe => ({
+      ...installedProbe,
+      run: async (command) =>
+        command === "codex"
+          ? { exitCode, stdout, stderr: "" }
+          : installedProbe.run(command, []),
+    });
+    const absent = (await doctor([], { probe: codex("", 127) })).checks.find(
+      (c) => c.id === "codex",
+    )!;
+    expect(absent).toMatchObject({
+      status: "ok",
+      message: "codex not installed (optional)",
+    });
+    const old = await doctor([], { probe: codex("codex-cli 0.100.0\n") });
+    expect(old.status.codex).toBe("warn");
+    const current = await doctor([], { probe: codex("codex-cli 0.163.0\n") });
+    expect(current.checks.find((c) => c.id === "codex")!.message).toBe(
+      "codex 0.163.0",
+    );
   });
 
   it("names each secret that cannot be resolved", async () => {
@@ -427,5 +452,26 @@ describe("zzpersona doctor (0.3.1)", () => {
     expect(fixed.message).toBe(
       "removed 1 stale lock(s), 0 orphaned version(s), 0 temporary link(s), 0 orphaned session folder(s)",
     );
+  });
+});
+
+describe("zzpersona doctor and AGENTS.md", () => {
+  it("notes when Claude Code also reads the generated AGENTS.md", async () => {
+    const env = healthy();
+    writeFileSync(
+      join(s.repo, "AGENTS.md"),
+      "<!-- zzpersona:begin — generated; edit the source, not this block -->\nx\n<!-- zzpersona:end -->\n",
+    );
+    const persona = (await doctor([], { env })).checks.find(
+      (c) => c.id === "persona",
+    )!;
+    expect(persona.message).toContain(
+      "AGENTS.md also carries it for Claude Code",
+    );
+    writeFileSync(join(s.repo, "CLAUDE.md"), "# Claude\n");
+    const again = (await doctor([], { env })).checks.find(
+      (c) => c.id === "persona",
+    )!;
+    expect(again.message).not.toContain("AGENTS.md");
   });
 });
