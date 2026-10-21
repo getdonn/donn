@@ -138,20 +138,23 @@ function withoutSecrets(
     });
     return undefined;
   }
+  // A container emptied by removing its secrets is dropped; one that was empty stays.
   if (Array.isArray(value)) {
-    return value
+    const kept = value
       .map((item, i) => withoutSecrets(item, `${prefix}.${i}`, entries))
       .filter((item) => item !== undefined);
+    return kept.length === 0 && value.length > 0 ? undefined : kept;
   }
   if (!isObject(value)) return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(
-        ([key, child]) =>
-          [key, withoutSecrets(child, `${prefix}.${key}`, entries)] as const,
-      )
-      .filter(([, child]) => child !== undefined),
-  );
+  const kept = Object.entries(value)
+    .map(
+      ([key, child]) =>
+        [key, withoutSecrets(child, `${prefix}.${key}`, entries)] as const,
+    )
+    .filter(([, child]) => child !== undefined);
+  return kept.length === 0 && Object.keys(value).length > 0
+    ? undefined
+    : Object.fromEntries(kept);
 }
 
 /**
@@ -276,6 +279,12 @@ export function compile(
 ): CompileOutput {
   const { ir, personaId, texts } = input;
   assertIrVersion(self, ir);
+  const strictMcp = ir.targets["claude-code"]?.strictMcp;
+  if (strictMcp !== undefined && typeof strictMcp !== "boolean") {
+    throw new AdapterInputError(
+      `targets.claude-code.strictMcp must be true or false, not ${JSON.stringify(strictMcp)}`,
+    );
+  }
   const entries: ReportEntry[] = [];
   const files: Record<string, FileEntry> = {};
 

@@ -146,7 +146,6 @@ files (15)
   settings.json (0644)
     {
       "model": "opus",
-      "env": {},
       "permissions": {
         "allow": [
           "Read(./**)"

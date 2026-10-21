@@ -40,7 +40,14 @@ async function managedFacts(probe: Probe) {
     ),
   );
   return {
-    sideloadBlocked: settings.some((s) => s?.disableSideloadFlags === true),
+    // Claude Code applies managed-settings.json, then the drop-ins in name order: last wins.
+    sideloadBlocked: settings.reduce<boolean>(
+      (blocked, s) =>
+        typeof s?.disableSideloadFlags === "boolean"
+          ? s.disableSideloadFlags
+          : blocked,
+      false,
+    ),
     managedMcp: (await probe.readFile(at("managed-mcp.json"))) !== undefined,
   };
 }
