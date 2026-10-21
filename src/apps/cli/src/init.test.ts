@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -61,6 +61,21 @@ describe("zzpersona init --personas", () => {
       join(home, "config.yaml"),
     ]);
     expect(config()).toEqual({ personas: join(s.root, "b") });
+  });
+
+  it("keeps the config when the folder cannot be created", async () => {
+    await zz(["init", "--personas", join(s.root, "a")], { cwd: s.root, home });
+    writeFileSync(join(s.root, "file"), "");
+    const r = await zz(
+      ["init", "--personas", join(s.root, "file/p"), "--force", "--json"],
+      { cwd: s.root, home },
+    );
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error).toMatchObject({
+      code: "filesystem",
+      path: join(s.root, "file/p"),
+    });
+    expect(config()).toEqual({ personas: join(s.root, "a") });
   });
 
   it("writes no starter into a folder that already has personas", async () => {

@@ -36,6 +36,20 @@ permissions:
     - "Bash(rm -rf:*)"
 `;
 
+/** Run a filesystem step; an OS error becomes a `filesystem` error naming the path. */
+async function fsStep<T>(path: string, step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (error) {
+    const errno = (error as NodeJS.ErrnoException).code;
+    if (errno === undefined) throw error;
+    throw new CliError("filesystem", `could not write ${path}: ${errno}`, {
+      path,
+      errno,
+    });
+  }
+}
+
 interface Changes {
   created: string[];
   updated: string[];
@@ -60,11 +74,14 @@ async function initPersonas(
       { file: configFile, current },
     );
   }
+  // The folder first: a folder that cannot be created leaves the config as it was.
+  await fsStep(target, () => mkdir(target, { recursive: true }));
   if (current !== target) {
-    await writeFileAtomic(configFile, stringify({ personas: target }));
+    await fsStep(configFile, () =>
+      writeFileAtomic(configFile, stringify({ personas: target })),
+    );
     (hadConfig ? out.updated : out.created).push(configFile);
   }
-  await mkdir(target, { recursive: true });
   const existing = await createLocalStore({
     personas: target,
     user: home,
@@ -74,7 +91,7 @@ async function initPersonas(
     !existing.some((ref) => !ref.startsWith("user/")) &&
     !existsSync(starter)
   ) {
-    await writeFileAtomic(starter, STARTER);
+    await fsStep(starter, () => writeFileAtomic(starter, STARTER));
     out.created.push(starter);
   }
   if (!existsSync(join(target, ".git"))) {
@@ -107,14 +124,16 @@ async function initProject(
       { file },
     );
   }
-  await writeFileAtomic(
-    file,
-    stringify({
-      apiVersion: "zzpersona/v0",
-      kind: "Persona",
-      metadata: { name: basename(io.cwd) },
-      extends: [selection.ref],
-    }),
+  await fsStep(file, () =>
+    writeFileAtomic(
+      file,
+      stringify({
+        apiVersion: "zzpersona/v0",
+        kind: "Persona",
+        metadata: { name: basename(io.cwd) },
+        extends: [selection.ref],
+      }),
+    ),
   );
   (existed ? out.updated : out.created).push(file);
 }
