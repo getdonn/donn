@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -11,7 +12,7 @@ import { request } from "node:http";
 import { join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { writeBuild } from "@zzpersona/executor";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareBuild } from "./build.js";
 import { createContext } from "./context.js";
 import {
@@ -21,10 +22,30 @@ import {
 } from "./daemon/client.js";
 import { daemonPaths } from "./daemon/paths.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
+import { openWatcherCount } from "./daemon/watch.js";
 import type { LiveState } from "./live-apply.js";
 import { selectPersona } from "./select.js";
-import { buildHash, createSession } from "./session.js";
+import { buildHash, createSession, MODE_FACTS, type Mode } from "./session.js";
 import { installedProbe, quietIo, seed, type Seeded } from "./test/seed.js";
+
+// Lets a test hold the daemon inside its config read, to land a shutdown mid-refresh.
+const gate = vi.hoisted(() => ({
+  hold: undefined as Promise<void> | undefined,
+  entered: false,
+}));
+vi.mock("./config.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./config.js")>();
+  return {
+    ...real,
+    loadConfig: async (...args: Parameters<typeof real.loadConfig>) => {
+      if (gate.hold) {
+        gate.entered = true;
+        await gate.hold;
+      }
+      return real.loadConfig(...args);
+    },
+  };
+});
 
 // The daemon's watch and refresh (spec 14 §3), against a seeded store and fake sessions owned by
 // child processes. Debounce 50 ms; every wait polls with a deadline.
@@ -38,6 +59,8 @@ beforeEach(() => {
   children = [];
   daemons = [];
   streams = [];
+  gate.hold = undefined;
+  gate.entered = false;
 });
 afterEach(async () => {
   for (const stop of streams) stop();
@@ -58,26 +81,43 @@ function owner(): ChildProcess {
   return child;
 }
 
+/** Compile a persona as `zzpersona claude` (or `codex`) does for the given options. */
+async function compileFor(
+  persona: string,
+  options: {
+    project?: string;
+    harness?: "claude-code" | "codex";
+    mode?: Mode;
+  },
+) {
+  const io = quietIo({ cwd: options.project ?? s.home, home: s.home });
+  const ctx = await createContext(io);
+  const build = await prepareBuild(ctx, io, {
+    selection: await selectPersona(persona, ctx),
+    harness: options.harness ?? "claude-code",
+    overlay: true,
+    passthrough: [],
+    ...(options.mode !== undefined && { facts: MODE_FACTS[options.mode] }),
+  });
+  return { ...build, ctx };
+}
+
 /** A session as `zzpersona claude` (or `codex`) records it, launched on today's files. */
 async function launch(
   persona: string,
-  options: { project?: string; harness?: "claude-code" | "codex" } = {},
+  options: {
+    project?: string;
+    harness?: "claude-code" | "codex";
+    mode?: Mode;
+  } = {},
 ): Promise<string> {
   const harness = options.harness ?? "claude-code";
-  const io = quietIo({ cwd: options.project ?? s.home, home: s.home });
-  const ctx = await createContext(io);
-  const selection = await selectPersona(persona, ctx);
-  const build = await prepareBuild(ctx, io, {
-    selection,
-    harness,
-    overlay: true,
-    passthrough: [],
-  });
+  const build = await compileFor(persona, options);
   let plugin: string | undefined;
   if (harness === "claude-code") {
     await writeBuild(build.output, {
       buildDir: build.buildDir,
-      store: ctx.store,
+      store: build.ctx.store,
     });
     plugin = join(build.buildDir, "plugin");
   }
@@ -90,6 +130,7 @@ async function launch(
       overlay: true,
       harness,
       ...(options.project !== undefined && { project: options.project }),
+      ...(options.mode !== undefined && { mode: options.mode }),
       startedAt: new Date().toISOString(),
       buildHash: buildHash(build.output),
       snapshot: {
@@ -543,5 +584,45 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     await daemon.close();
     expect(liveOf(dir).instructions).toContain("Review kindly, and say why.");
     expect(existsSync(daemon.socket)).toBe(false);
+  });
+
+  it("keeps a session's launch mode", async () => {
+    const options = { project: s.repo, mode: "relaunch-no-mcp" as const };
+    const dir = await launch("project/persona", options);
+    const plugins = snapshot(join(dir, "plugins"));
+    const daemon = await start();
+    const stream = await follow(daemon);
+    // The first pass compiles as the session was launched: nothing to swap.
+    expect(logLines(`skip ${dir}`)).toHaveLength(1);
+    expect(existsSync(join(dir, "live.json"))).toBe(false);
+    expect(snapshot(join(dir, "plugins"))).toEqual(plugins);
+
+    await edit(
+      conduct(),
+      "Review kindly, and say why.",
+      seen(stream, "session.refreshed", dir),
+      "a refresh",
+    );
+    const expected = await compileFor("project/persona", options);
+    const plain = await compileFor("project/persona", { project: s.repo });
+    expect(buildHash(expected.output)).not.toBe(buildHash(plain.output));
+    expect(liveOf(dir).buildHash).toBe(buildHash(expected.output));
+  });
+
+  it("leaves no watcher open when it stops mid-refresh", async () => {
+    const before = openWatcherCount();
+    const daemon = await start();
+    let release!: () => void;
+    gate.hold = new Promise((r) => (release = r));
+    const refreshing = daemon.refresh();
+    await until(() => gate.entered, "a refresh reading the config");
+    // The watch set changes while the refresh waits: it would start new watchers.
+    mkdirSync(join(s.home, "personas"));
+    const closing = daemon.close();
+    // Let shutdown get past closing its watchers before the refresh resumes.
+    await until(() => logLines("stopping").length > 0, "shutdown to start");
+    release();
+    await Promise.all([refreshing, closing]);
+    expect(openWatcherCount()).toBe(before);
   });
 });

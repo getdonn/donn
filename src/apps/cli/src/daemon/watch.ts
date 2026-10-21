@@ -10,6 +10,11 @@ export interface Watch {
   paths: string[];
 }
 
+let openWatchers = 0;
+
+/** Test-only: the folder watchers open in this process, to show none outlives `close()`. */
+export const openWatcherCount = () => openWatchers;
+
 const isDir = (path: string) =>
   statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
 
@@ -49,6 +54,7 @@ export function watchSources(
         changed(undefined);
       });
       watchers.push(watcher);
+      openWatchers++;
     } catch {
       // Gone between the check and the watch: the next recompute sees it.
     }
@@ -81,6 +87,8 @@ export function watchSources(
       closed = true;
       clearTimeout(timer);
       for (const watcher of watchers) watcher.close();
+      openWatchers -= watchers.length;
+      watchers.length = 0;
     },
   };
 }

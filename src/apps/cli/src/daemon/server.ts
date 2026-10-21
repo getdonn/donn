@@ -187,6 +187,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const config = await loadConfig(options.home, io.env).catch(() => ({
       personas: undefined,
     }));
+    // Shutdown may have begun during the read: it closes the watchers, so start none.
+    if (stopping) return;
     const projects = [
       ...new Set(
         running.flatMap((s) =>
@@ -390,6 +392,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       watcher?.close();
       // Finish the swap in flight: a session is never left half-swapped.
       while (inFlight || queued) await (queued ?? inFlight);
+      // Again: the refresh just finished may have rewatched before it saw `stopping`.
+      watcher?.close();
+      watcher = undefined;
       emit({ type: "daemon.stopping" });
       for (const stream of streams) stream.end();
       streams.clear();

@@ -11,6 +11,7 @@ import { withFileLock, writeFileAtomic } from "./fs.js";
 import { selectPersona } from "./select.js";
 import {
   buildHash,
+  MODE_FACTS,
   pluginNameOf,
   sessionPlugins,
   type Launched,
@@ -89,6 +90,8 @@ export async function applyLive(
     harness: "claude-code",
     overlay: launched.overlay ?? true,
     passthrough: [],
+    // Managed policy the launch was told about: detection cannot see it.
+    ...(launched.mode !== undefined && { facts: MODE_FACTS[launched.mode] }),
   });
   // Compare with what was launched, recorded at launch: today's files may differ or be broken.
   let launchedSnapshot: LaunchSnapshot | undefined = launched.snapshot;

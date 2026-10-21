@@ -3,7 +3,7 @@ import type { CliIo } from "../cli.js";
 import { createContext, homeOf } from "../context.js";
 import { applyLive } from "../live-apply.js";
 import { selectPersona } from "../select.js";
-import { buildHash, type SessionInfo } from "../session.js";
+import { buildHash, MODE_FACTS, type SessionInfo } from "../session.js";
 import type { SessionStatus } from "./client.js";
 
 // One session's refresh: recompile its persona as its files are now and, when the build changed,
@@ -32,6 +32,8 @@ export async function refreshSession(
       harness: launched.harness,
       overlay: launched.overlay ?? true,
       passthrough: [],
+      // As launched: a `--mode` stands for managed policy detection cannot see.
+      ...(launched.mode !== undefined && { facts: MODE_FACTS[launched.mode] }),
     });
     const hash = buildHash(build.output);
     // Codex reads its config once, at launch: a changed build needs a relaunch.
