@@ -110,7 +110,16 @@ export async function claudeCommand(
     session = await createSession(
       ctx.home,
       launch.args[pluginArg + 1]!,
-      { persona: selection.ref, source: selection.source },
+      {
+        persona: selection.ref,
+        source: selection.source,
+        overlay: options.overlay,
+        snapshot: {
+          mcp: build.result.ir.mcp,
+          permissions: build.result.ir.permissions,
+          settings: build.result.ir.targets["claude-code"] ?? {},
+        },
+      },
       process.pid,
     );
     const args = [...launch.args];

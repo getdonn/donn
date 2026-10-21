@@ -7,10 +7,21 @@ import { writeFileAtomic } from "./fs.js";
 // A session folder: the folder of plugins a `zzpersona claude` session launches with, so the
 // persona plugin inside it can be swapped mid-session. See docs/planning/10-live-switching.md §1.
 
+/** The parts of a persona a session cannot change after launch (spec 10): what `live` compares. */
+export interface LaunchSnapshot {
+  mcp: unknown;
+  permissions: unknown;
+  /** targets.claude-code: model, env, permissions.defaultMode … all in --settings. */
+  settings: unknown;
+}
+
 export interface Launched {
   persona: string;
   source: string;
   pid: number;
+  /** Whether the user overlay was applied at launch. */
+  overlay?: boolean;
+  snapshot?: LaunchSnapshot;
 }
 
 const ORPHAN_AFTER_MS = 24 * 60 * 60 * 1000;

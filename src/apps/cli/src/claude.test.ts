@@ -264,4 +264,31 @@ describe("zzpersona claude", () => {
     await zz(["claude", "--dry-run"], { cwd: s.repo, home: s.home });
     expect(existsSync(join(s.home, "sessions"))).toBe(false);
   });
+
+  it("records what the session was launched with", async () => {
+    useEnvVault();
+    let launched: Record<string, unknown> | undefined;
+    await zz(["claude", "--no-overlay"], {
+      cwd: s.repo,
+      home: s.home,
+      env: SECRET_ENV,
+      runPlan: async (plan: ActivationPlan) => {
+        const session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+        launched = JSON.parse(
+          readFileSync(join(session, "launched.json"), "utf8"),
+        );
+        return 0;
+      },
+    });
+    expect(launched).toMatchObject({
+      persona: "project/persona",
+      source: "project",
+      overlay: false,
+      snapshot: {
+        mcp: { servers: { "payments-schema": expect.any(Object) } },
+        permissions: { deny: expect.arrayContaining(["Bash(rm -rf:*)"]) },
+        settings: expect.any(Object),
+      },
+    });
+  });
 });
