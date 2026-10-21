@@ -1,0 +1,106 @@
+mode: relaunch
+files (8)
+  mcp.json (0644)
+    {
+      "mcpServers": {
+        "payments-schema": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@corp/payments-schema-mcp"
+          ],
+          "env": {
+            "SCHEMA_TOKEN": "${ZZP_SECRET_1}"
+          }
+        }
+      }
+    }
+    
+  plugin/.claude-plugin/plugin.json (0644)
+    {
+      "name": "zzp-project-checkout-api",
+      "version": "0.0.0",
+      "description": "Persona checkout-api"
+    }
+    
+  plugin/hooks/hooks.json (0644)
+    {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-prod-db-block-prod-db.sh"
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "matcher": "Edit|Write",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/format-on-write-format.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    
+  plugin/hooks/scripts/block-prod-db-block-prod-db.sh <- copy org/hooks/block-prod-db.sh
+  plugin/hooks/scripts/format-on-write-format.sh <- copy project/hooks/format.sh
+  plugin/skills/run-payment-sim <- copy team/skills/run-payment-sim
+  settings.json (0644)
+    {
+      "permissions": {
+        "allow": [
+          "Bash(git status)",
+          "Bash(pnpm sim:*)",
+          "Read(./**)"
+        ],
+        "deny": [
+          "Bash(curl:*)",
+          "Bash(rm -rf:*)",
+          "Read(./.env)"
+        ],
+        "ask": [
+          "Bash(git push:*)",
+          "Bash(pnpm test:*)"
+        ]
+      },
+      "model": "opus",
+      "outputStyle": "concise"
+    }
+    
+  system-prompt.md (0644)
+    Review code the way you would want yours reviewed.
+    
+    Never paste credentials, tokens or customer data into prompts.
+    
+    This area is PCI-DSS scoped. Treat card data as restricted.
+    
+    The checkout API settles card payments. Settlement code lives in src/settlement.
+    
+    Use the shared error envelope. Never log PANs.
+    
+    This repo is the checkout API. Run `pnpm sim` before touching settlement code.
+    
+    ## Knowledge sources
+    - pci-handbook: mcp://confluence?space=PCI
+    - payments-runbooks: mcp://confluence?space=PAY
+    - schema-docs: https://docs.corp/payments/schema
+    
+secretEnv (1)
+  ZZP_SECRET_1 = secret://vault/payments/schema-token
+report (5)
+  advisory  knowledge[pci-handbook]  rendered as text in the system prompt
+  advisory  knowledge[payments-runbooks]  rendered as text in the system prompt
+  advisory  knowledge[schema-docs]  rendered as text in the system prompt
+  dropped  skills[pr-review]  skill registries are not supported in v0
+  dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet
+plan (1)
+  launch claude --plugin-dir /BUILD/plugin --settings /BUILD/settings.json --mcp-config /BUILD/mcp.json --strict-mcp-config --append-system-prompt-file /BUILD/system-prompt.md

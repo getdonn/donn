@@ -1,0 +1,175 @@
+mode: relaunch
+files (15)
+  mcp.json (0644)
+    {
+      "mcpServers": {
+        "db": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@corp/db-mcp"
+          ],
+          "env": {
+            "LOG_LEVEL": "debug",
+            "TOKEN": "${ZZP_SECRET_1}",
+            "TOKEN_AGAIN": "${ZZP_SECRET_1}",
+            "URL": "${ZZP_SECRET_2}"
+          }
+        },
+        "remote": {
+          "type": "sse",
+          "url": "https://mcp.corp/sse",
+          "headers": {
+            "X-Team": "kitchen"
+          }
+        }
+      }
+    }
+    
+  plugin/.claude-plugin/plugin.json (0644)
+    {
+      "name": "zzp-team-kitchen",
+      "version": "0.0.0",
+      "description": "Persona kitchen-sink"
+    }
+    
+  plugin/hooks/hooks.json (0644)
+    {
+      "hooks": {
+        "SessionStart": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start-hook-session-start.sh"
+              }
+            ]
+          }
+        ],
+        "SessionEnd": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end-hook-session-end.sh"
+              }
+            ]
+          }
+        ],
+        "UserPromptSubmit": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-submit-hook-user-prompt-submit.sh"
+              }
+            ]
+          }
+        ],
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-hook-pre-tool-use.sh"
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-tool-use-hook-post-tool-use.sh"
+              }
+            ]
+          }
+        ],
+        "Stop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-hook-stop.sh"
+              }
+            ]
+          }
+        ],
+        "SubagentStop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/subagent-stop-hook-subagent-stop.sh"
+              }
+            ]
+          }
+        ],
+        "PreCompact": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-hook-pre-compact.sh"
+              }
+            ]
+          }
+        ],
+        "Notification": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/notification-hook-notification.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    
+  plugin/hooks/scripts/notification-hook-notification.sh <- copy org/hooks/notification.sh
+  plugin/hooks/scripts/post-tool-use-hook-post-tool-use.sh <- copy org/hooks/post-tool-use.sh
+  plugin/hooks/scripts/pre-compact-hook-pre-compact.sh <- copy org/hooks/pre-compact.sh
+  plugin/hooks/scripts/pre-tool-use-hook-pre-tool-use.sh <- copy org/hooks/pre-tool-use.sh
+  plugin/hooks/scripts/session-end-hook-session-end.sh <- copy org/hooks/session-end.sh
+  plugin/hooks/scripts/session-start-hook-session-start.sh <- copy org/hooks/session-start.sh
+  plugin/hooks/scripts/stop-hook-stop.sh <- copy org/hooks/stop.sh
+  plugin/hooks/scripts/subagent-stop-hook-subagent-stop.sh <- copy org/hooks/subagent-stop.sh
+  plugin/hooks/scripts/user-prompt-submit-hook-user-prompt-submit.sh <- copy org/hooks/user-prompt-submit.sh
+  plugin/skills/local-skill <- copy team/skills/local-skill
+  settings.json (0644)
+    {
+      "permissions": {
+        "allow": [
+          "Read(./**)"
+        ],
+        "deny": [
+          "Bash(rm -rf:*)"
+        ],
+        "ask": [
+          "Bash(git push:*)"
+        ]
+      },
+      "model": "opus"
+    }
+    
+  system-prompt.md (0644)
+    Follow the org rules.
+    
+    Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep going. Keep goi
+    
+    ## Knowledge sources
+    - wiki: mcp://confluence?space=ENG
+    
+secretEnv (2)
+  ZZP_SECRET_1 = secret://vault/db/token
+  ZZP_SECRET_2 = secret://vault/db/url
+report (3)
+  advisory  knowledge[wiki]  rendered as text in the system prompt
+  dropped  skills[remote-skill]  skill registries are not supported in v0
+  dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet  locked: mcp.servers by org/base
+plan (1)
+  launch claude --plugin-dir /BUILD/plugin --settings /BUILD/settings.json --mcp-config /BUILD/mcp.json --append-system-prompt-file /BUILD/system-prompt.md

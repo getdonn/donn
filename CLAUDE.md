@@ -45,8 +45,10 @@ overrides them.
 **Phase 1** (see roadmap). Phase 0 shipped as `v0.1.0`: `@zzpersona/spec`, the resolver with
 its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec) and
 `explain()`, and the `spikes/claude-code` and `spikes/agents-md` findings. Phase 1 starts with
-`docs/planning/05-adapter-sdk.md`: `@zzpersona/adapter-sdk`, then `adapters/claude-code` on the
-verified relaunch path; the CLI and its plan executor get the next spec. Picking the name runs
+`docs/planning/05-adapter-sdk.md`: `@zzpersona/adapter-sdk` and `adapters/claude-code` (relaunch
+path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
+built. Next: the CLI spec, including the plan executor that writes builds, resolves secrets and
+runs `launch` steps. Picking the name runs
 in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
