@@ -19,6 +19,8 @@ files (3)
     }
     
   system-prompt.md (0644)
+    ## zzpersona persona: team/solo
+    
     Be concise.
     
 plan (1)
