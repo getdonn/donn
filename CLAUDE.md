@@ -51,7 +51,7 @@ its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec)
 path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
 built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-local`,
 `secrets`, `executor` and `zzpersona resolve|compile|claude` (opt-in `ZZP_E2E=1` runs the built
-binary against real `claude`). Next: spec 07 (`init`, `switch`, `doctor`, `diff`, 1Password). Picking the name runs
+binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) is built too. Next: spec 08 (1Password, third-party adapters, `diff`, SDK-side minors), then the Claude Code mod. Picking the name runs
 in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)

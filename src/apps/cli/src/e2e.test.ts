@@ -100,6 +100,29 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: zzpersona claude", () => {
     expect(run.stdout).toContain("launch claude");
   });
 
+  it("sets up with init, switches, and passes doctor", () => {
+    const steps = [
+      ["init", "--personas", personas],
+      ["init", "--extends", "team/e2e"],
+      ["switch", "team/e2e"],
+      ["doctor"],
+    ];
+    for (const args of steps) {
+      const run = zzpersona(args);
+      expect(run.status, `${args.join(" ")}: ${run.stdout}${run.stderr}`).toBe(
+        0,
+      );
+    }
+    const shown = zzpersona(["switch", "--json"]);
+    expect(JSON.parse(shown.stdout)).toMatchObject({
+      persona: "team/e2e",
+      source: "switch",
+    });
+    const dry = zzpersona(["claude", "--dry-run"]);
+    expect(dry.status, dry.stderr).toBe(0);
+    expect(dry.stdout).toContain("zzp-team-e2e");
+  });
+
   it("launches claude with the persona", () => {
     const run = zzpersona([
       "claude",
