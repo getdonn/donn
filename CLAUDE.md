@@ -28,6 +28,7 @@ overrides them.
 6. `docs/planning/06-cli-core-loop.md` — store-local (mounts by layer), secrets, plan executor, and `zzpersona resolve|compile|claude`
 7. `docs/planning/07-cli-daily-use.md` — `switch` (+ `state.json`) and persona selection precedence, flags-only `init`, `doctor`, CLI hardening
 8. `docs/planning/08-cli-reach.md` — third-party adapter and secret provider plugins, the built-in OS `keychain` provider, `diff`, hardening
+9. `docs/planning/09-mod-claude-code.md` — the Claude Code mod: band with the active persona, folder-mismatch nudge, `/persona list|switch|clear`, `zzpersona mod install`
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
