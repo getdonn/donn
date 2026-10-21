@@ -86,7 +86,8 @@ export async function claudeCommand(
     secretEnv,
     env: io.env,
   });
-  if (code !== 0 && now() - started < QUICK_FAILURE_MS) {
+  // A signal exit (> 128) was the user or the system, not managed settings.
+  if (code !== 0 && code <= 128 && now() - started < QUICK_FAILURE_MS) {
     io.stderr.write(`${MANAGED_HINT}\n`);
   }
   return code;

@@ -4,7 +4,7 @@ import { Command, CommanderError, Option } from "commander";
 import { claudeCommand } from "./commands/claude.js";
 import { compileCommand } from "./commands/compile.js";
 import { resolveCommand } from "./commands/resolve.js";
-import { report } from "./errors.js";
+import { CliError, report } from "./errors.js";
 
 // The zzpersona command line. Everything goes through createCli(io) so tests run commands
 // in-process. See docs/planning/06-cli-core-loop.md, section 4.
@@ -29,11 +29,21 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
       const split = argv.indexOf("--");
       const ours = split === -1 ? argv : argv.slice(0, split);
       const passthrough = split === -1 ? [] : argv.slice(split + 1);
+      const wantsJson = ours.includes("--json");
+      /** Run a command; only `claude` takes passthrough arguments after `--`. */
       const handle = async (
         json: boolean | undefined,
         command: () => Promise<number>,
+        options: { passthrough?: boolean } = {},
       ) => {
         try {
+          if (passthrough.length > 0 && !options.passthrough) {
+            throw new CliError(
+              "unexpected-passthrough",
+              "arguments after `--` are only passed through by zzpersona claude",
+              { args: passthrough },
+            );
+          }
           code = await command();
         } catch (error) {
           code = report(io, json === true, error);
@@ -46,6 +56,10 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .configureOutput({
           writeOut: (s) => io.stdout.write(s),
           writeErr: (s) => io.stderr.write(s),
+          // Under --json, usage errors become an envelope (below) instead of text.
+          outputError: (s, write) => {
+            if (!wantsJson) write(s);
+          },
         });
 
       program
@@ -104,16 +118,24 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print the plan as JSON; launches nothing")
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
         .action((persona: string | undefined, options) =>
-          handle(options.json, () =>
-            claudeCommand(io, persona, options, passthrough),
+          handle(
+            options.json,
+            () => claudeCommand(io, persona, options, passthrough),
+            { passthrough: true },
           ),
         );
 
       try {
         await program.parseAsync(ours, { from: "user" });
       } catch (error) {
-        if (error instanceof CommanderError) return error.exitCode;
-        throw error;
+        if (!(error instanceof CommanderError)) throw error;
+        if (wantsJson && error.exitCode !== 0) {
+          io.stdout.write(
+            `${JSON.stringify({ error: { code: "usage", message: error.message } }, null, 2)}\n`,
+          );
+          return 1;
+        }
+        return error.exitCode;
       }
       return code;
     },
