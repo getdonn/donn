@@ -110,10 +110,8 @@ export async function liveCommand(
   const plugins = sessionPlugins(dir);
   const source = join(build.buildDir, "plugin");
   const name = await pluginNameOf(source);
-  const staging = join(
-    plugins,
-    `${name}.new-${randomBytes(4).toString("hex")}`,
-  );
+  // Staged beside plugins/, not in it: the watcher must never see a half-copied plugin.
+  const staging = join(dir, `.staging-${randomBytes(4).toString("hex")}`);
   await cp(source, staging, { recursive: true, dereference: true });
   await rm(join(plugins, name), { recursive: true, force: true });
   await rename(staging, join(plugins, name));
