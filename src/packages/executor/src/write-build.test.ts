@@ -1,7 +1,9 @@
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -123,5 +125,71 @@ describe("writeBuild", () => {
         store,
       }),
     ).rejects.toThrow(ExecutorError);
+  });
+});
+
+describe("review fixes", () => {
+  it("turns filesystem errors into an ExecutorError naming the source (I1)", async () => {
+    const { personas, store, buildDir } = setup();
+    symlinkSync("..", join(personas, "team/skills/s/loop"));
+    const error = await writeBuild(
+      output({ "plugin/skills/s": { copyFrom: "team/skills/s" } }),
+      { buildDir, store },
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ExecutorError);
+    expect((error as Error).message).toContain("team/skills/s");
+  });
+
+  it("survives concurrent builds of the same persona (I2)", async () => {
+    const { store, buildDir } = setup();
+    const builds = Array.from({ length: 8 }, (_, i) =>
+      writeBuild(
+        output({
+          "settings.json": { content: String(i) },
+          "plugin/skills/s": { copyFrom: "team/skills/s" },
+        }),
+        { buildDir, store },
+      ),
+    );
+    await expect(Promise.all(builds)).resolves.toBeDefined();
+    expect(readFileSync(join(buildDir, "settings.json"), "utf8")).toMatch(
+      /^[0-7]$/,
+    );
+    expect(
+      readFileSync(join(buildDir, "plugin/skills/s/SKILL.md"), "utf8"),
+    ).toBe("skill");
+    const leftovers = readdirSync(dirname(buildDir)).filter(
+      (name) => name !== "claude-code",
+    );
+    expect(leftovers).toHaveLength(1); // the one version the build directory points to
+  });
+
+  it("swaps builds atomically: the build directory is never missing (I2)", async () => {
+    const { store, buildDir } = setup();
+    await writeBuild(output({ "a.txt": { content: "1" } }), {
+      buildDir,
+      store,
+    });
+    expect(lstatSync(buildDir).isSymbolicLink()).toBe(true);
+    let missing = false;
+    const watch = setInterval(() => {
+      if (
+        !existsSync(join(buildDir, "a.txt")) &&
+        !existsSync(join(buildDir, "b.txt"))
+      ) {
+        missing = true;
+      }
+    }, 0);
+    for (let i = 0; i < 20; i++) {
+      await writeBuild(
+        output({ [i % 2 ? "a.txt" : "b.txt"]: { content: "x" } }),
+        {
+          buildDir,
+          store,
+        },
+      );
+    }
+    clearInterval(watch);
+    expect(missing).toBe(false);
   });
 });
