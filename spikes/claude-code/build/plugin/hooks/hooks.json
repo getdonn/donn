@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "echo 'Persona hook context: the hook codeword is ZZ-HOOK-CODEWORD.'" }
+        ]
+      }
+    ]
+  }
+}

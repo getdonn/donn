@@ -333,6 +333,9 @@ So the Claude Code "build" is not one plugin; it is a plugin **plus** a settings
 - **Permissions**: written to `.claude/settings.local.json` (project scope, gitignored by
   convention) or passed via `--settings`. Settings-file edits to `permissions` and `hooks` are
   **hot-reloaded**, which matters for in-session switching.
+  *Amended 2026-10-21 (spike): only the user, project, local and managed files are watched. A
+  file passed with `--settings` is read once at startup — verified with a control run. See
+  `spikes/claude-code/FINDINGS.md`.*
 
 ### Activation: what is possible
 
@@ -343,6 +346,17 @@ So the Claude Code "build" is not one plugin; it is a plugin **plus** a settings
 | `/mcp` enable/disable | yes | toggles existing servers only; add/remove is CLI-only |
 | relaunch with `--settings --mcp-config --strict-mcp-config --plugin-dir --append-system-prompt-file` | no | deterministic; strict MCP set; zero config pollution |
 | `CLAUDE_CONFIG_DIR` swap | no | relocates `~/.claude`; **full isolation unverified** (`~/.claude.json` not stated to move) — **spike** |
+
+*Amended 2026-10-21 (spike, `spikes/claude-code/FINDINGS.md`):*
+
+| Mechanism | Mid-session? | Finding |
+|---|---|---|
+| relaunch (row above) | no | **verified end to end**: system prompt, SessionStart hook, skill, MCP tool, allow and deny rules all reached the session; the user's own plugins stayed loaded; `--strict-mcp-config` hid the user's MCP servers |
+| edit a file passed with `--settings` | **no** | read once at startup (control: `settings.local.json` did reload) |
+| `CLAUDE_CONFIG_DIR` swap | no | `.claude.json` does move, but each directory has **its own login** — rejected |
+| add/remove a plugin inside a `--plugin-dir` folder of plugins | yes, interactive, v2.1.265+ | applies right away, or shows a `/reload-plugins` notice if it would force a full re-read (docs; manual check A pending) |
+| mod `prompt.submit` adds `context` | yes | injects instructions into the current session; lives in history, so re-inject after compaction |
+| MCP config edit | no | takes effect only after restart; plugin MCP via `/reload-plugins --force` |
 
 A **mod cannot perform the switch**: `$.settings` is read-only and there is no documented API to
 enable plugins, change MCP, or run `/reload-plugins`. A mod *can* draw status, register
@@ -365,6 +379,13 @@ Two tiers, both generated from the same build:
    user to run `/reload-plugins --force`. Instructions update only at next session (SessionStart
    hook) — the mod says so.
 
+   *Amended 2026-10-21 (spike): tier 1 is verified as written. Tier 2 changes: the `--settings`
+   file is not watched, so live permissions must go to `settings.local.json`; a mod can inject
+   instructions mid-session via `prompt.submit`, so they need not wait for the next session; and
+   swapping the child of a `--plugin-dir` folder of plugins may replace the `enabledPlugins`
+   toggle entirely. Design tier 2 in Phase 1 after manual check A in the spike findings.
+   Config-root swap is rejected (separate login per config directory).*
+
 Persona plugins are served from a **local marketplace** (`~/.hatrack/marketplace/.claude-plugin/
 marketplace.json` with relative-path sources), so all persona builds are installable by id
 (`<persona>@hatrack`) and toggled via `enabledPlugins` rather than copied around. Edits in
@@ -384,6 +405,13 @@ real policy for this harness without inventing a new enforcement mechanism. Note
 locked-down orgs the adapter must fall back to marketplace install + managed MCP. The capability
 report must say which mode it is in.
 
+*Amended 2026-10-21 (spike, docs only): `disableSideloadFlags` also blocks
+`CLAUDE_CODE_PLUGIN_DIRS`, but not `--settings` or `--append-system-prompt-file`. A deployed
+`managed-mcp.json` independently makes `--mcp-config` and `--strict-mcp-config` exit at startup.
+A local persona marketplace survives `strictKnownMarketplaces` only if the admin allowlists its
+path (`directory` source or `pathPattern`); otherwise persona plugins go to an approved git
+marketplace, which the control plane would publish to anyway.*
+
 ### Spikes for this adapter
 
 1. `CLAUDE_CONFIG_DIR` isolation: does `~/.claude.json` (MCP user/local scopes, per-project state)
@@ -394,6 +422,10 @@ report must say which mode it is in.
    so instructions do not wait for SessionStart?
 4. Does a `.mcp.json` edit or `claude mcp add` mid-session get picked up without restart?
 5. Behaviour under `disableSideloadFlags` + `strictKnownMarketplaces`: full marketplace-only path.
+
+*Answered 2026-10-21 in `spikes/claude-code/FINDINGS.md`: (1) yes, but separate login — rejected;
+(2) deferred to a Phase 1 prototype, constraints recorded; (3) yes, via `prompt.submit`;
+(4) no, restart needed except plugin MCP via `--force`; (5) docs only, needs admin allowlisting.*
 
 Sources: plugins manifest/components/loading/marketplaces/CLI reference, settings, managed
 settings, claude-directory, env-vars, MCP, mods overview/API, hooks, CLI reference — all under

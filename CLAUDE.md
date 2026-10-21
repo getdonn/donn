@@ -43,10 +43,9 @@ overrides them.
 
 Phase 0 (see roadmap): spikes + `spec` + `resolver` with a fixture suite. Done: turborepo,
 `@zzpersona/spec`, the fixture suite (`src/packages/resolver/fixtures/`, the executable merge
-spec), and `resolve()` passing all of it. Remaining for the Phase 0 exit question: an
-`--explain` rendering of provenance a reviewer would trust, and the `spikes/claude-code` and
-`spikes/agents-md` investigations. Picking the name runs in parallel and only blocks the first
-`npm publish`.
+spec), `resolve()` passing all of it, `explain()` with golden `explain.txt` per fixture, and
+`spikes/claude-code` (relaunch path verified end to end; see its `FINDINGS.md`). Remaining:
+`spikes/agents-md`. Picking the name runs in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
 
