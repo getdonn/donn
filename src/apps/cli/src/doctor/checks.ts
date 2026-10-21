@@ -6,6 +6,7 @@ import { resolveSecrets, SecretResolutionError } from "@zzpersona/secrets";
 import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
+import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
@@ -269,7 +270,7 @@ export async function runChecks(
       await resolveSecrets(
         build.secretRefs,
         build.result.ir.secrets.providers,
-        { env: io.env, platform: io.probe.platform, run: io.probe.run },
+        secretContext(io),
       );
       add("secrets", "ok", `${build.secretRefs.length} secret(s) resolve`);
     } catch (error) {

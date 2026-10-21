@@ -8,7 +8,12 @@ import type { Probe } from "@zzpersona/adapter-sdk";
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");
 
-export function nodeProbe(): Probe {
+/**
+ * `timeoutMs` bounds each command (default 10 s); a command killed by it returns exit code 124
+ * (as timeout(1) does) with "timed out" on stderr.
+ */
+export function nodeProbe(options: { timeoutMs?: number } = {}): Probe {
+  const timeoutMs = options.timeoutMs ?? 10_000;
   return {
     platform: process.platform,
     run: (command, args) =>
@@ -16,7 +21,7 @@ export function nodeProbe(): Probe {
         execFile(
           command,
           args,
-          { timeout: 10_000, encoding: "utf8" },
+          { timeout: timeoutMs, encoding: "utf8" },
           (error, stdout, stderr) => {
             if (!error) return resolve({ exitCode: 0, stdout, stderr });
             const code = (error as NodeJS.ErrnoException).code;
@@ -25,6 +30,13 @@ export function nodeProbe(): Probe {
                 exitCode: 127,
                 stdout: "",
                 stderr: error.message,
+              });
+            }
+            if ((error as { killed?: boolean }).killed) {
+              return resolve({
+                exitCode: 124,
+                stdout,
+                stderr: `${command} timed out after ${timeoutMs / 1000}s`,
               });
             }
             const exitCode =

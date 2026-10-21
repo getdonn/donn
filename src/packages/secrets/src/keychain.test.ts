@@ -135,3 +135,28 @@ describe("keychain", () => {
     ).toEqual({ "secret://mine/a/b": "x" });
   });
 });
+
+describe("keychain failures that are not a missing item", () => {
+  it("reports a secret-tool error on stderr, not a missing item", async () => {
+    expect(
+      await failureFor(
+        "secret://keychain/s/a",
+        fake("linux", {
+          exitCode: 1,
+          stderr: "Cannot autolaunch D-Bus without X11 $DISPLAY\n",
+        }).ctx,
+      ),
+    ).toBe(
+      "secret-tool exited 1: Cannot autolaunch D-Bus without X11 $DISPLAY",
+    );
+  });
+
+  it("explains a timed-out lookup", async () => {
+    expect(
+      await failureFor(
+        "secret://keychain/s/a",
+        fake("darwin", { exitCode: 124, stderr: "timed out after 10s" }).ctx,
+      ),
+    ).toBe("timed out waiting for security (was a keychain prompt left open?)");
+  });
+});

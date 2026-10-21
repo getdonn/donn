@@ -3,6 +3,7 @@ import { runPlan, writeBuild } from "@zzpersona/executor";
 import { resolveSecrets } from "@zzpersona/secrets";
 import { prepareBuild, printReport } from "../build.js";
 import type { CliIo } from "../cli.js";
+import { secretContext } from "../secret-context.js";
 import { createContext } from "../context.js";
 import { CliError } from "../errors.js";
 import { selectPersona } from "../select.js";
@@ -67,7 +68,7 @@ export async function claudeCommand(
   const values = await resolveSecrets(
     build.secretRefs,
     build.result.ir.secrets.providers,
-    { env: io.env, platform: io.probe.platform, run: io.probe.run },
+    secretContext(io),
   );
   const secretEnv = Object.fromEntries(
     Object.entries(build.output.secretEnv).map(([name, ref]) => [

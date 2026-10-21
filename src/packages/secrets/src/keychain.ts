@@ -38,7 +38,15 @@ export const keychainBackend: SecretBackend = {
     }
     const result = await ctx.run(command, args);
     if (result.exitCode === 0) return result.stdout.replace(/\n$/, "");
-    if (result.exitCode === missing) return undefined;
+    // secret-tool exits 1 for "not found" and for real failures (no D-Bus, a locked keyring):
+    // only a quiet exit 1 means the item is missing.
+    if (result.exitCode === missing && result.stderr.trim() === "")
+      return undefined;
+    if (result.exitCode === 124) {
+      throw new Error(
+        `timed out waiting for ${command} (was a keychain prompt left open?)`,
+      );
+    }
     if (result.exitCode === 127) {
       throw new Error(
         command === "secret-tool"

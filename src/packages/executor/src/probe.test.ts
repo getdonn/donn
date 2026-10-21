@@ -28,3 +28,11 @@ describe("nodeProbe", () => {
     expect(probe.platform).toBe(process.platform);
   });
 });
+
+describe("nodeProbe timeouts", () => {
+  it("reports a command killed by its timeout as exit 124", async () => {
+    const result = await nodeProbe({ timeoutMs: 100 }).run("sleep", ["5"]);
+    expect(result.exitCode).toBe(124);
+    expect(result.stderr).toContain("timed out");
+  });
+});
