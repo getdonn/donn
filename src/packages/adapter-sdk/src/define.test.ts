@@ -1,5 +1,7 @@
 import type { ResolvedPersona } from "@zzpersona/spec";
 import { describe, expect, it } from "vitest";
+import { runConformance } from "./conformance/index.js";
+import { good } from "./testing/toy.js";
 import {
   ADAPTER_API_VERSION,
   AdapterDeclarationError,
@@ -31,7 +33,34 @@ const matrix =
   () =>
     ({ fields: { [field]: { support: "native" } } }) as CapabilityMatrix;
 
+/** An adapter written as a class: its methods live on the prototype and use `this`. */
+class ClassAdapter {
+  readonly inner = good;
+  readonly id = good.id;
+  readonly irVersions = good.irVersions;
+  capabilities(...args: Parameters<HarnessAdapter["capabilities"]>) {
+    return this.inner.capabilities(...args);
+  }
+  detect(...args: Parameters<HarnessAdapter["detect"]>) {
+    return this.inner.detect(...args);
+  }
+  compile(...args: Parameters<HarnessAdapter["compile"]>) {
+    return this.inner.compile(...args);
+  }
+  activate(...args: Parameters<HarnessAdapter["activate"]>) {
+    return this.inner.activate(...args);
+  }
+}
+
 describe("defineAdapter", () => {
+  it("keeps the methods of a class-based adapter", async () => {
+    const adapter = defineAdapter(new ClassAdapter());
+    expect(adapter.capabilities()).toEqual(good.capabilities());
+    expect(typeof adapter.compile).toBe("function");
+    const results = await runConformance(adapter);
+    expect(results.filter((r) => !r.passed)).toEqual([]);
+  });
+
   it("stamps the contract version", () => {
     const adapter = defineAdapter(declaration());
     expect(adapter.apiVersion).toBe(1);

@@ -1,10 +1,10 @@
-import type { Detection, Probe } from "@zzpersona/adapter-sdk";
+import type { Detection, Platform, Probe } from "@zzpersona/adapter-sdk";
 
 // Installed version, plus file-based managed settings that change how we can launch. Policy
 // delivered by MDM profile, registry or server-managed settings is invisible here; the CLI must
 // surface Claude Code's own startup error for that case.
 
-const MANAGED_DIRS: Partial<Record<NodeJS.Platform, string>> = {
+const MANAGED_DIRS: Partial<Record<Platform, string>> = {
   darwin: "/Library/Application Support/ClaudeCode",
   linux: "/etc/claude-code",
   win32: "C:\\Program Files\\ClaudeCode",
