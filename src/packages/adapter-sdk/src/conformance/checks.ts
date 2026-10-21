@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { parsePath, type ResolvedPersona } from "@zzpersona/spec";
 import { defineAdapter } from "../define.js";
 import { isContainedPath, secretRefsIn, serverSecretRefs } from "../paths.js";
-import { annotateLocks, requiredEntries } from "../report.js";
+import { annotateLocks, capabilityFields, requiredEntries } from "../report.js";
 import type {
   ActivateInput,
   ActivationPlan,
@@ -21,6 +21,7 @@ import { corpus, type CorpusEntry } from "./corpus/index.js";
 
 export const CHECK_NAMES = [
   "declaration",
+  "complete-matrix",
   "rejects-unsupported-ir",
   "deterministic",
   "well-formed-output",
@@ -253,6 +254,19 @@ export async function runConformance(
       return adapter.apiVersion === 1
         ? []
         : [`apiVersion ${String(adapter.apiVersion)} is not 1`];
+    }),
+  );
+
+  results.push(
+    outcome("complete-matrix", () => {
+      const fields = adapter.capabilities(detection).fields;
+      return capabilityFields(adapter.id).flatMap((field) => {
+        const entry = fields[field];
+        if (!entry) return [`missing field ${field}`];
+        return entry.support !== "native" && !entry.note
+          ? [`${field} is ${entry.support} without a note`]
+          : [];
+      });
     }),
   );
 

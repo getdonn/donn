@@ -17,7 +17,37 @@ const failedChecks = async (adapter: HarnessAdapter) =>
   ].sort();
 
 const broken: [CheckName, HarnessAdapter][] = [
-  ["declaration", { ...good, id: "Bad_Id" }],
+  [
+    "declaration",
+    {
+      ...good,
+      id: "Bad_Id",
+      // Its own targets field, so only the id is wrong.
+      capabilities: () => {
+        const { "targets.toy": own, ...fields } = good.capabilities().fields;
+        return { fields: { ...fields, "targets.Bad_Id": own! } };
+      },
+    },
+  ],
+  [
+    "complete-matrix",
+    {
+      ...good,
+      capabilities: () => {
+        const { skills: _missing, ...fields } = good.capabilities().fields;
+        return { fields };
+      },
+    },
+  ],
+  [
+    "complete-matrix",
+    {
+      ...good,
+      capabilities: () => ({
+        fields: { ...good.capabilities().fields, skills: { support: "none" } },
+      }),
+    },
+  ],
   [
     "rejects-unsupported-ir",
     {
@@ -153,8 +183,8 @@ describe("review fixes", () => {
       // Promises advisory knowledge, but the toy's report says dropped.
       capabilities: () => ({
         fields: {
-          instructions: { support: "native" },
-          knowledge: { support: "advisory" },
+          ...good.capabilities().fields,
+          knowledge: { support: "advisory", note: "as pointers" },
         },
       }),
     };

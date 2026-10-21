@@ -1,17 +1,35 @@
-import { lockCovers, parsePath, type ResolvedPersona } from "@zzpersona/spec";
-import type {
-  CapabilityField,
-  CapabilityMatrix,
-  CompileReport,
-  ReportEntry,
-  Support,
+import {
+  HOOK_EVENTS,
+  lockCovers,
+  parsePath,
+  type ResolvedPersona,
+} from "@zzpersona/spec";
+import {
+  FIXED_CAPABILITY_FIELDS,
+  type CapabilityField,
+  type CapabilityMatrix,
+  type CompileReport,
+  type ReportEntry,
+  type Support,
 } from "./types.js";
 import { serverSecretRefs } from "./paths.js";
 
 // "No silent loss", derived rather than trusted: from an adapter's matrix and an IR, the report
 // entries a compile must contain. See docs/planning/05-adapter-sdk.md, section 2.
 
-type Required = { path: string; outcome: ReportEntry["outcome"] };
+type Required = Omit<ReportEntry, "lock">;
+
+/** The reason for items under a field the adapter's matrix leaves out. */
+export const UNDECLARED = "not declared by the adapter";
+
+/** Every field an adapter's matrix declares: the fixed ones, each hook event, its own targets. */
+export function capabilityFields(adapterId: string): CapabilityField[] {
+  return [
+    ...FIXED_CAPABILITY_FIELDS,
+    ...HOOK_EVENTS.map((event): CapabilityField => `hooks.${event}`),
+    `targets.${adapterId}`,
+  ];
+}
 
 const OUTCOME: Record<Exclude<Support, "native">, ReportEntry["outcome"]> = {
   none: "dropped",
@@ -57,9 +75,13 @@ export function requiredEntries(
   ir: ResolvedPersona,
 ): Required[] {
   return valuesByField(adapterId, ir).flatMap(([field, paths]) => {
-    const support = matrix.fields[field]?.support ?? "none";
+    const entry = matrix.fields[field];
+    const support = entry?.support ?? "none";
     if (support === "native") return [];
-    return paths.map((path) => ({ path, outcome: OUTCOME[support] }));
+    const reason = entry
+      ? (entry.note ?? "the adapter gives no reason")
+      : UNDECLARED;
+    return paths.map((path) => ({ path, outcome: OUTCOME[support], reason }));
   });
 }
 

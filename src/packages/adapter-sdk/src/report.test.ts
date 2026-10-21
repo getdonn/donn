@@ -1,6 +1,16 @@
 import type { ResolvedPersona } from "@zzpersona/spec";
 import { describe, expect, it } from "vitest";
-import { annotateLocks, requiredEntries, type CompileReport } from "./index.js";
+import {
+  annotateLocks,
+  capabilityFields,
+  requiredEntries,
+  UNDECLARED,
+  type CompileReport,
+} from "./index.js";
+import { HOOK_EVENTS } from "@zzpersona/spec";
+
+const pathsAndOutcomes = (entries: { path: string; outcome: string }[]) =>
+  entries.map(({ path, outcome }) => ({ path, outcome }));
 
 const emptyIr = (): ResolvedPersona => ({
   irVersion: 0,
@@ -29,7 +39,38 @@ const ir: ResolvedPersona = {
   locks: [{ path: "permissions.deny", layer: "org/base" }],
 };
 
+describe("capabilityFields", () => {
+  it("lists the fixed fields, every hook event, then the adapter's own targets", () => {
+    const fields = capabilityFields("x");
+    expect(fields[0]).toBe("instructions");
+    expect(fields.at(-1)).toBe("targets.x");
+    for (const event of HOOK_EVENTS) expect(fields).toContain(`hooks.${event}`);
+  });
+});
+
 describe("requiredEntries", () => {
+  it("gives each entry its field's note as the reason", () => {
+    const required = requiredEntries(
+      "toy",
+      {
+        fields: {
+          "permissions.deny": { support: "advisory", note: "as text" },
+        },
+      },
+      ir,
+    );
+    expect(required).toContainEqual({
+      path: "permissions.deny[Bash(rm -rf:*)]",
+      outcome: "advisory",
+      reason: "as text",
+    });
+    expect(required).toContainEqual({
+      path: "knowledge[a]",
+      outcome: "dropped",
+      reason: UNDECLARED,
+    });
+  });
+
   it("lists every value under a field the adapter cannot express natively", () => {
     const required = requiredEntries(
       "toy",
@@ -42,7 +83,7 @@ describe("requiredEntries", () => {
       },
       ir,
     );
-    expect(required).toEqual(
+    expect(pathsAndOutcomes(required)).toEqual(
       expect.arrayContaining([
         { path: "permissions.deny[Bash(rm -rf:*)]", outcome: "advisory" },
         { path: "knowledge[a]", outcome: "dropped" },
@@ -79,7 +120,7 @@ describe("requiredEntries", () => {
       { fields: { "mcp.servers": { support: "native" } } },
       withSecrets,
     );
-    expect(required).toEqual([
+    expect(pathsAndOutcomes(required)).toEqual([
       { path: "mcp.servers.db.env.TOKEN", outcome: "dropped" },
     ]);
   });

@@ -5,7 +5,11 @@ import { HOOK_EVENTS } from "@zzpersona/spec";
 // a list of pointers, permissions become guidance, and everything else has no place in it.
 
 const native = { support: "native" } as const;
-const none = { support: "none" } as const;
+const none = (what: string) =>
+  ({
+    support: "none",
+    note: `AGENTS.md is plain text; use a harness adapter for ${what}`,
+  }) as const;
 const guidance = {
   support: "approximated",
   note: "rendered as guidance; not enforced",
@@ -22,12 +26,12 @@ export function capabilities(): CapabilityMatrix {
       "permissions.allow": guidance,
       "permissions.deny": guidance,
       "permissions.ask": guidance,
-      skills: none,
-      "mcp.servers": none,
-      secrets: none,
-      "targets.agents-md": none,
+      skills: none("skills"),
+      "mcp.servers": none("MCP servers"),
+      secrets: none("secrets"),
+      "targets.agents-md": none("harness settings"),
       ...Object.fromEntries(
-        HOOK_EVENTS.map((event) => [`hooks.${event}`, none]),
+        HOOK_EVENTS.map((event) => [`hooks.${event}`, none("hooks")]),
       ),
     },
   };
