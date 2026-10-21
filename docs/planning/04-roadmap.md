@@ -41,6 +41,8 @@ Work:
 - `packages/adapters/claude-code`: compile → {plugin, settings fragment, mcp.json,
   system-prompt.md}; local marketplace generation; `activate()` per the chosen strategy.
 - `packages/store-local`, `packages/secrets` (env + 1Password CLI to start).
+  > Amended 2026-10-21 (`08`): built-ins are env and the OS keychain; 1Password and other
+  > vendors become secret provider packages loaded like adapters.
 - `apps/cli`: `init`, `resolve [--explain] [--json]`, `compile`, `switch`, `claude` (relaunch
   wrapper), `doctor`, `diff <a> <b>`.
 - `packages/mod-claude-code`: status line / band with active persona, cwd-mismatch nudge,

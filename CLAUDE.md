@@ -27,6 +27,7 @@ overrides them.
 5. `docs/planning/05-adapter-sdk.md` — the adapter contract (pure compile + activation plan), compile report, conformance kit, and the Claude Code adapter
 6. `docs/planning/06-cli-core-loop.md` — store-local (mounts by layer), secrets, plan executor, and `zzpersona resolve|compile|claude`
 7. `docs/planning/07-cli-daily-use.md` — `switch` (+ `state.json`) and persona selection precedence, flags-only `init`, `doctor`, CLI hardening
+8. `docs/planning/08-cli-reach.md` — third-party adapter and secret provider plugins, the built-in OS `keychain` provider, `diff`, hardening
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
