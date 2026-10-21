@@ -7,13 +7,14 @@ import {
   Provenance,
   ResolvedPersona,
   ResolveWarning,
+  type Ref,
 } from "@zzpersona/spec";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { ResolveError, resolve, type PersonaSource } from "./index.js";
 
-// Structural checks only: the fixtures must be well-formed, and agree with @zzpersona/spec,
-// before the resolver is written against them. Resolution itself is `it.todo` until `resolve()`
-// exists. See fixtures/README.md.
+// Each fixture is checked twice: that it is well-formed and agrees with @zzpersona/spec, then
+// that resolve() produces exactly what it expects. See fixtures/README.md.
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 const IR_FIELDS = Object.keys(ResolvedPersona.shape);
@@ -107,6 +108,42 @@ describe("resolver fixtures", () => {
       }
     });
 
-    it.todo("resolves to the expected output");
+    it("resolves to the expected output", async () => {
+      const source: PersonaSource = {
+        load: async (ref) =>
+          existsSync(refPath(ref)) ? readYaml(refPath(ref)) : undefined,
+      };
+      const run = resolve(spec.resolve as Ref, {
+        source,
+        overlay: spec.overlay as Ref | undefined,
+      });
+
+      if ("error" in exp) {
+        const error = await run.then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+        expect(error).toBeInstanceOf(ResolveError);
+        expect((error as ResolveError).toJSON()).toMatchObject(
+          exp.error as Doc,
+        );
+        return;
+      }
+
+      const { ir, provenance, warnings } = await run;
+      for (const [field, value] of Object.entries(exp.resolved as Doc)) {
+        expect(ir[field as keyof typeof ir], field).toStrictEqual(value);
+      }
+      for (const [path, layer] of Object.entries(
+        (exp.provenance as Doc | undefined) ?? {},
+      )) {
+        expect(provenance[path], path).toBe(layer);
+      }
+      const key = (w: Doc) =>
+        `${w.code as string} ${w.path as string} ${w.layer as string}`;
+      expect(warnings.map(key).sort()).toEqual(
+        (exp.warnings as Doc[]).map(key).sort(),
+      );
+    });
   });
 });
