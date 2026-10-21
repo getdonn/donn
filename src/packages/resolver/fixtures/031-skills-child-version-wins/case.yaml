@@ -6,4 +6,6 @@ expect:
       - { name: pr-review, source: "registry://org/skills/pr-review@^2" }
   provenance:
     "skills[pr-review]": team/t
+  history:
+    - { path: "skills[pr-review]", layer: team/t, kind: override, from: org/base }
   warnings: []

@@ -6,4 +6,4 @@ layers (merge order)
 
 labels (2)
   org   corp  org/base
-  tier  team  team/t
+  tier  team  team/t    overrides org/base

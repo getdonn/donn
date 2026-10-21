@@ -88,6 +88,12 @@ expect:
     "knowledge[pci-handbook]": area/fintech
     "targets.claude-code.model": user/overrides
     "targets.claude-code.outputStyle": project/checkout-api
+  history:
+    - { path: "skills[pr-review]", layer: team/payments, kind: override, from: org/base }
+    - { path: "skills[frontend-storybook]", layer: team/payments, kind: remove, from: org/base }
+    - { path: mcp.servers.figma, layer: team/payments, kind: remove, from: org/base }
+    - { path: "instructions[payments-overview]", layer: project/checkout-api, kind: remove, from: team/payments }
+    - { path: targets.claude-code.model, layer: user/overrides, kind: override, from: team/payments }
   warnings:
     - code: allow-shadowed-by-ask
       path: "permissions.allow[Bash(pnpm test:*)]"

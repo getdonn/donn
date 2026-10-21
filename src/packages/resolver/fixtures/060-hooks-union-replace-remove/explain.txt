@@ -5,8 +5,11 @@ layers (merge order)
   2  team/t    target
 
 hooks (2)
-  pre-tool-use   lint-guard → team/hooks/lint-guard-v2.sh  team/t  matcher: Edit|Write
+  pre-tool-use   lint-guard → team/hooks/lint-guard-v2.sh  team/t  matcher: Edit|Write; overrides org/base
   post-tool-use  notify → team/hooks/notify.sh             team/t
+
+removed (1)
+  hooks.pre-tool-use[audit-log]  removed by team/t  set by org/base
 
 warnings (1)
   security-removal  hooks.pre-tool-use[audit-log]  from team/t

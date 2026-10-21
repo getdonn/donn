@@ -6,5 +6,5 @@ layers (merge order)
 
 knowledge (3)
   wiki      mcp://confluence?space=ENG   org/base
-  schema    https://docs.corp/schema/v2  team/t
+  schema    https://docs.corp/schema/v2  team/t    overrides org/base
   runbooks  mcp://confluence?space=PAY   team/t

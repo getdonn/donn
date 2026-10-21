@@ -6,4 +6,4 @@ layers (merge order)
   3  team/t  target
 
 targets (1)
-  claude-code.model  opus  area/y
+  claude-code.model  opus  area/y  overrides area/x

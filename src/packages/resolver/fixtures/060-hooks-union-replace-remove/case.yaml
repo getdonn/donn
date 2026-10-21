@@ -11,5 +11,8 @@ expect:
         - { id: notify, run: team/hooks/notify.sh }
   provenance:
     "hooks.pre-tool-use[lint-guard]": team/t
+  history:
+    - { path: "hooks.pre-tool-use[lint-guard]", layer: team/t, kind: override, from: org/base }
+    - { path: "hooks.pre-tool-use[audit-log]", layer: team/t, kind: remove, from: org/base }
   warnings:
     - { code: security-removal, path: "hooks.pre-tool-use[audit-log]", layer: team/t }

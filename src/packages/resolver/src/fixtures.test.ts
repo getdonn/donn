@@ -4,6 +4,7 @@ import {
   ERROR_CODES,
   LAYERS,
   PersonaDocument,
+  HistoryEntry,
   Provenance,
   ResolvedPersona,
   ResolveWarning,
@@ -81,6 +82,9 @@ describe("resolver fixtures", () => {
       if (exp.provenance !== undefined) {
         expect(Provenance.safeParse(exp.provenance).error).toBeUndefined();
       }
+      for (const entry of (exp.history as Doc[] | undefined) ?? []) {
+        expect(HistoryEntry.safeParse(entry).error).toBeUndefined();
+      }
       expect(Array.isArray(exp.warnings)).toBe(true);
       for (const w of exp.warnings as Doc[]) {
         expect(ResolveWarning.safeParse(w).error).toBeUndefined();
@@ -146,6 +150,13 @@ describe("resolver fixtures", () => {
       expect(warnings.map(key).sort()).toEqual(
         (exp.warnings as Doc[]).map(key).sort(),
       );
+      if (exp.history !== undefined) {
+        const change = (h: Doc) =>
+          `${h.path as string} ${h.layer as string} ${h.kind as string} ${h.from as string}`;
+        expect(result.history.map(change).sort()).toEqual(
+          (exp.history as Doc[]).map(change).sort(),
+        );
+      }
       await expect(explain(result)).toMatchFileSnapshot(
         join(dir, "explain.txt"),
       );
