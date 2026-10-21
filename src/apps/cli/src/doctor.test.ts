@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -361,5 +362,20 @@ describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
     expect(checks.find((c) => c.id === "secrets")!.fix).toContain(
       "security add-generic-password -s 'My App' -a '$(touch pwned)' -w",
     );
+  });
+
+  it("removes orphaned session folders with --fix", async () => {
+    const env = healthy();
+    const orphan = join(s.home, "sessions/0123456789abcdef");
+    mkdirSync(orphan, { recursive: true });
+    writeFileSync(
+      join(orphan, "launched.json"),
+      JSON.stringify({ persona: "x", source: "argument", pid: 999999 }),
+    );
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    utimesSync(orphan, old, old);
+    expect((await doctor([], { env })).status.build).toBe("warn");
+    expect((await doctor(["--fix"], { env })).status.build).toBe("ok");
+    expect(existsSync(orphan)).toBe(false);
   });
 });
