@@ -152,13 +152,14 @@ describe("/persona output", () => {
     ).toBe("this session runs team/payments (switch), which this folder uses");
   });
 
-  it("lists personas by layer and marks this session's and this folder's", () => {
+  it("lists personas in layer order and marks this session's and this folder's", () => {
     expect(
       commandText(
         "list",
         {
           personas: [
             { ref: "org/base", layer: "org" },
+            { ref: "project/persona", layer: "project" },
             { ref: "team/payments", layer: "team" },
             { ref: "team/platform", layer: "team" },
           ],
@@ -173,6 +174,8 @@ describe("/persona output", () => {
         "team:",
         "  team/payments  (this session)",
         "  team/platform  (this folder)",
+        "project:",
+        "  project/persona",
       ].join("\n"),
     );
   });
@@ -193,8 +196,8 @@ describe("/persona output", () => {
       [
         "team/platform is now used for /Users/you/repo.",
         "This session still runs team/payments. To apply it, exit and run:",
-        "  zzpersona claude -- --continue",
-        "(--continue resumes this conversation with the new persona.)",
+        "  zzpersona claude",
+        "(zzpersona claude -- --continue keeps this conversation, but not the new persona's instructions.)",
       ].join("\n"),
     );
     expect(
