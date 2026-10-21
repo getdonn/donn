@@ -147,3 +147,73 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: zzpersona claude", () => {
     }
   }, 300_000);
 });
+
+// Opt-in, macOS: a throwaway item in the login keychain, resolved through the built binary's
+// `doctor` (which resolves every secret the build needs; `claude --dry-run` resolves none).
+describe.skipIf(process.env.ZZP_E2E !== "1" || process.platform !== "darwin")(
+  "e2e: keychain secrets",
+  () => {
+    const SERVICE = "zzp-e2e";
+    let dir: string;
+    const security = (args: string[]) =>
+      spawnSync("security", args, { encoding: "utf8" });
+
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "zzp-keychain-e2e-"));
+      execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+      put(
+        join(dir, "home/config.yaml"),
+        `personas: ${join(dir, "personas")}\n`,
+      );
+      put(
+        join(dir, "repo/.zzpersona/persona.yaml"),
+        [
+          "apiVersion: zzpersona/v0",
+          "kind: Persona",
+          "metadata: { name: keychain-e2e }",
+          "mcp:",
+          "  servers:",
+          "    probe:",
+          "      command: node",
+          `      env: { TOKEN: "secret://keychain/${SERVICE}/token" }`,
+          "",
+        ].join("\n"),
+      );
+      mkdirSync(join(dir, "personas"), { recursive: true });
+      security([
+        "add-generic-password",
+        "-s",
+        SERVICE,
+        "-a",
+        "token",
+        "-w",
+        "zzp-e2e-value",
+        "-U",
+      ]);
+    });
+
+    afterAll(() => {
+      security(["delete-generic-password", "-s", SERVICE, "-a", "token"]);
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("resolves a keychain secret (macOS may ask once to allow access)", () => {
+      const run = spawnSync(process.execPath, [BIN, "doctor", "--json"], {
+        cwd: join(dir, "repo"),
+        env: { ...process.env, ZZPERSONA_HOME: join(dir, "home") },
+        encoding: "utf8",
+        timeout: 120_000,
+      });
+      const checks = (
+        JSON.parse(run.stdout) as {
+          checks: { id: string; status: string; message: string }[];
+        }
+      ).checks;
+      expect(checks.find((c) => c.id === "secrets")).toMatchObject({
+        status: "ok",
+        message: "1 secret(s) resolve",
+      });
+      expect(run.stdout).not.toContain("zzp-e2e-value");
+    }, 180_000);
+  },
+);
