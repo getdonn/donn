@@ -331,3 +331,6 @@ review. Each overrides the section it names.
 - **§5 flag order** is `--plugin-dir`, `--mcp-config` (+ `--strict-mcp-config`), `--settings`,
   `--append-system-prompt-file`, passthrough. `--mcp-config` takes several files, so a
   non-variadic flag must follow it or a positional prompt is read as a config file.
+- **§1 `Probe.run` never throws for a missing command:** it returns exit code `127`, so
+  `detect` keeps its promise never to throw for "not installed". Defined while building the real
+  probe in `@zzpersona/executor` (`docs/planning/06-cli-core-loop.md` §3).
