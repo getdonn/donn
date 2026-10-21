@@ -137,9 +137,17 @@ export type CapabilityField =
   | `hooks.${HookEvent}`
   | `targets.${string}`;
 
+export interface CapabilityEntry {
+  support: Support;
+  /** Why the field is not native; the report reason for each item under it. */
+  note?: string;
+  /** On a field that is native in general: which items can still be dropped or changed. */
+  caveat?: string;
+}
+
 export interface CapabilityMatrix {
-  /** A field left out counts as "none". */
-  fields: Partial<Record<CapabilityField, { support: Support; note?: string }>>;
+  /** Every field is declared (the conformance kit checks); one left out counts as "none". */
+  fields: Partial<Record<CapabilityField, CapabilityEntry>>;
 }
 
 export interface ReportEntry {

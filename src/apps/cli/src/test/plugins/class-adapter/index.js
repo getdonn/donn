@@ -2,6 +2,7 @@ import {
   annotateLocks,
   assertIrVersion,
   defineAdapter,
+  capabilityFields,
   requiredEntries,
 } from "@zzpersona/adapter-sdk";
 
@@ -14,7 +15,16 @@ class FakeAdapter {
   command = "fake";
 
   capabilities() {
-    return { fields: { instructions: { support: "native" } } };
+    return {
+      fields: Object.fromEntries(
+        capabilityFields(this.id).map((field) => [
+          field,
+          field === "instructions"
+            ? { support: "native" }
+            : { support: "none", note: "fake expresses instructions only" },
+        ]),
+      ),
+    };
   }
 
   async detect(probe) {
@@ -29,12 +39,7 @@ class FakeAdapter {
     const prompt = input.ir.instructions
       .map((i) => ("file" in i ? input.texts[i.file] : i.inline))
       .join("\n\n");
-    const entries = requiredEntries(this.id, this.capabilities(), input.ir).map(
-      (required) => ({
-        ...required,
-        reason: "fake expresses instructions only",
-      }),
-    );
+    const entries = requiredEntries(this.id, this.capabilities(), input.ir);
     return {
       files: { "prompt.md": { content: prompt } },
       secretEnv: {},
