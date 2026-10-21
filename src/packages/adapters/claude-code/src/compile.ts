@@ -8,6 +8,7 @@ import {
   type Detection,
   type FileEntry,
   type HarnessAdapter,
+  isContainedPath,
   type ReportEntry,
   type SecretRef,
 } from "@zzpersona/adapter-sdk";
@@ -95,18 +96,95 @@ function mcpConfig(ir: ResolvedPersona, dropped: ReportEntry[]) {
     } else if ("command" in server) {
       servers[name] = {
         command: server.command,
-        ...(server.args && { args: server.args }),
+        ...(server.args && { args: server.args.map(hide) }),
         ...(server.env && { env: sortedHidden(server.env) }),
       };
     } else {
       servers[name] = {
         type: server.transport ?? "http",
-        url: server.url,
+        url: hide(server.url),
         ...(server.headers && { headers: sortedHidden(server.headers) }),
       };
     }
   }
   return { servers, secretEnv };
+}
+
+/** A copyFrom source must stay inside the personas root. */
+function contained(source: string, what: string) {
+  if (!isContainedPath(source)) {
+    throw new AdapterInputError(
+      `${what}: ${source} is outside the personas root`,
+    );
+  }
+}
+
+const RULE_LISTS = ["allow", "deny", "ask"] as const;
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** `value` without secret refs, each one reported dropped at its path below `prefix`. */
+function withoutSecrets(
+  value: unknown,
+  prefix: string,
+  entries: ReportEntry[],
+): unknown {
+  if (typeof value === "string" && value.startsWith("secret://")) {
+    entries.push({
+      path: prefix,
+      outcome: "dropped",
+      reason:
+        "secret refs in targets are not resolved; pass secrets through an MCP server's env",
+    });
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item, i) => withoutSecrets(item, `${prefix}.${i}`, entries))
+      .filter((item) => item !== undefined);
+  }
+  if (!isObject(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(
+        ([key, child]) =>
+          [key, withoutSecrets(child, `${prefix}.${key}`, entries)] as const,
+      )
+      .filter(([, child]) => child !== undefined),
+  );
+}
+
+/**
+ * settings.json: targets.claude-code leaves, with the persona's permission rules always winning.
+ * A permissions block in targets may set other keys (defaultMode, …) but never allow/deny/ask:
+ * that would let any layer silently replace locked rules.
+ */
+function settings(ir: ResolvedPersona, entries: ReportEntry[]) {
+  const raw = ir.targets["claude-code"] ?? {};
+  const targets = withoutSecrets(
+    Object.fromEntries(
+      Object.entries(raw).filter(([key]) => !ADAPTER_KEYS.has(key)),
+    ),
+    "targets.claude-code",
+    entries,
+  ) as Record<string, unknown>;
+  const extra = isObject(targets.permissions) ? targets.permissions : {};
+  for (const list of RULE_LISTS) {
+    if (list in extra) {
+      entries.push({
+        path: `targets.claude-code.permissions.${list}`,
+        outcome: "dropped",
+        reason:
+          "permission rules come from the persona's permissions, not targets",
+      });
+    }
+  }
+  const otherKeys = Object.fromEntries(
+    Object.entries(extra).filter(
+      ([key]) => !(RULE_LISTS as readonly string[]).includes(key),
+    ),
+  );
+  return { ...targets, permissions: { ...otherKeys, ...ir.permissions } };
 }
 
 export type Mode = "relaunch" | "partial" | "relaunch-no-mcp";
@@ -151,6 +229,8 @@ function pluginFiles(
   });
 
   for (const skill of ir.skills) {
+    if (!skill.source.includes("://"))
+      contained(skill.source, `skill ${skill.name}`);
     if (skill.source.includes("://")) {
       entries.push({
         path: `skills[${skill.name}]`,
@@ -168,7 +248,9 @@ function pluginFiles(
     typeof ir.hooks.stop,
   ][]) {
     for (const hook of list ?? []) {
-      const script = `${hook.id}-${posix.basename(hook.run)}`;
+      contained(hook.run, `hook ${event}[${hook.id}]`);
+      // Hook ids are unique per event only, so the event is part of the name.
+      const script = `${event}-${hook.id}-${posix.basename(hook.run)}`;
       files[`plugin/hooks/scripts/${script}`] = {
         copyFrom: hook.run,
         mode: 0o755,
@@ -226,12 +308,7 @@ export function compile(
     dropAll(entries, serverPaths(ir), MANAGED_MCP);
   }
 
-  const targets = Object.fromEntries(
-    Object.entries(ir.targets["claude-code"] ?? {}).filter(
-      ([key]) => !ADAPTER_KEYS.has(key),
-    ),
-  );
-  files["settings.json"] = asJson({ permissions: ir.permissions, ...targets });
+  files["settings.json"] = asJson(settings(ir, entries));
 
   return {
     files,

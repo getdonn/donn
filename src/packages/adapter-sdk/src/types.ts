@@ -10,7 +10,8 @@ export interface HarnessAdapter {
   id: string;
   /** IR versions this adapter accepts. */
   irVersions: readonly number[];
-  capabilities(): CapabilityMatrix;
+  /** With a detection, the matrix for the mode that detection puts the adapter in. */
+  capabilities(detection?: Detection): CapabilityMatrix;
   detect(probe: Probe): Promise<Detection>;
   compile(input: CompileInput): CompileOutput;
   activate(input: ActivateInput): ActivationPlan;

@@ -300,3 +300,34 @@ activation path; gateway resolution; implementing `agents-md` or `codex`; skill 
    Readable enough, or use the persona's `metadata.name`, which is not guaranteed unique?
 4. **Hook script paths.** Copying scripts into the build keeps builds self-contained but means
    a script edit needs a rebuild; the daemon's watchers (Phase 2) would make that automatic.
+
+## Amendments from implementation and review (2026-10-21)
+
+Made while building this spec (`docs/plans/2026-10-21-adapter-sdk.md`) and fixing a whole-branch
+review. Each overrides the section it names.
+
+- **§1 `capabilities(detection?)`.** With a detection, an adapter returns the matrix for the mode
+  that detection puts it in (Claude Code `partial` declares skills, hooks, MCP servers and secrets
+  `none`). The conformance kit judges each mode against its own matrix; with a single static
+  matrix, a degraded mode that forgot to report its losses passed every check.
+- **§2 `requiredEntries(adapterId, matrix, ir)`.** The adapter id is needed so only
+  `targets.<own id>` counts as loss. Secret locations are found anywhere in a server definition
+  (env, headers, args, url), not only env.
+- **§3 conformance.** `./conformance` exports `runConformance` and the corpus; the vitest wrapper
+  is `./conformance/vitest`, so teams on other runners never load vitest. `no-silent-loss`
+  accepts an entry that is at least as lossy as required (`approximated` < `advisory` <
+  `dropped`) and lets an entry for a parent path (a dropped server) cover its children. The
+  `kitchen-sink` entry locks three fields, not every field, and puts secret refs in env, args,
+  headers and targets.
+- **§3, new SDK helper `isContainedPath(path)`.** Rejects empty, absolute (POSIX, drive letter,
+  UNC, root-relative Windows) and `..` paths. Adapters must reject `copyFrom` sources that fail it
+  (`AdapterInputError`); the CLI must still re-check real paths, symlinks included, when copying.
+- **§5 settings.** `targets.claude-code.permissions` may set keys such as `defaultMode`, but never
+  `allow`, `deny` or `ask`; those come only from the persona's `permissions` and any in targets
+  are reported `dropped`. Without this, any layer could silently replace org-locked rules.
+  Secret refs inside `targets.claude-code` are reported `dropped` and left out of
+  `settings.json`.
+- **§5 hook scripts** are named `<event>-<id>-<basename>`: hook ids are unique per event only.
+- **§5 flag order** is `--plugin-dir`, `--mcp-config` (+ `--strict-mcp-config`), `--settings`,
+  `--append-system-prompt-file`, passthrough. `--mcp-config` takes several files, so a
+  non-variadic flag must follow it or a positional prompt is read as a config file.

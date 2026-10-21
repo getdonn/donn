@@ -125,3 +125,29 @@ describe("annotateLocks", () => {
     expect(report.entries[0]).not.toHaveProperty("lock");
   });
 });
+
+describe("requiredEntries secret locations (I4)", () => {
+  it("finds secret refs in args, url and headers, not only env", () => {
+    const ir: ResolvedPersona = {
+      ...emptyIr(),
+      mcp: {
+        servers: {
+          db: { command: "npx", args: ["--token", "secret://vault/t"] },
+          remote: {
+            url: "https://mcp.corp/sse",
+            headers: { Authorization: "secret://vault/key" },
+          },
+        },
+      },
+    };
+    const paths = requiredEntries(
+      "toy",
+      { fields: { "mcp.servers": { support: "native" } } },
+      ir,
+    ).map((e) => e.path);
+    expect(paths.sort()).toEqual([
+      "mcp.servers.db.args.1",
+      "mcp.servers.remote.headers.Authorization",
+    ]);
+  });
+});

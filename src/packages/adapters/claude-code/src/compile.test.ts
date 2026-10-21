@@ -110,14 +110,16 @@ describe("compile (relaunch)", () => {
           {
             type: "command",
             command:
-              "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-hook-pre-tool-use.sh",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-pre-tool-use-hook-pre-tool-use.sh",
           },
         ],
       },
     ]);
     expect(hooks.Stop![0]).not.toHaveProperty("matcher");
     expect(
-      kitchen.files["plugin/hooks/scripts/pre-tool-use-hook-pre-tool-use.sh"],
+      kitchen.files[
+        "plugin/hooks/scripts/pre-tool-use-pre-tool-use-hook-pre-tool-use.sh"
+      ],
     ).toEqual({ copyFrom: "org/hooks/pre-tool-use.sh", mode: 0o755 });
   });
 
@@ -125,12 +127,13 @@ describe("compile (relaunch)", () => {
     expect(kitchen.secretEnv).toEqual({
       ZZP_SECRET_1: "secret://vault/db/token",
       ZZP_SECRET_2: "secret://vault/db/url",
+      ZZP_SECRET_3: "secret://vault/remote/key",
     });
     expect(json(kitchen, "mcp.json")).toEqual({
       mcpServers: {
         db: {
           command: "npx",
-          args: ["-y", "@corp/db-mcp"],
+          args: ["-y", "@corp/db-mcp", "--token", "${ZZP_SECRET_1}"],
           env: {
             LOG_LEVEL: "debug",
             TOKEN: "${ZZP_SECRET_1}",
@@ -141,7 +144,10 @@ describe("compile (relaunch)", () => {
         remote: {
           type: "sse",
           url: "https://mcp.corp/sse",
-          headers: { "X-Team": "kitchen" },
+          headers: {
+            Authorization: "${ZZP_SECRET_3}",
+            "X-Team": "kitchen",
+          },
         },
       },
     });
@@ -165,6 +171,7 @@ describe("compile (relaunch)", () => {
         ask: ["Bash(git push:*)"],
       },
       model: "opus",
+      env: {},
     });
   });
 
@@ -180,5 +187,123 @@ describe("compile (relaunch)", () => {
     expect(() => adapter.compile(input("full", { texts: {} }))).toThrow(
       AdapterInputError,
     );
+  });
+});
+
+describe("review fixes", () => {
+  const minimal = entry("minimal");
+  const compileIr = (ir: CompileInput["ir"]) =>
+    adapter.compile(input("minimal", { ir }));
+
+  it("never lets targets replace the persona's permission rules (C1)", () => {
+    const output = compileIr({
+      ...minimal.ir,
+      permissions: { allow: [], deny: ["Bash(rm:*)"], ask: [] },
+      locks: [{ path: "permissions.deny", layer: "org/base" }],
+      targets: {
+        "claude-code": {
+          permissions: { defaultMode: "acceptEdits", allow: ["Bash(*)"] },
+        },
+      },
+    });
+    expect(json(output, "settings.json")).toEqual({
+      permissions: {
+        defaultMode: "acceptEdits",
+        allow: [],
+        deny: ["Bash(rm:*)"],
+        ask: [],
+      },
+    });
+    expect(output.report.entries).toContainEqual({
+      path: "targets.claude-code.permissions.allow",
+      outcome: "dropped",
+      reason:
+        "permission rules come from the persona's permissions, not targets",
+    });
+  });
+
+  it("names hook scripts by event so equal ids in two events do not collide (I3)", () => {
+    const output = compileIr({
+      ...minimal.ir,
+      hooks: {
+        "pre-tool-use": [{ id: "lint", run: "org/a/check.sh" }],
+        "post-tool-use": [{ id: "lint", run: "team/b/check.sh" }],
+      },
+    });
+    expect(
+      output.files["plugin/hooks/scripts/pre-tool-use-lint-check.sh"],
+    ).toEqual({ copyFrom: "org/a/check.sh", mode: 0o755 });
+    expect(
+      output.files["plugin/hooks/scripts/post-tool-use-lint-check.sh"],
+    ).toEqual({ copyFrom: "team/b/check.sh", mode: 0o755 });
+  });
+
+  it("replaces secret refs in args and url too, and drops them from targets (I4)", () => {
+    const output = compileIr({
+      ...minimal.ir,
+      mcp: {
+        servers: {
+          db: { command: "npx", args: ["--token", "secret://v/t"] },
+          remote: { url: "secret://v/u" },
+        },
+      },
+      targets: {
+        "claude-code": { env: { API_KEY: "secret://v/k", LEVEL: "1" } },
+      },
+    });
+    expect(json(output, "mcp.json")).toEqual({
+      mcpServers: {
+        db: { command: "npx", args: ["--token", "${ZZP_SECRET_1}"] },
+        remote: { type: "http", url: "${ZZP_SECRET_2}" },
+      },
+    });
+    expect(output.secretEnv).toEqual({
+      ZZP_SECRET_1: "secret://v/t",
+      ZZP_SECRET_2: "secret://v/u",
+    });
+    expect(json(output, "settings.json")).toMatchObject({
+      env: { LEVEL: "1" },
+    });
+    expect(JSON.stringify(json(output, "settings.json"))).not.toContain(
+      "secret://",
+    );
+    expect(output.report.entries).toContainEqual({
+      path: "targets.claude-code.env.API_KEY",
+      outcome: "dropped",
+      reason:
+        "secret refs in targets are not resolved; pass secrets through an MCP server's env",
+    });
+  });
+
+  it("rejects skill and hook sources outside the personas root (I5)", () => {
+    expect(() =>
+      compileIr({
+        ...minimal.ir,
+        skills: [{ name: "ssh", source: "../.ssh" }],
+      }),
+    ).toThrow(AdapterInputError);
+    expect(() =>
+      compileIr({
+        ...minimal.ir,
+        hooks: { stop: [{ id: "x", run: "/etc/x.sh" }] },
+      }),
+    ).toThrow(AdapterInputError);
+  });
+
+  it("describes each mode's losses in its matrix (I6)", () => {
+    const partial = adapter.capabilities({
+      installed: true,
+      facts: { sideloadBlocked: true },
+    }).fields;
+    expect(partial.skills?.support ?? "none").toBe("none");
+    expect(partial["mcp.servers"]?.support ?? "none").toBe("none");
+    expect(partial["hooks.stop"]?.support ?? "none").toBe("none");
+    expect(partial.instructions?.support).toBe("native");
+    const noMcp = adapter.capabilities({
+      installed: true,
+      facts: { managedMcp: true },
+    }).fields;
+    expect(noMcp["mcp.servers"]?.support ?? "none").toBe("none");
+    expect(noMcp.skills?.support).toBe("native");
   });
 });

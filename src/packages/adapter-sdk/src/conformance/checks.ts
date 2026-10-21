@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { parsePath, type ResolvedPersona } from "@zzpersona/spec";
 import { defineAdapter } from "../define.js";
+import { isContainedPath, secretRefsIn, serverSecretRefs } from "../paths.js";
 import { annotateLocks, requiredEntries } from "../report.js";
 import type {
   ActivateInput,
@@ -57,11 +58,7 @@ const DEFAULT_DETECTION: Detection = {
 };
 const MODES = new Set([0o600, 0o644, 0o755]);
 
-const isContained = (path: string) =>
-  path !== "" &&
-  !path.startsWith("/") &&
-  !/^[A-Za-z]:/.test(path) &&
-  !path.split(/[\\/]/).includes("..");
+const isContained = isContainedPath;
 
 /** Problems found, empty when the check passes. */
 type Check = () => string[];
@@ -85,23 +82,23 @@ function outcome(
   };
 }
 
-/** Every string leaf in MCP server definitions that is a secret ref, with its IR path. */
-function secretRefs(ir: ResolvedPersona): { path: string; ref: string }[] {
-  return Object.entries(ir.mcp.servers).flatMap(([name, server]) =>
-    Object.entries(server).flatMap(([key, value]) =>
-      typeof value === "object" && value !== null && !Array.isArray(value)
-        ? Object.entries(value as Record<string, unknown>)
-            .filter(
-              ([, v]) => typeof v === "string" && v.startsWith("secret://"),
-            )
-            .map(([k, v]) => ({
-              path: `mcp.servers.${name}.${key}.${k}`,
-              ref: v as string,
-            }))
-        : [],
-    ),
-  );
-}
+/** Secret refs an adapter might write: in MCP servers, and in its own targets block. */
+const secretRefs = (ir: ResolvedPersona, adapterId: string) => [
+  ...serverSecretRefs(ir),
+  ...secretRefsIn(ir.targets[adapterId], `targets.${adapterId}`),
+];
+
+const RANK: Record<string, number> = {
+  approximated: 1,
+  advisory: 2,
+  dropped: 3,
+};
+
+/** An entry at `entry` speaks for `path`: the same value, or a parent of it. */
+const covers = (entry: string, path: string) =>
+  entry === path ||
+  path.startsWith(`${entry}.`) ||
+  path.startsWith(`${entry}[`);
 
 /** Whether a report path names a value present in the IR. */
 function pathExists(ir: ResolvedPersona, path: string): boolean {
@@ -148,6 +145,7 @@ function wellFormed(output: CompileOutput, plan: ActivationPlan): string[] {
 }
 
 function noSecretLeaks(
+  adapterId: string,
   ir: ResolvedPersona,
   output: CompileOutput,
   plan: ActivationPlan,
@@ -168,10 +166,8 @@ function noSecretLeaks(
   }
   const placed = new Set(Object.values(output.secretEnv));
   const dropped = output.report.entries.filter((e) => e.outcome === "dropped");
-  for (const { path, ref } of secretRefs(ir)) {
-    const reported = dropped.some(
-      (e) => path === e.path || path.startsWith(`${e.path}.`),
-    );
+  for (const { path, ref } of secretRefs(ir, adapterId)) {
+    const reported = dropped.some((e) => covers(e.path, path));
     if (!placed.has(ref as never) && !reported) {
       problems.push(`${path} is neither in secretEnv nor reported dropped`);
     }
@@ -181,18 +177,29 @@ function noSecretLeaks(
 
 function noSilentLoss(
   adapter: HarnessAdapter,
+  detection: Detection,
   ir: ResolvedPersona,
   output: CompileOutput,
 ): string[] {
   const { entries } = output.report;
-  const problems = requiredEntries(adapter.id, adapter.capabilities(), ir)
+  // The matrix for this detection's mode, so a degraded mode's losses are required too. An
+  // entry satisfies a requirement if it covers the same value or a parent, at least as lossy.
+  const problems = requiredEntries(
+    adapter.id,
+    adapter.capabilities(detection),
+    ir,
+  )
     .filter(
-      (r) => !entries.some((e) => e.path === r.path && e.outcome === r.outcome),
+      (r) =>
+        !entries.some(
+          (e) => covers(e.path, r.path) && RANK[e.outcome]! >= RANK[r.outcome]!,
+        ),
     )
     .map((r) => `missing report entry: ${r.outcome} ${r.path}`);
   for (const entry of entries) {
-    if (!pathExists(ir, entry.path))
+    if (!pathExists(ir, entry.path)) {
       problems.push(`report names a value not in the IR: ${entry.path}`);
+    }
   }
   const expected = annotateLocks(output.report, ir).entries.map((e) => e.lock);
   if (
@@ -340,12 +347,12 @@ function checkEntry(
     outcome("well-formed-output", () => wellFormed(output, plan), entry.name),
     outcome(
       "no-secret-leaks",
-      () => noSecretLeaks(entry.ir, output, plan),
+      () => noSecretLeaks(adapter.id, entry.ir, output, plan),
       entry.name,
     ),
     outcome(
       "no-silent-loss",
-      () => noSilentLoss(adapter, entry.ir, output),
+      () => noSilentLoss(adapter, detection, entry.ir, output),
       entry.name,
     ),
   ];

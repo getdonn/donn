@@ -7,7 +7,9 @@ files (15)
           "command": "npx",
           "args": [
             "-y",
-            "@corp/db-mcp"
+            "@corp/db-mcp",
+            "--token",
+            "${ZZP_SECRET_1}"
           ],
           "env": {
             "LOG_LEVEL": "debug",
@@ -20,6 +22,7 @@ files (15)
           "type": "sse",
           "url": "https://mcp.corp/sse",
           "headers": {
+            "Authorization": "${ZZP_SECRET_3}",
             "X-Team": "kitchen"
           }
         }
@@ -41,7 +44,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start-hook-session-start.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start-session-start-hook-session-start.sh"
               }
             ]
           }
@@ -51,7 +54,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end-hook-session-end.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end-session-end-hook-session-end.sh"
               }
             ]
           }
@@ -61,7 +64,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-submit-hook-user-prompt-submit.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-submit-user-prompt-submit-hook-user-prompt-submit.sh"
               }
             ]
           }
@@ -72,7 +75,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-hook-pre-tool-use.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-pre-tool-use-hook-pre-tool-use.sh"
               }
             ]
           }
@@ -82,7 +85,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-tool-use-hook-post-tool-use.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-tool-use-post-tool-use-hook-post-tool-use.sh"
               }
             ]
           }
@@ -92,7 +95,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-hook-stop.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-stop-hook-stop.sh"
               }
             ]
           }
@@ -102,7 +105,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/subagent-stop-hook-subagent-stop.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/subagent-stop-subagent-stop-hook-subagent-stop.sh"
               }
             ]
           }
@@ -112,7 +115,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-hook-pre-compact.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-pre-compact-hook-pre-compact.sh"
               }
             ]
           }
@@ -122,7 +125,7 @@ files (15)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/notification-hook-notification.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/notification-notification-hook-notification.sh"
               }
             ]
           }
@@ -130,18 +133,20 @@ files (15)
       }
     }
     
-  plugin/hooks/scripts/notification-hook-notification.sh <- copy org/hooks/notification.sh
-  plugin/hooks/scripts/post-tool-use-hook-post-tool-use.sh <- copy org/hooks/post-tool-use.sh
-  plugin/hooks/scripts/pre-compact-hook-pre-compact.sh <- copy org/hooks/pre-compact.sh
-  plugin/hooks/scripts/pre-tool-use-hook-pre-tool-use.sh <- copy org/hooks/pre-tool-use.sh
-  plugin/hooks/scripts/session-end-hook-session-end.sh <- copy org/hooks/session-end.sh
-  plugin/hooks/scripts/session-start-hook-session-start.sh <- copy org/hooks/session-start.sh
-  plugin/hooks/scripts/stop-hook-stop.sh <- copy org/hooks/stop.sh
-  plugin/hooks/scripts/subagent-stop-hook-subagent-stop.sh <- copy org/hooks/subagent-stop.sh
-  plugin/hooks/scripts/user-prompt-submit-hook-user-prompt-submit.sh <- copy org/hooks/user-prompt-submit.sh
+  plugin/hooks/scripts/notification-notification-hook-notification.sh <- copy org/hooks/notification.sh
+  plugin/hooks/scripts/post-tool-use-post-tool-use-hook-post-tool-use.sh <- copy org/hooks/post-tool-use.sh
+  plugin/hooks/scripts/pre-compact-pre-compact-hook-pre-compact.sh <- copy org/hooks/pre-compact.sh
+  plugin/hooks/scripts/pre-tool-use-pre-tool-use-hook-pre-tool-use.sh <- copy org/hooks/pre-tool-use.sh
+  plugin/hooks/scripts/session-end-session-end-hook-session-end.sh <- copy org/hooks/session-end.sh
+  plugin/hooks/scripts/session-start-session-start-hook-session-start.sh <- copy org/hooks/session-start.sh
+  plugin/hooks/scripts/stop-stop-hook-stop.sh <- copy org/hooks/stop.sh
+  plugin/hooks/scripts/subagent-stop-subagent-stop-hook-subagent-stop.sh <- copy org/hooks/subagent-stop.sh
+  plugin/hooks/scripts/user-prompt-submit-user-prompt-submit-hook-user-prompt-submit.sh <- copy org/hooks/user-prompt-submit.sh
   plugin/skills/local-skill <- copy team/skills/local-skill
   settings.json (0644)
     {
+      "model": "opus",
+      "env": {},
       "permissions": {
         "allow": [
           "Read(./**)"
@@ -152,8 +157,7 @@ files (15)
         "ask": [
           "Bash(git push:*)"
         ]
-      },
-      "model": "opus"
+      }
     }
     
   system-prompt.md (0644)
@@ -164,12 +168,14 @@ files (15)
     ## Knowledge sources
     - wiki: mcp://confluence?space=ENG
     
-secretEnv (2)
+secretEnv (3)
   ZZP_SECRET_1 = secret://vault/db/token
   ZZP_SECRET_2 = secret://vault/db/url
-report (3)
+  ZZP_SECRET_3 = secret://vault/remote/key
+report (4)
   advisory  knowledge[wiki]  rendered as text in the system prompt
   dropped  skills[remote-skill]  skill registries are not supported in v0
   dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet  locked: mcp.servers by org/base
+  dropped  targets.claude-code.env.API_KEY  secret refs in targets are not resolved; pass secrets through an MCP server's env
 plan (1)
-  launch claude --plugin-dir /BUILD/plugin --settings /BUILD/settings.json --mcp-config /BUILD/mcp.json --append-system-prompt-file /BUILD/system-prompt.md
+  launch claude --plugin-dir /BUILD/plugin --mcp-config /BUILD/mcp.json --settings /BUILD/settings.json --append-system-prompt-file /BUILD/system-prompt.md

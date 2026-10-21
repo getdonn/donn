@@ -6,6 +6,7 @@ import type {
   ReportEntry,
   Support,
 } from "./types.js";
+import { serverSecretRefs } from "./paths.js";
 
 // "No silent loss", derived rather than trusted: from an adapter's matrix and an IR, the report
 // entries a compile must contain. See docs/planning/05-adapter-sdk.md, section 2.
@@ -29,14 +30,7 @@ function valuesByField(
     ["skills", ir.skills.map((s) => `skills[${s.name}]`)],
     ["mcp.servers", servers.map(([name]) => `mcp.servers.${name}`)],
     ["knowledge", ir.knowledge.map((k) => `knowledge[${k.id}]`)],
-    [
-      "secrets",
-      servers.flatMap(([name, server]) =>
-        Object.entries("env" in server ? (server.env ?? {}) : {})
-          .filter(([, value]) => value.startsWith("secret://"))
-          .map(([key]) => `mcp.servers.${name}.env.${key}`),
-      ),
-    ],
+    ["secrets", serverSecretRefs(ir).map((r) => r.path)],
     ...(["allow", "deny", "ask"] as const).map(
       (list): [CapabilityField, string[]] => [
         `permissions.${list}`,

@@ -51,9 +51,9 @@ describe("activate", () => {
           command: "claude",
           args: [
             ...PLUGIN,
-            ...SETTINGS,
             ...MCP,
             "--strict-mcp-config",
+            ...SETTINGS,
             ...PROMPT,
           ],
           env: {},
@@ -84,7 +84,7 @@ describe("activate", () => {
   it("drops only --strict-mcp-config when strictMcp is false", () => {
     const { launch } = build("kitchen-sink", "relaunch");
     expect(launch).toMatchObject({
-      args: [...PLUGIN, ...SETTINGS, ...MCP, ...PROMPT],
+      args: [...PLUGIN, ...MCP, ...SETTINGS, ...PROMPT],
     });
   });
 
@@ -93,7 +93,7 @@ describe("activate", () => {
     const { launch, output } = build("minimal", "relaunch", { ir: empty });
     expect(output.files).not.toHaveProperty("system-prompt.md");
     expect(launch).toMatchObject({
-      args: [...PLUGIN, ...SETTINGS, ...MCP, "--strict-mcp-config"],
+      args: [...PLUGIN, ...MCP, "--strict-mcp-config", ...SETTINGS],
     });
   });
 
@@ -104,9 +104,9 @@ describe("activate", () => {
     expect(launch).toMatchObject({
       args: [
         ...PLUGIN,
-        ...SETTINGS,
         ...MCP,
         "--strict-mcp-config",
+        ...SETTINGS,
         ...PROMPT,
         "--mcp-config",
         "extra.json",
@@ -145,5 +145,27 @@ describe("degraded modes in the compile report", () => {
       }),
     );
     expect(output.secretEnv).toEqual({});
+  });
+});
+
+describe("review fixes", () => {
+  it("never leaves the variadic --mcp-config last before passthrough (I2)", () => {
+    const empty = {
+      ...entry("kitchen-sink").ir,
+      instructions: [],
+      knowledge: [],
+    };
+    const { launch } = build("kitchen-sink", "relaunch", {
+      ir: empty,
+      passthrough: ["explain this repo"],
+    });
+    if (launch?.kind !== "launch") throw new Error("expected launch");
+    const prompt = launch.args.indexOf("explain this repo");
+    expect(launch.args[prompt - 2]).not.toBe("--mcp-config");
+    expect(launch.args.slice(-3)).toEqual([
+      "--settings",
+      "/BUILD/settings.json",
+      "explain this repo",
+    ]);
   });
 });

@@ -125,3 +125,53 @@ describe("runConformance", () => {
     expect(process.cwd()).toBe(before);
   });
 });
+
+describe("review fixes", () => {
+  it("checks a degraded mode against the matrix for that detection (I6)", async () => {
+    // In "lite" mode it drops instructions (native by default) and its matrix says so, but the
+    // report omits them. Judged against the default matrix, nothing would be missing.
+    const lite: HarnessAdapter = {
+      ...good,
+      capabilities: (detection) =>
+        detection?.facts.lite === true ? { fields: {} } : good.capabilities(),
+      compile: (input) =>
+        input.detection.facts.lite === true
+          ? { ...good.compile(input), files: {} }
+          : good.compile(input),
+    };
+    const results = await runConformance(lite, {
+      detection: { installed: true, facts: { lite: true } },
+    });
+    expect(results.filter((r) => !r.passed).map((r) => r.name)).toContain(
+      "no-silent-loss",
+    );
+  });
+
+  it("accepts a report worse than the matrix promises (I7)", async () => {
+    const worse: HarnessAdapter = {
+      ...good,
+      // Promises advisory knowledge, but the toy's report says dropped.
+      capabilities: () => ({
+        fields: {
+          instructions: { support: "native" },
+          knowledge: { support: "advisory" },
+        },
+      }),
+    };
+    expect(await failedChecks(worse)).toEqual([]);
+  });
+
+  it("lets a dropped server cover its secret-bearing children (I7)", async () => {
+    const parentOnly: HarnessAdapter = {
+      ...good,
+      compile: (input) => {
+        const output = good.compile(input);
+        const entries = output.report.entries.filter(
+          (e) => !/^mcp\.servers\.[^.]+\./.test(e.path),
+        );
+        return { ...output, report: { ...output.report, entries } };
+      },
+    };
+    expect(await failedChecks(parentOnly)).toEqual([]);
+  });
+});

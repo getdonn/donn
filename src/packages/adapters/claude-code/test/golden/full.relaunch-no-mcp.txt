@@ -16,7 +16,7 @@ files (7)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-prod-db-block-prod-db.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-block-prod-db-block-prod-db.sh"
               }
             ]
           }
@@ -27,7 +27,7 @@ files (7)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/format-on-write-format.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-tool-use-format-on-write-format.sh"
               }
             ]
           }
@@ -35,11 +35,13 @@ files (7)
       }
     }
     
-  plugin/hooks/scripts/block-prod-db-block-prod-db.sh <- copy org/hooks/block-prod-db.sh
-  plugin/hooks/scripts/format-on-write-format.sh <- copy project/hooks/format.sh
+  plugin/hooks/scripts/post-tool-use-format-on-write-format.sh <- copy project/hooks/format.sh
+  plugin/hooks/scripts/pre-tool-use-block-prod-db-block-prod-db.sh <- copy org/hooks/block-prod-db.sh
   plugin/skills/run-payment-sim <- copy team/skills/run-payment-sim
   settings.json (0644)
     {
+      "model": "opus",
+      "outputStyle": "concise",
       "permissions": {
         "allow": [
           "Bash(git status)",
@@ -55,9 +57,7 @@ files (7)
           "Bash(git push:*)",
           "Bash(pnpm test:*)"
         ]
-      },
-      "model": "opus",
-      "outputStyle": "concise"
+      }
     }
     
   system-prompt.md (0644)

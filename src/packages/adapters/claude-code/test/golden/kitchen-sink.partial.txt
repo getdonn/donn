@@ -2,6 +2,8 @@ mode: partial
 files (2)
   settings.json (0644)
     {
+      "model": "opus",
+      "env": {},
       "permissions": {
         "allow": [
           "Read(./**)"
@@ -12,8 +14,7 @@ files (2)
         "ask": [
           "Bash(git push:*)"
         ]
-      },
-      "model": "opus"
+      }
     }
     
   system-prompt.md (0644)
@@ -24,7 +25,7 @@ files (2)
     ## Knowledge sources
     - wiki: mcp://confluence?space=ENG
     
-report (15)
+report (16)
   advisory  knowledge[wiki]  rendered as text in the system prompt
   dropped  skills[local-skill]  disableSideloadFlags blocks --plugin-dir and --mcp-config
   dropped  skills[remote-skill]  disableSideloadFlags blocks --plugin-dir and --mcp-config
@@ -40,5 +41,6 @@ report (15)
   dropped  mcp.servers.db  disableSideloadFlags blocks --plugin-dir and --mcp-config  locked: mcp.servers by org/base
   dropped  mcp.servers.jira  disableSideloadFlags blocks --plugin-dir and --mcp-config  locked: mcp.servers by org/base
   dropped  mcp.servers.remote  disableSideloadFlags blocks --plugin-dir and --mcp-config  locked: mcp.servers by org/base
+  dropped  targets.claude-code.env.API_KEY  secret refs in targets are not resolved; pass secrets through an MCP server's env
 plan (1)
   launch claude --settings /BUILD/settings.json --append-system-prompt-file /BUILD/system-prompt.md

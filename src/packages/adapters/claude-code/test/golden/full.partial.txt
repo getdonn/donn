@@ -2,6 +2,8 @@ mode: partial
 files (2)
   settings.json (0644)
     {
+      "model": "opus",
+      "outputStyle": "concise",
       "permissions": {
         "allow": [
           "Bash(git status)",
@@ -17,9 +19,7 @@ files (2)
           "Bash(git push:*)",
           "Bash(pnpm test:*)"
         ]
-      },
-      "model": "opus",
-      "outputStyle": "concise"
+      }
     }
     
   system-prompt.md (0644)

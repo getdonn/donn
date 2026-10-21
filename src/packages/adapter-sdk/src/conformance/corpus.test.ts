@@ -46,3 +46,16 @@ describe("conformance corpus", () => {
     expect(servers.some((s) => "url" in s)).toBe(true);
   });
 });
+
+describe("kitchen-sink secret placement (I4)", () => {
+  it("puts secret refs in args, headers and targets as well as env", () => {
+    const { ir } = corpus.find((entry) => entry.name === "kitchen-sink")!;
+    const json = JSON.stringify(ir);
+    const db = ir.mcp.servers.db!;
+    expect(
+      "args" in db && db.args?.some((a) => a.startsWith("secret://")),
+    ).toBe(true);
+    expect(json).toMatch(/"Authorization":"secret:\/\//);
+    expect(JSON.stringify(ir.targets["claude-code"])).toContain("secret://");
+  });
+});

@@ -32,7 +32,7 @@ files (8)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-prod-db-block-prod-db.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-tool-use-block-prod-db-block-prod-db.sh"
               }
             ]
           }
@@ -43,7 +43,7 @@ files (8)
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/format-on-write-format.sh"
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-tool-use-format-on-write-format.sh"
               }
             ]
           }
@@ -51,11 +51,13 @@ files (8)
       }
     }
     
-  plugin/hooks/scripts/block-prod-db-block-prod-db.sh <- copy org/hooks/block-prod-db.sh
-  plugin/hooks/scripts/format-on-write-format.sh <- copy project/hooks/format.sh
+  plugin/hooks/scripts/post-tool-use-format-on-write-format.sh <- copy project/hooks/format.sh
+  plugin/hooks/scripts/pre-tool-use-block-prod-db-block-prod-db.sh <- copy org/hooks/block-prod-db.sh
   plugin/skills/run-payment-sim <- copy team/skills/run-payment-sim
   settings.json (0644)
     {
+      "model": "opus",
+      "outputStyle": "concise",
       "permissions": {
         "allow": [
           "Bash(git status)",
@@ -71,9 +73,7 @@ files (8)
           "Bash(git push:*)",
           "Bash(pnpm test:*)"
         ]
-      },
-      "model": "opus",
-      "outputStyle": "concise"
+      }
     }
     
   system-prompt.md (0644)
@@ -103,4 +103,4 @@ report (5)
   dropped  skills[pr-review]  skill registries are not supported in v0
   dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet
 plan (1)
-  launch claude --plugin-dir /BUILD/plugin --settings /BUILD/settings.json --mcp-config /BUILD/mcp.json --strict-mcp-config --append-system-prompt-file /BUILD/system-prompt.md
+  launch claude --plugin-dir /BUILD/plugin --mcp-config /BUILD/mcp.json --strict-mcp-config --settings /BUILD/settings.json --append-system-prompt-file /BUILD/system-prompt.md

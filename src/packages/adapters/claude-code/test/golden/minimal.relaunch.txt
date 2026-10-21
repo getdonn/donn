@@ -27,4 +27,4 @@ files (4)
     Be concise.
     
 plan (1)
-  launch claude --plugin-dir /BUILD/plugin --settings /BUILD/settings.json --mcp-config /BUILD/mcp.json --strict-mcp-config --append-system-prompt-file /BUILD/system-prompt.md
+  launch claude --plugin-dir /BUILD/plugin --mcp-config /BUILD/mcp.json --strict-mcp-config --settings /BUILD/settings.json --append-system-prompt-file /BUILD/system-prompt.md

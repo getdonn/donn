@@ -2,7 +2,8 @@ import { HOOK_EVENTS, type Hook, type HookEvent } from "@zzpersona/spec";
 import type { CorpusEntry } from "./index.js";
 
 /**
- * Everything at once: every hook event, every MCP server form, a repeated secret ref, a local and
+ * Everything at once: every hook event, every MCP server form, secret refs in env, args, headers
+ * and targets (one repeated), a local and
  * a registry skill, a lock on several fields, a 20 000-character instruction, and target blocks
  * for two harnesses.
  */
@@ -27,7 +28,7 @@ export const kitchenSink: CorpusEntry = {
       servers: {
         db: {
           command: "npx",
-          args: ["-y", "@corp/db-mcp"],
+          args: ["-y", "@corp/db-mcp", "--token", "secret://vault/db/token"],
           env: {
             TOKEN: "secret://vault/db/token",
             TOKEN_AGAIN: "secret://vault/db/token",
@@ -39,7 +40,10 @@ export const kitchenSink: CorpusEntry = {
         remote: {
           url: "https://mcp.corp/sse",
           transport: "sse",
-          headers: { "X-Team": "kitchen" },
+          headers: {
+            "X-Team": "kitchen",
+            Authorization: "secret://vault/remote/key",
+          },
         },
       },
     },
@@ -68,7 +72,11 @@ export const kitchenSink: CorpusEntry = {
       { path: "hooks.notification", layer: "org/base" },
     ],
     targets: {
-      "claude-code": { model: "opus", strictMcp: false },
+      "claude-code": {
+        model: "opus",
+        strictMcp: false,
+        env: { API_KEY: "secret://vault/api/key" },
+      },
       codex: { approvalPolicy: "on-request" },
     },
   },

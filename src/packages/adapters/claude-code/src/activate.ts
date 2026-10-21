@@ -17,12 +17,14 @@ export function activate({
   );
   const strictMcp = ir.targets["claude-code"]?.strictMcp !== false;
 
+  // --mcp-config takes several files, so a non-variadic flag (--settings, always present) must
+  // follow it; otherwise a positional passthrough prompt would be read as another config file.
   const args = [
     ...(hasPlugin ? ["--plugin-dir", at("plugin")] : []),
-    "--settings",
-    at("settings.json"),
     ...(has("mcp.json") ? ["--mcp-config", at("mcp.json")] : []),
     ...(has("mcp.json") && strictMcp ? ["--strict-mcp-config"] : []),
+    "--settings",
+    at("settings.json"),
     ...(has("system-prompt.md")
       ? ["--append-system-prompt-file", at("system-prompt.md")]
       : []),
