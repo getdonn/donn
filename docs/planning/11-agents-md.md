@@ -124,3 +124,28 @@ adapters); Windows.
 
 1. A pre-commit hook for `zzpersona write`; `--check` in CI is enough for now.
 2. Codex's real instructions size limit (with the Codex adapter).
+
+## Amendments from implementation (2026-10-21)
+
+Made while building this spec (`docs/plans/2026-10-21-agents-md.md`). Each overrides the section
+it names.
+
+- **§4 knowledge** is `advisory` ("listed as pointers in AGENTS.md"), the outcome the Claude Code
+  adapter gives the same rendering, not `native`.
+- **§1 report** drops only `targets.agents-md` (another harness's `targets` block is not this
+  adapter's loss, as the SDK defines it), plus `mcp.gateway` when set.
+- **§2 markers:** the executor's begin marker is generic,
+  `<!-- <block>:begin — generated; edit the source, not this block -->`; the block's first line
+  names the persona.
+- **§3 SDK:** the conformance kit gains `noBinary` for adapters of a file format: `detect` must
+  report installed and run nothing.
+- **§2 remove** of a symlinked `AGENTS.md` that becomes empty deletes the link, not its target.
+- Verified: real Codex (0.163.0) followed the generated block (`codex exec` quoted its codeword).
+- **§1** an instruction file whose text holds the zzpersona markers (a project file linked to the
+  repo's `AGENTS.md`, which spec 08 allows) is refused at compile: inlining it would nest the block
+  in itself.
+- **§3 executor** refuses overlay content that holds its own block markers, and refuses to write
+  through a symlink whose real target is outside the project (`--check` still reads it).
+- **§3 CLI** `write` refuses an overlay without `block` (`overlay-needs-block`): until overlays
+  carry an ownership marker, it only merges marked blocks and never replaces a file it does not own.
+

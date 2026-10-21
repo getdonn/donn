@@ -44,6 +44,21 @@ session only) and `/persona switch <persona>` (remembered for the folder, and ap
 
 Every command takes `--json`. `zzpersona --help` lists them.
 
+## Shared `AGENTS.md`
+
+Tools that read a repo's `AGENTS.md` (Codex, Copilot CLI, and Claude Code when there is no
+`CLAUDE.md`) can get the project persona too, through a generated block you commit:
+
+```sh
+zzpersona write              # render project/persona into a marked block of <repo>/AGENTS.md
+zzpersona write --check      # in CI: exit 1 when the block is out of date
+zzpersona write --remove     # take the block out again
+```
+
+Everything outside the block is left as you wrote it. The block carries instructions, knowledge
+pointers and tool rules as guidance; the report lists what an `AGENTS.md` cannot carry (skills, MCP
+servers, hooks, enforced permissions).
+
 ## Two Claude Code installs?
 
 `zzpersona claude` runs the `claude` that `PATH` finds, which may not be the one your shell's

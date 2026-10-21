@@ -261,3 +261,64 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the Claude Code mod", () => {
     expect(removed.status, removed.stdout + removed.stderr).toBe(0);
   }, 180_000);
 });
+
+// Opt-in: the agents-md block reaches a real tool. Codex reads <repo>/AGENTS.md
+// (spikes/agents-md); one `codex exec` call.
+const hasCodex = spawnSync("codex", ["--version"]).status === 0;
+describe.skipIf(process.env.ZZP_E2E !== "1" || !hasCodex)(
+  "e2e: agents-md with Codex",
+  () => {
+    let dir: string;
+    const repo = () => join(dir, "repo");
+    const zzp = (args: string[]) =>
+      spawnSync(process.execPath, [BIN, ...args], {
+        cwd: repo(),
+        env: { ...process.env, ZZPERSONA_HOME: join(dir, "home") },
+        encoding: "utf8",
+      });
+
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "zzp-agents-e2e-"));
+      execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+      put(
+        join(dir, "home/config.yaml"),
+        `personas: ${join(dir, "personas")}\n`,
+      );
+      put(
+        join(dir, "personas/org/base.yaml"),
+        "apiVersion: zzpersona/v0\nkind: Persona\nmetadata: { name: base }\n",
+      );
+      put(
+        join(repo(), ".zzpersona/persona.yaml"),
+        [
+          "apiVersion: zzpersona/v0",
+          "kind: Persona",
+          "metadata: { name: repo }",
+          "extends: [org/base]",
+          "instructions:",
+          "  - id: codeword",
+          '    inline: "When asked for the codeword, reply ZZ-AGENTS-CODEWORD."',
+          "",
+        ].join("\n"),
+      );
+      execFileSync("git", ["init", "-q"], { cwd: repo() });
+    });
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    it("writes the block, and Codex follows it", () => {
+      const written = zzp(["write"]);
+      expect(written.status, written.stdout + written.stderr).toBe(0);
+      const codex = spawnSync(
+        "codex",
+        [
+          "exec",
+          "--skip-git-repo-check",
+          "What is the codeword? Reply with just the codeword.",
+        ],
+        { cwd: repo(), encoding: "utf8", timeout: 240_000 },
+      );
+      expect(codex.stdout, codex.stderr).toContain("ZZ-AGENTS-CODEWORD");
+      expect(zzp(["write", "--check"]).status).toBe(0);
+    }, 300_000);
+  },
+);
