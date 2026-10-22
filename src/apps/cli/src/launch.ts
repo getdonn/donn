@@ -6,7 +6,8 @@ import { backendLoader } from "./plugins.js";
 import { prepareBuild, printReport, type PreparedBuild } from "./build.js";
 import type { CliIo } from "./cli.js";
 import { secretContext } from "./secret-context.js";
-import { createContext, type Context } from "./context.js";
+import { createContext, homeOf, type Context } from "./context.js";
+import { ensureDaemon } from "./daemon/autostart.js";
 import { CliError } from "./errors.js";
 import { findOnPath } from "./path.js";
 import { selectPersona, type Selection } from "./select.js";
@@ -114,6 +115,8 @@ export async function launch(
   });
 
   const cleanup = await hooks.beforeRun?.(build, ctx, selection);
+  // After beforeRun: a daemon up later finds the session from `launched.json`.
+  await ensureDaemon(io, homeOf(io), ctx.config);
   const now = io.now ?? Date.now;
   const started = now();
   let code: number;
