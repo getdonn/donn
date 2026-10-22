@@ -1,5 +1,5 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
@@ -26,6 +26,7 @@ export interface ServiceManager {
   install(spec: ServiceSpec): Promise<void>;
   /** Unload the service (not loaded is fine) and remove its file. */
   uninstall(): Promise<void>;
+  /** Start the daemon; a service that is not loaded (a failed install, a manual unload) is loaded. */
   start(): Promise<void>;
   loaded(): Promise<boolean>;
 }
@@ -104,12 +105,19 @@ export async function installedCommand(
   return (await installedService(manager))?.command;
 }
 
+/** A home as an absolute, normalised path (no trailing slash), so two spellings compare equal. */
+export const absoluteHome = (io: Pick<CliIo, "cwd">, home: string) =>
+  resolve(io.cwd, home);
+
 /** The home the installed service's daemon serves: its ZZPERSONA_HOME, else the default home. */
 export function serviceHome(io: CliIo, installed: InstalledService): string {
-  return homeOf({
-    ...io,
-    env: { ...io.env, ZZPERSONA_HOME: installed.env.ZZPERSONA_HOME },
-  });
+  return absoluteHome(
+    io,
+    homeOf({
+      ...io,
+      env: { ...io.env, ZZPERSONA_HOME: installed.env.ZZPERSONA_HOME },
+    }),
+  );
 }
 
 /** The service, when its file is installed for `home`; else undefined. */
@@ -121,7 +129,11 @@ export async function serviceFor(
 > {
   const manager = serviceOf(io);
   const installed = manager && (await installedService(manager));
-  if (!manager || !installed || serviceHome(io, installed) !== home)
+  if (
+    !manager ||
+    !installed ||
+    serviceHome(io, installed) !== absoluteHome(io, home)
+  )
     return undefined;
   return { manager, installed };
 }
@@ -198,6 +210,8 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
       "</plist>\n",
     ].join("");
   const unload = () => probe.run("launchctl", ["bootout", target]);
+  // RunAtLoad: loading starts the daemon.
+  const load = () => run(probe, "launchctl", ["bootstrap", domain, path]);
   const loaded = async () =>
     (await probe.run("launchctl", ["print", target])).exitCode === 0;
   return {
@@ -215,13 +229,17 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
         if (Date.now() >= deadline) break;
         await new Promise((resolve) => setTimeout(resolve, UNLOAD_POLL_MS));
       }
-      await run(probe, "launchctl", ["bootstrap", domain, path]);
+      await load();
     },
     uninstall: async () => {
       await unload();
       await rm(path, { force: true });
     },
-    start: () => run(probe, "launchctl", ["kickstart", target]),
+    // kickstart fails on a job that is not loaded.
+    start: async () =>
+      (await loaded())
+        ? run(probe, "launchctl", ["kickstart", target])
+        : load(),
     loaded,
   };
 }
@@ -278,6 +296,13 @@ function systemd(probe: Probe, config: string, stem: string): ServiceManager {
     ].join("");
   const unload = () =>
     probe.run("systemctl", systemctl("disable", "--now", unit));
+  const load = async () => {
+    await run(probe, "systemctl", systemctl("daemon-reload"));
+    await run(probe, "systemctl", systemctl("enable", "--now", unit));
+  };
+  const loaded = async () =>
+    (await probe.run("systemctl", systemctl("is-enabled", unit))).exitCode ===
+    0;
   return {
     kind: "systemd",
     label: stem,
@@ -286,17 +311,17 @@ function systemd(probe: Probe, config: string, stem: string): ServiceManager {
     install: async (spec) => {
       await writeServiceFile(path, render(spec));
       await unload();
-      await run(probe, "systemctl", systemctl("daemon-reload"));
-      await run(probe, "systemctl", systemctl("enable", "--now", unit));
+      await load();
     },
     uninstall: async () => {
       await unload();
       await rm(path, { force: true });
       await run(probe, "systemctl", systemctl("daemon-reload"));
     },
-    start: () => run(probe, "systemctl", systemctl("start", unit)),
-    loaded: async () =>
-      (await probe.run("systemctl", systemctl("is-enabled", unit))).exitCode ===
-      0,
+    start: async () =>
+      (await loaded())
+        ? run(probe, "systemctl", systemctl("start", unit))
+        : load(),
+    loaded,
   };
 }

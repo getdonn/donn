@@ -11,6 +11,7 @@ import { daemonPaths } from "../daemon/paths.js";
 import { startDaemon } from "../daemon/server.js";
 import {
   installedService,
+  absoluteHome,
   serviceFor,
   serviceHome,
   serviceOf,
@@ -255,7 +256,8 @@ export async function daemonInstall(
       `zzpersona is not on PATH, so the service cannot run it; ${CLI_ON_PATH_FIX}`,
     );
   }
-  const home = homeOf(io);
+  // Absolute: the service manager runs the daemon from another folder.
+  const home = absoluteHome(io, homeOf(io));
   // A daemon started outside the service would hold the lock, and the service's would exit.
   await stopDaemon(home);
   const paths = daemonPaths(home);
@@ -318,7 +320,7 @@ export async function daemonStatus(
     : !file
       ? "service: not installed\n"
       : `service: installed (${manager.path})${
-          served !== home
+          served !== absoluteHome(io, home)
             ? ` for ${served}`
             : !status
               ? ""

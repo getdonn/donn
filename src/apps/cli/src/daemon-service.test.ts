@@ -208,6 +208,7 @@ describe("the service managers", () => {
     expect(calls).toEqual([
       ...install,
       ...install,
+      `launchctl print gui/${uid}/zzpersona.daemon`,
       `launchctl kickstart gui/${uid}/zzpersona.daemon`,
       `launchctl print gui/${uid}/zzpersona.daemon`,
       `launchctl bootout gui/${uid}/zzpersona.daemon`,
@@ -241,10 +242,32 @@ describe("the service managers", () => {
     expect(calls).toEqual([
       ...install,
       ...install,
+      "systemctl --user is-enabled zzpersona-daemon.service",
       "systemctl --user start zzpersona-daemon.service",
       "systemctl --user is-enabled zzpersona-daemon.service",
       "systemctl --user disable --now zzpersona-daemon.service",
       "systemctl --user daemon-reload",
+    ]);
+  });
+
+  it("start loads a service that is not loaded", async () => {
+    const mac = launchd();
+    writeServiceFile(mac.manager, "/u/bin/zzpersona");
+    await mac.manager.start();
+    expect(mac.calls).toEqual([
+      `launchctl print gui/${uid}/zzpersona.daemon`,
+      `launchctl bootstrap gui/${uid} ${mac.manager.path}`,
+    ]);
+
+    const { calls, probe } = fakeProbe("linux", (call) =>
+      call.includes("is-enabled"),
+    );
+    const linux = serviceManager({ env: { HOME: userHome() }, probe })!;
+    await linux.start();
+    expect(calls).toEqual([
+      "systemctl --user is-enabled zzpersona-daemon.service",
+      "systemctl --user daemon-reload",
+      "systemctl --user enable --now zzpersona-daemon.service",
     ]);
   });
 
@@ -424,6 +447,27 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(specs[0]!.env).toEqual({ PATH: bin, ZZPERSONA_SERVICE: "1" });
   });
 
+  it("writes a relative ZZPERSONA_HOME as an absolute path", async () => {
+    const bin = binWithCli();
+    const base = launchd().manager;
+    const specs: ServiceSpec[] = [];
+    const service: ServiceManager = {
+      ...base,
+      install: async (spec) => {
+        specs.push(spec);
+        await inProcessDaemon(join(root, "rel"), { ZZPERSONA_SERVICE: "1" });
+      },
+    };
+    const r = await zz(["daemon", "install"], {
+      cwd: root,
+      env: { HOME: userHome(), PATH: bin, ZZPERSONA_HOME: "rel" },
+      service,
+    });
+    expect(r.code).toBe(0);
+    expect(specs[0]!.env.ZZPERSONA_HOME).toBe(join(root, "rel"));
+    expect(specs[0]!.log).toBe(daemonPaths(join(root, "rel")).log);
+  });
+
   it("fails when the service's daemon never answers", async () => {
     const bin = binWithCli();
     const base = launchd().manager;
@@ -510,6 +554,12 @@ describe("zzpersona daemon install|uninstall", () => {
     writeServiceFile(base, "/u/bin/zzpersona", join(root, "a"));
     expect((await start(join(root, "b"))).code).toBe(0);
     expect({ started, spawned }).toEqual({ started: 0, spawned: 1 });
+
+    // Another spelling of the home the file serves is the same home.
+    expect((await start(`${join(root, "a")}/`)).code).toBe(0);
+    expect({ started, spawned }).toEqual({ started: 1, spawned: 1 });
+    await Promise.all(daemons.splice(0).map((d) => d.close()));
+    started = 0;
 
     // No ZZPERSONA_HOME in the file: it serves the default home.
     writeServiceFile(base, "/u/bin/zzpersona", null);
