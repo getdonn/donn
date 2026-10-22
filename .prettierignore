@@ -16,3 +16,6 @@ spikes/
 
 # Local agent scratch (git-ignored)
 .superpowers/
+
+# Generated OpenAPI golden file (compared exactly)
+src/packages/registry-api/openapi.json

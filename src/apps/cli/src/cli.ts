@@ -23,6 +23,13 @@ import { writeCommand } from "./commands/write.js";
 import { liveCommand } from "./commands/live.js";
 import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
+import {
+  loginCommand,
+  logoutCommand,
+  publishCommand,
+  pullCommand,
+  whoamiCommand,
+} from "./commands/registry.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
 import type { ServiceManager } from "./daemon/service.js";
@@ -30,6 +37,9 @@ import { CliError, report } from "./errors.js";
 
 // The zzpersona command line. Everything goes through createCli(io) so tests run commands
 // in-process. See docs/planning/06-cli-core-loop.md, section 4.
+
+const LOCAL_HELP =
+  "use your local layer files; leave out the registry's published versions";
 
 export interface CliIo {
   env: NodeJS.ProcessEnv;
@@ -47,6 +57,16 @@ export interface CliIo {
   spawnDaemon?: (home: string) => Promise<void>;
   /** Injected in tests; defaults to the platform's service manager (launchd, systemd). */
   service?: ServiceManager;
+  /** Like probe.run with data for the command's stdin (keychain writes); defaults to spawn. */
+  runInput?: (
+    command: string,
+    args: string[],
+    input?: string,
+  ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  /** All of stdin, for `login --token-stdin`; defaults to process.stdin. */
+  stdin?: () => Promise<string>;
+  /** A line typed without echo; undefined when there is no terminal. Defaults to a TTY prompt. */
+  readSecret?: (prompt: string) => Promise<string | undefined>;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -111,6 +131,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--explain", "print every value with the layer that set it")
         .option("--json", "print the resolve result as JSON")
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--local", LOCAL_HELP)
         .action((persona: string | undefined, options) =>
           handle(options.json, () => resolveCommand(io, persona, options)),
         );
@@ -127,6 +148,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .argument("[other]", "the persona to compare to, when two are given")
         .option("--json", "print the changes as JSON")
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--local", LOCAL_HELP)
         .action((persona: string, other: string | undefined, options) =>
           handle(options.json, () => diffCommand(io, persona, other, options)),
         );
@@ -202,6 +224,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           "print { buildDir, report, secretRefs, plan } as JSON",
         )
         .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--local", LOCAL_HELP)
         .action((persona: string | undefined, options) =>
           handle(options.json, () => compileCommand(io, persona, options)),
         );
@@ -327,6 +350,47 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { checks } as JSON")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => doctorCommand(io, persona, options)),
+        );
+
+      program
+        .command("login")
+        .description("Sign in to a layer registry and remember it")
+        .argument("<url>", "the registry's base URL")
+        .option("--token-stdin", "read the token from stdin instead of asking")
+        .option("--json", "print { url, subject, org, tokenStore } as JSON")
+        .action((url: string, options) =>
+          handle(options.json, () => loginCommand(io, url, options)),
+        );
+      program
+        .command("logout")
+        .description("Forget the registry token (the URL and cache stay)")
+        .option("--json", "print { loggedOut } as JSON")
+        .action((options) =>
+          handle(options.json, () => logoutCommand(io, options)),
+        );
+      program
+        .command("whoami")
+        .description("Show who the registry token belongs to")
+        .option("--json", "print { loggedIn, url, subject, org } as JSON")
+        .action((options) =>
+          handle(options.json, () => whoamiCommand(io, options)),
+        );
+      program
+        .command("pull")
+        .description("Bring the cached registry layers up to date")
+        .option("--json", "print { changes } as JSON")
+        .action((options) =>
+          handle(options.json, () => pullCommand(io, options)),
+        );
+      program
+        .command("publish")
+        .description("Publish a local org, area or team layer to the registry")
+        .argument("<ref>", "the layer, like team/web")
+        .option("--dry-run", "show what would change; publish nothing")
+        .option("--force", "publish even when descendants would break")
+        .option("--json", "print the registry's answer as JSON")
+        .action((ref: string, options) =>
+          handle(options.json, () => publishCommand(io, ref, options)),
         );
 
       const daemon = program

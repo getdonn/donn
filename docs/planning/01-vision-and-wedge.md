@@ -91,6 +91,11 @@ first and best target — not the product itself.
    tool allowlists per key/team, but stop at the gateway. Nobody ties "who you are + what you're
    working on" to "which instructions, skills, permissions *and* tools you get" as one
    auditable, versioned unit.
+   *Note (2026-10-22):* gateways now reach the endpoint (Bifrost Edge, alpha, 2026: a menu-bar
+   agent that routes coding-agent traffic and inventories and denies MCP servers per device), but
+   they govern traffic and MCP reachability. Nobody compiles layered instructions, skills,
+   permissions and MCP config per person and project. Gateways are optional: OSS and free users
+   mostly will not run one.
 3. **Multi-harness compilation** — enterprises run Claude Code, Cursor, Codex, Copilot, Gemini
    CLI side by side. A harness-neutral spec that compiles to each is something no harness
    vendor will build.

@@ -346,6 +346,23 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     expect(existsSync(join(dir, "live.json"))).toBe(false);
   });
 
+  it("refreshes when a pull replaces the registry index", async () => {
+    const dir = await launch("project/persona", { project: s.repo });
+    const cache = join(s.home, "cache/registry");
+    mkdirSync(cache, { recursive: true });
+    const index = join(cache, "index.json");
+    writeFileSync(index, "{}");
+    await start();
+    const skips = logLines(`skip ${dir}`).length;
+    expect(skips).toBe(1);
+    await edit(
+      index,
+      '{"url":"https://r.example/"}',
+      () => logLines(`skip ${dir}`).length > skips,
+      "a refresh after the index changed",
+    );
+  });
+
   it("keeps the last good build when the persona breaks", async () => {
     const dir = await launch("project/persona", { project: s.repo });
     const daemon = await start();

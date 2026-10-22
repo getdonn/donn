@@ -9,6 +9,7 @@ import { selectPersona } from "../select.js";
 export interface DiffOptions {
   json?: boolean;
   overlay: boolean;
+  local?: boolean;
 }
 
 const MARKS = { added: "+", removed: "-", changed: "~" } as const;
@@ -61,7 +62,7 @@ export async function diffCommand(
   second: string | undefined,
   options: DiffOptions,
 ): Promise<number> {
-  const ctx = await createContext(io);
+  const ctx = await createContext(io, { local: options.local === true });
   const fromSelection = await selectPersona(
     second === undefined ? undefined : first,
     ctx,

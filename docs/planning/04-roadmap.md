@@ -96,10 +96,15 @@ Work:
 - Claude Code enforcement path: compile org locks → `managed-settings.d/hatrack.json` +
   `managed-mcp.json` bundle for the customer's MDM. (Other harnesses: whatever their managed
   surface is, or "advisory only" in the report.)
-- Gateway adapter v1: Bifrost — resolve `gateway://` refs, pull allowed-tool sets into policy.
+- Gateway adapter v1: Bifrost (2026-10-22: renamed "Gateway adapter v1: Bifrost and LiteLLM", see spec 18) — resolve `gateway://` refs, pull allowed-tool sets into policy.
 - `console`: minimal — personas, versions, locks, drift, audit. Ugly is fine.
 - `deploy`: Dockerfile, Helm chart, air-gapped install doc.
 - Licensing: pick the mechanism (license key checked offline, seat count) — keep it boring.
+
+*Amended 2026-10-22:* Phase 3 is built ahead of a design partner, aimed at one known organisation
+once most of it is complete, replacing "build only the slice a design-partner asks for". Spec
+`18-registry-contract.md` splits it into A-H (registry contract and client, control plane core,
+identity, drift, Claude Code enforcement, gateway adapter, deploy, console); A is built first.
 
 Parallel seam: A control-plane + policy, B console + deploy, C stays on OSS (adapters, daemon,
 community) so the funnel does not stall while the paid tier is built.

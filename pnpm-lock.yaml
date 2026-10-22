@@ -205,6 +205,9 @@ importers:
       '@zzpersona/mod-claude-code':
         specifier: workspace:*
         version: link:../../packages/mod-claude-code
+      '@zzpersona/registry-api':
+        specifier: workspace:*
+        version: link:../../packages/registry-api
       '@zzpersona/resolver':
         specifier: workspace:*
         version: link:../../packages/resolver
@@ -217,6 +220,9 @@ importers:
       '@zzpersona/store-local':
         specifier: workspace:*
         version: link:../../packages/store-local
+      '@zzpersona/store-remote':
+        specifier: workspace:*
+        version: link:../../packages/store-remote
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -446,6 +452,40 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
 
+  src/packages/registry-api:
+    dependencies:
+      '@zzpersona/resolver':
+        specifier: workspace:*
+        version: link:../resolver
+      '@zzpersona/spec':
+        specifier: workspace:*
+        version: link:../spec
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      '@zzpersona/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@zzpersona/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: 10.13.0
+        version: 10.13.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
+
   src/packages/resolver:
     dependencies:
       '@zzpersona/spec':
@@ -535,6 +575,46 @@ importers:
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      '@zzpersona/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@zzpersona/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: 10.13.0
+        version: 10.13.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
+
+  src/packages/store-remote:
+    dependencies:
+      '@zzpersona/registry-api':
+        specifier: workspace:*
+        version: link:../registry-api
+      '@zzpersona/resolver':
+        specifier: workspace:*
+        version: link:../resolver
+      '@zzpersona/spec':
+        specifier: workspace:*
+        version: link:../spec
+      '@zzpersona/store-local':
+        specifier: workspace:*
+        version: link:../store-local
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

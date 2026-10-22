@@ -454,6 +454,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       ...projects,
       join(options.home, "overrides.yaml"),
       join(options.home, "config.yaml"),
+      // A pull replaces the registry index by rename: published layers changed.
+      join(options.home, "cache", "registry", "index.json"),
       sessionsDir,
     ];
     const key = watchKey(paths);
