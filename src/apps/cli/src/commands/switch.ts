@@ -4,7 +4,7 @@ import { createContext, resolvePersona, type Context } from "../context.js";
 import { CliError } from "../errors.js";
 import { findAdapter } from "../plugins.js";
 import { selectPersona, type Selection } from "../select.js";
-import { projectKey, updateState } from "../state.js";
+import { projectKey, readState, updateState } from "../state.js";
 import { harnessReport, reportLines } from "../switch-report.js";
 
 // zzpersona switch: choose the persona for this project, or the default for everywhere else.
@@ -80,8 +80,9 @@ export async function switchCommand(
       print("nothing to clear", { scope: target.scope, persona: null });
       return 0;
     }
-    // The report is for the persona that applies now, if any.
-    const now = await createContext(io);
+    // The report is for the persona that applies now, if any. The same context, with the new
+    // state: a second one would repeat its warnings.
+    const now: Context = { ...ctx, state: await readState(ctx.home) };
     const applies = await selectPersona(undefined, now).catch((error) => {
       if (error instanceof CliError && error.code === "no-persona")
         return undefined;

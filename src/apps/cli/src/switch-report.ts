@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { HarnessAdapter, ReportEntry } from "@zzpersona/adapter-sdk";
 import { applyOverlay } from "@zzpersona/executor";
@@ -29,6 +29,25 @@ export interface HarnessResult {
 
 const SHARED = "project/persona";
 
+/** How long one harness may take to detect and build; a test shortens it. */
+export const limits = { harnessMs: 5000 };
+
+/** `promise`, or a rejection after `ms`; the timer never keeps the process alive. */
+function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timed out after ${ms / 1000}s`)),
+      ms,
+    );
+    timer.unref();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** The real path, or the path itself when it cannot be resolved. */
+const real = (path: string) => realpath(path).catch(() => path);
+
 /** Report entries grouped by field, in report order: `hooks (2)`. */
 function groups(entries: readonly ReportEntry[]): string[] {
   const counts = new Map<string, number>();
@@ -42,8 +61,9 @@ function groups(entries: readonly ReportEntry[]): string[] {
 /** The session list of a running daemon, or undefined: never starts one, never fails. */
 async function daemonSessions(io: CliIo): Promise<SessionStatus[] | undefined> {
   try {
+    // connectDaemon already asked /status; use its answer.
     const client = await connectDaemon(homeOf(io));
-    return client ? (await client.status()).sessions : undefined;
+    return client?.probed.sessions;
   } catch {
     return undefined;
   }
@@ -75,12 +95,16 @@ async function agentsMd(
     });
     stale ||= result.status === "stale";
   }
+  // `zzpersona write` refuses a shared file that includes a user layer: no fix to suggest.
+  const writable = !build.result.ir.layers.some((ref) =>
+    ref.startsWith("user/"),
+  );
   return {
     id: "agents-md",
     status: persona === SHARED ? "ok" : "shared",
     dropped: [],
     approximated: [],
-    ...(stale && { fix: "zzpersona write" }),
+    ...(stale && writable && { fix: "zzpersona write" }),
   };
 }
 
@@ -120,64 +144,82 @@ export async function harnessReport(
     ctx.projectDir === undefined || !options.here
       ? undefined
       : dirname(ctx.projectDir);
-  const sessions = repo ? await daemonSessions(io) : undefined;
-  for (const adapter of adapters) {
-    try {
-      if (adapter.id === "agents-md") {
-        // A committed file rendered from the shared project persona, not from the choice.
-        if (repo !== undefined && (await hasBlock(repo)))
-          results.push(await agentsMd(io, ctx, selection.ref));
-        continue;
-      }
-      const detection = await adapter.detect(io.probe);
-      if (!detection.installed) continue;
-      const build = await prepareBuild(ctx, io, {
-        selection,
-        harness: adapter.id,
-        overlay: true,
-        passthrough: [],
-        quiet: true,
-        detection,
-      });
-      const entries = build.output.report.entries;
-      const dropped = groups(entries.filter((e) => e.outcome === "dropped"));
-      const result: HarnessResult = {
-        id: adapter.id,
-        status: dropped.length > 0 ? "drops" : "ok",
-        dropped,
-        approximated: groups(entries.filter((e) => e.outcome !== "dropped")),
-      };
-      const behind = (sessions ?? []).filter(
-        (session) =>
+  const repoReal = repo === undefined ? undefined : await real(repo);
+  const running = repo ? ((await daemonSessions(io)) ?? []) : [];
+  const sessions = await Promise.all(
+    running.map(async (session) => ({
+      session,
+      project: await real(session.project ?? ""),
+    })),
+  );
+  const one = async (
+    adapter: HarnessAdapter,
+  ): Promise<HarnessResult | undefined> => {
+    if (adapter.id === "agents-md") {
+      // A committed file rendered from the shared project persona, not from the choice.
+      return repo !== undefined && (await hasBlock(repo))
+        ? agentsMd(io, ctx, selection.ref)
+        : undefined;
+    }
+    const detection = await adapter.detect(io.probe);
+    if (!detection.installed) return undefined;
+    const build = await prepareBuild(ctx, io, {
+      selection,
+      harness: adapter.id,
+      overlay: true,
+      passthrough: [],
+      quiet: true,
+      detection,
+    });
+    const entries = build.output.report.entries;
+    const dropped = groups(entries.filter((e) => e.outcome === "dropped"));
+    const result: HarnessResult = {
+      id: adapter.id,
+      status: dropped.length > 0 ? "drops" : "ok",
+      dropped,
+      approximated: groups(entries.filter((e) => e.outcome !== "dropped")),
+    };
+    const behind = sessions
+      .filter(
+        ({ session, project }) =>
           session.harness === adapter.id &&
-          session.project === repo &&
+          project === repoReal &&
           (session.live ?? session.launched) !== selection.ref,
-      );
-      if (behind.length > 0) {
-        const personas = [
-          ...new Set(behind.map((session) => session.live ?? session.launched)),
-        ];
-        result.sessions = {
-          count: behind.length,
-          persona:
-            personas.length > 1 ? `${personas[0]} and others` : personas[0]!,
-          fix:
-            adapter.id === "codex"
-              ? "relaunch with zzpersona codex"
-              : `/persona use ${selection.ref}`,
+      )
+      .map(({ session }) => session);
+    if (behind.length > 0) {
+      const personas = [
+        ...new Set(behind.map((session) => session.live ?? session.launched)),
+      ];
+      result.sessions = {
+        count: behind.length,
+        persona:
+          personas.length > 1 ? `${personas[0]} and others` : personas[0]!,
+        fix:
+          adapter.id === "codex"
+            ? "relaunch with zzpersona codex"
+            : `/persona use ${selection.ref}`,
+      };
+    }
+    return result;
+  };
+  // In parallel, each within its limit; Promise.all keeps the report order.
+  const settled = await Promise.all(
+    adapters.map(async (adapter): Promise<HarnessResult | undefined> => {
+      try {
+        return await within(one(adapter), limits.harnessMs);
+      } catch (error) {
+        return {
+          id: adapter.id,
+          status: "error",
+          dropped: [],
+          approximated: [],
+          message: errorText(error),
         };
       }
-      results.push(result);
-    } catch (error) {
-      results.push({
-        id: adapter.id,
-        status: "error",
-        dropped: [],
-        approximated: [],
-        message: errorText(error),
-      });
-    }
-  }
+    }),
+  );
+  results.push(...settled.filter((r) => r !== undefined));
   return results;
 }
 
@@ -193,6 +235,7 @@ export function reportLines(
     else if (r.status === "shared")
       text = `AGENTS.md carries ${SHARED} (shared); ${persona} applies to zzpersona launches only`;
     else if (r.status === "drops") text = `drops ${r.dropped.join(", ")}`;
+    else if (r.id === "agents-md") text = `carries ${SHARED}`;
     else text = "ok";
     if (r.approximated.length > 0)
       text += ` · approximates ${r.approximated.join(", ")}`;

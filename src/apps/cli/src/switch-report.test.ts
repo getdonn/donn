@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +6,7 @@ import { daemonRequest } from "./daemon/client.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { createSession } from "./session.js";
 import { projectKey, readState } from "./state.js";
-import { reportLines } from "./switch-report.js";
+import { limits, reportLines } from "./switch-report.js";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
 let s: Seeded;
@@ -186,8 +186,42 @@ describe("zzpersona switch: the per-harness report", () => {
     );
     expect(stale).toMatchObject({ status: "ok", fix: "zzpersona write" });
     expect((await run(["switch", "project/persona"])).stdout).toContain(
-      "agents-md    ok — zzpersona write\n",
+      "agents-md    carries project/persona — zzpersona write\n",
     );
+  });
+
+  it("agents-md does not suggest a write that would be refused", async () => {
+    expect((await run(["write"])).code).toBe(0);
+    put(
+      join(s.home, "personas/mine.yaml"),
+      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata: { name: mine }\n",
+    );
+    const file = join(s.repo, ".zzpersona/persona.yaml");
+    const text = readFileSync(file, "utf8");
+    writeFileSync(
+      file,
+      text.replace("extends:\n", "extends:\n  - user/mine\n"),
+    );
+    put(
+      join(s.repo, ".zzpersona/instructions/checkout-overview.md"),
+      "Changed overview text.",
+    );
+    const r = await run(["switch", "project/persona"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/^agents-md {4}carries project\/persona$/m);
+  });
+
+  it("times out a harness that never settles; the others report", async () => {
+    configure(`adapters: [${join(FIXTURES, "hanging-adapter")}]`);
+    limits.harnessMs = 100;
+    try {
+      const r = await run(["switch", "project/persona"]);
+      expect(r.code, r.stderr).toBe(0);
+      expect(r.stdout).toMatch(/^hanging +error timed out after 0\.1s$/m);
+      expect(r.stdout).toContain("claude-code  drops");
+    } finally {
+      limits.harnessMs = 5000;
+    }
   });
 
   describe("sessions", () => {
@@ -229,6 +263,27 @@ describe("zzpersona switch: the per-harness report", () => {
         persona: "project/persona",
         fix: "/persona use team/payments",
       });
+    });
+
+    it("counts a session launched from a symlinked checkout", async () => {
+      const link = join(s.root, "link-to-repo");
+      symlinkSync(s.repo, link);
+      await createSession(
+        s.home,
+        undefined,
+        {
+          persona: "team/other",
+          source: "argument",
+          harness: "claude-code",
+          project: link,
+        },
+        process.pid,
+      );
+      await daemon();
+      const json = await harnesses(["switch", "project/persona"]);
+      expect(json?.find((h) => h.id === "claude-code")?.sessions).toMatchObject(
+        { count: 1, persona: "team/other" },
+      );
     });
 
     it("a default switch counts no sessions", async () => {
@@ -294,6 +349,15 @@ describe("zzpersona switch: the per-harness report", () => {
     expect(r.stdout).toContain("claude-code  drops");
     const json = await harnesses(["switch", "--clear"]);
     expect(json).toBeUndefined();
+  });
+
+  it("clearing prints a stray-layer warning once", async () => {
+    payments();
+    mkdirSync(join(s.personas, "user"));
+    await run(["switch", "team/payments"]);
+    const r = await run(["switch", "--clear"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stderr.match(/is ignored/g)).toHaveLength(1);
   });
 
   it("clearing to nothing reports nothing", async () => {
