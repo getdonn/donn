@@ -95,3 +95,25 @@ A choice per harness; showing the report in `/persona switch`; writing `AGENTS.m
 ## Open questions
 
 None.
+
+## Amendments from implementation (2026-10-22)
+
+- **`sessions`** in `--json` is `{ count, persona, fix }`: `persona` names what the sessions still
+  run (the first, then "and others"), which the line shows too.
+- **`prepareBuild`** takes the caller's `detection` as well as `quiet`, so the report detects each
+  harness once.
+- **`switch --clear` with nothing to clear** prints "nothing to clear" and no report.
+- **Wording (final review):** a line says `drops <fields>` only for dropped entries and adds
+  `· approximates <fields>` for approximated and advisory ones (`ok · approximates knowledge (1)`);
+  `--json` has `dropped` and `approximated` lists. The earlier `drops knowledge (1 approximated)`
+  reported a loss that did not happen.
+- **Before saving:** an unknown `--harness` id is refused and nothing is saved.
+- **A config adapter that cannot load** is one `plugins  error …` line; the built-ins still report
+  and the exit code stays 0.
+- **`switch X --default` inside a project** shows no `agents-md` line and counts no sessions: X does
+  not apply there. **`agents-md` is listed last.**
+- **Check run** (the user's Mac, `examples/demo-app`, real `claude` 2.1.308 and `codex`, the
+  service daemon with the demo-app session open): `switch team/web` printed (in the wording before
+  the final review) one line each for `claude-code`, with `1 session here still runs
+  project/persona: /persona use team/web`, and `codex`; `switch --clear` reported both again for `project/persona`, with no session line.
+  The demo app has no `AGENTS.md` block, so no `agents-md` line.

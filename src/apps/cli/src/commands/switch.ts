@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 import type { CliIo } from "../cli.js";
 import { createContext, resolvePersona, type Context } from "../context.js";
 import { CliError } from "../errors.js";
+import { findAdapter } from "../plugins.js";
 import { selectPersona, type Selection } from "../select.js";
 import { projectKey, updateState } from "../state.js";
 import { harnessReport, reportLines } from "../switch-report.js";
@@ -35,6 +36,9 @@ export async function switchCommand(
   options: SwitchOptions,
 ): Promise<number> {
   const ctx = await createContext(io);
+  // A typo in --harness is refused before anything is saved.
+  if (options.harness !== undefined)
+    await findAdapter(ctx, io.env, options.harness);
   const print = (text: string, json: Record<string, unknown>) =>
     io.stdout.write(
       options.json ? `${JSON.stringify(json, null, 2)}\n` : `${text}\n`,
@@ -44,12 +48,12 @@ export async function switchCommand(
     text: string,
     json: Record<string, unknown>,
     selection: Selection | undefined,
-    countSessions: boolean,
+    here: boolean,
   ) => {
     if (selection === undefined) return print(text, json);
     const results = await harnessReport(io, ctx, selection, {
       ...(options.harness !== undefined && { only: options.harness }),
-      countSessions,
+      here,
     });
     print([text, ...reportLines(results, selection.ref)].join("\n"), {
       ...json,

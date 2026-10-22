@@ -73,6 +73,8 @@ Work:
 - `apps/daemon` (`hatrackd`): local API, cache, pre-build, watchers, harness detection, service
   install. CLI and mod become daemon clients with in-process fallback.
 - `switch --harness all` with per-harness results.
+  *2026-10-22: built as spec 17: one choice for every harness (already true of `state.json`), and
+  `switch` reports per harness after saving; `--harness <id>` limits the report.*
 - Optional, if someone wants it: `apps/desktop` tray client (Tauri). Explicitly not before the
   daemon exists.
 
