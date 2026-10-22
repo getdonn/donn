@@ -302,6 +302,68 @@ describe("echoing registry", () => {
   });
 });
 
+/** A proxy to the mock registry whose version reads (GET .../versions/...) answer 500. */
+async function flakyReads(): Promise<string> {
+  const server = createHttp((req, res) => {
+    if (req.method === "GET" && /\/versions\//.test(req.url ?? "")) {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end("{}");
+      return;
+    }
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      void fetch(`${registry.url}${req.url}`, {
+        method: req.method,
+        headers: {
+          authorization: req.headers.authorization ?? "",
+          "content-type": "application/json",
+        },
+        ...(req.method !== "GET" && { body: Buffer.concat(chunks) }),
+      }).then(async (r) => {
+        res.writeHead(r.status, {
+          "content-type": r.headers.get("content-type") ?? "application/json",
+        });
+        res.end(await r.text());
+      });
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  hanging.push(server as unknown as Server);
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+describe("publish when the cache update fails", () => {
+  it("still exits 0 with the published line and a warning", async () => {
+    const m = machine(await flakyReads());
+    const r = await run(m, ["publish", "org/acme"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toBe("published org/acme @1\n");
+    expect(r.stderr).toBe(
+      "warning: the local cache was not updated; run zzpersona pull\n",
+    );
+  });
+
+  it("--json says cacheUpdated false then", async () => {
+    const j = await run(machine(await flakyReads()), [
+      "publish",
+      "org/acme",
+      "--json",
+    ]);
+    expect(j.code).toBe(0);
+    expect(JSON.parse(j.stdout)).toMatchObject({
+      ref: "org/acme",
+      version: 1,
+      cacheUpdated: false,
+    });
+  });
+
+  it("--json says cacheUpdated true on success", async () => {
+    const r = await run(machine(), ["publish", "org/acme", "--json"]);
+    expect(JSON.parse(r.stdout).cacheUpdated).toBe(true);
+  });
+});
+
 describe("pull and publish", () => {
   it("pull prints changes", async () => {
     const author = machine();
@@ -523,6 +585,39 @@ describe("freshness", () => {
     expect(r.stderr).toContain(
       "registry unreachable; using cached layers from 2h ago\n",
     );
+  });
+
+  it("an index made only by publishing counts as never pulled", async () => {
+    const server = createServer(() => {});
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    hanging.push(server);
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const m = machine(url);
+    mkdirSync(join(m.home, "cache/registry"), { recursive: true });
+    writeFileSync(
+      join(m.home, "cache/registry/index.json"),
+      JSON.stringify({
+        url: `${url}/`,
+        pulledAt: new Date(0).toISOString(),
+        layers: {},
+      }),
+    );
+    const r = await run(m, ["claude", "team/web"], {
+      runPlan: recorder().runPlan,
+    });
+    expect(r.stderr).toContain("registry unreachable; no layers pulled yet\n");
+    expect(r.stderr).not.toContain("ago");
+  });
+
+  it("doctor says never pulled for a publish-only index", async () => {
+    const m = machine();
+    await run(m, ["publish", "org/acme"]);
+    expect(index(m).pulledAt).toBe(new Date(0).toISOString());
+    const r = await run(m, ["doctor", "--json"]);
+    const check = (
+      JSON.parse(r.stdout).checks as { id: string; message: string }[]
+    ).find((c) => c.id === "registry-cache")!;
+    expect(check.message).toBe("1 layers, never pulled");
   });
 
   it("freshness without a token", async () => {

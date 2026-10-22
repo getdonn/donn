@@ -246,6 +246,17 @@ OIDC and RBAC (C); the real server, Postgres and audit (B); yanking or deleting 
   - a home whose index said `team/web` @1: `publish team/web` printed `error: stale-base: team/web
     is at version 2, not 1` and `hint: zzpersona pull, then publish again`, exit 1.
 - **Known minor:** after a publish, `index.json` `pulledAt` is epoch 0, so the next launch pulls.
+  Epoch 0 now reads as "never pulled": the offline freshness line is `registry unreachable; no
+  layers pulled yet` (no age) and `doctor` says `<n> layers, never pulled`.
+- **Final review (2026-10-22):**
+  - A published layer's virtual folder is `.registry/<ref>/@/<path>`. The mount splits at the first
+    `@` segment, so `team/platform` and `team/platform/skills` keep their own files.
+  - `publish` exits 0 once the registry accepts it. If the cache update then fails (or waits more
+    than 5 s on the lock), it prints `warning: the local cache was not updated; run zzpersona
+    pull` on stderr and `--json` has `cacheUpdated: false` (`true` otherwise).
+  - The daemon watches `cache/registry/index.json`, so a pull refreshes live sessions.
+  - The conformance kit checks that every `getVersion` answer hashes to its `digest`, and covers a
+    nested ref (`team/a/b`).
 
 ## Open questions
 

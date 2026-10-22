@@ -80,6 +80,17 @@ export function registryConformance(
         expect(problem.error).toBeUndefined();
         expect(problem.data?.status).toBe(response.status);
       }
+      if (name === "getVersion" && response.status === 200) {
+        // Every version a registry serves must hash to the digest it names.
+        const version = parsed as {
+          source: string;
+          files: BundleFile[];
+          digest: string;
+        };
+        expect(bundleDigest(version.source, version.files)).toBe(
+          version.digest,
+        );
+      }
       return { status: response.status, body: parsed };
     }
 
@@ -153,6 +164,22 @@ export function registryConformance(
           files,
         });
         expect(latest.body).toEqual(one.body);
+      });
+
+      it("lists and gets a nested ref by its URL-encoded path", async () => {
+        const published = await publish("team/a/b", layer("b"), [
+          file("instructions/a.md", "nested"),
+        ]);
+        expect(published.status).toBe(201);
+        expect((await call("listLayers")).body).toEqual([
+          { ref: "team/a/b", version: 1, digest: published.body.digest },
+        ]);
+        const got = await call("getVersion", {
+          ref: "team/a/b",
+          version: "latest",
+        });
+        expect(got.status).toBe(200);
+        expect(got.body).toMatchObject({ ref: "team/a/b", version: 1 });
       });
 
       it("answers 404 not-found for an unknown ref or version", async () => {

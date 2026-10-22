@@ -199,11 +199,15 @@ async function registryChecks(
       "zzpersona pull",
     );
   } else {
-    const age = ageText((io.now ?? Date.now)() - Date.parse(index.pulledAt));
+    const pulled = Date.parse(index.pulledAt);
+    const when =
+      pulled === 0
+        ? "never pulled"
+        : `pulled ${ageText((io.now ?? Date.now)() - pulled)} ago`;
     add(
       "registry-cache",
       "ok",
-      `${Object.keys(index.layers).length} layers, pulled ${age} ago`,
+      `${Object.keys(index.layers).length} layers, ${when}`,
     );
   }
 }

@@ -14,7 +14,7 @@ export interface RegistryStore extends LocalStore {
 
 /**
  * The local store with the registry cache in front: every ref in `index` loads from its cached
- * version. `.registry/<ref>/<path>` maps to that version's folder, so two published layers can
+ * version. `.registry/<ref>/@/<path>` maps to that version's folder, so two published layers can
  * each bundle their own `instructions/conduct.md`. `onShadow` is called once per ref when a local
  * file for the same ref differs from the published one.
  */
@@ -27,17 +27,15 @@ export function withRegistry(
   const warned = new Set<string>();
   const published = (ref: string) => index.layers[ref]?.version;
 
-  /** `.registry/org/acme/x/y` → ref `org/acme`, tail `x/y`: the longest ref the index names. */
+  /** `.registry/org/acme/@/x/y` → ref `org/acme`, tail `x/y`: split at the first `@` segment. */
   const split = (virtualPath: string) => {
     if (!virtualPath.startsWith(PREFIX)) return undefined;
     const segments = virtualPath.slice(PREFIX.length).split("/");
-    for (let n = segments.length; n >= 1; n--) {
-      const ref = segments.slice(0, n).join("/");
-      if (index.layers[ref] !== undefined) {
-        return { ref, tail: segments.slice(n).join("/") };
-      }
-    }
-    return undefined;
+    const at = segments.indexOf("@");
+    if (at < 1) return undefined;
+    const ref = segments.slice(0, at).join("/");
+    if (index.layers[ref] === undefined) return undefined;
+    return { ref, tail: segments.slice(at + 1).join("/") };
   };
 
   const locate: LocalStore["locate"] = (virtualPath) => {
@@ -60,7 +58,7 @@ export function withRegistry(
     dir(ref) {
       return published(ref) === undefined
         ? (local.dir?.(ref) ?? posix.dirname(ref))
-        : `${PREFIX}${ref}`;
+        : `${PREFIX}${ref}/@`;
     },
 
     async load(ref) {
