@@ -2,6 +2,7 @@ import type { CliIo } from "../cli.js";
 import type { Config } from "../config.js";
 import { cliVersion, startDaemonProcess } from "../commands/daemon.js";
 import { connectDaemon } from "./client.js";
+import { updateFix } from "./service.js";
 
 // Spec 16 §2: `claude` and `codex` start the daemon, so live refresh works without a step.
 
@@ -13,6 +14,7 @@ async function answers(io: CliIo, home: string): Promise<boolean> {
   const client = await connectDaemon(home, {
     version: cliVersion(),
     warn: (message) => io.stderr.write(`${message}\n`),
+    fix: () => updateFix(io, home),
   });
   return client !== undefined;
 }
