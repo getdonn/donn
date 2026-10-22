@@ -1,6 +1,6 @@
 {
   "name": "@zzpersona/cli",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "The zzpersona command line",
   "license": "Apache-2.0",
