@@ -1,13 +1,22 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { CompileOutput } from "@zzpersona/adapter-sdk";
+import type { CompileOutput, Detection } from "@zzpersona/adapter-sdk";
 import { isAlive } from "@zzpersona/executor";
 import { writeFileAtomic } from "./fs.js";
 import type { LiveState } from "./live-apply.js";
 
 // A session folder: the folder of plugins a `zzpersona claude` session launches with, so the
 // persona plugin inside it can be swapped mid-session. See docs/planning/10-live-switching.md §1.
+
+/** `zzpersona claude --mode`: managed policy that detection cannot see. */
+export type Mode = "partial" | "relaunch-no-mcp";
+
+/** The detection facts a mode stands for; every compile for the session passes them. */
+export const MODE_FACTS: Record<Mode, Detection["facts"]> = {
+  partial: { sideloadBlocked: true },
+  "relaunch-no-mcp": { managedMcp: true },
+};
 
 /** The parts of a persona a session cannot change after launch (spec 10): what `live` compares. */
 export interface LaunchSnapshot {
@@ -29,6 +38,8 @@ export interface Launched {
   /** The project folder the session was launched for. */
   project?: string;
   startedAt?: string;
+  /** `--mode`, when given: every recompile for the session passes its facts (MODE_FACTS). */
+  mode?: Mode;
   /** See `buildHash`: lets the daemon tell whether a session runs the current build. */
   buildHash?: string;
 }

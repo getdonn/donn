@@ -64,6 +64,7 @@ export async function daemonRun(
     home,
     env: io.env,
     version: cliVersion(),
+    probe: io.probe,
     ...(io.now && { now: io.now }),
   });
   const stop = () => void daemon.close();
