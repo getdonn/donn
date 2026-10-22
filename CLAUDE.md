@@ -34,6 +34,7 @@ overrides them.
 12. `docs/planning/12-codex.md` — the Codex adapter (relaunch model: `-c developer_instructions`, MCP with `env_vars`, sandbox defaults) and `zzpersona codex`
 13. `docs/planning/13-capability-matrix.md` — every adapter declares every field with reasons; `zzpersona capabilities` and the generated `docs/capabilities.md`
 14. `docs/planning/14-daemon.md` — the daemon, first slice: `zzpersona daemon`, a socket API, the session registry, live sessions refreshed on persona edits, `zzpersona status`
+15. `docs/planning/15-mod-transport.md` — the mod talks to the daemon over its socket (`POST /run`), CLI fallback; `/persona` works under policy that blocks `process.run`
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
