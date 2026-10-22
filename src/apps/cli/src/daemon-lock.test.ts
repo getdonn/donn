@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { daemonRequest } from "./daemon/client.js";
 import { daemonPaths } from "./daemon/paths.js";
-import { isDaemonProcess } from "./daemon/process.js";
+import { isDaemonProcess, processCommand } from "./daemon/process.js";
 import { acquireLock, startDaemon, type Daemon } from "./daemon/server.js";
 
 let root: string;
@@ -226,5 +226,18 @@ describe("isDaemonProcess", () => {
     const none = () => undefined;
     expect(isDaemonProcess(await liveChild(false), none)).toBe(true);
     expect(isDaemonProcess(deadPid(), none)).toBe(false);
+  });
+
+  it("reads the whole command line, however long", async () => {
+    // Like a ps that cuts its output at the terminal's width unless told -ww.
+    const long = `${"/very/long/path".repeat(20)}/zzpersona daemon run`;
+    const ps = ((_: string, args: string[]) => ({
+      status: 0,
+      stdout: `${args.includes("-ww") ? long : long.slice(0, 80)}\n`,
+      stderr: "",
+    })) as unknown as typeof import("node:child_process").spawnSync;
+    const pid = await liveChild(false);
+    expect(processCommand(pid, ps)).toBe(long);
+    expect(isDaemonProcess(pid, (p) => processCommand(p, ps))).toBe(true);
   });
 });

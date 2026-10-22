@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:net";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -166,14 +167,35 @@ describe("zzpersona status", () => {
 
 describe("a daemon that answers no one", () => {
   let wedged: Server | undefined;
-  afterEach(() => void wedged?.close());
+  let children: ChildProcess[] = [];
+  afterEach(() => {
+    wedged?.close();
+    for (const child of children) child.kill("SIGKILL");
+    children = [];
+  });
+
+  /** A live child process; with `daemon`, its command line ends in `daemon run` like a daemon's. */
+  async function liveChild(daemon: boolean): Promise<number> {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        "console.log('ready'); setInterval(() => {}, 1000);",
+        ...(daemon ? ["daemon", "run"] : []),
+      ],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    children.push(child);
+    await new Promise((resolve) => child.stdout!.once("data", resolve));
+    return child.pid!;
+  }
 
   /** A listener on the daemon's socket that accepts connections and never responds. */
   async function wedge() {
     const paths = daemonPaths(home);
     mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
     writeFileSync(paths.token, "t");
-    writeFileSync(paths.pid, `${process.pid}\n`);
+    writeFileSync(paths.pid, `${await liveChild(true)}\n`);
     wedged = createServer(() => {});
     await new Promise<void>((resolve) => wedged!.listen(paths.sock, resolve));
   }
@@ -200,6 +222,25 @@ describe("a daemon that answers no one", () => {
     expect(check.status).toBe("warn");
     expect(check.message).toContain("unresponsive");
     expect(check.fix).toContain("zzpersona daemon stop");
+  });
+
+  it("is reported by doctor as stale when its pid now runs something else", async () => {
+    // The daemon died and the OS gave its pid to an unrelated process: `daemon stop` would
+    // leave that process alone, so the advice is to start one.
+    const paths = daemonPaths(home);
+    mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
+    writeFileSync(paths.pid, `${await liveChild(false)}\n`);
+    const r = await zz(["doctor", "--json"], { cwd: root, home });
+    const check = (
+      JSON.parse(r.stdout) as {
+        checks: { id: string; status: string; message: string; fix?: string }[];
+      }
+    ).checks.find((c) => c.id === "daemon")!;
+    expect(check).toMatchObject({
+      status: "warn",
+      message: `the daemon's socket or pid file is stale in ${paths.dir}`,
+      fix: "zzpersona daemon start",
+    });
   });
 });
 
