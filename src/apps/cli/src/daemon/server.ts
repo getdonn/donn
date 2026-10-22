@@ -218,6 +218,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const prior = tracked.get(session.dir);
     const persona = session.live?.persona ?? session.launched.persona;
     const at = new Date(now()).toISOString();
+    // The user switched mid-refresh: their switch stands, and the state is left as it was.
+    if (outcome.superseded) {
+      await log(`skip ${session.dir} ${persona}: superseded`);
+      return;
+    }
     if (outcome.state === "current") {
       await log(`skip ${session.dir} ${persona}: current`);
       // Unchanged since the last swap: a Claude Code session keeps saying when it was refreshed,

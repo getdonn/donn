@@ -23,7 +23,7 @@ import {
 import { daemonPaths } from "./daemon/paths.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { openWatcherCount } from "./daemon/watch.js";
-import type { LiveState } from "./live-apply.js";
+import { applyLive, type LiveState } from "./live-apply.js";
 import { selectPersona } from "./select.js";
 import { buildHash, createSession, MODE_FACTS, type Mode } from "./session.js";
 import { installedProbe, quietIo, seed, type Seeded } from "./test/seed.js";
@@ -607,6 +607,42 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     const plain = await compileFor("project/persona", { project: s.repo });
     expect(buildHash(expected.output)).not.toBe(buildHash(plain.output));
     expect(liveOf(dir).buildHash).toBe(buildHash(expected.output));
+  });
+
+  it("never undoes a switch made while it refreshes", async () => {
+    const dir = await launch("project/persona", { project: s.repo });
+    let release!: () => void;
+    let held: Promise<void> | undefined;
+    let entered = false;
+    const gated: Probe = {
+      ...installedProbe,
+      run: async (...args) => {
+        if (held) {
+          const wait = held;
+          held = undefined;
+          entered = true;
+          await wait;
+        }
+        return installedProbe.run(...args);
+      },
+    };
+    // A debounce longer than the test: only the call below refreshes.
+    const daemon = await start({ debounceMs: 60_000, probe: gated });
+    writeFileSync(conduct(), "Review kindly, and say why.");
+    held = new Promise((r) => (release = r));
+    const refreshing = daemon.refresh();
+    // The cycle has read the session (live persona: project/persona) and is compiling it.
+    await until(() => entered, "a refresh compiling");
+    try {
+      // The user switches meanwhile, as `/persona use org/base` does.
+      await applyLive(quietIo({ cwd: s.repo, home: s.home }), dir, "org/base");
+    } finally {
+      release();
+    }
+    await refreshing;
+    expect(liveOf(dir).persona).toBe("org/base");
+    expect(readdirSync(join(dir, "plugins"))).toEqual(["zzp-org--base"]);
+    expect(logLines(`skip ${dir} project/persona: superseded`)).toHaveLength(1);
   });
 
   it("leaves no watcher open when it stops mid-refresh", async () => {

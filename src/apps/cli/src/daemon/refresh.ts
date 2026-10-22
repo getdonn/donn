@@ -1,7 +1,7 @@
 import { prepareBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { createContext, homeOf } from "../context.js";
-import { applyLive } from "../live-apply.js";
+import { applyLive, LiveSuperseded } from "../live-apply.js";
 import { selectPersona } from "../select.js";
 import { buildHash, MODE_FACTS, type SessionInfo } from "../session.js";
 import type { SessionStatus } from "./client.js";
@@ -14,6 +14,8 @@ export interface RefreshOutcome {
   state: SessionStatus["state"];
   held: string[];
   error?: string;
+  /** The session switched persona during the refresh: nothing was swapped. */
+  superseded?: boolean;
 }
 
 export async function refreshSession(
@@ -46,10 +48,16 @@ export async function refreshSession(
     if (hash === (session.live?.buildHash ?? launched.buildHash)) {
       return { state: "current", held: before };
     }
-    const state = await applyLive(sessionIo, session.dir, persona);
+    const state = await applyLive(sessionIo, session.dir, persona, {
+      persona,
+      ...(session.live && { appliedAt: session.live.appliedAt }),
+    });
     const grew = state.held.some((part) => !before.includes(part));
     return { state: grew ? "stale" : "refreshed", held: state.held };
   } catch (error) {
+    if (error instanceof LiveSuperseded) {
+      return { state: "current", held: before, superseded: true };
+    }
     return {
       state: "refresh-failed",
       held: before,
