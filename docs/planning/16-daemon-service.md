@@ -162,3 +162,11 @@ version.
   `kill -9`, launchd brought a new pid back within the 15 s bound (the whole test took 15 s,
   launchd's 10 s respawn throttle included); `daemon stop` held for 3 s; uninstall removed the
   plist and `launchctl print` no longer found the job. Passed on the first run.
+- **Smoke** (2026-10-22, the user's Mac, Claude Code 2.1.308, herdr): the real `zzpersona daemon
+  install` replaced a detached 0.5.1 daemon with the launchd one (`zzpersona.daemon`, the plist's
+  `ProgramArguments` the pnpm `zzpersona`, `PATH` copied); `daemon status` showed the service
+  managing it. `zzpersona claude -- --continue` in `examples/demo-app` showed the band and
+  `zzpersona status` listed the session `current`. After `kill -9`, launchd had a new pid within
+  1 s (`runs = 2`) and the session was still watched. `daemon stop` held for 12 s ("daemon not
+  running", the service still installed); `daemon start` went through launchd (`runs = 3`) and
+  the session was watched again.
