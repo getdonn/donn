@@ -36,11 +36,11 @@ const ON = {
 const FAILURE = (reason: string) =>
   `zzpersona: daemon not started (${reason}); live refresh is off for this session\n`;
 
-async function inProcessDaemon() {
+async function inProcessDaemon(version = cliVersion()) {
   const daemon = await startDaemon({
     home: s.home,
     env: {},
-    version: cliVersion(),
+    version,
   });
   daemons.push(daemon);
   return daemon;
@@ -138,6 +138,40 @@ describe("auto-start", () => {
     });
     expect(started).toBe(1);
     expect(h.events).toEqual(["run"]);
+  });
+
+  it("a daemon of another version is told to reinstall when the service serves this home", async () => {
+    await inProcessDaemon("0.0.1");
+    const h = harness();
+    const mismatch = `daemon runs 0.0.1, CLI is ${cliVersion()}`;
+    const plain = await zz(["claude"], options(h));
+    expect(plain.stderr).toContain(
+      `${mismatch}; zzpersona daemon stop && zzpersona daemon start\n`,
+    );
+
+    const manager = serviceManager({
+      env: { HOME: s.root },
+      probe: {
+        platform: "darwin",
+        run: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+        readFile: async () => undefined,
+        listDir: async () => undefined,
+      },
+    })!;
+    mkdirSync(dirname(manager.path), { recursive: true });
+    writeFileSync(
+      manager.path,
+      manager.render({
+        command: ["/u/bin/zzpersona", "daemon", "run"],
+        env: { ZZPERSONA_HOME: s.home, ZZPERSONA_SERVICE: "1" },
+        log: daemonPaths(s.home).log,
+      }),
+    );
+    const r = await zz(["claude"], {
+      ...options(h, { HOME: s.root }),
+      service: manager,
+    });
+    expect(r.stderr).toContain(`${mismatch}; zzpersona daemon install\n`);
   });
 
   it("a failed start still launches", async () => {

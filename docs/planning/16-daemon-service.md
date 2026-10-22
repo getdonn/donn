@@ -182,3 +182,30 @@ version.
   1 s (`runs = 2`) and the session was still watched. `daemon stop` held for 12 s ("daemon not
   running", the service still installed); `daemon start` went through launchd (`runs = 3`) and
   the session was watched again.
+
+### Hardening (0.8.1), 2026-10-22
+
+- **Doctor and reused pids:** the `daemon` check asks `isDaemonProcess`, not plain liveness: a pid
+  file whose pid now runs an unrelated process is a stale daemon (fix `zzpersona daemon start`),
+  not an unresponsive one whose `daemon stop` advice would do nothing.
+- **`ps -ww -o command= -p <pid>`:** a long command line is never cut at a terminal's width before
+  its `daemon run`.
+- **`uninstall` unloads a job without a file:** when the service file is gone but the job is still
+  loaded, `uninstall` unloads it and says so (`unloaded: true` in `--json`), not "not installed".
+- **A failed reinstall keeps the working service:** `install` over an existing file keeps its text;
+  when the new load fails, the old file is put back and loaded again (that load's failure ignored)
+  and the `service` error shows. A first install that fails still removes its file.
+- **The version warning names the right fix:** a daemon of another version is told
+  `zzpersona daemon install` when the installed service serves this home, else
+  `daemon stop && daemon start`, as doctor already did. The caller passes the fix to the client,
+  which never imports the service code.
+- **Another home's service:** `install` and `uninstall` with a `ZZPERSONA_HOME` other than the one
+  the existing service file serves print `replacing the service for <home>` or `removing the
+  service for <home>` first (`replaced: <home>` in `--json`).
+- **Lock edge cases:** a lock that vanishes between the failed create and the read (its daemon
+  stopping) is created once more before any takeover; a stale takeover file is renamed aside and
+  removed only if it is the file that was stat'ed (same inode and mtime), else it is put back and
+  the start gives up with `daemon-running`; once the lock is held, `daemon.lock.<pid>.<hex>` temp
+  files of dead pids are swept; where `link()` fails with `EPERM`, `ENOTSUP` or `EXDEV` (no hard
+  links) the lock is created with `open(wx)` and the pid written in place, so a racer may briefly
+  see it empty; a start that fails after taking the lock (creating `sessions/`) releases it.

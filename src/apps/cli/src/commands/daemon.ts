@@ -17,6 +17,7 @@ import {
   serviceHome,
   serviceOf,
   type ServiceManager,
+  updateFix,
 } from "../daemon/service.js";
 import { CliError } from "../errors.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
@@ -255,6 +256,22 @@ const uptime = (ms: number) => {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 };
 
+/**
+ * The home the installed service serves when it is not `home`: `install` and `uninstall` here
+ * replace or remove another home's service, and say so.
+ */
+async function otherHome(
+  io: CliIo,
+  service: ServiceManager,
+  home: string,
+): Promise<string | undefined> {
+  const installed = await installedService(service);
+  const served = installed && serviceHome(io, installed);
+  return served !== undefined && served !== absoluteHome(io, home)
+    ? served
+    : undefined;
+}
+
 /** The service manager, or the refusal where there is none. */
 function requireService(io: CliIo): ServiceManager {
   const service = serviceOf(io);
@@ -285,6 +302,10 @@ export async function daemonInstall(
   await stopDaemon(home);
   const paths = daemonPaths(home);
   mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
+  const replaced = await otherHome(io, service, home);
+  if (replaced !== undefined && !options.json) {
+    io.stdout.write(`replacing the service for ${replaced}\n`);
+  }
   await service.install({
     command: [cli, "daemon", "run"],
     env: {
@@ -297,7 +318,7 @@ export async function daemonInstall(
   const status = await waitForDaemon(home, service);
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ installed: true, path: service.path, command: cli, pid: status.pid }, null, 2)}\n`
+      ? `${JSON.stringify({ installed: true, path: service.path, command: cli, pid: status.pid, ...(replaced !== undefined && { replaced }) }, null, 2)}\n`
       : `service installed (${service.path}); daemon running (pid ${status.pid})\n`,
   );
   return 0;
@@ -309,13 +330,23 @@ export async function daemonUninstall(
 ): Promise<number> {
   const service = requireService(io);
   const installed = existsSync(service.path);
-  if (installed) await service.uninstall();
+  // A job still loaded after its file went (removed by hand) is unloaded all the same.
+  const unloaded = !installed && (await service.loaded());
+  const replaced = installed
+    ? await otherHome(io, service, homeOf(io))
+    : undefined;
+  if (replaced !== undefined && !options.json) {
+    io.stdout.write(`removing the service for ${replaced}\n`);
+  }
+  if (installed || unloaded) await service.uninstall();
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ installed: false, removed: installed, path: service.path }, null, 2)}\n`
+      ? `${JSON.stringify({ installed: false, removed: installed, ...(unloaded && { unloaded }), ...(replaced !== undefined && { replaced }), path: service.path }, null, 2)}\n`
       : installed
         ? `service uninstalled (${service.path})\n`
-        : "not installed\n",
+        : unloaded
+          ? `service unloaded (${service.label}); its file was already gone\n`
+          : "not installed\n",
   );
   return 0;
 }
@@ -390,9 +421,11 @@ export async function daemonRefresh(
   io: CliIo,
   options: DaemonCommandOptions,
 ): Promise<number> {
-  const client = await connectDaemon(homeOf(io), {
+  const home = homeOf(io);
+  const client = await connectDaemon(home, {
     version: cliVersion(),
     warn: (message) => io.stderr.write(`${message}\n`),
+    fix: () => updateFix(io, home),
   });
   if (client) await client.refresh();
   io.stdout.write(

@@ -326,6 +326,28 @@ describe("the service managers", () => {
     expect(calls).toEqual(["bootout", "print", "print", "print", "bootstrap"]);
   });
 
+  it("bootstraps anyway once launchd has not let go within the wait", async () => {
+    const calls: string[] = [];
+    const probe: Probe = {
+      ...fakeProbe("darwin").probe,
+      // `print` always finds the job: it never goes.
+      run: async (_command, args) => {
+        calls.push(args[0]!);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    };
+    const manager = serviceManager(
+      { env: { HOME: userHome() }, probe },
+      { unloadWaitMs: 100 },
+    )!;
+    const began = Date.now();
+    await manager.install(SPEC);
+    expect(Date.now() - began).toBeGreaterThanOrEqual(100);
+    expect(calls[0]).toBe("bootout");
+    expect(calls.at(-1)).toBe("bootstrap");
+    expect(calls.filter((call) => call === "print").length).toBeGreaterThan(1);
+  }, 2_000);
+
   it("fails with the manager's stderr when loading fails", async () => {
     const { probe } = fakeProbe("darwin", (call) => call.includes("bootstrap"));
     const manager = serviceManager({ env: { HOME: userHome() }, probe })!;
@@ -359,6 +381,36 @@ describe("the service managers", () => {
       message: expect.stringContaining("systemctl said no"),
     });
     expect(existsSync(linux.path)).toBe(false);
+  });
+
+  it("a failed reinstall puts the working file back and loads it again", async () => {
+    const next: ServiceSpec = {
+      ...SPEC,
+      command: ["/new/bin/zzpersona", "daemon", "run"],
+    };
+    for (const [platform, step] of [
+      ["darwin", "bootstrap"],
+      ["linux", "enable"],
+    ] as const) {
+      let failing = false;
+      const { calls, probe } = fakeProbe(
+        platform,
+        (call) => failing && call.includes(step),
+      );
+      const manager = serviceManager({ env: { HOME: userHome() }, probe })!;
+      await manager.install(SPEC);
+      failing = true;
+      calls.length = 0;
+      await expect(manager.install(next)).rejects.toMatchObject({
+        code: "service",
+        message: expect.stringContaining("said no"),
+      });
+      expect(readFileSync(manager.path, "utf8")).toBe(manager.render(SPEC));
+      expect(statSync(manager.path).mode & 0o777).toBe(0o644);
+      // Loaded twice: the new file, then the old one put back.
+      expect(calls.filter((call) => call.includes(step))).toHaveLength(2);
+      rmSync(manager.path);
+    }
   });
 
   it("uninstall ignores a failing reload once the file is gone", async () => {
@@ -580,7 +632,9 @@ describe("zzpersona daemon install|uninstall", () => {
     };
     const none = await zz(["daemon", "uninstall"], options);
     expect(none).toMatchObject({ code: 0, stdout: "not installed\n" });
-    expect(calls).toEqual([]);
+    // Only asked whether a job is loaded without its file.
+    expect(calls).toEqual([`launchctl print gui/${uid}/zzpersona.daemon`]);
+    calls.length = 0;
 
     writeServiceFile(manager, "/u/bin/zzpersona");
     const r = await zz(["daemon", "uninstall", "--json"], options);
@@ -592,6 +646,94 @@ describe("zzpersona daemon install|uninstall", () => {
     });
     expect(existsSync(manager.path)).toBe(false);
     expect(calls).toEqual([`launchctl bootout gui/${uid}/zzpersona.daemon`]);
+  });
+
+  it("daemon install and uninstall say when the service served another home", async () => {
+    const bin = binWithCli();
+    const base = launchd().manager;
+    const other = join(root, "other");
+    const service: ServiceManager = {
+      ...base,
+      install: async (spec) => {
+        writeServiceFile(base, spec.command[0]!);
+        await inProcessDaemon(zzHome(), { ZZPERSONA_SERVICE: "1" });
+      },
+      uninstall: async () => rmSync(base.path),
+    };
+    const options = {
+      cwd: root,
+      home: zzHome(),
+      env: { HOME: userHome(), PATH: bin },
+      service,
+    };
+
+    writeServiceFile(base, "/u/bin/zzpersona", other);
+    const r = await zz(["daemon", "install"], options);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe(
+      `replacing the service for ${other}\n` +
+        `service installed (${base.path}); daemon running (pid ${process.pid})\n`,
+    );
+    await Promise.all(daemons.splice(0).map((d) => d.close()));
+
+    writeServiceFile(base, "/u/bin/zzpersona", other);
+    const j = await zz(["daemon", "install", "--json"], options);
+    expect(JSON.parse(j.stdout)).toMatchObject({
+      installed: true,
+      replaced: other,
+    });
+    await Promise.all(daemons.splice(0).map((d) => d.close()));
+
+    // This home's own service is no other's: nothing said.
+    const same = await zz(["daemon", "install", "--json"], options);
+    expect(JSON.parse(same.stdout).replaced).toBeUndefined();
+    await Promise.all(daemons.splice(0).map((d) => d.close()));
+
+    writeServiceFile(base, "/u/bin/zzpersona", other);
+    const u = await zz(["daemon", "uninstall"], options);
+    expect(u.stdout).toBe(
+      `removing the service for ${other}\nservice uninstalled (${base.path})\n`,
+    );
+    writeServiceFile(base, "/u/bin/zzpersona", other);
+    const uj = await zz(["daemon", "uninstall", "--json"], options);
+    expect(JSON.parse(uj.stdout)).toEqual({
+      installed: false,
+      removed: true,
+      replaced: other,
+      path: base.path,
+    });
+  });
+
+  it("daemon uninstall unloads a job whose file is gone", async () => {
+    const { calls, probe, manager } = launchd();
+    // Loaded, then its file removed by hand: launchd still runs the job.
+    await probe.run("launchctl", ["bootstrap", `gui/${uid}`, manager.path]);
+    calls.length = 0;
+    const options = {
+      cwd: root,
+      home: zzHome(),
+      env: { HOME: userHome() },
+      probe,
+    };
+    const r = await zz(["daemon", "uninstall"], options);
+    expect(r).toMatchObject({
+      code: 0,
+      stdout: `service unloaded (zzpersona.daemon); its file was already gone\n`,
+    });
+    expect(calls).toEqual([
+      `launchctl print gui/${uid}/zzpersona.daemon`,
+      `launchctl bootout gui/${uid}/zzpersona.daemon`,
+    ]);
+    expect(await manager.loaded()).toBe(false);
+
+    await probe.run("launchctl", ["bootstrap", `gui/${uid}`, manager.path]);
+    const json = await zz(["daemon", "uninstall", "--json"], options);
+    expect(JSON.parse(json.stdout)).toEqual({
+      installed: false,
+      removed: false,
+      unloaded: true,
+      path: manager.path,
+    });
   });
 
   it("daemon start uses the service when installed", async () => {
