@@ -305,3 +305,70 @@ describe("publishLayer", () => {
     ).rejects.toBe(failure);
   });
 });
+
+describe("the store contract", () => {
+  it("memoryStore refuses a version that is not latest + 1", async () => {
+    const store = memoryStore();
+    const v1 = (
+      (await publishLayer(
+        store,
+        "org/base",
+        request(layer("base")),
+        context,
+      )) as {
+        inserted: LayerVersion;
+      }
+    ).inserted;
+    await expect(store.insert(v1)).rejects.toThrow(/version 1/);
+    expect(store.versions("org/base")).toHaveLength(1);
+  });
+
+  it("an unlocked race stores one version at most", async () => {
+    const inner = memoryStore();
+    // A store whose reads return a snapshot after a macrotask, as a database's do.
+    const slow: LayerStore = {
+      latest: (ref) => {
+        const snapshot = inner.latest(ref);
+        return new Promise((done) => setImmediate(() => done(snapshot)));
+      },
+      refs: () => inner.refs(),
+      insert: (version) => inner.insert(version),
+    };
+    const results = await Promise.allSettled([
+      publishLayer(slow, "org/base", request(layer("base")), context),
+      publishLayer(
+        slow,
+        "org/base",
+        request(layer("base", 'permissions:\n  allow:\n    - "Bash(ls)"\n')),
+        context,
+      ),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(inner.versions("org/base")).toHaveLength(1);
+  });
+
+  it("reads each ref at most once per publish", async () => {
+    const inner = memoryStore();
+    await publishLayer(inner, "org/base", request(layer("base")), context);
+    await publishLayer(inner, "team/web", request(WEB_WITH_GATEWAY), context);
+    const reads = new Map<string, number>();
+    const counting: LayerStore = {
+      latest: (ref) => {
+        reads.set(ref, (reads.get(ref) ?? 0) + 1);
+        return inner.latest(ref);
+      },
+      refs: () => inner.refs(),
+      insert: (version) => inner.insert(version),
+    };
+    await publishLayer(
+      counting,
+      "org/base",
+      request(layer("base", 'permissions:\n  allow:\n    - "Bash(ls)"\n'), 1),
+      context,
+    );
+    expect(Math.max(...reads.values())).toBe(1);
+  });
+});

@@ -24,17 +24,45 @@ import {
 } from "./schemas.js";
 
 // The publish rules of docs/planning/18-registry-contract.md §2 (as amended), over any storage.
-// See docs/planning/19-publish-engine.md. The engine never serialises: the caller runs each
-// publish under its own lock or transaction.
+// See docs/planning/19-publish-engine.md. The engine never serialises: the caller must hold an
+// org-wide lock for the whole publish (in Postgres, a transaction holding an org-wide advisory
+// lock, or SERIALIZABLE isolation). A per-ref lock is not enough: publishing org/base (adding a
+// lock) and team/web (setting the locked path) at once touch different rows, and both would pass.
 
 /** Where published layers live: memory in the mock, Postgres in the control plane. */
 export interface LayerStore {
-  /** The latest version of `ref`, or undefined when it was never published. */
+  /**
+   * The latest version of `ref`, or undefined when it was never published. A publish reads each
+   * ref at most once (the engine memoises), so every read in one publish sees the same version.
+   */
   latest(ref: string): Promise<LayerVersion | undefined>;
-  /** Every published ref. */
+  /** Every published ref of the publishing org; read once per publish. */
   refs(): Promise<string[]>;
-  /** Store a new version; called at most once per publish, after every check passed. */
+  /**
+   * Store a new version. Called at most once per publish, last, only after every check passed,
+   * with `version` = the latest version read in this publish + 1; no read follows it, so
+   * read-your-writes is not needed. Must reject when `(ref, version)` already exists (a unique
+   * constraint in Postgres), so a missing lock can never store two versions with one number.
+   */
   insert(version: LayerVersion): Promise<void>;
+}
+
+/** Each ref read at most once, and refs() once, for the length of one publish. */
+function memoised(store: LayerStore): LayerStore {
+  const latest = new Map<string, Promise<LayerVersion | undefined>>();
+  let refs: Promise<string[]> | undefined;
+  return {
+    latest: (ref) => {
+      let read = latest.get(ref);
+      if (read === undefined) {
+        read = store.latest(ref);
+        latest.set(ref, read);
+      }
+      return read;
+    },
+    refs: () => (refs ??= store.refs()),
+    insert: (version) => store.insert(version),
+  };
 }
 
 export type PublishOutcome =
@@ -103,11 +131,12 @@ export async function publishLayer(
 }
 
 async function run(
-  store: LayerStore,
+  backing: LayerStore,
   ref: string,
   body: unknown,
   context: { subject: string; now: Date },
 ): Promise<PublishOutcome> {
+  const store = memoised(backing);
   if (!LayerRef.safeParse(ref).success) {
     if (/^(project|user)\//.test(ref)) {
       throw refuse(
@@ -413,7 +442,15 @@ export function memoryStore(): LayerStore & {
     latest: (ref) => Promise.resolve(layers.get(ref)?.at(-1)),
     refs: () => Promise.resolve([...layers.keys()]),
     insert: (version) => {
-      layers.set(version.ref, [...(layers.get(version.ref) ?? []), version]);
+      const existing = layers.get(version.ref) ?? [];
+      if (version.version !== existing.length + 1) {
+        return Promise.reject(
+          new Error(
+            `${version.ref} version ${version.version} cannot follow version ${existing.length}`,
+          ),
+        );
+      }
+      layers.set(version.ref, [...existing, version]);
       return Promise.resolve();
     },
     versions: (ref) => layers.get(ref) ?? [],
