@@ -1,7 +1,13 @@
+import { dirname } from "node:path";
 import type { Detection } from "@zzpersona/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { launch } from "../launch.js";
-import { createSession, removeSession, sessionPlugins } from "../session.js";
+import {
+  buildHash,
+  createSession,
+  removeSession,
+  sessionPlugins,
+} from "../session.js";
 
 // `zzpersona claude`: the shared launch path, plus the session folder that `zzpersona live` swaps
 // and the managed-settings hint. See docs/planning/06-cli-core-loop.md, section 4.
@@ -58,6 +64,12 @@ export async function claudeCommand(
             persona: selection.ref,
             source: selection.source,
             overlay: options.overlay,
+            harness: "claude-code",
+            ...(ctx.projectDir !== undefined && {
+              project: dirname(ctx.projectDir),
+            }),
+            startedAt: new Date().toISOString(),
+            buildHash: buildHash(build.output),
             snapshot: {
               mcp: build.result.ir.mcp,
               permissions: build.result.ir.permissions,

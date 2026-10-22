@@ -9,10 +9,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CompileOutput } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import {
+  buildHash,
   createSession,
   findOrphanSessions,
+  listSessions,
   removeSession,
   sessionPlugins,
 } from "./session.js";
@@ -91,5 +95,82 @@ describe("session folders", () => {
 
   it("finds nothing without a sessions folder", async () => {
     expect(await findOrphanSessions(home(), Date.now())).toEqual([]);
+  });
+});
+
+describe("session registry", () => {
+  it("reads an old launched.json as claude-code", async () => {
+    const dir = await createSession(
+      home(),
+      plugin("zzp-x"),
+      { persona: "x", source: "argument" },
+      process.pid,
+    );
+    const [info] = await listSessions(home());
+    expect(info!.dir).toBe(dir);
+    expect(info!.launched.harness).toBe("claude-code");
+  });
+
+  it("lists sessions with liveness", async () => {
+    const src = plugin("zzp-x");
+    const child = spawnSync(process.execPath, ["-e", "0"]);
+    const alive = await createSession(
+      home(),
+      src,
+      { persona: "a", source: "argument", startedAt: "2026-01-01T00:00:00Z" },
+      process.pid,
+    );
+    const dead = await createSession(
+      home(),
+      src,
+      { persona: "b", source: "argument", startedAt: "2026-01-02T00:00:00Z" },
+      child.pid,
+    );
+    mkdirSync(join(home(), "sessions/broken"), { recursive: true });
+    writeFileSync(join(home(), "sessions/broken/launched.json"), "{nope");
+    const list = await listSessions(home());
+    expect(list.map((i) => [i.dir, i.running])).toEqual([
+      [alive, true],
+      [dead, false],
+    ]);
+  });
+
+  it("creates a plugin-less session for Codex", async () => {
+    const dir = await createSession(
+      home(),
+      undefined,
+      { persona: "x", source: "argument", harness: "codex" },
+      process.pid,
+    );
+    expect(existsSync(sessionPlugins(dir))).toBe(false);
+    expect((await listSessions(home()))[0]!.launched.harness).toBe("codex");
+  });
+
+  it("returns nothing without a sessions folder", async () => {
+    expect(await listSessions(home())).toEqual([]);
+  });
+});
+
+describe("buildHash", () => {
+  const output = (content: string): CompileOutput => ({
+    files: {
+      "b.txt": { content },
+      "a.txt": { copyFrom: "skills/a", mode: 0o755 },
+    },
+    secretEnv: {},
+    report: { dropped: [], notes: [] } as never,
+  });
+
+  it("hashes the same build the same", () => {
+    const flipped: CompileOutput = {
+      ...output("one"),
+      files: Object.fromEntries(Object.entries(output("one").files).reverse()),
+    };
+    expect(buildHash(output("one"))).toBe(buildHash(flipped));
+    expect(buildHash(output("one"))).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("changes with a one-byte change", () => {
+    expect(buildHash(output("one"))).not.toBe(buildHash(output("onf")));
   });
 });
