@@ -251,10 +251,13 @@ describe("live switching", () => {
       id: "zzpersona:live-persona",
       scope: "session",
       text: [
-        "The persona for this session is now team/platform. Disregard the section headed",
-        '"## zzpersona persona: team/payments"; the instructions below replace it.',
+        "The persona for this session is now team/platform. Disregard the section headed exactly",
+        '"## zzpersona persona: team/payments" (the launch instructions), wherever it appears in this',
+        'prompt; the section headed "## zzpersona persona: team/platform (updated',
+        '2026-10-21T00:00:00.000Z)" below is current. Answers given earlier in this conversation may',
+        "be outdated.",
         "",
-        "## zzpersona persona: team/platform",
+        "## zzpersona persona: team/platform (updated 2026-10-21T00:00:00.000Z)",
         "",
         "You are running the platform persona.",
       ].join("\n"),
@@ -271,14 +274,28 @@ describe("live switching", () => {
       id: "zzpersona:live-persona",
       scope: "session",
       text: [
-        "The instructions for this session's persona team/payments were updated. Disregard the section headed",
-        '"## zzpersona persona: team/payments"; the instructions below replace it.',
+        "The instructions for this session's persona team/payments were updated. Disregard the section headed exactly",
+        '"## zzpersona persona: team/payments" (the launch instructions), wherever it appears in this',
+        'prompt; the section headed "## zzpersona persona: team/payments (updated',
+        '2026-10-21T00:00:00.000Z)" below is current. Answers given earlier in this conversation may',
+        "be outdated.",
         "",
-        "## zzpersona persona: team/payments",
+        "## zzpersona persona: team/payments (updated 2026-10-21T00:00:00.000Z)",
         "",
         "You are running the edited payments persona.",
       ].join("\n"),
     });
+  });
+
+  it("adds the updated heading when the instructions have none", () => {
+    const text = liveSection(
+      live({ instructions: "Bare instructions.\n" }),
+    ).text;
+    expect(
+      text.endsWith(
+        "## zzpersona persona: team/platform (updated 2026-10-21T00:00:00.000Z)\n\nBare instructions.",
+      ),
+    ).toBe(true);
   });
 
   it("explains a live switch", () => {
@@ -332,8 +349,12 @@ describe("live switching", () => {
     expect(bandText(launched, folder, live({ held: [] }))).toBe(
       "persona team/platform · live",
     );
+    expect(
+      bandText(launched, folder, live({ persona: "team/payments", held: [] })),
+    ).toBe("persona team/payments · switch");
+    // A refresh of the launched persona that changed what only a relaunch applies.
     expect(bandText(launched, folder, live({ persona: "team/payments" }))).toBe(
-      "persona team/payments · switch",
+      "persona team/payments · switch · relaunch for MCP and permissions",
     );
   });
 
