@@ -135,3 +135,30 @@ version.
 ## Open questions
 
 1. Whether `zzpersona mod install` should offer `daemon install` (one setup step instead of two).
+
+## Amendments from implementation (2026-10-22)
+
+- **The lock is linked into place:** the starter writes its pid to a temp file and `link()`s it to
+  `daemon.lock`, so the lock is never seen empty; an empty lock is a leftover.
+- **The live-socket check comes first** (replaces the `EADDRINUSE` check in §3): before it writes
+  anything, the daemon connects to the socket for up to 200 ms; one that answers means "already
+  running". It does not wait for a bind to fail.
+- **A launchd reinstall waits for the old job:** `bootout` returns before the job is gone and a
+  `bootstrap` too soon fails, so `install` polls `launchctl print` (up to 5 s) until the job is
+  gone, then bootstraps.
+- **The service only for the home it serves:** `daemon start` and auto-start use the service only
+  when its home (its `ZZPERSONA_HOME` resolved, else `~/.zzpersona`) is this home; homes are
+  compared resolved. Another home's daemon would never answer on this home's socket.
+- **`daemon start` loads an unloaded service:** a service file that is installed but not loaded (a
+  failed install, a manual `bootout`) is loaded rather than kickstarted, which would fail.
+- **No HOME, no service manager:** without `HOME` there is nowhere for the service file;
+  `install` and `uninstall` refuse with `service-unsupported`.
+- **Linux logs:** the unit sets no output files, so the daemon's output goes to the journal
+  (`journalctl --user -u zzpersona-daemon`), not `daemon.log`.
+- **Auto-start's 1 s** bounds the whole step: the probe, the start and the wait together.
+- **E2e** (`ZZP_E2E_SERVICE=1`, macOS 26.6.2, Node 26.12.0): the built binary on a temp PATH as
+  `zzpersona`, a temp `HOME` and `ZZPERSONA_HOME`, label `zzpersona.daemon.e2e-<random>`. Install
+  answered and `daemon status` showed the service installed and managing the daemon; after
+  `kill -9`, launchd brought a new pid back within the 15 s bound (the whole test took 15 s,
+  launchd's 10 s respawn throttle included); `daemon stop` held for 3 s; uninstall removed the
+  plist and `launchctl print` no longer found the job. Passed on the first run.

@@ -35,6 +35,7 @@ overrides them.
 13. `docs/planning/13-capability-matrix.md` — every adapter declares every field with reasons; `zzpersona capabilities` and the generated `docs/capabilities.md`
 14. `docs/planning/14-daemon.md` — the daemon, first slice: `zzpersona daemon`, a socket API, the session registry, live sessions refreshed on persona edits, `zzpersona status`
 15. `docs/planning/15-mod-transport.md` — the mod talks to the daemon over its socket (`POST /run`), CLI fallback; `/persona` works under policy that blocks `process.run`
+16. `docs/planning/16-daemon-service.md` — the daemon as a login service (`zzpersona daemon install|uninstall`, launchd / systemd), auto-start in `claude` and `codex`, one daemon per home under a start race
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
@@ -59,7 +60,7 @@ its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec)
 path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
 built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-local`,
 `secrets`, `executor` and `zzpersona resolve|compile|claude` (opt-in `ZZP_E2E=1` runs the built
-binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`), spec 12 (the Codex adapter, `zzpersona codex`), spec 13 (the capability matrix: `zzpersona capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `zzpersona daemon`, `zzpersona status`, live sessions refreshed on persona edits) and spec 15 (mod transport: `/persona` through the daemon) are built; next: the daemon's later slices (service install) or `switch --harness all`. Picking the name runs
+binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`), spec 12 (the Codex adapter, `zzpersona codex`), spec 13 (the capability matrix: `zzpersona capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `zzpersona daemon`, `zzpersona status`, live sessions refreshed on persona edits), spec 15 (mod transport: `/persona` through the daemon) and spec 16 (the daemon service: `zzpersona daemon install|uninstall`, auto-start in `claude`/`codex`, the race-safe lock) are built; next: `switch --harness all`. Picking the name runs
 in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)

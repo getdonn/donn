@@ -101,6 +101,19 @@ With the daemon running, `/persona` in the Claude Code mod goes through it too: 
 where policy stops the mod from running programs. Without the daemon the mod runs `zzpersona` as
 before.
 
+To keep the daemon running without starting it yourself, install it as a login service (a launchd
+agent on macOS, a systemd user unit on Linux; it restarts after a crash):
+
+```sh
+zzpersona daemon install     # run again after a CLI update or a PATH change
+zzpersona daemon uninstall
+```
+
+`zzpersona claude` and `zzpersona codex` also start the daemon when it is not running (through the
+service when it is installed), waiting at most a second; the launch goes ahead either way. To turn
+that off, set `daemon: { autoStart: false }` in `config.yaml` (in `~/.zzpersona`, or `ZZPERSONA_HOME`), or
+`ZZPERSONA_NO_DAEMON=1` for one run.
+
 ## What each harness can carry
 
 `zzpersona capabilities` shows, per harness, which persona fields are carried natively,
