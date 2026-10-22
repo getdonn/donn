@@ -1,5 +1,13 @@
 # @zzpersona/mod-claude-code
 
+## 0.2.3
+
+### Patch Changes
+
+- The mod loads again on Claude Code 2.1.307, whose validator refuses a mod that uses a noun of `$`
+  as a value: the per-turn `live.json` read no longer feature-checks `$.fs` and relies on its
+  try/catch instead (same behaviour on an older Claude Code without `$.fs`).
+
 ## 0.2.2
 
 ### Patch Changes
