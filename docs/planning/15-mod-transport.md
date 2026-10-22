@@ -100,4 +100,9 @@ Auto-start and service install; the per-turn `live.json` read; Codex; Windows.
 - The mod no longer feature-checks `$`. Claude Code 2.1.307's validator rejects
   `typeof $.fs?.read` ("$ is always spelled $.noun.event(...)"), so a missing API is handled by
   try/catch. This also fixes the released 0.2.2 mod not loading on 2.1.307.
-- Smoke run: (pending, recorded by the controller)
+- Smoke run (Claude Code 2.1.304, herdr, scratch home and daemon, the dev mod plus a throwaway mod
+  whose `process.run` hook returns `{ deny }`, standing in for managed policy): the band drew;
+  `/persona list` answered through the daemon (its log shows `run ["list","--json"]` and the mod's
+  start-up `switch` and `live --show`); `/persona use team/web` switched live through `/run` and the
+  band showed `persona team/web · live`; with the daemon stopped, `/persona list` printed the
+  unavailable copy. Found: the copy shows doubled, `zzpersona: zzpersona unavailable: …`.
