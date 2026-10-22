@@ -63,8 +63,9 @@ describe("runCli", () => {
     expect(await reason(new Error("the command timed out after 5000 ms"))).toBe(
       "timed out",
     );
+    // No daemon here either: the refusal says what fixes it (spec 15 §2).
     expect(await reason(new Error("Acme policy: no process.run"))).toBe(
-      "blocked: Acme policy: no process.run",
+      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
     );
   });
 

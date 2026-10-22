@@ -3,6 +3,7 @@ import { runCli, type CliResult } from "./cli.js";
 import {
   bandText,
   commandText,
+  failureText,
   launchedFrom,
   liveSection,
   liveText,
@@ -149,7 +150,8 @@ async function onPersona($: Mod$, e: { args?: string }): Promise<unknown> {
   if (command.form === "show") here = toHere(result);
   // A folder with no persona is an answer for `/persona`, not an error.
   const isAnswer = command.form === "show" && here.kind === "none";
-  if (!result.ok && !isAnswer) return { text: `zzpersona: ${result.reason}` };
+  if (!result.ok && !isAnswer)
+    return { text: failureText(result.reason, result.code) };
   if (command.form !== "show") await refresh($);
   const json = result.ok ? result.json : {};
   return { text: commandText(command.form, json, launched, here) };
@@ -164,9 +166,10 @@ async function applyLive(
 ): Promise<string> {
   const result = await runCli($, ["live", persona, "--session", session!], cwd);
   if (!result.ok)
-    return [...(saved ? [saved] : []), `zzpersona: ${result.reason}`].join(
-      "\n",
-    );
+    return [
+      ...(saved ? [saved] : []),
+      failureText(result.reason, result.code),
+    ].join("\n");
   live = asLive(result.json);
   $.ui.invalidate("ui.render");
   $.ui.invalidate("prompt.section");
@@ -201,17 +204,12 @@ async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
  */
 async function onSubmit($: Mod$, e: unknown, next: Next): Promise<unknown> {
   if (session !== undefined) {
-    // An older Claude Code has no $.fs: the read throws and the session keeps what it has. No
-    // feature check: Claude Code 2.1.307 refuses a mod that uses a noun of $ as a value.
-    let text: string | undefined;
-    try {
-      text = await $.fs.read(`${session}/live.json`);
-    } catch {
-      text = undefined;
-    }
+    // An older Claude Code has no $.fs: the call throws and the session keeps what it has. No
+    // typeof guard: the engine's checks want $ spelled $.noun.event(...).
     let read: LiveState | undefined;
     try {
-      read = text === undefined ? undefined : asLive(JSON.parse(text));
+      const text = await $.fs.read(`${session}/live.json`);
+      read = asLive(JSON.parse(text));
     } catch {
       read = undefined;
     }
