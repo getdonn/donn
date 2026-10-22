@@ -6,6 +6,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { connect } from "node:net";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { isAlive, nodeProbe } from "@zzpersona/executor";
@@ -53,27 +54,82 @@ export interface Daemon {
   closed: Promise<void>;
 }
 
-/** Take `daemon.lock` (it holds the owner's pid); a lock whose owner is gone is replaced. */
-async function acquireLock(lock: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const file = await open(lock, "wx", 0o600);
-      await file.writeFile(`${process.pid}\n`);
-      await file.close();
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const owner = Number.parseInt(
-        await readFile(lock, "utf8").catch(() => ""),
-        10,
-      );
-      if ((owner > 0 && isAlive(owner)) || attempt > 0) {
-        throw new CliError("daemon-running", "already running", { lock });
-      }
-      await rm(lock, { force: true });
-    }
+/** A takeover file older than this was left by a starter that crashed holding it. */
+const TAKEOVER_STALE_MS = 10_000;
+
+const running = (lock: string) =>
+  new CliError("daemon-running", "already running", { lock });
+
+const exists = (error: unknown) =>
+  (error as NodeJS.ErrnoException).code === "EEXIST";
+
+/** Create `lock` holding our pid; false when it already exists. */
+async function createLock(lock: string): Promise<boolean> {
+  try {
+    const file = await open(lock, "wx", 0o600);
+    await file.writeFile(`${process.pid}\n`);
+    await file.close();
+    return true;
+  } catch (error) {
+    if (exists(error)) return false;
+    throw error;
   }
 }
+
+/**
+ * Take `daemon.lock` (it holds the owner's pid). A lock whose owner is gone, or an empty one, is
+ * replaced under `daemon.lock.takeover`, so that of starters racing for it exactly one wins.
+ * See docs/planning/16-daemon-service.md §3.
+ */
+export async function acquireLock(
+  lock: string,
+  now: () => number = Date.now,
+): Promise<void> {
+  if (await createLock(lock)) return;
+  const seen = await readFile(lock, "utf8").catch(() => "");
+  const owner = Number.parseInt(seen, 10);
+  if (owner > 0 && isAlive(owner)) throw running(lock);
+  const takeover = `${lock}.takeover`;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await (await open(takeover, "wx", 0o600)).close();
+      break;
+    } catch (error) {
+      if (!exists(error)) throw error;
+      const since = await stat(takeover).then(
+        (s) => now() - s.mtimeMs,
+        () => 0,
+      );
+      if (attempt > 0 || since <= TAKEOVER_STALE_MS) throw running(lock);
+      await rm(takeover, { force: true });
+    }
+  }
+  try {
+    // Another starter may have replaced the lock since we read it: only ours to replace if not.
+    const again = await readFile(lock, "utf8").catch(() => undefined);
+    if (again !== seen) throw running(lock);
+    await rm(lock, { force: true });
+    if (!(await createLock(lock))) throw running(lock);
+  } finally {
+    await rm(takeover, { force: true });
+  }
+}
+
+/** How long a connect to an existing socket may take before it counts as dead. */
+const CONNECT_MS = 200;
+
+/** Whether something accepts connections on the socket. */
+const answers = (sock: string) =>
+  new Promise<boolean>((resolve) => {
+    const socket = connect(sock);
+    const done = (alive: boolean) => {
+      socket.destroy();
+      resolve(alive);
+    };
+    socket.setTimeout(CONNECT_MS, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+  });
 
 const sameToken = (header: string | undefined, token: string) => {
   const expected = Buffer.from(`Bearer ${token}`);
@@ -507,6 +563,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       markClosed();
     })());
 
+  // A daemon whose lock was removed by hand still answers: leave it, and release only our lock.
+  if (await answers(paths.sock)) {
+    clearInterval(poll);
+    await rm(paths.lock, { force: true });
+    throw running(paths.lock);
+  }
   const fallback = paths.sock !== join(paths.dir, "sock");
   try {
     // A long home's socket lives in a folder that must be the user's alone.
