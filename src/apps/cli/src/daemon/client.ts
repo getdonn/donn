@@ -29,6 +29,8 @@ export interface DaemonStatus {
   version: string;
   pid: number;
   startedAt: string;
+  /** Whether this daemon runs under the login service (`ZZPERSONA_SERVICE=1`). */
+  service: boolean;
   watching: string[];
   sessions: SessionStatus[];
 }

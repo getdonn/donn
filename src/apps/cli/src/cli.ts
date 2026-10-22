@@ -8,11 +8,13 @@ import { statusCommand } from "./commands/status.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
 import {
+  daemonInstall,
   daemonRefresh,
   daemonRun,
   daemonStart,
   daemonStatus,
   daemonStop,
+  daemonUninstall,
 } from "./commands/daemon.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -23,6 +25,7 @@ import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
+import type { ServiceManager } from "./daemon/service.js";
 import { CliError, report } from "./errors.js";
 
 // The zzpersona command line. Everything goes through createCli(io) so tests run commands
@@ -42,6 +45,8 @@ export interface CliIo {
   now?: () => number;
   /** Injected in tests; defaults to spawning `zzpersona daemon run` detached. */
   spawnDaemon?: (home: string) => Promise<void>;
+  /** Injected in tests; defaults to the platform's service manager (launchd, systemd). */
+  service?: ServiceManager;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -354,6 +359,23 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print the daemon's status as JSON")
         .action((options) =>
           handle(options.json, () => daemonStatus(io, options)),
+        );
+
+      daemon
+        .command("install")
+        .description(
+          "Install the daemon as a login service (launchd, systemd) and start it",
+        )
+        .option("--json", "print { installed, path, command, pid } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonInstall(io, options)),
+        );
+      daemon
+        .command("uninstall")
+        .description("Stop the login service and remove its file")
+        .option("--json", "print { installed, removed, path } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonUninstall(io, options)),
         );
 
       daemon
