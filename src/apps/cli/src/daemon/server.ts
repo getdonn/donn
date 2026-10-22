@@ -263,6 +263,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     version: options.version,
     pid: process.pid,
     startedAt,
+    service: options.env.ZZPERSONA_SERVICE === "1",
     watching: watcher?.paths ?? [],
     sessions: (await listSessions(options.home))
       .filter((s) => s.running)

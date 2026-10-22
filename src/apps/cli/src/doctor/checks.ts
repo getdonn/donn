@@ -23,6 +23,7 @@ import {
   versionMismatch,
 } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
+import { serviceFor } from "../daemon/service.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
 import { missingHint, shellHint, shellLookup } from "../shell.js";
@@ -467,7 +468,20 @@ export async function runChecks(
       CLI_ON_PATH_FIX,
     );
 
-  // daemon: optional; running at the version of this CLI, or not at all
+  // daemon: optional; running at the version of this CLI, or not at all. An installed service
+  // must name a zzpersona that exists and be loaded. A service for another home is not this
+  // home's concern: `daemon install` here would take it over.
+  const service = await serviceFor(io, home);
+  const serviceCommand = service?.installed.command;
+  const reinstall = "zzpersona daemon install";
+  let serviceProblem: string | undefined;
+  if (service && serviceCommand !== undefined) {
+    if (!existsSync(serviceCommand)) {
+      serviceProblem = `the daemon service runs ${serviceCommand}, which no longer exists`;
+    } else if (!(await service.manager.loaded())) {
+      serviceProblem = `the daemon service is installed but not loaded (${service.manager.path})`;
+    }
+  }
   let refused: string | undefined;
   const daemon = await connectDaemon(home).catch((error: unknown) => {
     if (error instanceof CliError && error.code === "daemon-unauthorized") {
@@ -486,12 +500,19 @@ export async function runChecks(
   } else if (daemon) {
     const status = daemon.probed;
     if (status.version !== cliVersion()) {
-      add(
-        "daemon",
-        "warn",
-        versionMismatch(status.version, cliVersion()),
-        "zzpersona daemon stop && zzpersona daemon start",
-      );
+      const mismatch = versionMismatch(status.version, cliVersion());
+      if (serviceCommand !== undefined) {
+        add("daemon", "warn", mismatch.replace(/;.*$/, ""), reinstall);
+      } else {
+        add(
+          "daemon",
+          "warn",
+          mismatch,
+          "zzpersona daemon stop && zzpersona daemon start",
+        );
+      }
+    } else if (serviceProblem !== undefined) {
+      add("daemon", "warn", serviceProblem, reinstall);
     } else {
       add(
         "daemon",
@@ -520,6 +541,8 @@ export async function runChecks(
         `the daemon's socket or pid file is stale in ${paths.dir}`,
         "zzpersona daemon start",
       );
+    } else if (serviceProblem !== undefined) {
+      add("daemon", "warn", serviceProblem, reinstall);
     } else {
       add("daemon", "ok", "daemon not running (optional)");
     }

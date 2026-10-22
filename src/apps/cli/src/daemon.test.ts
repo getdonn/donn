@@ -60,6 +60,7 @@ describe("the daemon", () => {
       version: "9.9.9",
       pid: process.pid,
       startedAt: daemon.startedAt,
+      service: false,
       watching: expect.arrayContaining([join(homeIn(), "sessions")]),
       sessions: [],
     });
