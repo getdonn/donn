@@ -136,7 +136,12 @@ export interface ConnectOptions {
   warn?: (message: string) => void;
   /** The user the socket must belong to; this process's. */
   uid?: number;
+  /** Reads the token file; injected in tests. */
+  readToken?: () => Promise<string | undefined>;
 }
+
+const REFUSED =
+  "daemon: it refused this CLI's token; zzpersona daemon stop && zzpersona daemon start";
 
 /** A client of the home's daemon, or undefined when no socket answers within 500 ms. */
 export async function connectDaemon(
@@ -149,22 +154,34 @@ export async function connectDaemon(
     const socket = await daemonSocket(home);
     const stats = await lstat(socket).catch(() => undefined);
     if (!ownSocket(stats, options.uid)) return { socket, token: undefined };
-    const token = await readFile(daemonPaths(home).token, "utf8").catch(
-      () => undefined,
-    );
+    const token = await (
+      options.readToken ??
+      (() => readFile(daemonPaths(home).token, "utf8").catch(() => undefined))
+    )();
     return { socket, token: token?.trim() };
   };
   const call = async (method: string, path: string, timeoutMs: number) => {
-    const { socket, token } = await target();
-    if (token === undefined) {
-      throw new CliError("daemon", "daemon: not running");
+    // A refusal is retried once with the token read again: the daemon may have restarted between
+    // the read and the request.
+    for (let attempt = 0; ; attempt++) {
+      const { socket, token } = await target();
+      if (token === undefined) {
+        throw new CliError("daemon", "daemon: not running");
+      }
+      const res = await daemonRequest(socket, token, method, path, timeoutMs);
+      if (res.status !== 401) return ok(res);
+      if (attempt > 0) throw new CliError("daemon-unauthorized", REFUSED);
     }
-    return ok(await daemonRequest(socket, token, method, path, timeoutMs));
   };
   const probe = await target();
   if (probe.token === undefined) return undefined;
+  // Not answering means not running; refusing the token is a daemon that runs.
   const first = await call("GET", "/status", PROBE_TIMEOUT_MS).catch(
-    () => undefined,
+    (error: unknown) => {
+      if (error instanceof CliError && error.code === "daemon-unauthorized")
+        throw error;
+      return undefined;
+    },
   );
   if (first === undefined) return undefined;
   const probed = first as DaemonStatus;

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -441,6 +442,29 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     expect((await status(daemon)).sessions).toEqual([]);
   });
 
+  it("lets go of a dead session whose folder cannot be removed", async () => {
+    const dir = await launch("project/persona", { project: s.repo });
+    const daemon = await start();
+    const stream = await follow(daemon);
+    await until(() => logLines(`added ${dir}`).length > 0, "the session added");
+    const sessions = join(s.home, "sessions");
+    chmodSync(sessions, 0o555);
+    try {
+      children.at(-1)!.kill("SIGKILL");
+      await waitEvent(stream, "session.ended", dir);
+      // pollMs is 50: a session still tracked would recompile every 50 ms.
+      const cycles = () =>
+        logLines(`skip `).length + logLines(`refreshed `).length;
+      const before = cycles();
+      await new Promise((r) => setTimeout(r, 500));
+      expect(cycles() - before).toBeLessThanOrEqual(1);
+      expect(logLines(`ended ${dir}`)).toHaveLength(1);
+      expect((await status(daemon)).sessions).toEqual([]);
+    } finally {
+      chmodSync(sessions, 0o755);
+    }
+  });
+
   it("refreshes once for a burst of saves", async () => {
     const dir = await launch("project/persona", { project: s.repo });
     const daemon = await start();
@@ -643,6 +667,11 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     expect(liveOf(dir).persona).toBe("org/base");
     expect(readdirSync(join(dir, "plugins"))).toEqual(["zzp-org--base"]);
     expect(logLines(`skip ${dir} project/persona: superseded`)).toHaveLength(1);
+    // A follow-up check compiles the persona the user chose.
+    await until(
+      () => logLines(`skip ${dir} org/base: current`).length > 0,
+      "a follow-up check of org/base",
+    );
   });
 
   it("leaves no watcher open when it stops mid-refresh", async () => {

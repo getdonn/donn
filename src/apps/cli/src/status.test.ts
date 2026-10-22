@@ -133,6 +133,25 @@ describe("zzpersona status", () => {
     expect((await client!.status()).version).toBe(cliVersion());
   });
 
+  it("retries once with a token re-read after a refusal", async () => {
+    const daemon = await start();
+    let reads = 0;
+    const client = await connectDaemon(home, {
+      // The first read is a token from before a restart.
+      readToken: async () => (reads++ === 0 ? "stale-token" : daemon.token),
+    });
+    expect(client?.probed.pid).toBe(process.pid);
+    expect(reads).toBe(2);
+  });
+
+  it("reports a refused token, not a stopped daemon", async () => {
+    await start();
+    writeFileSync(join(home, "daemon/token"), "not-the-token");
+    const r = await zz(["status", "--json"], { cwd: root, home });
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error.code).toBe("daemon-unauthorized");
+  });
+
   it("warns once on a version mismatch", async () => {
     await start("0.0.1");
     const r = await zz(["status"], { cwd: root, home });
