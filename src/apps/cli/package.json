@@ -21,10 +21,12 @@
     "@zzpersona/adapter-sdk": "workspace:*",
     "@zzpersona/executor": "workspace:*",
     "@zzpersona/mod-claude-code": "workspace:*",
+    "@zzpersona/registry-api": "workspace:*",
     "@zzpersona/resolver": "workspace:*",
     "@zzpersona/secrets": "workspace:*",
     "@zzpersona/spec": "workspace:*",
     "@zzpersona/store-local": "workspace:*",
+    "@zzpersona/store-remote": "workspace:*",
     "commander": "^15.0.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"

@@ -3,6 +3,7 @@ import type { CliIo } from "../cli.js";
 import { createContext, resolvePersona, type Context } from "../context.js";
 import { CliError } from "../errors.js";
 import { findAdapter } from "../plugins.js";
+import { builtFrom, freshen } from "../registry.js";
 import { selectPersona, type Selection } from "../select.js";
 import { projectKey, readState, updateState } from "../state.js";
 import { harnessReport, reportLines } from "../switch-report.js";
@@ -35,6 +36,7 @@ export async function switchCommand(
   persona: string | undefined,
   options: SwitchOptions,
 ): Promise<number> {
+  if (!options.json) await freshen(io, { budgetMs: 1000 });
   const ctx = await createContext(io);
   // A typo in --harness is refused before anything is saved.
   if (options.harness !== undefined)
@@ -138,7 +140,7 @@ export async function switchCommand(
       { persona: selection.ref },
     );
   }
-  await resolvePersona(ctx, selection, true);
+  const resolved = await resolvePersona(ctx, selection, true);
   await updateState(ctx.home, (state) => {
     if (target.scope === "project") state.projects[target.key] = selection.ref;
     else state.default = selection.ref;
@@ -151,6 +153,7 @@ export async function switchCommand(
       scope: target.scope,
       persona: selection.ref,
       ...(target.scope === "project" && { project: target.key }),
+      builtFrom: builtFrom(ctx.store, resolved.ir.layers),
     },
     selection,
     target.scope === "project",

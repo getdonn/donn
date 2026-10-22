@@ -10,6 +10,7 @@ export interface CompileOptions {
   dryRun?: boolean;
   json?: boolean;
   overlay: boolean;
+  local?: boolean;
 }
 
 export async function compileCommand(
@@ -17,7 +18,7 @@ export async function compileCommand(
   persona: string | undefined,
   options: CompileOptions,
 ): Promise<number> {
-  const ctx = await createContext(io);
+  const ctx = await createContext(io, { local: options.local === true });
   const selection = await selectPersona(persona, ctx);
   const build = await prepareBuild(ctx, io, {
     selection,
