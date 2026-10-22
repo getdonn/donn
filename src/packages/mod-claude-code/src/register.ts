@@ -43,10 +43,20 @@ let live: LiveState | undefined;
 
 const NO_SESSION = "live switching needs a session started by zzpersona claude";
 
-const asLive = (json: unknown): LiveState | undefined =>
-  typeof json === "object" && json !== null && "persona" in json
+const HELD: readonly unknown[] = ["mcp", "permissions", "settings"];
+
+/** A live state with every field the mod uses well formed; anything else counts as none. */
+function asLive(json: unknown): LiveState | undefined {
+  if (typeof json !== "object" || json === null) return undefined;
+  const s = json as Partial<Record<keyof LiveState, unknown>>;
+  const strings = [s.persona, s.launched, s.instructions, s.appliedAt];
+  return strings.every((value) => typeof value === "string") &&
+    Array.isArray(s.held) &&
+    s.held.every((part) => HELD.includes(part)) &&
+    typeof s.stricter === "boolean"
     ? (json as LiveState)
     : undefined;
+}
 
 /** What this folder selects, asked once at start and again after a /persona command. */
 async function refresh($: Mod$): Promise<void> {
@@ -198,7 +208,8 @@ async function onSubmit($: Mod$, e: unknown, next: Next): Promise<unknown> {
     } catch {
       read = undefined;
     }
-    if (read && read.appliedAt !== live?.appliedAt) {
+    // Only a newer state: a read racing a /persona use must not roll it back.
+    if (read && read.appliedAt > (live?.appliedAt ?? "")) {
       live = read;
       $.ui.invalidate("prompt.section");
       $.ui.invalidate("ui.render");

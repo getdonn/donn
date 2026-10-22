@@ -421,6 +421,67 @@ describe("live switching", () => {
     expect(e.invalidated).toEqual([]);
   });
 
+  it("ignores a live.json missing the fields the mod uses", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await e.call("prompt.compose", {}, COMPOSED);
+    const submitted = { text: "hi", wait: false, origin: { kind: "user" } };
+    const broken = [
+      { persona: "team/platform" },
+      { ...state("team/platform"), instructions: 42 },
+      { ...state("team/platform"), held: "mcp" },
+      { ...state("team/platform"), held: ["mcp", "bogus"] },
+      { ...state("team/platform"), stricter: "no" },
+      { ...state("team/platform"), launched: undefined },
+    ];
+    e.invalidated.length = 0;
+    for (const value of broken) {
+      e.files.set(`${SESSION}/live.json`, JSON.stringify(value));
+      expect(await e.call("prompt.submit", submitted, "ENTERED")).toBe(
+        "ENTERED",
+      );
+    }
+    expect(e.invalidated).toEqual([]);
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
+    // A well-formed file still gets adopted after the broken ones.
+    e.files.set(`${SESSION}/live.json`, JSON.stringify(state("team/platform")));
+    await e.call("prompt.submit", submitted, "ENTERED");
+    expect(await sectionText(e, "env_info_simple")).toContain(
+      "Be team/platform.",
+    );
+  });
+
+  it("never rolls back to an older live.json", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await e.call("prompt.compose", {}, COMPOSED);
+    await e.call("command.run", {
+      command: "persona",
+      args: "use team/platform",
+    });
+    e.files.set(
+      `${SESSION}/live.json`,
+      JSON.stringify({
+        ...state("team/payments"),
+        appliedAt: "2026-10-20T23:59:59.000Z",
+      }),
+    );
+    e.invalidated.length = 0;
+    await e.call("prompt.submit", { text: "hi" }, "ENTERED");
+    expect(e.invalidated).toEqual([]);
+    expect(await sectionText(e, "env_info_simple")).toContain(
+      "Be team/platform.",
+    );
+  });
+
   it("reads no live.json without a session folder", async () => {
     const e = engine(LAUNCHED, () => FOLDER);
     await e.call("session.start");
