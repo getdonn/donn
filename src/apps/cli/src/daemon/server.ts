@@ -1,6 +1,15 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, open, readFile, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  link,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -63,16 +72,21 @@ const running = (lock: string) =>
 const exists = (error: unknown) =>
   (error as NodeJS.ErrnoException).code === "EEXIST";
 
-/** Create `lock` holding our pid; false when it already exists. */
+/**
+ * Create `lock` holding our pid; false when it already exists. The pid is written to a temp file
+ * first and linked into place, so the lock is never seen empty: an empty one is a leftover.
+ */
 async function createLock(lock: string): Promise<boolean> {
+  const temp = `${lock}.${process.pid}.${randomBytes(6).toString("hex")}`;
   try {
-    const file = await open(lock, "wx", 0o600);
-    await file.writeFile(`${process.pid}\n`);
-    await file.close();
+    await writeFile(temp, `${process.pid}\n`, { flag: "wx", mode: 0o600 });
+    await link(temp, lock);
     return true;
   } catch (error) {
     if (exists(error)) return false;
     throw error;
+  } finally {
+    await rm(temp, { force: true });
   }
 }
 

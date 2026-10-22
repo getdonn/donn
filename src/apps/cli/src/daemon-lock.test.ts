@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   utimesSync,
@@ -51,7 +52,43 @@ describe("the daemon lock", () => {
       19,
     );
     expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
-    expect(existsSync(`${lock}.takeover`)).toBe(false);
+    // No takeover file and no temp file left behind, by the winner or the nineteen.
+    expect(readdirSync(root)).toEqual(["daemon.lock"]);
+  });
+
+  it("is never seen empty while being created", async () => {
+    const lock = join(root, "daemon.lock");
+    const seen = new Set<string>();
+    let done = false;
+    const acquired = acquireLock(lock).finally(() => (done = true));
+    while (!done) {
+      try {
+        seen.add(readFileSync(lock, "utf8"));
+      } catch {
+        // Not there yet.
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await acquired;
+    expect([...seen].filter((text) => text !== `${process.pid}\n`)).toEqual([]);
+  });
+
+  it("leaves no temp file when it fails", async () => {
+    const lock = join(root, "daemon.lock");
+    writeFileSync(lock, `${process.pid}\n`);
+    await expect(acquireLock(lock)).rejects.toMatchObject({
+      code: "daemon-running",
+    });
+    const dead = `${deadPid()}\n`;
+    writeFileSync(`${lock}.takeover`, "");
+    writeFileSync(lock, dead);
+    await expect(acquireLock(lock)).rejects.toMatchObject({
+      code: "daemon-running",
+    });
+    expect(readdirSync(root).sort()).toEqual([
+      "daemon.lock",
+      "daemon.lock.takeover",
+    ]);
   });
 
   it("an empty lock is stale", async () => {
