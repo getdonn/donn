@@ -261,3 +261,9 @@ OIDC and RBAC (C); the real server, Postgres and audit (B); yanking or deleting 
 ## Open questions
 
 None.
+
+## Note (2026-10-22)
+
+The §2 publish rules now live in `publishLayer` (`@zzpersona/registry-api`, spec 19,
+`19-publish-engine.md`); the mock is an in-memory `LayerStore` on it, and the control plane will be
+a Postgres one. The wire contract above is unchanged.

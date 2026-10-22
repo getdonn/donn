@@ -249,6 +249,12 @@ cwd walk-up finds .hatrack/persona.yaml → compare to state.current → nudge i
 
 ## Control plane
 
+> 2026-10-22: the publish rules live in `@zzpersona/registry-api` as `publishLayer` over a
+> `LayerStore` (spec 19, `19-publish-engine.md`). The mock and the control plane are each a store
+> plus HTTP; the server runs the engine in a transaction holding an org-wide lock. Until a
+> name and a GitHub org exist, the private repo consumes this one as a git submodule pinned to a
+> release tag, through package `exports` only.
+
 - **API:** REST + JSON; OpenAPI published; the OSS `store-remote` is the only client the CLI needs.
 - **Tenancy:** single-tenant per deployment in v1 (self-hosted). Multi-tenant SaaS is a later
   decision, not an architectural assumption — keep `org_id` on every row from day one anyway.

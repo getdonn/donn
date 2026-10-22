@@ -101,3 +101,17 @@ format from spec 18.
 ## Open questions
 
 None.
+
+## Amendments from implementation (2026-10-22)
+
+- **`lock-violation`:** the problem's `ref` stays the layer being published, as in spec 18's mock,
+  not the locking layer as §3 first said (changing it would change the wire meaning, a non-goal).
+  The kit pins `ref` (the published layer) and `path` (the locked path); the message is the
+  server's own and names the locking layer in the mock.
+- **`memoryStore()`** also has a synchronous `summaries()`, for the mock's `layers()`; the mock runs
+  publishes one at a time through a promise queue.
+- **A request-schema issue inside `files[n]`** carries that file's `path`, so `Y Q==` (refused by
+  the schema before the canonical-base64 check) still names the file.
+- **Already held after the engine layer:** malformed refs, unknown routes, non-object bodies and the
+  concurrent publish passed once the mock queued publishes; only strict base64 and a malformed `%`
+  in `{ref}` needed changes.
