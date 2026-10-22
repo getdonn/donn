@@ -124,7 +124,19 @@ async function run(
     const issues = parsed.error.issues
       .map((i) => `${i.path.join(".")}: ${i.message}`)
       .join("; ");
-    throw refuse(422, "invalid", `request body: ${issues}`);
+    // An issue inside files[n] names that file, so the publisher knows which one.
+    const at = parsed.error.issues.find(
+      (i) => i.path[0] === "files" && typeof i.path[1] === "number",
+    )?.path[1] as number | undefined;
+    const path = (body as { files?: { path?: unknown }[] } | null)?.files?.[
+      at ?? -1
+    ]?.path;
+    throw refuse(
+      422,
+      "invalid",
+      `request body: ${issues}`,
+      typeof path === "string" ? { path } : {},
+    );
   }
   const request = parsed.data;
   const doc = checkBundle(ref, request);
@@ -328,6 +340,15 @@ function checkBundle(ref: string, request: PublishRequest): Persona {
       });
     }
     seen.add(clean);
+  }
+  for (const { path, content } of request.files) {
+    // Canonical base64 only, so every server decodes the same bytes (and the same digest).
+    if (Buffer.from(content, "base64").toString("base64") !== content) {
+      throw refuse(422, "invalid", `${path} is not canonical base64`, {
+        ref,
+        path,
+      });
+    }
   }
 
   const bytes =

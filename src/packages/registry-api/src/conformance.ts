@@ -94,6 +94,28 @@ export function registryConformance(
       return { status: response.status, body: parsed };
     }
 
+    /** A raw request; the answer must be a Problem. */
+    async function raw(
+      method: string,
+      path: string,
+      body?: string,
+    ): Promise<Answer> {
+      const response = await fetch(registry.url + path, {
+        method,
+        headers: {
+          authorization: `Bearer ${registry.token}`,
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body }),
+      });
+      const parsed: unknown = await response.json();
+      expect(response.headers.get("content-type")).toContain(
+        "application/problem+json",
+      );
+      expect(Problem.safeParse(parsed).error).toBeUndefined();
+      return { status: response.status, body: parsed };
+    }
+
     const publish = (
       ref: string,
       source: string,
@@ -336,7 +358,7 @@ export function registryConformance(
         expect(answer.body.problems[0].ref).toBe("org/base");
       });
 
-      it("refuses a change to a locked path as lock-violation naming both layers", async () => {
+      it("refuses a change to a locked path as lock-violation naming the layer and path", async () => {
         await publish(
           "org/base",
           layer(
@@ -352,9 +374,9 @@ export function registryConformance(
           ),
         );
         expectProblem(answer, 422, "lock-violation");
-        const message: string = answer.body.problems[0].message;
-        expect(message).toContain("team/web");
-        expect(message).toContain("org/base");
+        // The wording is the server's own; the fields are the contract.
+        expect(answer.body.problems[0].ref).toBe("team/web");
+        expect(answer.body.problems[0].path).toMatch(/^permissions\.deny/);
       });
     });
 
@@ -493,6 +515,67 @@ export function registryConformance(
         });
         expect(fresh.body).toEqual({ dryRun: true, diff: [], broken: [] });
         expect((await call("listLayers")).body).toEqual(before);
+      });
+    });
+
+    describe("hardening", () => {
+      it("refuses non-canonical base64 as invalid, naming the file", async () => {
+        for (const content of ["YQ", "Y Q=="]) {
+          const answer = await publish("org/base", layer("base"), [
+            { path: "a.md", content },
+          ]);
+          expectProblem(answer, 422, "invalid");
+          expect(answer.body.problems[0].path).toBe("a.md");
+        }
+      });
+
+      it("refuses malformed refs as invalid, never 500", async () => {
+        for (const ref of ["org", "Team/x", "team/", "team/x/", "team/../x"]) {
+          expectProblem(await publish(ref, layer("x")), 422, "invalid");
+        }
+        for (const ref of ["project/x", "user/x"]) {
+          expectProblem(await publish(ref, layer("x")), 422, "not-publishable");
+        }
+      });
+
+      it("answers an unknown route with 404 not-found", async () => {
+        expectProblem(await raw("GET", "/v1/nope"), 404, "not-found");
+      });
+
+      it("refuses a body that is not a JSON object as invalid", async () => {
+        const path = routePath(ROUTES.publish.path, { ref: "org/base" });
+        for (const body of ["not json", "[]", '"x"']) {
+          expectProblem(await raw("POST", path, body), 422, "invalid");
+        }
+      });
+
+      it("answers a malformed % sequence in the ref with 404 not-found", async () => {
+        expectProblem(
+          await raw("GET", "/v1/layers/%E0%A4%A/versions/1"),
+          404,
+          "not-found",
+        );
+      });
+
+      it("lets one of two concurrent publishes from one base win", async () => {
+        await publish("org/base", layer("base"));
+        const answers = await Promise.all([
+          publish(
+            "org/base",
+            layer("base", "permissions:\n  allow:\n    - Bash(ls)\n"),
+            [],
+            1,
+          ),
+          publish(
+            "org/base",
+            layer("base", "permissions:\n  allow:\n    - Bash(pwd)\n"),
+            [],
+            1,
+          ),
+        ]);
+        expect(answers.map((a) => a.status).sort()).toEqual([201, 409]);
+        const listed = (await call("listLayers")).body as { version: number }[];
+        expect(listed.map((l) => l.version)).toEqual([2]);
       });
     });
 
