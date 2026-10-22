@@ -128,8 +128,12 @@ Rulings made while building, each changing or settling what is written above.
   know.
 - **Kit hooks.** The kit's start signature is `start(options?)`, so a case can ask for a non-zero
   `interval`. Optional hooks: `supportsLoginTiming` (the slow-down and expiry cases are skipped
-  without it), `limitedToken` (the grant cases), `completeLogin`, `refuseLogin` and `signIn` (the
-  login cases). A registry without a hook skips the cases that need it.
+  without it), `limitedToken` (the grant cases), `completeLogin`, and `refuseLogin` (the login
+  cases). A registry without a hook skips the cases that need it. `signIn: false` declares a
+  registry without sign-in and selects the `404 not-found` case for `POST /v1/auth/logins`; unset
+  or `true`, nothing is skipped.
+- **Strict kit problems.** The kit's `ConformanceSchemas.Problem` items are strict: an unknown
+  field inside `problems[]` fails a server (clients stay tolerant).
 - **The sign-in link must have the registry's own protocol and origin, or it is refused** with
   `registry-protocol` (a `blob:` link has a matching origin, so the protocol is checked too). Only
   the parsed `href` is printed or opened.
@@ -143,5 +147,15 @@ Rulings made while building, each changing or settling what is written above.
 - **`--token`** now carries the old hidden paste prompt; `--token-stdin` is unchanged.
 - **`doctor`** shows the session end date, and warns when it is close.
 
-Deferred minors: a sign-in link with userinfo is accepted (host and protocol are pinned); `--json`
-output carries raw server strings; a transient unreachable ends the login.
+Deferred minors:
+
+- Contract: a malformed `{ dryRun: true, version, digest, ... }` body without `diff` parses as a
+  publish (`dryRun` is stripped); a discriminated union would refuse it.
+- Mock and kit: the mock compares `pollSecret` with `!==` (use `timingSafeEqual`); the "same locks
+  again" assertion is vacuous; the expiry case sleeps 1.2 s (poll until 410 instead); `openapi.json`
+  attaches every error status to every route.
+- CLI: a transient unreachable or timeout ends the login (retry until `expiresIn`); `doctor`'s
+  expiry warning hides the file-storage warning (combine them); the default SIGINT path and
+  `abortableSleep` are untested; a sign-in link with userinfo is accepted (host and protocol are
+  pinned; reject a non-empty username or password); `--json` output carries raw server strings
+  (JSON-escaped; U+202E passes).
