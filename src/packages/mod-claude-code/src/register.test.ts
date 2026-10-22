@@ -285,6 +285,41 @@ describe("register", () => {
     expect(out.text.startsWith("zzpersona")).toBe(false);
   });
 
+  it("replies with text that never starts with zzpersona (the host adds it)", async () => {
+    const reply = async (error: Error | ProcessRunResult) => {
+      const e = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
+        if (error instanceof Error) throw error;
+        return error;
+      });
+      await e.call("session.start");
+      await e.settle();
+      return (
+        (await e.call("command.run", { command: "persona", args: "list" })) as {
+          text: string;
+        }
+      ).text;
+    };
+    const cases: [Error | ProcessRunResult, string][] = [
+      [
+        new Error("spawn zzpersona ENOENT"),
+        "the zzpersona command was not found on PATH",
+      ],
+      [
+        { exitCode: 0, stdout: "not json", stderr: "" },
+        "the zzpersona command printed something that is not JSON",
+      ],
+      [
+        { exitCode: 3, stdout: "null", stderr: "" },
+        "the zzpersona command exited 3",
+      ],
+    ];
+    for (const [input, text] of cases) {
+      const out = await reply(input);
+      expect(out).toBe(text);
+      expect(out.startsWith("zzpersona")).toBe(false);
+    }
+  });
+
   it("swallows a failure in the background refresh", async () => {
     const broken = engine(
       LAUNCHED,
