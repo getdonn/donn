@@ -170,12 +170,16 @@ refresh of the launched persona itself never reached the prompt.
 The fix, in `@zzpersona/mod-claude-code`:
 
 - A `prompt.submit` hook reads `<session>/live.json` with `$.fs.read` (no CLI call: it runs every
-  turn, and policy can refuse `process.run`). When its `appliedAt` differs from the state the mod
+  turn, and policy can refuse `process.run`). When its `appliedAt` is newer than the state the mod
   holds, the mod adopts it and calls `$.ui.invalidate("prompt.section")` and
-  `$.ui.invalidate("ui.render")` before letting the prompt through. `prompt.submit` fires before
-  the turn starts, and an invalidated `prompt.section` answer goes out on the next request, so the
-  refresh applies to the turn the prompt starts. A missing or unparseable file is ignored.
+  `$.ui.invalidate("ui.render")` before letting the prompt through. A missing, unparseable or
+  ill-shaped file (any field the mod uses missing or of the wrong type) is ignored.
 - The superseding section is present whenever a live state exists. For the launched persona it
   reads `The instructions for this session's persona <p> were updated. Disregard the section headed
   "## zzpersona persona: <launched>"; the instructions below replace it.` The band still shows
   `· live` only when the persona differs.
+
+Verified (second smoke run, Claude Code 2.1.306, the dev mod loaded with `--plugin-dir` beside the
+installed one; one band drew): Claude answered `SMOKE-ALPHA`; the persona's instruction was edited
+to `SMOKE-BRAVO`; `zzpersona status` showed `refreshed` within a second; on the very next turn of
+the same session Claude answered `SMOKE-BRAVO`. The refresh applies to the turn the prompt starts.
