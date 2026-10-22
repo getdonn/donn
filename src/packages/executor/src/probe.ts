@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import type { Probe } from "@zzpersona/adapter-sdk";
 
@@ -18,34 +18,48 @@ export function nodeProbe(options: { timeoutMs?: number } = {}): Probe {
     platform: process.platform,
     run: (command, args) =>
       new Promise((resolve) => {
-        execFile(
-          command,
-          args,
-          { timeout: timeoutMs, encoding: "utf8" },
-          (error, stdout, stderr) => {
-            if (!error) return resolve({ exitCode: 0, stdout, stderr });
-            const code = (error as NodeJS.ErrnoException).code;
-            if (code === "ENOENT") {
-              return resolve({
-                exitCode: 127,
-                stdout: "",
-                stderr: error.message,
-              });
-            }
-            if ((error as { killed?: boolean }).killed) {
-              return resolve({
-                exitCode: 124,
-                stdout,
-                stderr: `${command} timed out after ${timeoutMs / 1000}s`,
-              });
-            }
-            const exitCode =
-              typeof (error as { code?: unknown }).code === "number"
-                ? (error as unknown as { code: number }).code
-                : 1;
-            resolve({ exitCode, stdout, stderr });
-          },
-        );
+        // No input: a command that reads stdin (an interactive shell's rc file) sees its end.
+        // Its own process group, so a timeout kills what it started too (not on Windows).
+        const child = spawn(command, args, {
+          stdio: ["ignore", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+        });
+        let stdout = "";
+        let stderr = "";
+        let timedOut = false;
+        child.stdout.setEncoding("utf8").on("data", (d) => (stdout += d));
+        child.stderr.setEncoding("utf8").on("data", (d) => (stderr += d));
+        // SIGKILL: an interactive shell ignores SIGTERM.
+        const timer = setTimeout(() => {
+          timedOut = true;
+          try {
+            if (child.pid !== undefined && process.platform !== "win32")
+              process.kill(-child.pid, "SIGKILL");
+            else child.kill("SIGKILL");
+          } catch {
+            // already gone
+          }
+        }, timeoutMs);
+        child.on("error", (error) => {
+          clearTimeout(timer);
+          resolve(
+            (error as NodeJS.ErrnoException).code === "ENOENT"
+              ? { exitCode: 127, stdout: "", stderr: error.message }
+              : { exitCode: 1, stdout, stderr: error.message },
+          );
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          resolve(
+            timedOut
+              ? {
+                  exitCode: 124,
+                  stdout,
+                  stderr: `${command} timed out after ${timeoutMs / 1000}s`,
+                }
+              : { exitCode: code ?? 1, stdout, stderr },
+          );
+        });
       }),
     readFile: async (path) => {
       try {
