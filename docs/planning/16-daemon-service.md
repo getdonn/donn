@@ -156,6 +156,18 @@ version.
 - **Linux logs:** the unit sets no output files, so the daemon's output goes to the journal
   (`journalctl --user -u zzpersona-daemon`), not `daemon.log`.
 - **Auto-start's 1 s** bounds the whole step: the probe, the start and the wait together.
+- **A pid is a daemon's only if it runs `daemon run`:** a dead daemon's pid may be reused by an
+  unrelated process. `daemon stop` (and `install`, which stops first) sends SIGTERM only to a live
+  process whose command line (`ps -o command= -p <pid>`) holds `daemon run`, and the lock counts
+  any other live owner as gone. Where `ps` cannot tell (Windows, a failing `ps`) liveness decides.
+  A lock naming the starter's own pid is live only if this process took it.
+- **A service that cannot load leaves nothing behind:** when the load fails during `install` (Linux
+  without a user systemd: WSL, containers, SSH), the file just written is removed and the `service`
+  error shows. `uninstall` ignores a failing trailing `daemon-reload`. When the manager will not
+  start an installed service, `daemon start` and auto-start spawn the daemon detached; the
+  manager's error shows only if that fails too. Under systemd, `daemon-start` names `journalctl`.
+- **An unreadable lock is stale** like an empty one: both reads of it fall back to empty, so it is
+  taken over once.
 - **E2e** (`ZZP_E2E_SERVICE=1`, macOS 26.6.2, Node 26.12.0): the built binary on a temp PATH as
   `zzpersona`, a temp `HOME` and `ZZPERSONA_HOME`, label `zzpersona.daemon.e2e-<random>`. Install
   answered and `daemon status` showed the service installed and managing the daemon; after
