@@ -157,3 +157,25 @@ secrets broker; sync, drift and the local marketplace; live refresh for Codex; W
   stale one (dead pid or leftover socket; fix `zzpersona daemon start`).
 - **Probe reuse:** `zzpersona status` and doctor read the status the client probed on connect rather
   than requesting it again.
+
+### From the smoke run: the mod applies refreshes (2026-10-21)
+
+A smoke run with real Claude Code (2.1.306) showed the daemon's refresh reached `live.json` (new
+instructions, status `refreshed`) but not the model: Claude answered from the old instructions on
+its next turn. Two causes, both in the mod: it read the live state only at `session.start` and
+after its own `/persona use`, so a `live.json` the daemon wrote mid-session was never seen; and its
+superseding section was added only while the live persona differed from the launched one, so a
+refresh of the launched persona itself never reached the prompt.
+
+The fix, in `@zzpersona/mod-claude-code`:
+
+- A `prompt.submit` hook reads `<session>/live.json` with `$.fs.read` (no CLI call: it runs every
+  turn, and policy can refuse `process.run`). When its `appliedAt` differs from the state the mod
+  holds, the mod adopts it and calls `$.ui.invalidate("prompt.section")` and
+  `$.ui.invalidate("ui.render")` before letting the prompt through. `prompt.submit` fires before
+  the turn starts, and an invalidated `prompt.section` answer goes out on the next request, so the
+  refresh applies to the turn the prompt starts. A missing or unparseable file is ignored.
+- The superseding section is present whenever a live state exists. For the launched persona it
+  reads `The instructions for this session's persona <p> were updated. Disregard the section headed
+  "## zzpersona persona: <launched>"; the instructions below replace it.` The band still shows
+  `· live` only when the persona differs.

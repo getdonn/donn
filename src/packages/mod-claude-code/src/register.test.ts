@@ -21,6 +21,8 @@ function engine(
   const runs: (readonly string[])[] = [];
   const statuses: (string | undefined)[] = [];
   const invalidated: string[] = [];
+  /** The files `$.fs.read` sees, by absolute path. */
+  const files = new Map<string, string>();
   const $ = {
     env: { get: async (name: string) => env[name] },
     session: { cwd },
@@ -36,6 +38,13 @@ function engine(
       resolve: () => ({ Box: "Box", Text: "Text" }),
     },
     command: { register: async () => undefined },
+    fs: {
+      read: async (path: string) => {
+        const text = files.get(path);
+        if (text === undefined) throw new Error(`ENOENT: ${path}`);
+        return text;
+      },
+    },
   } as unknown as Mod$;
   register(
     (event: string, matcherOrHook: object | Hook, hook?: Hook) =>
@@ -51,7 +60,7 @@ function engine(
       ) => Promise<unknown>
     )($, e, async () => below);
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-  return { call, settle, runs, statuses, invalidated };
+  return { call, settle, runs, statuses, invalidated, files };
 }
 
 const json = (value: unknown): ProcessRunResult => ({
@@ -290,7 +299,7 @@ describe("live switching", () => {
     expect(await sectionText(e, "memory")).toBe("core");
   });
 
-  it("switching back to the launched persona drops the section", async () => {
+  it("switching back to the launched persona supersedes with its instructions", async () => {
     const e = engine(
       { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
       reply({ launched: "team/payments" }),
@@ -306,7 +315,13 @@ describe("live switching", () => {
       command: "persona",
       args: "use team/payments",
     });
-    expect(await sectionText(e, "env_info_simple")).toBe("core");
+    const text = await sectionText(e, "env_info_simple");
+    expect(
+      text.startsWith(
+        "core\n\nThe instructions for this session's persona team/payments were updated.",
+      ),
+    ).toBe(true);
+    expect(text).toContain("Be team/payments.");
     const tree = (await e.call("ui.render", {
       component: "AbovePrompt",
     })) as Tree;
@@ -356,6 +371,66 @@ describe("live switching", () => {
     expect(await sectionText(e, "env_info_simple")).toContain(
       "Be team/platform.",
     );
+  });
+
+  it("adopts a live state written by the daemon on the next prompt", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    await e.call("prompt.compose", {}, COMPOSED);
+    expect(await sectionText(e, "env_info_simple")).toBe("core");
+    e.files.set(
+      `${SESSION}/live.json`,
+      JSON.stringify({
+        ...state("team/payments"),
+        instructions:
+          "## zzpersona persona: team/payments\n\nBe the edited payments.\n",
+        appliedAt: "2026-10-21T01:00:00.000Z",
+      }),
+    );
+    const before = e.runs.length;
+    e.invalidated.length = 0;
+    const submitted = { text: "hi", wait: false, origin: { kind: "user" } };
+    expect(await e.call("prompt.submit", submitted, "ENTERED")).toBe("ENTERED");
+    expect(e.runs.length).toBe(before);
+    expect(e.invalidated).toContain("prompt.section");
+    expect(e.invalidated).toContain("ui.render");
+    const text = await sectionText(e, "env_info_simple");
+    expect(text).toContain("were updated");
+    expect(text.endsWith("Be the edited payments.")).toBe(true);
+  });
+
+  it("ignores an unchanged or missing live.json", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply(state("team/platform")),
+    );
+    await e.call("session.start");
+    await e.settle();
+    const submitted = { text: "hi", wait: false, origin: { kind: "user" } };
+    e.invalidated.length = 0;
+    expect(await e.call("prompt.submit", submitted, "ENTERED")).toBe("ENTERED");
+    expect(e.invalidated).toEqual([]);
+    e.files.set(`${SESSION}/live.json`, JSON.stringify(state("team/platform")));
+    expect(await e.call("prompt.submit", submitted, "ENTERED")).toBe("ENTERED");
+    e.files.set(`${SESSION}/live.json`, "{not json");
+    expect(await e.call("prompt.submit", submitted, "ENTERED")).toBe("ENTERED");
+    expect(e.invalidated).toEqual([]);
+  });
+
+  it("reads no live.json without a session folder", async () => {
+    const e = engine(LAUNCHED, () => FOLDER);
+    await e.call("session.start");
+    await e.settle();
+    e.files.set(`${SESSION}/live.json`, JSON.stringify(state("team/platform")));
+    e.invalidated.length = 0;
+    expect(await e.call("prompt.submit", { text: "hi" }, "ENTERED")).toBe(
+      "ENTERED",
+    );
+    expect(e.invalidated).toEqual([]);
   });
 
   it("anchors on a section the engine passes through prompt.section", async () => {
