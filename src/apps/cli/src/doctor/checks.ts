@@ -157,6 +157,12 @@ async function registryChecks(
         timeoutMs: 3000,
       }).whoami();
       add("registry", "ok", `${url} is reachable`);
+      // eslint-disable-next-line no-control-regex
+      const subject = who.subject.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+      const until =
+        who.kind === "session" && who.expiresAt !== undefined
+          ? `, session until ${who.expiresAt.slice(0, 10)}`
+          : "";
       const inFile =
         io.env.ZZPERSONA_REGISTRY_TOKEN === undefined &&
         existsSync(join(home, "registry-token"));
@@ -175,11 +181,11 @@ async function registryChecks(
         add(
           "registry-token",
           "warn",
-          `accepted as ${who.subject}, but stored in ${join(home, "registry-token")}, not a keychain`,
+          `accepted as ${subject}${until}, but stored in ${join(home, "registry-token")}, not a keychain`,
           "install a keychain tool (secret-tool on Linux) and log in again",
         );
       } else {
-        add("registry-token", "ok", `accepted as ${who.subject}`);
+        add("registry-token", "ok", `accepted as ${subject}${until}`);
       }
     } catch (error) {
       if (error instanceof RegistryError && error.code === "unauthorized") {

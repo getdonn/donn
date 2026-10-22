@@ -7,12 +7,15 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { startMockRegistry } from "@zzpersona/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCli, type CliIo } from "./cli.js";
+import { openerCommand } from "./commands/registry.js";
 import { installedProbe } from "./test/seed.js";
 
 const EXAMPLES = join(import.meta.dirname, "../../../../examples/personas");
@@ -382,5 +385,146 @@ describe("a signed-in session", () => {
     );
     const later = await checkOf(Date.now() + 10 * DAY);
     expect(later.message).toContain("accepted as alice@corp.com");
+  });
+});
+
+/** A registry whose sign-in start answers with `verifyUrl`, whatever it is. */
+async function lyingRegistry(linkFor: string | ((origin: string) => string)) {
+  let origin = "";
+  const server = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.method === "POST" && req.url === "/v1/auth/logins") {
+      res.statusCode = 201;
+      res.end(
+        JSON.stringify({
+          loginId: "l1",
+          verifyUrl: typeof linkFor === "string" ? linkFor : linkFor(origin),
+          code: "ABCD2345",
+          pollSecret: "secret-1",
+          interval: 1,
+          expiresIn: 600,
+        }),
+      );
+      return;
+    }
+    res.statusCode = 404;
+    res.end("{}");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  origin = url;
+  return { url, stop: () => server.close() };
+}
+
+describe("the sign-in link", () => {
+  it("refuses a sign-in link for another site", async () => {
+    for (const link of [
+      "https://evil.example.com/login/ABCD2345",
+      "file:///etc/passwd",
+      "-oProxyCommand=x",
+    ]) {
+      const fake = await lyingRegistry(link);
+      const m = machine();
+      const r = await run(m, ["login", fake.url], {
+        openBrowser,
+        sleep: async () => {
+          throw new Error("must not poll");
+        },
+      });
+      fake.stop();
+      expect(r.code).toBe(1);
+      expect(r.stderr).toContain(
+        "registry-protocol: the registry sent a sign-in link for another site",
+      );
+      expect(r.stderr).not.toContain("confirm the code");
+      expect(opens).toEqual([]);
+      expect(existsSync(tokenFile(m))).toBe(false);
+      expect(configText(m)).not.toContain("registry:");
+    }
+  });
+
+  it("opens only the parsed link", async () => {
+    const fake = await lyingRegistry((o) => `${o}/login/a b&calc`);
+    const r = await run(machine(), ["login", fake.url], {
+      openBrowser,
+      sleep: async () => {
+        throw new Error("stop");
+      },
+    }).catch((e: unknown) => e);
+    fake.stop();
+    void r;
+    expect(opens).toEqual([`${fake.url}/login/a%20b&calc`]);
+  });
+
+  it("the Windows opener uses rundll32", () => {
+    const href = "https://reg.example.com/login/ABCD2345";
+    expect(openerCommand("win32", href)).toEqual([
+      "rundll32",
+      ["url.dll,FileProtocolHandler", href],
+    ]);
+    expect(openerCommand("darwin", href)).toEqual(["open", [href]]);
+    expect(openerCommand("linux", href)).toEqual(["xdg-open", [href]]);
+  });
+
+  it("sleeps at least one second, and sleeps no longer than what is left", async () => {
+    const seen: number[] = [];
+    const first = await run(
+      machine(),
+      ["login", registry.url, "--no-browser"],
+      {
+        sleep: async (ms) => {
+          seen.push(ms);
+          if (seen.length === 1) {
+            registry.completeLogin(shownUrl(), { email: "alice@corp.com" });
+          }
+        },
+      },
+    );
+    expect(first.code, first.stderr).toBe(0);
+    expect(seen[0]).toBe(1000);
+
+    await registry.stop();
+    registry = await startMockRegistry({ loginExpiresIn: 3 });
+    const left: number[] = [];
+    let t = 1_000_000;
+    await run(machine(), ["login", registry.url, "--no-browser"], {
+      now: () => t,
+      sleep: async (ms) => {
+        left.push(ms);
+        t += 2500;
+      },
+    });
+    // 3 s total: 1 s, then 1 s, then only the last 1 s... never beyond expiry.
+    expect(left.every((ms) => ms <= 3000)).toBe(true);
+    expect(left[1]).toBe(500);
+  });
+
+  it("a refused login shows only the server's reason", async () => {
+    const r = await run(machine(), ["login", registry.url, "--no-browser"], {
+      sleep: async () => registry.refuseLogin(shownUrl(), "not in the group"),
+    });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("not in the group");
+    expect(r.stderr).not.toContain("ask a registry admin");
+  });
+
+  it("server text is printed without control characters", async () => {
+    await registry.stop();
+    registry = await startMockRegistry({ subject: "mallory\u001b[2J\u0007" });
+    const m = machine(true);
+    const r = await run(m, ["whoami"], {
+      env: { ZZPERSONA_REGISTRY_TOKEN: registry.token },
+    });
+    expect(r.stdout).toContain("mallory[2J at");
+    expect(r.stdout).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+  });
+
+  it("doctor shows the session end when it is far off", async () => {
+    const m = await aliceMachine();
+    const r = await run(m, ["doctor", "--json"]);
+    const check = (
+      JSON.parse(r.stdout).checks as { id: string; message: string }[]
+    ).find((c) => c.id === "registry-token")!;
+    expect(check.message).toMatch(/session until \d{4}-\d\d-\d\d/);
   });
 });

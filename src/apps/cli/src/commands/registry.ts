@@ -41,22 +41,27 @@ function grantHint(problem: { message: string; ref?: string }): string {
   return `ask a registry admin for ${role !== undefined ? `${role} on ` : ""}${ref ?? "this layer"}`;
 }
 
+/** Server text for a terminal: control characters (escapes, newlines, bells) dropped. */
+// eslint-disable-next-line no-control-regex
+const clean = (text: string) =>
+  text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+
 /** A registry failure as a CliError: each problem as `<code>: <message>`, with its hint. */
-function fail(error: unknown): never {
+function fail(error: unknown, options: { grantHint?: boolean } = {}): never {
   if (!(error instanceof RegistryError)) throw error;
   const problems =
     error.problems !== undefined && error.problems.length > 0
       ? error.problems.map((p) => ({
-          code: p.code,
-          message: p.message,
-          ...(p.code === "forbidden"
+          code: clean(p.code),
+          message: clean(p.message),
+          ...(p.code === "forbidden" && options.grantHint
             ? { hint: grantHint(p) }
             : HINTS[p.code] !== undefined && { hint: HINTS[p.code] }),
         }))
       : [
           {
             code: error.code,
-            message: error.message,
+            message: clean(error.message),
             ...(HINTS[error.code] !== undefined && { hint: HINTS[error.code] }),
           },
         ];
@@ -140,14 +145,21 @@ export interface JsonOption {
 
 const dayOf = (iso: string) => iso.slice(0, 10);
 
-/** Open `url` in the person's browser; never throws and never waits for it. */
-async function defaultOpenBrowser(url: string): Promise<void> {
-  const [command, args]: [string, string[]] =
-    process.platform === "darwin"
-      ? ["open", [url]]
-      : process.platform === "win32"
-        ? ["cmd", ["/c", "start", '""', url]]
-        : ["xdg-open", [url]];
+/** The command that opens `href` in the browser. No shell is involved on any platform. */
+export function openerCommand(
+  platform: string,
+  href: string,
+): [string, string[]] {
+  if (platform === "darwin") return ["open", [href]];
+  if (platform === "win32") {
+    return ["rundll32", ["url.dll,FileProtocolHandler", href]];
+  }
+  return ["xdg-open", [href]];
+}
+
+/** Open `href` in the person's browser; never throws and never waits for it. */
+async function defaultOpenBrowser(href: string): Promise<void> {
+  const [command, args] = openerCommand(process.platform, href);
   try {
     const child = spawn(command, args, { stdio: "ignore", detached: true });
     child.on("error", () => {});
@@ -209,29 +221,42 @@ async function browserLogin(
       }
       fail(error);
     }
+    // The link is the server's word: it must lead back to the registry we asked.
+    let link: URL;
+    try {
+      link = new URL(login.verifyUrl);
+    } catch {
+      link = new URL("about:blank");
+    }
+    if (link.origin !== new URL(url).origin) {
+      throw new CliError(
+        "registry-protocol",
+        `registry-protocol: the registry sent a sign-in link for another site (${clean(link.origin)})`,
+      );
+    }
     io.stderr.write(
-      `Open ${login.verifyUrl} and confirm the code ${login.code}\n`,
+      `Open ${link.href} and confirm the code ${clean(login.code)}\n`,
     );
     const skipBrowser = options.browser === false || (io.env.CI ?? "") !== "";
     if (!skipBrowser) {
       // Fire and forget: the link is already printed, whatever the opener does.
-      void (io.openBrowser ?? defaultOpenBrowser)(login.verifyUrl).catch(
-        () => {},
-      );
+      void (io.openBrowser ?? defaultOpenBrowser)(link.href).catch(() => {});
     }
     const started = now();
-    let interval = login.interval;
+    // At least a second between polls, whatever the registry asks for.
+    let interval = Math.max(1, login.interval);
     for (;;) {
-      await (io.sleep
-        ? io.sleep(interval * 1000)
-        : abortableSleep(interval * 1000, signal));
-      if (signal.aborted) return cancelled(io);
-      if (now() - started >= login.expiresIn * 1000) {
+      const remaining = login.expiresIn * 1000 - (now() - started);
+      if (remaining <= 0) {
         throw new CliError(
           "login-expired",
           `login timed out; run zzpersona login ${url} again`,
         );
       }
+      // Never sleep past the end: there is always a last poll before expiry.
+      const wait = Math.min(interval * 1000, remaining);
+      await (io.sleep ? io.sleep(wait) : abortableSleep(wait, signal));
+      if (signal.aborted) return cancelled(io);
       try {
         const session = await pollLogin(url, login.loginId, login.pollSecret, {
           signal,
@@ -240,7 +265,7 @@ async function browserLogin(
         print(
           io,
           options.json,
-          `logged in to ${url} as ${session.subject} (session until ${dayOf(session.expiresAt)})`,
+          `logged in to ${url} as ${clean(session.subject)} (session until ${clean(dayOf(session.expiresAt))})`,
           { url, subject: session.subject, expiresAt: session.expiresAt },
         );
         return 0;
@@ -304,7 +329,7 @@ export async function loginCommand(
     fail(error);
   }
   const store = await saveLogin(io, home, url, token);
-  print(io, options.json, `logged in to ${url} as ${who.subject}`, {
+  print(io, options.json, `logged in to ${url} as ${clean(who.subject)}`, {
     url,
     subject: who.subject,
     org: who.org,
@@ -341,15 +366,15 @@ export async function whoamiCommand(
   }
   try {
     const who = await createClient({ url, token }).whoami();
-    const lines = [`${who.subject} at ${url}`];
+    const lines = [`${clean(who.subject)} at ${url}`];
     if (who.kind === "session" && who.expiresAt !== undefined) {
-      lines.push(`session until ${dayOf(who.expiresAt)}`);
+      lines.push(`session until ${clean(dayOf(who.expiresAt))}`);
     }
     if (who.roles !== undefined) {
       lines.push(
         who.roles.length === 0
           ? "roles: none"
-          : `roles: ${who.roles.map((r) => `${r.role} ${r.path}`).join(", ")}`,
+          : `roles: ${who.roles.map((r) => `${r.role} ${clean(r.path)}`).join(", ")}`,
       );
     }
     print(io, options.json, lines.join("\n"), {
@@ -454,7 +479,7 @@ export async function publishCommand(
       { ref, ...result, cacheUpdated },
     );
   } catch (error) {
-    fail(error);
+    fail(error, { grantHint: true });
   }
   return 0;
 }
