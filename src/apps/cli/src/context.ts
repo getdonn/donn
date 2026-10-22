@@ -8,6 +8,7 @@ import {
   findProject,
   type LocalStore,
 } from "@zzpersona/store-local";
+import { normaliseUrl, readIndex, withRegistry } from "@zzpersona/store-remote";
 import type { CliIo } from "./cli.js";
 import { loadConfig, type Config } from "./config.js";
 import { CliError } from "./errors.js";
@@ -18,7 +19,10 @@ export interface Context {
   home: string;
   /** The project's .zzpersona directory, when inside a project. */
   projectDir?: string;
+  /** Local layers, with the registry cache in front when one is configured and pulled. */
   store: LocalStore;
+  /** The local folders alone. */
+  local: LocalStore;
   state: State;
   config: Config;
 }
@@ -28,16 +32,36 @@ export function homeOf(io: CliIo): string {
   return io.env.ZZPERSONA_HOME || join(io.env.HOME ?? homedir(), ".zzpersona");
 }
 
-export async function createContext(io: CliIo): Promise<Context> {
+export async function createContext(
+  io: CliIo,
+  options: { local?: boolean } = {},
+): Promise<Context> {
   const home = homeOf(io);
   const config = await loadConfig(home, io.env);
   const projectDir = findProject(io.cwd);
-  const store = createLocalStore({
+  const local = createLocalStore({
     user: home,
     ...(config.personas !== undefined && { personas: config.personas }),
     ...(projectDir !== undefined && { project: projectDir }),
   });
-  for (const dir of await store.strayLayerDirs()) {
+  let store: LocalStore = local;
+  if (config.registry !== undefined && !options.local) {
+    const index = await readIndex(home);
+    let url: string | undefined;
+    try {
+      url = normaliseUrl(config.registry.url);
+    } catch {
+      // A bad URL in config.yaml shows up in doctor; layers just stay local.
+    }
+    if (index !== undefined && index.url === url) {
+      store = withRegistry(local, home, index, (ref, version) =>
+        io.stderr.write(
+          `${ref}: using published @${version}; local copy differs\n`,
+        ),
+      );
+    }
+  }
+  for (const dir of await local.strayLayerDirs()) {
     io.stderr.write(
       `warning: ${dir} is ignored: project/ and user/ layers are mounted elsewhere\n`,
     );
@@ -46,6 +70,7 @@ export async function createContext(io: CliIo): Promise<Context> {
   return {
     home,
     store,
+    local,
     state,
     config,
     ...(projectDir !== undefined && { projectDir }),

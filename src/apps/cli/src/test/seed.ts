@@ -87,7 +87,14 @@ export async function zz(
   } & Partial<
     Pick<
       Parameters<typeof createCli>[0],
-      "runPlan" | "now" | "spawnDaemon" | "service"
+      | "runPlan"
+      | "now"
+      | "spawnDaemon"
+      | "service"
+      | "runInput"
+      | "stdin"
+      | "readSecret"
+      | "secretProbe"
     >
   >,
 ): Promise<RunResult> {
@@ -108,6 +115,10 @@ export async function zz(
     ...(options.now && { now: options.now }),
     ...(options.spawnDaemon && { spawnDaemon: options.spawnDaemon }),
     ...(options.service && { service: options.service }),
+    ...(options.runInput && { runInput: options.runInput }),
+    ...(options.stdin && { stdin: options.stdin }),
+    ...(options.readSecret && { readSecret: options.readSecret }),
+    ...(options.secretProbe && { secretProbe: options.secretProbe }),
   });
   const code = await cli.run(argv);
   return { code, stdout, stderr };

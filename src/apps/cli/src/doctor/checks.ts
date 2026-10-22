@@ -8,6 +8,12 @@ import {
   resolveSecrets,
   SecretResolutionError,
 } from "@zzpersona/secrets";
+import {
+  createClient,
+  normaliseUrl,
+  readIndex,
+  RegistryError,
+} from "@zzpersona/store-remote";
 import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
@@ -34,6 +40,7 @@ import {
   loadAdapters,
   loadSecretProviders,
 } from "../plugins.js";
+import { ageText, readToken } from "../registry.js";
 import { selectPersona, type Selection } from "../select.js";
 import { readState, updateState, type State } from "../state.js";
 
@@ -110,6 +117,95 @@ function secretsFix(
       ? " (each prompts for the value; if macOS asks to allow access for security, choose Always Allow)"
       : " (each prompts for the value)";
   return `${store.join("; ")}${note}`;
+}
+
+/** The three registry checks; offline is a warning, because the cache keeps working. */
+async function registryChecks(
+  io: CliIo,
+  home: string,
+  configured: string,
+  add: (id: string, status: Status, message: string, fix?: string) => void,
+): Promise<void> {
+  let url: string;
+  try {
+    url = normaliseUrl(configured);
+  } catch (error) {
+    const message = errorText(
+      error instanceof RegistryError
+        ? new CliError(error.code, error.message)
+        : error,
+    );
+    add("registry", "error", message, `zzpersona login <https url>`);
+    add("registry-token", "skipped", "the registry URL is not valid");
+    add("registry-cache", "skipped", "the registry URL is not valid");
+    return;
+  }
+  const token = await readToken(io, home, url);
+  if (token === undefined) {
+    add("registry", "skipped", `${url}: not logged in`);
+    add(
+      "registry-token",
+      "warn",
+      `not logged in to ${url}`,
+      `zzpersona login ${url} --token-stdin`,
+    );
+  } else {
+    try {
+      const who = await createClient({
+        url,
+        token,
+        timeoutMs: 3000,
+      }).whoami();
+      add("registry", "ok", `${url} is reachable`);
+      const inFile =
+        io.env.ZZPERSONA_REGISTRY_TOKEN === undefined &&
+        existsSync(join(home, "registry-token"));
+      if (inFile) {
+        add(
+          "registry-token",
+          "warn",
+          `accepted as ${who.subject}, but stored in ${join(home, "registry-token")}, not a keychain`,
+          "install a keychain tool (secret-tool on Linux) and log in again",
+        );
+      } else {
+        add("registry-token", "ok", `accepted as ${who.subject}`);
+      }
+    } catch (error) {
+      if (error instanceof RegistryError && error.code === "unauthorized") {
+        add("registry", "ok", `${url} is reachable`);
+        add(
+          "registry-token",
+          "error",
+          "the registry refused the token",
+          `zzpersona login ${url} --token-stdin`,
+        );
+      } else {
+        add(
+          "registry",
+          "warn",
+          `${url} did not answer; cached layers stay in use`,
+          "check your network, then run zzpersona pull",
+        );
+        add("registry-token", "skipped", "the registry did not answer");
+      }
+    }
+  }
+  const index = await readIndex(home);
+  if (index === undefined || index.url !== url) {
+    add(
+      "registry-cache",
+      "warn",
+      "nothing pulled from this registry yet",
+      "zzpersona pull",
+    );
+  } else {
+    const age = ageText((io.now ?? Date.now)() - Date.parse(index.pulledAt));
+    add(
+      "registry-cache",
+      "ok",
+      `${Object.keys(index.layers).length} layers, pulled ${age} ago`,
+    );
+  }
 }
 
 /** Whether `dir` is in a git work tree: a `.git` (folder, or a worktree's file) here or above. */
@@ -560,6 +656,11 @@ export async function runChecks(
     );
   } else {
     add("mod", "ok", `zzpersona mod ${installed}`);
+  }
+
+  // registry: configured, token accepted, cache age (only with a registry in config.yaml)
+  if (config?.registry !== undefined) {
+    await registryChecks(io, home, config.registry.url, add);
   }
 
   // secrets

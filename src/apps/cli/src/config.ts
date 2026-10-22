@@ -15,6 +15,13 @@ const Config = z.strictObject({
   secretProviders: z.array(z.string().min(1)).optional(),
   /** `autoStart: false` stops `claude` and `codex` starting the daemon. See spec 16 §2. */
   daemon: z.strictObject({ autoStart: z.boolean().optional() }).optional(),
+  /** The layer registry; `maxAge` is whole minutes before a pull is due (default 15). Spec 18 §3. */
+  registry: z
+    .strictObject({
+      url: z.string().min(1),
+      maxAge: z.int().positive().optional(),
+    })
+    .optional(),
 });
 export type Config = z.infer<typeof Config>;
 

@@ -10,6 +10,7 @@ import { createContext, homeOf, type Context } from "./context.js";
 import { ensureDaemon } from "./daemon/autostart.js";
 import { CliError } from "./errors.js";
 import { findOnPath } from "./path.js";
+import { freshen } from "./registry.js";
 import { selectPersona, type Selection } from "./select.js";
 import { missingHint } from "./shell.js";
 
@@ -46,6 +47,8 @@ export async function launch(
   options: LaunchOptions,
   hooks: LaunchHooks = {},
 ): Promise<number> {
+  // A dry run or --json (the mod's daemon calls) never waits on the network.
+  if (!options.dryRun && !options.json) await freshen(io, { budgetMs: 1000 });
   const ctx = await createContext(io);
   const selection = await selectPersona(options.persona, ctx);
   const build = await prepareBuild(ctx, io, {
