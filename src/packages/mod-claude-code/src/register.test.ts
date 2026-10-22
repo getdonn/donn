@@ -23,6 +23,11 @@ function engine(
   const invalidated: string[] = [];
   /** The files `$.fs.read` sees, by absolute path. */
   const files = new Map<string, string>();
+  /** What `$.fs.stat` sees, by absolute path. */
+  const stats = new Map<string, { kind: string; isLink: boolean }>();
+  /** The daemon's `/run`: unset, the socket refuses the connection. */
+  const daemon: { run?: (argv: readonly string[]) => ProcessRunResult } = {};
+  const requests: { url: string; socketPath?: string; body?: string }[] = [];
   const $ = {
     env: { get: async (name: string) => env[name] },
     session: { cwd },
@@ -44,7 +49,27 @@ function engine(
         if (text === undefined) throw new Error(`ENOENT: ${path}`);
         return text;
       },
+      stat: async (path: string) => {
+        const stat = stats.get(path);
+        if (stat === undefined) throw new Error(`ENOENT: ${path}`);
+        return { ...stat, size: 0, mtimeMs: 0 };
+      },
     },
+    http: {
+      fetch: async (
+        url: string,
+        init: { socketPath?: string; body?: string },
+      ) => {
+        requests.push({ url, socketPath: init.socketPath, body: init.body });
+        if (daemon.run === undefined) throw new Error("ECONNREFUSED");
+        const { argv } = JSON.parse(init.body!) as { argv: string[] };
+        const { exitCode, stdout } = daemon.run(["zzpersona", ...argv]);
+        const text = JSON.stringify({ exitCode, stdout, stderr: "" });
+        return { status: 200, ok: true, headers: {}, text };
+      },
+    },
+    // Timers never fire: a daemon here answers at once or not at all.
+    clock: { after: () => ({ cancel: () => undefined }) },
   } as unknown as Mod$;
   register(
     (event: string, matcherOrHook: object | Hook, hook?: Hook) =>
@@ -60,7 +85,18 @@ function engine(
       ) => Promise<unknown>
     )($, e, async () => below);
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-  return { call, settle, runs, statuses, invalidated, files, $ };
+  return {
+    call,
+    settle,
+    runs,
+    statuses,
+    invalidated,
+    files,
+    stats,
+    daemon,
+    requests,
+    $,
+  };
 }
 
 const json = (value: unknown): ProcessRunResult => ({
@@ -149,7 +185,7 @@ describe("register", () => {
       command: "persona",
       args: "switch team/nope",
     })) as { text: string };
-    expect(out.text).toBe("zzpersona: no persona named team/nope");
+    expect(out.text).toBe("no persona named team/nope");
   });
 
   it("respects the band and nudge settings", async () => {
@@ -204,6 +240,84 @@ describe("register", () => {
     await e.settle();
     expect(e.runs).toEqual([]);
     expect(e.statuses).toEqual([]);
+  });
+
+  it("uses the daemon and runs no process", async () => {
+    const home = engine({ ...LAUNCHED, HOME: "/home/u" }, () => FOLDER);
+    home.files.set("/home/u/.zzpersona/daemon/token", "t0k");
+    home.stats.set("/home/u/.zzpersona/daemon/sock", {
+      kind: "other",
+      isLink: false,
+    });
+    home.daemon.run = () => FOLDER;
+    await home.call("session.start");
+    await home.settle();
+    const shown = (await home.call("command.run", {
+      command: "persona",
+      args: "",
+    })) as { text: string };
+    expect(shown.text).toBe(
+      "this session runs team/payments (switch)\nthis folder uses team/platform (project)",
+    );
+    expect(home.requests).toHaveLength(2);
+    expect(home.requests[0]!.socketPath).toBe("/home/u/.zzpersona/daemon/sock");
+    expect(home.runs).toEqual([]);
+  });
+
+  it("says how to fix it when both fail", async () => {
+    const REASON =
+      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+    const STATUS = `unavailable: ${REASON}`;
+    const UNAVAILABLE = STATUS;
+    const blocked = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
+      throw new Error("Acme policy: no process.run");
+    });
+    await blocked.call("session.start");
+    await blocked.settle();
+    expect(blocked.statuses).toEqual([STATUS]);
+    const out = (await blocked.call("command.run", {
+      command: "persona",
+      args: "list",
+    })) as { text: string };
+    expect(out.text).toBe(
+      "unavailable: start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
+    );
+    expect(out.text.startsWith("zzpersona")).toBe(false);
+  });
+
+  it("replies with text that never starts with zzpersona (the host adds it)", async () => {
+    const reply = async (error: Error | ProcessRunResult) => {
+      const e = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
+        if (error instanceof Error) throw error;
+        return error;
+      });
+      await e.call("session.start");
+      await e.settle();
+      return (
+        (await e.call("command.run", { command: "persona", args: "list" })) as {
+          text: string;
+        }
+      ).text;
+    };
+    const cases: [Error | ProcessRunResult, string][] = [
+      [
+        new Error("spawn zzpersona ENOENT"),
+        "the zzpersona command was not found on PATH",
+      ],
+      [
+        { exitCode: 0, stdout: "not json", stderr: "" },
+        "the zzpersona command printed something that is not JSON",
+      ],
+      [
+        { exitCode: 3, stdout: "null", stderr: "" },
+        "the zzpersona command exited 3",
+      ],
+    ];
+    for (const [input, text] of cases) {
+      const out = await reply(input);
+      expect(out).toBe(text);
+      expect(out.startsWith("zzpersona")).toBe(false);
+    }
   });
 
   it("swallows a failure in the background refresh", async () => {

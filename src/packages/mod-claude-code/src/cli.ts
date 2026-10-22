@@ -1,7 +1,10 @@
 import type { Mod$ } from "./api.js";
+import { UNAVAILABLE } from "./decide.js";
+import { viaDaemon, type Output } from "./transport.js";
 
-// Runs `zzpersona <args> --json` for the mod. Never throws: every failure is a reason the mod
-// can show. See docs/planning/09-mod-claude-code.md, section 1.
+// Runs `zzpersona <args> --json` for the mod: through the daemon when it answers, else as a
+// process. Never throws: every failure is a reason the mod can show. See
+// docs/planning/09-mod-claude-code.md, section 1, and docs/planning/15-mod-transport.md, section 2.
 
 export const CLI_TIMEOUT_MS = 5000;
 
@@ -13,18 +16,22 @@ export async function runCli(
   args: string[],
   cwd: string,
 ): Promise<CliResult> {
-  let result;
+  let result: Output | undefined = await viaDaemon($, [...args, "--json"], cwd);
   try {
-    result = await $.process.run(["zzpersona", ...args, "--json"], {
+    result ??= await $.process.run(["zzpersona", ...args, "--json"], {
       cwd,
       timeoutMs: CLI_TIMEOUT_MS,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/ENOENT|not found|could not start|cannot start/i.test(message))
-      return { ok: false, reason: "zzpersona not found on PATH" };
+      return {
+        ok: false,
+        reason: "the zzpersona command was not found on PATH",
+      };
     if (/timed? ?out/i.test(message)) return { ok: false, reason: "timed out" };
-    return { ok: false, reason: `blocked: ${message}` };
+    // Refused, and no daemon answered either: say what fixes it.
+    return { ok: false, code: "unavailable", reason: UNAVAILABLE };
   }
   let json: unknown;
   try {
@@ -32,7 +39,7 @@ export async function runCli(
   } catch {
     return {
       ok: false,
-      reason: "zzpersona printed something that is not JSON",
+      reason: "the zzpersona command printed something that is not JSON",
     };
   }
   if (result.exitCode === 0) return { ok: true, json };
@@ -43,6 +50,6 @@ export async function runCli(
   return {
     ok: false,
     ...(error?.code !== undefined && { code: error.code }),
-    reason: error?.message ?? `zzpersona exited ${result.exitCode}`,
+    reason: error?.message ?? `the zzpersona command exited ${result.exitCode}`,
   };
 }

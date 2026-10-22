@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bandText,
   commandText,
+  failureText,
   launchedFrom,
   liveSection,
   liveText,
@@ -92,9 +93,9 @@ describe("nudge", () => {
     expect(
       nudgeText(A, {
         kind: "unavailable",
-        reason: "zzpersona not found on PATH",
+        reason: "the zzpersona command was not found on PATH",
       }),
-    ).toBe("zzpersona unavailable: zzpersona not found on PATH");
+    ).toBe("unavailable: the zzpersona command was not found on PATH");
   });
 });
 
@@ -407,5 +408,21 @@ describe("0.3.1 hints", () => {
         "  zzpersona claude team/platform",
       ].join("\n"),
     );
+  });
+});
+
+describe("host-displayed text never starts with zzpersona", () => {
+  it("failure and folder texts leave the prefix to the host", () => {
+    expect(failureText("boom", "unavailable")).toBe("unavailable: boom");
+    expect(failureText("boom")).toBe("boom");
+    for (const reason of [
+      "the zzpersona command was not found on PATH",
+      "the zzpersona command printed something that is not JSON",
+      "the zzpersona command exited 1",
+    ])
+      expect(failureText(reason)).not.toMatch(/^zzpersona/);
+    expect(
+      commandText("list", {}, undefined, { kind: "unavailable", reason: "x" }),
+    ).not.toMatch(/^zzpersona/);
   });
 });

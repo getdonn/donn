@@ -1,5 +1,19 @@
 # @zzpersona/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- e6b91b9: The Claude Code mod's `/persona` goes through the daemon when it runs. The daemon serves the mod's
+  commands (`POST /run`), so `/persona` is faster and works where policy stops the mod from running
+  programs; without the daemon the mod runs `zzpersona` as before. The mod's replies no longer
+  repeat the `zzpersona:` prefix Claude Code already shows.
+
+### Patch Changes
+
+- Updated dependencies [e6b91b9]
+  - @zzpersona/mod-claude-code@0.3.0
+
 ## 0.4.3
 
 ### Patch Changes

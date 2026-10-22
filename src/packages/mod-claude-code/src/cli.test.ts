@@ -58,13 +58,14 @@ describe("runCli", () => {
       ((await runCli(fake(error).$, ["switch"], "/r")) as { reason: string })
         .reason;
     expect(await reason(new Error("spawn zzpersona ENOENT"))).toBe(
-      "zzpersona not found on PATH",
+      "the zzpersona command was not found on PATH",
     );
     expect(await reason(new Error("the command timed out after 5000 ms"))).toBe(
       "timed out",
     );
+    // No daemon here either: the refusal says what fixes it (spec 15 §2).
     expect(await reason(new Error("Acme policy: no process.run"))).toBe(
-      "blocked: Acme policy: no process.run",
+      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
     );
   });
 
@@ -72,7 +73,7 @@ describe("runCli", () => {
     const { $ } = fake({ exitCode: 0, stdout: "not json", stderr: "" });
     expect(await runCli($, ["switch"], "/r")).toEqual({
       ok: false,
-      reason: "zzpersona printed something that is not JSON",
+      reason: "the zzpersona command printed something that is not JSON",
     });
   });
 
@@ -80,7 +81,7 @@ describe("runCli", () => {
     const { $ } = fake({ exitCode: 1, stdout: "null", stderr: "" });
     expect(await runCli($, ["switch"], "/r")).toEqual({
       ok: false,
-      reason: "zzpersona exited 1",
+      reason: "the zzpersona command exited 1",
     });
   });
 });
