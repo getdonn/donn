@@ -117,7 +117,7 @@ export function nudgeText(
   if (here.kind === "unavailable") return `unavailable: ${here.reason}`;
   if (!folderSpecific(here)) return undefined;
   if (!launched) {
-    return `this folder uses ${here.persona}; start with zzpersona claude to load it`;
+    return `this folder uses ${here.persona}; start with zzpersona claude to load it, or zzpersona claude -- --continue to keep this conversation`;
   }
   if (here.persona === launched.persona) return undefined;
   const how = canLive

@@ -188,6 +188,73 @@ describe("zzpersona doctor", () => {
     expect((await doctor([], { probe: old })).status.claude).toBe("warn");
   });
 
+  it("explains a claude only the shell finds", async () => {
+    const shellSays = (answer: string): Probe => ({
+      ...installedProbe,
+      run: async (command) =>
+        command === "/bin/zsh"
+          ? { exitCode: 0, stdout: `${answer}\n`, stderr: "" }
+          : { exitCode: 127, stdout: "", stderr: "" },
+    });
+    const env = { SHELL: "/bin/zsh", PATH: join(s.home, "none") };
+    const alias = (
+      await doctor([], {
+        env,
+        probe: shellSays("claude is an alias for /opt/claude/claude"),
+      })
+    ).checks.find((c) => c.id === "claude")!;
+    expect(alias.status).toBe("error");
+    expect(alias.fix).toContain('export PATH="/opt/claude:$PATH"');
+    const stale = (
+      await doctor([], { env, probe: shellSays("claude is /opt/bin/claude") })
+    ).checks.find((c) => c.id === "claude")!;
+    expect(stale.fix).toContain("run exec zsh or open a new terminal");
+  });
+
+  it("names a claude on PATH that does not answer --version", async () => {
+    mkdirSync(join(s.home, "bin"));
+    writeFileSync(join(s.home, "bin/claude"), "#!/bin/sh\n");
+    chmodSync(join(s.home, "bin/claude"), 0o755);
+    const broken: Probe = {
+      ...installedProbe,
+      run: async () => ({ exitCode: 1, stdout: "", stderr: "boom" }),
+    };
+    const claude = (
+      await doctor([], {
+        env: { SHELL: "/bin/zsh", PATH: join(s.home, "bin") },
+        probe: broken,
+      })
+    ).checks.find((c) => c.id === "claude")!;
+    expect(claude.fix).toBe(
+      `${join(s.home, "bin/claude")} is on PATH but \`claude --version\` failed: run it to see why`,
+    );
+  });
+
+  it("warns when the shell's claude alias is not the claude on PATH", async () => {
+    mkdirSync(join(s.home, "bin"));
+    writeFileSync(join(s.home, "bin/claude"), "#!/bin/sh\n");
+    chmodSync(join(s.home, "bin/claude"), 0o755);
+    const probe: Probe = {
+      ...installedProbe,
+      run: async (command, args) =>
+        command === "/bin/zsh"
+          ? {
+              exitCode: 0,
+              stdout: "claude is an alias for /opt/claude/claude\n",
+              stderr: "",
+            }
+          : installedProbe.run(command, args),
+    };
+    const env = { SHELL: "/bin/zsh", PATH: join(s.home, "bin") };
+    const claude = (await doctor([], { env, probe })).checks.find(
+      (c) => c.id === "claude",
+    )!;
+    expect(claude.status).toBe("warn");
+    expect(claude.message).toContain(
+      `your shell's claude alias runs /opt/claude/claude, but zzpersona runs ${join(s.home, "bin/claude")} (PATH)`,
+    );
+  });
+
   it("checks codex: optional, and recent enough when installed", async () => {
     const codex = (stdout: string, exitCode = 0): Probe => ({
       ...installedProbe,

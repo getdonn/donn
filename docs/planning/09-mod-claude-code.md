@@ -72,7 +72,7 @@ say. The mod keeps what other mods draw (its tree includes `await next(e)`).
 | When | Nudge |
 |---|---|
 | Launched with A; this folder selects B (a newer switch, or `zzpersona claude A` inside B's project) | `this folder uses <B> (<source>); this session runs <A>. /persona switch <B>, then relaunch` |
-| Plain `claude`; this folder's project or switch selects a persona | `this folder uses <ref>; start with zzpersona claude to load it` |
+| Plain `claude`; this folder's project or switch selects a persona | `this folder uses <ref>; start with zzpersona claude to load it, or zzpersona claude -- --continue to keep this conversation` (the resume hint added 2026-10-22) |
 | The CLI cannot be reached | `zzpersona unavailable: <reason>` |
 
 Selection that comes only from the default never nudges a plain `claude` session.

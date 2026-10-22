@@ -74,7 +74,7 @@ describe("nudge", () => {
 
   it("tells a plain session how to load this folder's persona", () => {
     expect(nudgeText(undefined, here("team/platform", "project"))).toBe(
-      "this folder uses team/platform; start with zzpersona claude to load it",
+      "this folder uses team/platform; start with zzpersona claude to load it, or zzpersona claude -- --continue to keep this conversation",
     );
   });
 

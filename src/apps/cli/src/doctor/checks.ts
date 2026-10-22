@@ -25,6 +25,7 @@ import {
 import { daemonPaths } from "../daemon/paths.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
+import { missingHint, shellHint, shellLookup } from "../shell.js";
 import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
@@ -367,20 +368,38 @@ export async function runChecks(
 
   // claude
   const detection = await HARNESSES["claude-code"]!.detect(io.probe);
+  const claudePath = findOnPath("claude", io.env);
   if (!detection.installed) {
+    const hint = await missingHint("claude", claudePath, io);
     add(
       "claude",
       "error",
       "claude is not installed (or not on PATH)",
-      "install Claude Code",
+      hint ?? "install Claude Code",
     );
   } else {
     // Version and mode are independent findings: an old claude must not hide a degraded mode.
     // `zzpersona claude` runs the claude PATH finds; a shell alias does not count.
-    const claudePath = findOnPath("claude", io.env);
     const where = claudePath ? ` (${claudePath})` : "";
     const findings: string[] = [];
     const fixes: string[] = [];
+    // Only an alias can differ from PATH here; with nothing on PATH to compare, say nothing.
+    const differs =
+      claudePath === undefined
+        ? undefined
+        : shellHint(
+            "claude",
+            await shellLookup("claude", io),
+            claudePath,
+            "",
+            io.env.HOME,
+          );
+    if (differs) {
+      findings.push(differs);
+      fixes.push(
+        `point the alias at ${claudePath}, or remove it so the shell and zzpersona run the same claude`,
+      );
+    }
     if (detection.version && olderThan(detection.version, VERIFIED_CLAUDE)) {
       findings.push(
         `claude ${detection.version}${where} is older than ${VERIFIED_CLAUDE}, the version zzpersona was verified against`,
