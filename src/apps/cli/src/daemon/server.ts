@@ -1,12 +1,12 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, open, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { isAlive, nodeProbe } from "@zzpersona/executor";
 import type { CliIo } from "../cli.js";
@@ -23,6 +23,7 @@ import type {
 import { createLog } from "./log.js";
 import { daemonPaths, privateSocketDir } from "./paths.js";
 import { refreshSession, type RefreshOutcome } from "./refresh.js";
+import { allowedRun, runInProcess } from "./run.js";
 import { watchKey, watchSources, type Watch } from "./watch.js";
 
 // The daemon: HTTP/1.1 with JSON bodies over a unix socket, a bearer token on every request.
@@ -83,6 +84,49 @@ const sameToken = (header: string | undefined, token: string) => {
 function send(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(`${JSON.stringify(body)}\n`);
+}
+
+/** The largest request body read, `POST /run`'s; larger is `413 too-large`. */
+const BODY_LIMIT = 1024 * 1024;
+
+/** The request's body as text, or undefined once it passes `BODY_LIMIT` (the rest is drained). */
+function readBody(req: IncomingMessage): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= BODY_LIMIT) chunks.push(chunk);
+    });
+    req.on("end", () =>
+      resolve(
+        size > BODY_LIMIT ? undefined : Buffer.concat(chunks).toString("utf8"),
+      ),
+    );
+    req.on("error", reject);
+  });
+}
+
+/** `{ argv, cwd }` from `POST /run`'s body, or the reason it is not one. */
+async function runRequest(
+  text: string,
+): Promise<{ argv: string[]; cwd: string } | string> {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return "the body is not JSON";
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body))
+    return "the body must be { argv, cwd }";
+  const { argv, cwd } = body as { argv?: unknown; cwd?: unknown };
+  if (!Array.isArray(argv) || !argv.every((a) => typeof a === "string"))
+    return "argv must be an array of strings";
+  if (typeof cwd !== "string" || !isAbsolute(cwd))
+    return "cwd must be an absolute path";
+  const dir = await stat(cwd).catch(() => undefined);
+  if (!dir?.isDirectory()) return "cwd must be an existing directory";
+  return { argv: argv as string[], cwd };
 }
 
 const DEBOUNCE_MS = 300;
@@ -384,6 +428,30 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       if (route === "POST /refresh") {
         await refresh();
         return send(res, 200, await status());
+      }
+      if (route === "POST /run") {
+        const text = await readBody(req);
+        if (text === undefined) {
+          return send(res, 413, failure("too-large", "the body is over 1 MiB"));
+        }
+        const run = await runRequest(text);
+        if (typeof run === "string") {
+          return send(res, 400, failure("bad-request", run));
+        }
+        if (!allowedRun(run.argv)) {
+          return send(
+            res,
+            403,
+            failure(
+              "not-allowed",
+              `not a command the mod runs: ${run.argv.join(" ")}`,
+            ),
+          );
+        }
+        await log(
+          `run ${JSON.stringify(run.argv)} in ${JSON.stringify(run.cwd)}`,
+        );
+        return send(res, 200, await runInProcess(io, run.argv, run.cwd));
       }
       if (route === "POST /shutdown") {
         send(res, 200, { stopping: true });
