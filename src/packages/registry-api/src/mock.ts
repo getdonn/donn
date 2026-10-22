@@ -92,7 +92,12 @@ export async function startMockRegistry(
     }
     const match = /^\/v1\/layers\/([^/]+)\/versions(?:\/([^/]+))?$/.exec(path);
     if (match) {
-      const ref = decodeURIComponent(match[1]!);
+      let ref: string;
+      try {
+        ref = decodeURIComponent(match[1]!);
+      } catch {
+        throw refuse(404, "not-found", `no layer at ${match[1]!}`);
+      }
       if (method === "GET" && match[2] !== undefined) {
         const versions = store.versions(ref);
         const wanted = match[2];
