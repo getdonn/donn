@@ -12,11 +12,16 @@ export const LayerRef = z
   );
 export type LayerRef = z.infer<typeof LayerRef>;
 
+type ObjectOf = typeof z.object | typeof z.strictObject;
+
+const bundleFileOf = (object: ObjectOf) =>
+  object({
+    path: z.string().min(1),
+    content: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "must be base64"),
+  });
+
 /** A file in a bundle: `path` relative to the layer's folder (posix, no `..`), base64 `content`. */
-export const BundleFile = z.strictObject({
-  path: z.string().min(1),
-  content: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "must be base64"),
-});
+export const BundleFile = bundleFileOf(z.strictObject);
 export type BundleFile = z.infer<typeof BundleFile>;
 
 /** What a principal may do on a layer path. */
@@ -28,8 +33,6 @@ const Digest = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 // Response schemas are tolerant (`z.object`: unknown keys are stripped) so a client keeps working
 // when a server adds fields; `ConformanceSchemas` holds strict copies the kit checks servers with.
 // Request schemas stay strict. See docs/planning/20-registry-identity.md §2.
-
-type ObjectOf = typeof z.object | typeof z.strictObject;
 
 const whoamiShape = (object: ObjectOf) => ({
   subject: z.string().min(1),
@@ -49,14 +52,14 @@ const layerSummaryShape = {
 export const LayerSummary = z.object(layerSummaryShape);
 export type LayerSummary = z.infer<typeof LayerSummary>;
 
-const layerVersionShape = {
+const layerVersionShape = (object: ObjectOf) => ({
   ...layerSummaryShape,
   source: z.string(),
-  files: z.array(BundleFile),
+  files: z.array(bundleFileOf(object)),
   publishedAt: z.iso.datetime(),
   publishedBy: z.string().min(1),
-};
-export const LayerVersion = z.object(layerVersionShape);
+});
+export const LayerVersion = z.object(layerVersionShape(z.object));
 export type LayerVersion = z.infer<typeof LayerVersion>;
 
 export const PublishRequest = z.strictObject({
@@ -81,11 +84,13 @@ const changeOf = (object: ObjectOf) =>
 export const Change = changeOf(z.object);
 export type Change = z.infer<typeof Change>;
 
+// Marker variants come first: a union takes the first match and a tolerant object strips unknown
+// keys, so a dry run (or unchanged) answer with extra fields must not match the published shape.
 const publishResultVariants = (object: ObjectOf) =>
   [
     object({
-      version: z.int().min(1),
-      digest: Digest,
+      dryRun: z.literal(true),
+      diff: z.array(changeOf(object)),
       broken: z.array(LayerRef),
     }),
     object({
@@ -94,8 +99,8 @@ const publishResultVariants = (object: ObjectOf) =>
       digest: Digest,
     }),
     object({
-      dryRun: z.literal(true),
-      diff: z.array(changeOf(object)),
+      version: z.int().min(1),
+      digest: Digest,
       broken: z.array(LayerRef),
     }),
   ] as const;
@@ -122,14 +127,14 @@ export const PROBLEM_CODES = [
 export const ProblemCode = z.enum(PROBLEM_CODES);
 export type ProblemCode = z.infer<typeof ProblemCode>;
 
-const problemShape = (code: z.ZodType<string>) => ({
+const problemShape = (code: z.ZodType<string>, object: ObjectOf) => ({
   type: z.string(),
   title: z.string(),
   status: z.int(),
   detail: z.string(),
   problems: z
     .array(
-      z.object({
+      object({
         code,
         ref: z.string().optional(),
         path: z.string().optional(),
@@ -140,7 +145,7 @@ const problemShape = (code: z.ZodType<string>) => ({
 });
 
 /** An `application/problem+json` body; any `code` string is kept (servers may add codes). */
-export const Problem = z.object(problemShape(z.string()));
+export const Problem = z.object(problemShape(z.string(), z.object));
 export type Problem = z.infer<typeof Problem>;
 
 // Sign-in: docs/planning/20-registry-identity.md §1.
@@ -171,9 +176,9 @@ export type LoginToken = z.infer<typeof LoginToken>;
 export const ConformanceSchemas = {
   Whoami: z.strictObject(whoamiShape(z.strictObject)),
   LayerSummary: z.strictObject(layerSummaryShape),
-  LayerVersion: z.strictObject(layerVersionShape),
+  LayerVersion: z.strictObject(layerVersionShape(z.strictObject)),
   PublishResult: z.union(publishResultVariants(z.strictObject)),
-  Problem: z.strictObject(problemShape(ProblemCode)),
+  Problem: z.strictObject(problemShape(ProblemCode, z.strictObject)),
   LoginStart: z.strictObject(loginStartShape),
   LoginToken: z.strictObject(loginTokenShape),
 } as const;

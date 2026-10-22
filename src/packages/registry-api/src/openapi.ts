@@ -3,33 +3,28 @@ import { ROUTES } from "./routes.js";
 import {
   BundleFile,
   Change,
+  ConformanceSchemas,
   LayerRef,
-  LayerSummary,
-  LayerVersion,
   LoginPoll,
-  LoginStart,
-  LoginToken,
-  Problem,
   PublishRequest,
-  PublishResult,
   Role,
-  Whoami,
 } from "./schemas.js";
 
+// The document describes servers exactly, so responses come from the strict copies.
 const SCHEMAS = {
   LayerRef,
   BundleFile,
-  Whoami,
-  LayerSummary,
-  LayerVersion,
+  Whoami: ConformanceSchemas.Whoami,
+  LayerSummary: ConformanceSchemas.LayerSummary,
+  LayerVersion: ConformanceSchemas.LayerVersion,
   PublishRequest,
   Change,
-  PublishResult,
-  Problem,
+  PublishResult: ConformanceSchemas.PublishResult,
+  Problem: ConformanceSchemas.Problem,
   Role,
-  LoginStart,
+  LoginStart: ConformanceSchemas.LoginStart,
   LoginPoll,
-  LoginToken,
+  LoginToken: ConformanceSchemas.LoginToken,
 } as const;
 
 const json = (schema: z.ZodType): Record<string, unknown> => {

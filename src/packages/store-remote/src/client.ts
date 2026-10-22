@@ -14,6 +14,13 @@ import { normaliseUrl, routeUrl } from "./url.js";
 
 export { RegistryError, type RegistryErrorCode } from "./error.js";
 
+const STATUS_CODES: Record<number, RegistryErrorCode> = {
+  401: "unauthorized",
+  403: "forbidden",
+  404: "not-found",
+  409: "stale-base",
+};
+
 export interface RegistryClient {
   whoami(): Promise<Whoami>;
   listLayers(): Promise<LayerSummary[]>;
@@ -101,17 +108,12 @@ export function createClient(options: ClientOptions): RegistryClient {
         }));
         const message = [detail, ...(problems ?? []).map((p) => p.message)];
         const first = problems?.[0]?.code;
-        // A code this client does not know stays in `problems`; the error itself is a protocol one.
+        // A code this client does not know stays in `problems`; the error code follows the status.
         const code: RegistryErrorCode =
-          first !== undefined
-            ? (PROBLEM_CODES as readonly string[]).includes(first)
-              ? (first as ProblemCode)
-              : "registry-protocol"
-            : status === 401
-              ? "unauthorized"
-              : status === 404
-                ? "not-found"
-                : "registry-protocol";
+          first !== undefined &&
+          (PROBLEM_CODES as readonly string[]).includes(first)
+            ? (first as ProblemCode)
+            : (STATUS_CODES[status] ?? "registry-protocol");
         throw new RegistryError(
           code,
           [...new Set(message)].join("; "),

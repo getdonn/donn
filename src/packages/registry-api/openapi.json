@@ -760,7 +760,8 @@
               "required": [
                 "role",
                 "path"
-              ]
+              ],
+              "additionalProperties": false
             }
           },
           "expiresAt": {
@@ -772,7 +773,8 @@
         "required": [
           "subject",
           "org"
-        ]
+        ],
+        "additionalProperties": false
       },
       "LayerSummary": {
         "type": "object",
@@ -795,7 +797,8 @@
           "ref",
           "version",
           "digest"
-        ]
+        ],
+        "additionalProperties": false
       },
       "LayerVersion": {
         "type": "object",
@@ -855,7 +858,8 @@
           "files",
           "publishedAt",
           "publishedBy"
-        ]
+        ],
+        "additionalProperties": false
       },
       "PublishRequest": {
         "type": "object",
@@ -936,55 +940,6 @@
           {
             "type": "object",
             "properties": {
-              "version": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              },
-              "digest": {
-                "type": "string",
-                "pattern": "^sha256:[0-9a-f]{64}$"
-              },
-              "broken": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "pattern": "^(org|area|team)\\/[a-z0-9][a-z0-9-]*(\\/[a-z0-9][a-z0-9-]*)*$"
-                }
-              }
-            },
-            "required": [
-              "version",
-              "digest",
-              "broken"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "unchanged": {
-                "type": "boolean",
-                "const": true
-              },
-              "version": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 9007199254740991
-              },
-              "digest": {
-                "type": "string",
-                "pattern": "^sha256:[0-9a-f]{64}$"
-              }
-            },
-            "required": [
-              "unchanged",
-              "version",
-              "digest"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
               "dryRun": {
                 "type": "boolean",
                 "const": true
@@ -1017,7 +972,8 @@
                   "required": [
                     "path",
                     "change"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               },
               "broken": {
@@ -1032,7 +988,59 @@
               "dryRun",
               "diff",
               "broken"
-            ]
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "unchanged": {
+                "type": "boolean",
+                "const": true
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "unchanged",
+              "version",
+              "digest"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "broken": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(org|area|team)\\/[a-z0-9][a-z0-9-]*(\\/[a-z0-9][a-z0-9-]*)*$"
+                }
+              }
+            },
+            "required": [
+              "version",
+              "digest",
+              "broken"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -1059,7 +1067,24 @@
               "type": "object",
               "properties": {
                 "code": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "unauthorized",
+                    "not-found",
+                    "stale-base",
+                    "invalid",
+                    "not-publishable",
+                    "missing-file",
+                    "path-escapes-layer",
+                    "bundle-too-large",
+                    "unpublished-ancestor",
+                    "lock-violation",
+                    "breaks-descendants",
+                    "forbidden",
+                    "authorization-pending",
+                    "slow-down",
+                    "login-expired"
+                  ]
                 },
                 "ref": {
                   "type": "string"
@@ -1074,7 +1099,8 @@
               "required": [
                 "code",
                 "message"
-              ]
+              ],
+              "additionalProperties": false
             }
           }
         },
@@ -1083,7 +1109,8 @@
           "title",
           "status",
           "detail"
-        ]
+        ],
+        "additionalProperties": false
       },
       "Role": {
         "type": "string",
@@ -1129,7 +1156,8 @@
           "pollSecret",
           "interval",
           "expiresIn"
-        ]
+        ],
+        "additionalProperties": false
       },
       "LoginPoll": {
         "type": "object",
@@ -1165,7 +1193,8 @@
           "token",
           "subject",
           "expiresAt"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   }

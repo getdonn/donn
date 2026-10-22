@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildOpenApi } from "./openapi.js";
 import { ROUTES } from "./routes.js";
+import { PROBLEM_CODES } from "./schemas.js";
 
 describe("buildOpenApi", () => {
   it("openapi.json is current", async () => {
@@ -26,5 +27,18 @@ describe("buildOpenApi", () => {
         "auth" in route ? [] : [{ bearer: [] }],
       );
     }
+  });
+
+  it("documents every problem code and closes the response objects", () => {
+    const doc = buildOpenApi() as {
+      components: { schemas: Record<string, any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
+    const { Problem, Whoami } = doc.components.schemas;
+    expect(Problem.properties.problems.items.properties.code.enum).toEqual([
+      ...PROBLEM_CODES,
+    ]);
+    expect(PROBLEM_CODES).toHaveLength(15);
+    expect(Problem.properties.problems.items.additionalProperties).toBe(false);
+    expect(Whoami.additionalProperties).toBe(false);
   });
 });
