@@ -47,11 +47,9 @@ const LAYER_ORDER: readonly string[] = [
 export const UNAVAILABLE =
   "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
 
-/** What `/persona` prints for a command that failed. */
+/** What `/persona` prints for a command that failed; the host prefixes `zzpersona: `. */
 export const failureText = (reason: string, code?: string): string =>
-  code === "unavailable"
-    ? `zzpersona unavailable: ${reason}`
-    : `zzpersona: ${reason}`;
+  code === "unavailable" ? `unavailable: ${reason}` : reason;
 
 export const USAGE =
   "usage: /persona [list | switch <persona> [--default] | use <persona> | clear [--default]]";
@@ -116,8 +114,7 @@ export function nudgeText(
   const switched = activeLive(live);
   const launched =
     switched && current ? { ...current, persona: switched.persona } : current;
-  if (here.kind === "unavailable")
-    return `zzpersona unavailable: ${here.reason}`;
+  if (here.kind === "unavailable") return `unavailable: ${here.reason}`;
   if (!folderSpecific(here)) return undefined;
   if (!launched) {
     return `this folder uses ${here.persona}; start with zzpersona claude to load it`;
@@ -163,7 +160,7 @@ function folderLine(here: Here, now = false): string {
   if (here.kind === "persona")
     return `this folder ${uses} ${here.persona} (${here.source})`;
   if (here.kind === "none") return "this folder uses no persona";
-  return `zzpersona unavailable: ${here.reason}`;
+  return `unavailable: ${here.reason}`;
 }
 
 type Json = Record<string, unknown>;

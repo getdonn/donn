@@ -307,4 +307,27 @@ describe("runCli through the daemon", () => {
         "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
     });
   });
+
+  it("never rejects when the timer cannot be cancelled", async () => {
+    const answered = host({ files: TOKEN, stat: SOCKET, replies: [ran("{}")] });
+    (answered.$.clock as { after: unknown }).after = () => ({
+      cancel: () => {
+        throw new Error("no cancel");
+      },
+    });
+    expect(await runCli(answered.$, ["list"], "/r")).toEqual({
+      ok: true,
+      json: {},
+    });
+    const fallback = host({});
+    (fallback.$.clock as { after: unknown }).after = () => ({
+      cancel: () => {
+        throw new Error("no cancel");
+      },
+    });
+    expect(await runCli(fallback.$, ["list"], "/r")).toEqual({
+      ok: true,
+      json: { from: "cli" },
+    });
+  });
 });

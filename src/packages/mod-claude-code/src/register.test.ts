@@ -185,7 +185,7 @@ describe("register", () => {
       command: "persona",
       args: "switch team/nope",
     })) as { text: string };
-    expect(out.text).toBe("zzpersona: no persona named team/nope");
+    expect(out.text).toBe("no persona named team/nope");
   });
 
   it("respects the band and nudge settings", async () => {
@@ -265,19 +265,59 @@ describe("register", () => {
   });
 
   it("says how to fix it when both fail", async () => {
-    const UNAVAILABLE =
-      "zzpersona unavailable: start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+    const REASON =
+      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+    const STATUS = `unavailable: ${REASON}`;
+    const UNAVAILABLE = STATUS;
     const blocked = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
       throw new Error("Acme policy: no process.run");
     });
     await blocked.call("session.start");
     await blocked.settle();
-    expect(blocked.statuses).toEqual([UNAVAILABLE]);
+    expect(blocked.statuses).toEqual([STATUS]);
     const out = (await blocked.call("command.run", {
       command: "persona",
       args: "list",
     })) as { text: string };
-    expect(out.text).toBe(UNAVAILABLE);
+    expect(out.text).toBe(
+      "unavailable: start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
+    );
+    expect(out.text.startsWith("zzpersona")).toBe(false);
+  });
+
+  it("replies with text that never starts with zzpersona (the host adds it)", async () => {
+    const reply = async (error: Error | ProcessRunResult) => {
+      const e = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
+        if (error instanceof Error) throw error;
+        return error;
+      });
+      await e.call("session.start");
+      await e.settle();
+      return (
+        (await e.call("command.run", { command: "persona", args: "list" })) as {
+          text: string;
+        }
+      ).text;
+    };
+    const cases: [Error | ProcessRunResult, string][] = [
+      [
+        new Error("spawn zzpersona ENOENT"),
+        "the zzpersona command was not found on PATH",
+      ],
+      [
+        { exitCode: 0, stdout: "not json", stderr: "" },
+        "the zzpersona command printed something that is not JSON",
+      ],
+      [
+        { exitCode: 3, stdout: "null", stderr: "" },
+        "the zzpersona command exited 3",
+      ],
+    ];
+    for (const [input, text] of cases) {
+      const out = await reply(input);
+      expect(out).toBe(text);
+      expect(out.startsWith("zzpersona")).toBe(false);
+    }
   });
 
   it("swallows a failure in the background refresh", async () => {

@@ -97,6 +97,10 @@ With the daemon running, edit a persona and your running Claude Code sessions pi
 next turn. MCP servers, permissions and settings still need a relaunch. Codex sessions cannot be
 updated in place: they show as stale.
 
+With the daemon running, `/persona` in the Claude Code mod goes through it too: faster, and it works
+where policy stops the mod from running programs. Without the daemon the mod runs `zzpersona` as
+before.
+
 ## What each harness can carry
 
 `zzpersona capabilities` shows, per harness, which persona fields are carried natively,

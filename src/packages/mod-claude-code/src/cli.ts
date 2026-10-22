@@ -25,7 +25,10 @@ export async function runCli(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/ENOENT|not found|could not start|cannot start/i.test(message))
-      return { ok: false, reason: "zzpersona not found on PATH" };
+      return {
+        ok: false,
+        reason: "the zzpersona command was not found on PATH",
+      };
     if (/timed? ?out/i.test(message)) return { ok: false, reason: "timed out" };
     // Refused, and no daemon answered either: say what fixes it.
     return { ok: false, code: "unavailable", reason: UNAVAILABLE };
@@ -36,7 +39,7 @@ export async function runCli(
   } catch {
     return {
       ok: false,
-      reason: "zzpersona printed something that is not JSON",
+      reason: "the zzpersona command printed something that is not JSON",
     };
   }
   if (result.exitCode === 0) return { ok: true, json };
@@ -47,6 +50,6 @@ export async function runCli(
   return {
     ok: false,
     ...(error?.code !== undefined && { code: error.code }),
-    reason: error?.message ?? `zzpersona exited ${result.exitCode}`,
+    reason: error?.message ?? `the zzpersona command exited ${result.exitCode}`,
   };
 }

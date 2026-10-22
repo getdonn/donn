@@ -94,6 +94,10 @@ export async function viaDaemon(
   try {
     return await Promise.race([ask($, argv, cwd).catch(() => undefined), late]);
   } finally {
-    timer.cancel();
+    try {
+      timer.cancel();
+    } catch {
+      // A timer that cannot be cancelled must not break the never-throws contract.
+    }
   }
 }
