@@ -120,15 +120,22 @@ describe.skipIf(
     // launchd brings a crashed daemon back (KeepAlive: SuccessfulExit false).
     process.kill(pid, "SIGKILL");
     const back = await until(15_000, () => {
-      const now = status();
+      // The CLI may fail while launchd is between daemons: try again.
+      let now: Status;
+      try {
+        now = status();
+      } catch {
+        return undefined;
+      }
       return now.running && now.pid !== pid ? now : undefined;
     });
     expect(back?.pid).toBeGreaterThan(0);
     expect(back?.service?.managed).toBe(true);
 
-    // A clean stop exits 0, so launchd leaves it stopped.
+    // A clean stop exits 0, so launchd leaves it stopped. Longer than launchd's ~10 s respawn
+    // throttle, which a wrongly restarted daemon would wait out first.
     zzpersona(["daemon", "stop", "--json"]);
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    await new Promise((resolve) => setTimeout(resolve, 12_000));
     expect(status().running).toBe(false);
 
     const removed = JSON.parse(

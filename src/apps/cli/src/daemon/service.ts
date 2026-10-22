@@ -4,6 +4,7 @@ import type { Probe } from "@zzpersona/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { CliError } from "../errors.js";
+import { RESTART } from "./client.js";
 import { currentUid } from "./paths.js";
 
 // The daemon as a login service: a launchd agent on macOS, a systemd user unit on Linux.
@@ -43,14 +44,27 @@ type ServiceIo = Pick<CliIo, "env" | "probe">;
 export const serviceOf = (io: CliIo): ServiceManager | undefined =>
   io.service ?? serviceManager(io);
 
+export interface ServiceManagerOptions {
+  /** How long a launchd reinstall waits for the old job to go; 5 s. */
+  unloadWaitMs?: number;
+}
+
 /** The platform's manager, or undefined on Windows (or without a HOME to put the file in). */
-export function serviceManager(io: ServiceIo): ServiceManager | undefined {
+export function serviceManager(
+  io: ServiceIo,
+  options: ServiceManagerOptions = {},
+): ServiceManager | undefined {
   const home = io.env.HOME;
   if (io.probe.platform === "win32" || !home) return undefined;
   // Test-only: a scratch label, so the e2e never touches the real service.
   const override = io.env.ZZPERSONA_SERVICE_LABEL;
   return io.probe.platform === "darwin"
-    ? launchd(io.probe, home, override ?? LABEL)
+    ? launchd(
+        io.probe,
+        home,
+        override ?? LABEL,
+        options.unloadWaitMs ?? UNLOAD_WAIT_MS,
+      )
     : systemd(
         io.probe,
         io.env.XDG_CONFIG_HOME || join(home, ".config"),
@@ -138,6 +152,14 @@ export async function serviceFor(
   return { manager, installed };
 }
 
+/**
+ * What brings `home`'s daemon to this CLI's version: `daemon install` when the installed service
+ * serves it (a restart would run the old command again), else a restart.
+ */
+export async function updateFix(io: CliIo, home: string): Promise<string> {
+  return (await serviceFor(io, home)) ? "zzpersona daemon install" : RESTART;
+}
+
 async function writeServiceFile(path: string, text: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, text, { mode: 0o644 });
@@ -146,18 +168,26 @@ async function writeServiceFile(path: string, text: string): Promise<void> {
 
 /**
  * Write the file and load it. A load that fails takes the file away again: left in place, it
- * would make every start try a service that cannot run.
+ * would make every start try a service that cannot run. A reinstall's failure puts the file it
+ * replaced back and loads that again, so a working service is not lost to a broken update.
  */
 async function installFile(
   path: string,
   text: string,
   load: () => Promise<void>,
 ): Promise<void> {
+  const previous = await readFile(path, "utf8").catch(() => undefined);
   await writeServiceFile(path, text);
   try {
     await load();
   } catch (error) {
-    await rm(path, { force: true });
+    if (previous === undefined) {
+      await rm(path, { force: true });
+    } else {
+      await writeServiceFile(path, previous);
+      // The error that shows is the new file's; the old one loads again if it can.
+      await load().catch(() => undefined);
+    }
     throw error;
   }
 }
@@ -186,7 +216,12 @@ const xmlUnescape = (value: string) =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
 
-function launchd(probe: Probe, home: string, label: string): ServiceManager {
+function launchd(
+  probe: Probe,
+  home: string,
+  label: string,
+  unloadWaitMs: number,
+): ServiceManager {
   const path = join(home, "Library/LaunchAgents", `${label}.plist`);
   const domain = `gui/${currentUid()}`;
   const target = `${domain}/${label}`;
@@ -242,7 +277,7 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
         // Not loaded, or loaded but broken: either way bootstrap decides. bootout returns before
         // the job is gone, and a bootstrap too soon fails: wait until print no longer finds it.
         await unload();
-        const deadline = Date.now() + UNLOAD_WAIT_MS;
+        const deadline = Date.now() + unloadWaitMs;
         while (await loaded()) {
           if (Date.now() >= deadline) break;
           await new Promise((resolve) => setTimeout(resolve, UNLOAD_POLL_MS));

@@ -14,3 +14,14 @@ export function workingDir(
     throw error;
   }
 }
+
+// Work the CLI stopped waiting for (a harness past its limit in the switch report) may still hold
+// a handle that keeps Node running; bin.ts ends the process once the command has answered.
+let abandoned = 0;
+
+export function abandonWork(): void {
+  abandoned++;
+}
+
+/** How many times work was abandoned in this process. */
+export const abandonedWork = (): number => abandoned;

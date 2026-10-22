@@ -1,6 +1,7 @@
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon, type SessionStatus } from "../daemon/client.js";
+import { updateFix } from "../daemon/service.js";
 import { listSessions } from "../session.js";
 import { cliVersion } from "./daemon.js";
 
@@ -33,6 +34,7 @@ export async function statusCommand(
   const client = await connectDaemon(home, {
     version: cliVersion(),
     warn: (message) => io.stderr.write(`${message}\n`),
+    fix: () => updateFix(io, home),
   });
   if (client) {
     const status = client.probed;

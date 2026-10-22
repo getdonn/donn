@@ -177,7 +177,9 @@ describe("the daemon", () => {
     const daemon = await start(home);
     const paths = daemonPaths(home);
     await (await connectDaemon(home))!.shutdown();
-    await waitFor(() => !existsSync(daemon.socket));
+    // The lock goes last, after the socket: wait for it, not the socket.
+    await waitFor(() => !existsSync(paths.lock));
+    expect(existsSync(daemon.socket)).toBe(false);
     expect(existsSync(paths.pid)).toBe(false);
     expect(existsSync(paths.lock)).toBe(false);
     expect(existsSync(paths.token)).toBe(false);

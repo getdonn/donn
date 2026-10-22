@@ -5,10 +5,16 @@ import { isAlive } from "@zzpersona/executor";
 // pid to an unrelated process: liveness alone would signal a stranger, or wait on one forever.
 // See docs/planning/16-daemon-service.md, "Amendments from implementation".
 
-/** A process's command line, from `ps`; undefined on Windows or when ps cannot tell. */
-export function processCommand(pid: number): string | undefined {
+/**
+ * A process's command line, from `ps`; undefined on Windows or when ps cannot tell. `-ww`: a
+ * long command line is never cut at a terminal's width before its `daemon run`.
+ */
+export function processCommand(
+  pid: number,
+  run: typeof spawnSync = spawnSync,
+): string | undefined {
   if (process.platform === "win32") return undefined;
-  const ps = spawnSync("ps", ["-o", "command=", "-p", String(pid)], {
+  const ps = run("ps", ["-ww", "-o", "command=", "-p", String(pid)], {
     encoding: "utf8",
   });
   // No such process is an empty answer; a ps that cannot run, or says why it failed, is none.

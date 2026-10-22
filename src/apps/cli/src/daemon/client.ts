@@ -131,22 +131,29 @@ function ok(res: DaemonResponse): unknown {
   );
 }
 
-/** The copy for a daemon that runs another version than this CLI. */
-export const versionMismatch = (daemon: string, cli: string) =>
-  `daemon runs ${daemon}, CLI is ${cli}; zzpersona daemon stop && zzpersona daemon start`;
+/** How a daemon is restarted when no installed service runs it. */
+export const RESTART = "zzpersona daemon stop && zzpersona daemon start";
+
+/** The copy for a daemon that runs another version than this CLI; `fix` says what to run. */
+export const versionMismatch = (daemon: string, cli: string, fix = RESTART) =>
+  `daemon runs ${daemon}, CLI is ${cli}; ${fix}`;
 
 export interface ConnectOptions {
   /** This CLI's version: a daemon that runs another is reported once, through `warn`. */
   version?: string;
   warn?: (message: string) => void;
+  /**
+   * What the version warning tells the user to run, asked only on a mismatch: an installed
+   * service is updated by `daemon install`. A restart by default.
+   */
+  fix?: () => Promise<string>;
   /** The user the socket must belong to; this process's. */
   uid?: number;
   /** Reads the token file; injected in tests. */
   readToken?: () => Promise<string | undefined>;
 }
 
-const REFUSED =
-  "daemon: it refused this CLI's token; zzpersona daemon stop && zzpersona daemon start";
+const REFUSED = `daemon: it refused this CLI's token; ${RESTART}`;
 
 /** A client of the home's daemon, or undefined when no socket answers within 500 ms. */
 export async function connectDaemon(
@@ -192,7 +199,8 @@ export async function connectDaemon(
   const probed = first as DaemonStatus;
   const running = probed.version;
   if (options.version !== undefined && running !== options.version) {
-    options.warn?.(versionMismatch(running, options.version));
+    const fix = options.fix && (await options.fix().catch(() => undefined));
+    options.warn?.(versionMismatch(running, options.version, fix));
   }
   return {
     probed,

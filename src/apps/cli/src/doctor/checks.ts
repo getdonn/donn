@@ -1,11 +1,7 @@
 import { existsSync } from "node:fs";
 import { access, constants, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import {
-  findBuildLeftovers,
-  isAlive,
-  removeBuildLeftovers,
-} from "@zzpersona/executor";
+import { findBuildLeftovers, removeBuildLeftovers } from "@zzpersona/executor";
 import {
   keychainParts,
   parseSecretRef,
@@ -23,6 +19,7 @@ import {
   versionMismatch,
 } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
+import { isDaemonProcess } from "../daemon/process.js";
 import { serviceFor } from "../daemon/service.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
@@ -521,13 +518,14 @@ export async function runChecks(
       );
     }
   } else {
-    // Nothing answers: a socket or pid file left behind is a daemon that died.
+    // Nothing answers: a socket or pid file left behind is a daemon that died, as is a pid the OS
+    // has given to another process (which `daemon stop` leaves alone).
     const paths = daemonPaths(home);
     const pid = Number.parseInt(
       await readFile(paths.pid, "utf8").catch(() => ""),
       10,
     );
-    if (pid > 0 && isAlive(pid)) {
+    if (pid > 0 && isDaemonProcess(pid)) {
       add(
         "daemon",
         "warn",
