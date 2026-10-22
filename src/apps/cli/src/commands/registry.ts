@@ -277,15 +277,25 @@ export async function publishCommand(
       );
       return 0;
     }
-    const published = await client.getVersion(ref, result.version);
-    await recordPublished(home, url, published);
+    // The registry accepted the publish: whatever happens to the local cache, this is a success,
+    // and a retry would only meet stale-base.
+    let cacheUpdated = true;
+    try {
+      const published = await client.getVersion(ref, result.version);
+      await recordPublished(home, url, published, AbortSignal.timeout(5000));
+    } catch {
+      cacheUpdated = false;
+      io.stderr.write(
+        "warning: the local cache was not updated; run zzpersona pull\n",
+      );
+    }
     print(
       io,
       options.json,
       "unchanged" in result
         ? `${ref} unchanged @${result.version}`
         : `published ${ref} @${result.version}`,
-      { ref, ...result },
+      { ref, ...result, cacheUpdated },
     );
   } catch (error) {
     fail(error);

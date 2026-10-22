@@ -83,17 +83,17 @@ describe("withRegistry", () => {
       index.layers[ref] = { version: 1, digest: "sha256:x" };
     }
     const store = withRegistry(local, home, index, () => {});
-    expect(await store.readText(".registry/org/a/instructions/c.md")).toBe(
+    expect(await store.readText(".registry/org/a/@/instructions/c.md")).toBe(
       "from a",
     );
-    expect(await store.readText(".registry/org/b/instructions/c.md")).toBe(
+    expect(await store.readText(".registry/org/b/@/instructions/c.md")).toBe(
       "from b",
     );
     const resolved = await resolve("org/a", { source: store });
     expect(resolved.ir.instructions).toMatchObject([
-      { file: ".registry/org/a/instructions/c.md" },
+      { file: ".registry/org/a/@/instructions/c.md" },
     ]);
-    const location = store.locate(".registry/org/b/instructions/c.md");
+    const location = store.locate(".registry/org/b/@/instructions/c.md");
     expect(location).toEqual({
       path: join(
         cacheFolder(home, "org/b", 1, "sha256:x"),
@@ -101,6 +101,32 @@ describe("withRegistry", () => {
       ),
       root: cacheFolder(home, "org/b", 1, "sha256:x"),
     });
+  });
+
+  it("nested published refs keep their own files", async () => {
+    const { home, local, index } = setup();
+    for (const [ref, rel, text] of [
+      ["team/platform", "skills/review/SKILL.md", "outer"],
+      ["team/platform/skills", "review/SKILL.md", "inner"],
+    ] as const) {
+      const folder = seed(home, ref, 1, persona("x"));
+      put(join(folder, rel), text);
+      index.layers[ref] = { version: 1, digest: "sha256:x" };
+    }
+    const store = withRegistry(local, home, index, () => {});
+    expect(
+      await store.readText(
+        `${store.dir!("team/platform")}/skills/review/SKILL.md`,
+      ),
+    ).toBe("outer");
+    expect(
+      await store.readText(
+        `${store.dir!("team/platform/skills")}/review/SKILL.md`,
+      ),
+    ).toBe("inner");
+    expect(
+      store.locate(".registry/team/platform/skills/@/review/SKILL.md")?.root,
+    ).toBe(cacheFolder(home, "team/platform/skills", 1, "sha256:x"));
   });
 
   it("a published layer extends a local one through the same store", async () => {
@@ -125,9 +151,11 @@ describe("withRegistry", () => {
     index.layers["org/a"] = { version: 1, digest: "sha256:x" };
     put(join(home, "secret.txt"), "no");
     const store = withRegistry(local, home, index, () => {});
-    expect(store.locate(".registry/org/a/../../../secret.txt")).toBeUndefined();
+    expect(
+      store.locate(".registry/org/a/@/../../../secret.txt"),
+    ).toBeUndefined();
     await expect(
-      store.readText(".registry/org/a/../../../secret.txt"),
+      store.readText(".registry/org/a/@/../../../secret.txt"),
     ).rejects.toThrow();
   });
 
@@ -148,7 +176,7 @@ describe("withRegistry", () => {
     index.layers["org/acme"] = { version: 7, digest: "sha256:x" };
     const store = withRegistry(local, home, index, () => {});
     expect(store.published("org/acme")).toBe(7);
-    expect(store.dir?.("org/acme")).toBe(".registry/org/acme");
+    expect(store.dir?.("org/acme")).toBe(".registry/org/acme/@");
   });
 
   it("strayLayerDirs delegates to the local store", async () => {

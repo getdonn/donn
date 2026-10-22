@@ -19,13 +19,21 @@ Each sub-project gets its own spec.
 | C | Identity: OIDC, RBAC (view / publish / lock) per layer path | private | B |
 | D | Drift: the daemon reports local vs published | OSS | A |
 | E | Claude Code enforcement: org locks → `managed-settings.d` + `managed-mcp.json` bundle for MDM | OSS compile, private packaging | — |
-| F | Gateway adapter v1: Bifrost | private | B |
+| F | Gateway adapter v1: Bifrost and LiteLLM | OSS interface, private admin sync | B |
 | G | Deploy: Docker, Helm, air-gapped, licensing | private | B, C |
 | H | Minimal console | private | B, C |
 
 Before B: the private repo needs the OSS packages published. GitHub Packages scopes npm packages
 to the repository owner, so `@zzpersona/*` needs a `zzpersona` GitHub org (or the chosen name's).
 Decided when B starts.
+
+> Amended 2026-10-22: F is now "Gateway adapter v1: Bifrost and LiteLLM": an OSS `list`/`resolve`
+> interface (`gateway://name` becomes an HTTP MCP entry, the credential a `secret://` ref), with the
+> admin-scope allowed-set sync private and no device-side enforcement (Bifrost Edge does that).
+> Gateways are optional everywhere: direct MCP servers (`command`/`args`, URL) stay first-class, and
+> "only `gateway://`" is an org's own lock (`03` → Security, enterprise mode), never a default. E is
+> unchanged: orgs running Edge already have MDM, which is E's delivery channel. D may later compare
+> what was intended against Edge's observed device inventory instead of building our own.
 
 ## Intent
 
@@ -181,6 +189,74 @@ All support `--json`.
 OIDC and RBAC (C); the real server, Postgres and audit (B); yanking or deleting versions;
 `registry://` skills; version pinning; several registries; background sync in the daemon; drift
 (D).
+
+## Amendments from implementation (2026-10-22)
+
+- **Publish check order (§2):** validate (1) first, then `stale-base` and `unchanged` (5), then
+  ancestors, locks and descendants (2-4). A stale client is told to pull before it is shown
+  problems computed against state it has not seen. `dryRun` still skips `stale-base`: it is a
+  preview.
+- **Hooks and skills in a bundle:** every hook `run` is a path (as the resolver treats it); a skill
+  reference containing `://` is not a file and is skipped, exactly as the resolver does.
+- **Digest, canonical form v1 (§1):** `sha256:` plus the hex sha256 of this UTF-8 text:
+
+  ```
+  zzpersona-bundle/1\n
+  layer.yaml <sha256hex(UTF-8 bytes of source)>\n
+  <path> <sha256hex(decoded file bytes)>\n        (one line per file)
+  ```
+
+  Paths are normalised first (a leading `./` stripped, then `posix.normalize`) and the file lines
+  are sorted by the UTF-8 bytes of the normalised path, so file order and a leading `./` never
+  change the digest. A control character in a path is `invalid`; the client refuses it too.
+- **Problem codes:** `not-found` is added (an unknown ref or version, `404`).
+- **Cache folder (§3):** a version lives in `<ref>/@<version>-<first 12 hex of digest>/`, replacing
+  `<ref>/<version>/`. `@` cannot start a ref segment, so a ref and a version never collide, and a
+  changed digest installs a new folder instead of replacing one the index names.
+- **Pull lock:** a pull (and recording a publish) holds `cache/registry/.lock`, created exclusive
+  with the pid. It is stale when the pid is dead or the file is more than 60 s old. A waiter polls
+  until the caller's signal aborts, so a freshness pull gives up at its 1 s budget and uses the
+  cache. Temp-folder sweeps run only under the lock; pruning keeps only folders the new index names.
+- **Secrets are scrubbed:** the client removes the token from `detail` and from every problem's
+  message, ref and path before an error leaves it.
+- **Freshness lines (§3):** without a token, `not logged in to <url>; using cached layers`; when
+  the registry refuses the token, `registry refused the token for <url>; using cached layers —
+  zzpersona login <url>`; unreachable keeps `registry unreachable; using cached layers from <age>
+  ago`.
+- **`builtFrom` (§4)** is in `resolve --json` and `switch --json` only. `state.json` holds
+  choices, not builds, so it does not carry it.
+- **macOS keychain:** `security` exit 44 means not found, for read and delete. This also fixes a
+  `secret://` read of a missing macOS keychain item, which used to report "security exited 44".
+- **Token input:** `login` takes the token from stdin (`--token-stdin`) or a hidden prompt on a
+  terminal; the keychain write passes the value through stdin, never argv.
+- **Check run** (built CLI against the mock, temp homes, `ZZPERSONA_REGISTRY_TOKEN`; `login` was
+  not run against the real keychain):
+  - home a, a copy of `examples/personas`: `whoami` printed `mock-user at <url>`; `publish org/acme`
+    and `publish team/web` printed `published org/acme @1` and `published team/web @1`;
+  - home b, empty personas: `pull` printed `org/acme new @1` and `team/web new @1`, then `up to
+    date`; `resolve team/web --json` had `builtFrom { org/acme: 1, team/web: 1 }`, resolved from
+    the cache alone; `zzpersona claude --dry-run` in `examples/demo-app` built, the skill copied
+    from `.registry/team/web/skills/web-review`;
+  - home a added an allow rule to `team/web`: `publish team/web --dry-run` printed `team/web: dry
+    run, nothing published` and `+ permissions.allow[Bash(pnpm typecheck:*)]`; `publish` printed
+    `published team/web @2`; home b `pull` printed `team/web 1 → 2`; an unchanged re-publish
+    printed `team/web unchanged @2`;
+  - with a local file differing from @2, `resolve team/web` printed `team/web: using published @2;
+    local copy differs` once, and `--local` printed nothing;
+  - a home whose index said `team/web` @1: `publish team/web` printed `error: stale-base: team/web
+    is at version 2, not 1` and `hint: zzpersona pull, then publish again`, exit 1.
+- **Known minor:** after a publish, `index.json` `pulledAt` is epoch 0, so the next launch pulls.
+  Epoch 0 now reads as "never pulled": the offline freshness line is `registry unreachable; no
+  layers pulled yet` (no age) and `doctor` says `<n> layers, never pulled`.
+- **Final review (2026-10-22):**
+  - A published layer's virtual folder is `.registry/<ref>/@/<path>`. The mount splits at the first
+    `@` segment, so `team/platform` and `team/platform/skills` keep their own files.
+  - `publish` exits 0 once the registry accepts it. If the cache update then fails (or waits more
+    than 5 s on the lock), it prints `warning: the local cache was not updated; run zzpersona
+    pull` on stderr and `--json` has `cacheUpdated: false` (`true` otherwise).
+  - The daemon watches `cache/registry/index.json`, so a pull refreshes live sessions.
+  - The conformance kit checks that every `getVersion` answer hashes to its `digest`, and covers a
+    nested ref (`team/a/b`).
 
 ## Open questions
 

@@ -237,6 +237,9 @@ the current persona, the mod shows a one-line nudge. Never auto-switch silently.
 - **Skills registry.** `registry://` implies a registry. v0: git URLs and local paths only.
 - **Version pinning for `extends`.** Local git = commit SHA. Control plane = published version.
   Do project files pin ancestors (`org/base@7`) or float? Lean: float locally, pin on publish.
+  *Decided 2026-10-22 (`18`):* ancestors float to the latest published version; there are no pins.
+  Publishing a parent is checked against its published descendants (`breaks-descendants`), so a
+  baseline change reaches every team on its next pull. Pins can come later if asked for.
 - **Is `user` a layer or an overlay?** Treat it as the last layer but forbid it from declaring
   `locks` — a user should never be able to lock anything for themselves.
 - **Provenance format.** JSON sidecar next to the build, consumed by `--explain` and by the

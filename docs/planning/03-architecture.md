@@ -73,7 +73,7 @@
 |---|---|---|
 | `spec` | Persona schema (zod → JSON Schema export), IR types, versioning (`apiVersion`) | `Persona`, `ResolvedPersona`, `validate()` |
 | `resolver` | Load sources, build `extends` DAG, linearize, merge per field rules, enforce locks, emit provenance | `resolve(ref, opts) → { ir, provenance, warnings }` |
-| `store` | Where personas come from. Pluggable: `store-local` (dirs + git), `store-remote` (control plane client) | `get(ref)`, `list()`, `publish()` |
+| `store` | Where personas come from. Pluggable: `store-local` (dirs + git), `store-remote` (control plane client; built 2026-10-22, see `18`: a read-only cache the local store mounts) | `get(ref)`, `list()`, `publish()` |
 | `secrets` | Provider interface + built-ins (env, OS keychain); 1Password, HashiCorp Vault, AWS SM as provider packages (amended 2026-10-21, `08`) | `resolve(secretRef) → string` |
 | `gateway` | Resolve `gateway://name` MCP refs to concrete server configs via a gateway's API; enforce allowed set | `GatewayAdapter.resolve(name)`, `.list()` |
 | `adapter-sdk` | The harness adapter contract (below), shared test harness, capability-matrix types | `HarnessAdapter` |
@@ -260,6 +260,8 @@ cwd walk-up finds .hatrack/persona.yaml → compare to state.current → nudge i
 - **Policy engine:** evaluates publish requests against layer rules (who may publish where, what
   must be locked at org level, allowed gateway set). Start as code; consider OPA/Rego only if
   customers ask for custom policy.
+- *Note (2026-10-22):* the registry contract the server must meet, its publish rules, the mock and
+  the conformance kit are specified in `18-registry-contract.md` (`@zzpersona/registry-api`).
 - **Deployment:** single container + Postgres; Helm chart with external-DB option; air-gapped OK
   (no outbound calls required).
 

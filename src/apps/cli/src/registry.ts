@@ -226,10 +226,15 @@ export async function ensureFresh(
       return;
     }
     const pulled = current && Date.parse(current.pulledAt);
+    // A pulledAt of epoch 0 is an index made by publishing alone: nothing was ever pulled.
     io.stderr.write(
-      pulled !== undefined && Number.isFinite(pulled)
-        ? `registry unreachable; using cached layers from ${ageText(now() - pulled)} ago\n`
-        : "registry unreachable; no cached layers\n",
+      pulled === undefined
+        ? "registry unreachable; no cached layers\n"
+        : pulled === 0
+          ? "registry unreachable; no layers pulled yet\n"
+          : Number.isFinite(pulled)
+            ? `registry unreachable; using cached layers from ${ageText(now() - pulled)} ago\n`
+            : "registry unreachable; no cached layers\n",
     );
   }
 }

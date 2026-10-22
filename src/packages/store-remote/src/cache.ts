@@ -20,7 +20,7 @@ import {
 import type { RegistryClient } from "./client.js";
 import { RegistryError } from "./error.js";
 
-// ~/.zzpersona/cache/registry/<ref>/<version>/ holds layer.yaml and the bundled files; index.json
+// ~/.zzpersona/cache/registry/<ref>/@<version>-<12 hex of digest>/ holds layer.yaml and the bundled files; index.json
 // names the current version of each ref. See docs/planning/18-registry-contract.md section 3.
 
 export interface CacheIndex {
