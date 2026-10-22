@@ -1,0 +1,22 @@
+# Org layer: what every engineer at the (fictional) Acme gets.
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: acme
+  description: Acme's baseline for every engineer
+instructions:
+  - id: acme-conduct
+    file: ./instructions/conduct.md
+  - id: acme-security
+    inline: Never paste credentials, tokens or customer data into prompts.
+knowledge:
+  - id: eng-handbook
+    source: mcp://confluence?space=ENG
+permissions:
+  deny:
+    - "Bash(rm -rf:*)"
+    - "Read(./.env)"
+  ask:
+    - "Bash(git push:*)"
+locks:
+  - permissions.deny
