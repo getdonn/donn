@@ -13,7 +13,7 @@ const withInstr = (name: string) =>
 
 /** Seed a cache folder the way pull would. */
 function seed(home: string, ref: string, version: number, text: string) {
-  const folder = cacheFolder(home, ref, version);
+  const folder = cacheFolder(home, ref, version, "sha256:x");
   put(join(folder, "layer.yaml"), text);
   return folder;
 }
@@ -39,7 +39,7 @@ describe("withRegistry", () => {
     seed(home, "org/acme", 3, persona("published"));
     seed(home, "org/same", 1, persona("same"));
     index.layers["org/acme"] = { version: 3, digest: "sha256:x" };
-    index.layers["org/same"] = { version: 1, digest: "sha256:y" };
+    index.layers["org/same"] = { version: 1, digest: "sha256:x" };
     const shadows: [string, number][] = [];
     const store = withRegistry(local, home, index, (ref, v) =>
       shadows.push([ref, v]),
@@ -95,8 +95,11 @@ describe("withRegistry", () => {
     ]);
     const location = store.locate(".registry/org/b/instructions/c.md");
     expect(location).toEqual({
-      path: join(cacheFolder(home, "org/b", 1), "instructions/c.md"),
-      root: cacheFolder(home, "org/b", 1),
+      path: join(
+        cacheFolder(home, "org/b", 1, "sha256:x"),
+        "instructions/c.md",
+      ),
+      root: cacheFolder(home, "org/b", 1, "sha256:x"),
     });
   });
 
@@ -135,7 +138,7 @@ describe("withRegistry", () => {
     seed(home, "org/acme", 1, persona("p"));
     seed(home, "area/ops", 1, persona("ops"));
     index.layers["org/acme"] = { version: 1, digest: "sha256:x" };
-    index.layers["area/ops"] = { version: 1, digest: "sha256:y" };
+    index.layers["area/ops"] = { version: 1, digest: "sha256:x" };
     const store = withRegistry(local, home, index, () => {});
     expect(await store.list()).toEqual(["area/ops", "org/acme", "team/web"]);
   });

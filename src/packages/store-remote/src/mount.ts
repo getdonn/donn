@@ -48,7 +48,8 @@ export function withRegistry(
     if (tail === ".." || tail.startsWith("../") || posix.isAbsolute(tail)) {
       return undefined;
     }
-    const root = cacheFolder(home, found.ref, published(found.ref)!);
+    const { version, digest } = index.layers[found.ref]!;
+    const root = cacheFolder(home, found.ref, version, digest);
     return { path: join(root, ...tail.split("/")), root };
   };
 
@@ -63,11 +64,12 @@ export function withRegistry(
     },
 
     async load(ref) {
-      const version = published(ref);
-      if (version === undefined) return local.load(ref);
+      const entry = index.layers[ref];
+      if (entry === undefined) return local.load(ref);
+      const { version, digest } = entry;
       const cached = parse(
         await readFile(
-          join(cacheFolder(home, ref, version), "layer.yaml"),
+          join(cacheFolder(home, ref, version, digest), "layer.yaml"),
           "utf8",
         ),
       ) as unknown;

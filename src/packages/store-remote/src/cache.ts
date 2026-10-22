@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import {
   mkdir,
+  open,
+  stat,
   readdir,
   readFile,
   rename,
@@ -8,9 +10,9 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import {
-  LayerRef,
   bundleDigest,
   normalizeBundlePath,
   type LayerVersion,
@@ -46,11 +48,22 @@ const CacheIndexSchema = z.object({
 const cacheRoot = (home: string) => join(home, "cache", "registry");
 const indexPath = (home: string) => join(cacheRoot(home), "index.json");
 
+/**
+ * A version's folder: `<ref>/@<version>-<first 12 hex of the digest>`. `@` cannot start a ref
+ * segment, so `org/a`'s versions never collide with the folders of `org/a/1`, and a changed
+ * digest for the same version gets a new folder instead of replacing one the index names.
+ */
 export const cacheFolder = (
   home: string,
   ref: string,
   version: number,
-): string => join(cacheRoot(home), ...ref.split("/"), String(version));
+  digest: string,
+): string =>
+  join(
+    cacheRoot(home),
+    ...ref.split("/"),
+    `@${version}-${digest.replace(/^sha256:/, "").slice(0, 12)}`,
+  );
 
 /** The index, or undefined when there is none or it cannot be read (the next pull rebuilds it). */
 export async function readIndex(home: string): Promise<CacheIndex | undefined> {
@@ -99,50 +112,126 @@ async function writeVersion(dir: string, version: LayerVersion): Promise<void> {
   }
 }
 
-/** Move a finished folder into place, replacing a leftover one from an interrupted pull. */
+/** Move a finished folder into place; a folder with that name (digest included) is the same. */
 async function install(tmp: string, target: string): Promise<void> {
-  await rm(target, { recursive: true, force: true });
+  if (
+    await stat(target).then(
+      () => true,
+      () => false,
+    )
+  ) {
+    await rm(tmp, { recursive: true, force: true });
+    return;
+  }
   await mkdir(dirname(target), { recursive: true });
   await rename(tmp, target);
 }
 
-/** Every `<ref>/<version>` folder under the cache, found by their layer.yaml. */
-async function versionFolders(
+const STALE_LOCK_MS = 60_000;
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+};
+
+/** True when the lock file's owner is gone or it is older than a minute. */
+async function lockIsStale(path: string): Promise<string | undefined> {
+  try {
+    const [text, info] = await Promise.all([
+      readFile(path, "utf8"),
+      stat(path),
+    ]);
+    const pid = Number.parseInt(text, 10);
+    const dead = Number.isInteger(pid) && pid > 0 && !alive(pid);
+    return dead || Date.now() - info.mtimeMs > STALE_LOCK_MS ? text : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Run `fn` holding `<cache>/.lock`, created exclusively with this pid. A lock whose pid is dead
+ * or that is over 60 s old is taken over. Waits (polling every 50 ms) until it gets the lock or
+ * `signal` aborts, which is a `timeout`. Always released.
+ */
+async function withLock<T>(
   home: string,
-): Promise<{ ref: string; version: number; path: string }[]> {
+  signal: AbortSignal | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
   const root = cacheRoot(home);
-  const found: { ref: string; version: number; path: string }[] = [];
-  const walk = async (dir: string, segments: string[]): Promise<void> => {
+  await mkdir(root, { recursive: true });
+  const path = join(root, ".lock");
+  for (;;) {
+    try {
+      const handle = await open(path, "wx");
+      try {
+        await handle.writeFile(String(process.pid));
+      } finally {
+        await handle.close();
+      }
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const stale = await lockIsStale(path);
+    if (
+      stale !== undefined &&
+      (await readFile(path, "utf8").catch(() => "")) === stale
+    ) {
+      await rm(path, { force: true });
+      continue;
+    }
+    if (signal?.aborted) {
+      throw new RegistryError(
+        "timeout",
+        "the registry cache is locked by another zzpersona process",
+      );
+    }
+    await sleep(50, undefined, signal ? { signal } : undefined).catch(() => {});
+  }
+  try {
+    return await fn();
+  } finally {
+    await rm(path, { force: true });
+  }
+}
+
+/** Every `<ref>/@<version>-<digest>` folder under the cache. */
+async function versionFolders(home: string): Promise<string[]> {
+  const found: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {
       return;
     }
-    if (entries.some((e) => e.isFile() && e.name === "layer.yaml")) {
-      const version = Number(segments.at(-1));
-      const ref = segments.slice(0, -1).join("/");
-      if (Number.isInteger(version) && LayerRef.safeParse(ref).success) {
-        found.push({ ref, version, path: dir });
-      }
-      return;
-    }
     for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
-        await walk(join(dir, entry.name), [...segments, entry.name]);
-      }
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      const path = join(dir, entry.name);
+      if (entry.name.startsWith("@")) found.push(path);
+      else await walk(path);
     }
   };
-  await walk(root, []);
+  await walk(cacheRoot(home));
   return found;
 }
 
-/** Remove version folders the index does not name, then folders left empty. */
+/** Remove every version folder the index does not name, then ref folders left empty. */
 async function prune(home: string, index: CacheIndex): Promise<void> {
-  for (const { ref, version, path } of await versionFolders(home)) {
-    if (index.layers[ref]?.version === version) continue;
+  const keep = new Set(
+    Object.entries(index.layers).map(([ref, { version, digest }]) =>
+      cacheFolder(home, ref, version, digest),
+    ),
+  );
+  for (const path of await versionFolders(home)) {
+    if (keep.has(path)) continue;
     await rm(path, { recursive: true, force: true });
-    // Walk up while the parent is an empty ref folder.
     for (
       let dir = dirname(path);
       dir.length > cacheRoot(home).length;
@@ -165,11 +254,20 @@ export async function pull(
   client: RegistryClient,
   url: string,
   now: () => Date = () => new Date(),
+  signal?: AbortSignal,
+): Promise<PullChange[]> {
+  return withLock(home, signal, () => pullLocked(home, client, url, now));
+}
+
+async function pullLocked(
+  home: string,
+  client: RegistryClient,
+  url: string,
+  now: () => Date,
 ): Promise<PullChange[]> {
   const root = cacheRoot(home);
-  await mkdir(root, { recursive: true });
   for (const name of await readdir(root)) {
-    if (name.startsWith(".tmp-")) {
+    if (name.startsWith(".tmp-") || name.startsWith("index.json.tmp-")) {
       await rm(join(root, name), { recursive: true, force: true });
     }
   }
@@ -180,14 +278,28 @@ export async function pull(
   const listing = await client.listLayers();
 
   const layers: CacheIndex["layers"] = {};
-  const fetched: { ref: string; version: number; tmp: string }[] = [];
+  const fetched: {
+    ref: string;
+    version: number;
+    digest: string;
+    tmp: string;
+  }[] = [];
   const changes: PullChange[] = [];
   const stage = join(root, `.tmp-${randomBytes(6).toString("hex")}`);
 
   for (const { ref, version, digest } of listing) {
     layers[ref] = { version, digest };
     const have = old[ref];
-    if (have?.version === version && have.digest === digest) continue;
+    if (
+      have?.version === version &&
+      have.digest === digest &&
+      (await stat(cacheFolder(home, ref, version, digest)).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      continue;
+    }
     const full = await client.getVersion(ref, version);
     if (
       full.ref !== ref ||
@@ -198,7 +310,7 @@ export async function pull(
     }
     const tmp = join(stage, String(fetched.length));
     await writeVersion(tmp, full);
-    fetched.push({ ref, version, tmp });
+    fetched.push({ ref, version, digest, tmp });
     changes.push({
       ref,
       ...(oldAll[ref] && { from: oldAll[ref].version }),
@@ -209,8 +321,8 @@ export async function pull(
     if (!(ref in layers)) changes.push({ ref, from: version });
   }
 
-  for (const { ref, version, tmp } of fetched) {
-    await install(tmp, cacheFolder(home, ref, version));
+  for (const { ref, version, digest, tmp } of fetched) {
+    await install(tmp, cacheFolder(home, ref, version, digest));
   }
   const index: CacheIndex = { url, pulledAt: now().toISOString(), layers };
   await writeFileAtomic(indexPath(home), `${JSON.stringify(index, null, 2)}\n`);
@@ -227,13 +339,24 @@ export async function recordPublished(
   home: string,
   url: string,
   version: LayerVersion,
+  signal?: AbortSignal,
+): Promise<void> {
+  return withLock(home, signal, () => recordLocked(home, url, version));
+}
+
+async function recordLocked(
+  home: string,
+  url: string,
+  version: LayerVersion,
 ): Promise<void> {
   const root = cacheRoot(home);
-  await mkdir(root, { recursive: true });
   const tmp = join(root, `.tmp-${randomBytes(6).toString("hex")}`);
   try {
     await writeVersion(tmp, version);
-    await install(tmp, cacheFolder(home, version.ref, version.version));
+    await install(
+      tmp,
+      cacheFolder(home, version.ref, version.version, version.digest),
+    );
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
