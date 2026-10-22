@@ -1,11 +1,13 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, type Stats } from "node:fs";
 import {
   chmod,
   link,
   mkdir,
   open,
+  readdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
@@ -16,7 +18,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { connect } from "node:net";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { isAlive, nodeProbe } from "@zzpersona/executor";
 import type { CliIo } from "../cli.js";
@@ -93,11 +95,20 @@ async function releaseLock(lock: string): Promise<void> {
  * Create `lock` holding our pid; false when it already exists. The pid is written to a temp file
  * first and linked into place, so the lock is never seen empty: an empty one is a leftover.
  */
-async function createLock(lock: string): Promise<boolean> {
+async function createLock(
+  lock: string,
+  linkFile: typeof link = link,
+): Promise<boolean> {
   const temp = `${lock}.${process.pid}.${randomBytes(6).toString("hex")}`;
   try {
     await writeFile(temp, `${process.pid}\n`, { flag: "wx", mode: 0o600 });
-    await link(temp, lock);
+    try {
+      await linkFile(temp, lock);
+    } catch (error) {
+      if (!NO_LINK.has((error as NodeJS.ErrnoException).code ?? ""))
+        throw error;
+      await createLockInPlace(lock);
+    }
     held.add(lock);
     return true;
   } catch (error) {
@@ -108,19 +119,108 @@ async function createLock(lock: string): Promise<boolean> {
   }
 }
 
+/** What `link()` fails with on a filesystem without hard links. */
+const NO_LINK = new Set(["EPERM", "ENOTSUP", "EXDEV"]);
+
+/**
+ * Where there are no hard links: create the lock exclusively and write the pid into it. A racer
+ * may see it empty for a moment; its second read, under the takeover file, sees the pid.
+ */
+async function createLockInPlace(lock: string): Promise<void> {
+  const handle = await open(lock, "wx", 0o600);
+  try {
+    await handle.writeFile(`${process.pid}\n`);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** A unique name beside `file`, with this process's pid in it. */
+const aside = (file: string) =>
+  `${file}.${process.pid}.${randomBytes(6).toString("hex")}`;
+
+/**
+ * Remove the takeover file `seen` as stale; false when what is there now is another file (a
+ * starter replaced it since the stat), which is left in place. It is renamed aside first, so the
+ * file removed is always the one checked.
+ */
+async function removeStale(takeover: string, seen: Stats): Promise<boolean> {
+  const moved = aside(takeover);
+  try {
+    await rename(takeover, moved);
+  } catch (error) {
+    // Already gone: nothing to remove.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
+  }
+  const now = await stat(moved).catch(() => undefined);
+  if (now?.ino === seen.ino && now.mtimeMs === seen.mtimeMs) {
+    await rm(moved, { force: true });
+    return true;
+  }
+  // Another starter's: put it back, unless yet another is already in its place.
+  await link(moved, takeover).catch(async (error: NodeJS.ErrnoException) => {
+    if (NO_LINK.has(error.code ?? "")) await rename(moved, takeover);
+  });
+  await rm(moved, { force: true });
+  return false;
+}
+
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Remove temp files next to `lock` (`<lock>.<pid>.<hex>`) left by starters that died. */
+async function sweepTemps(lock: string): Promise<void> {
+  const dir = dirname(lock);
+  const pattern = new RegExp(
+    `^${escapeRegExp(basename(lock))}\\.(?:takeover\\.)?(\\d+)\\.[0-9a-f]+$`,
+  );
+  const names = await readdir(dir).catch(() => [] as string[]);
+  await Promise.all(
+    names.map(async (name) => {
+      const pid = Number(pattern.exec(name)?.[1]);
+      if (pid > 0 && !isAlive(pid)) await rm(join(dir, name), { force: true });
+    }),
+  );
+}
+
 /**
  * Take `daemon.lock` (it holds the owner's pid). A lock whose owner is gone or is not a daemon
  * (its pid reused), or an empty or unreadable one, is replaced under `daemon.lock.takeover`, so
  * that of starters racing for it exactly one wins. See docs/planning/16-daemon-service.md §3.
  */
+export interface LockOptions {
+  now?: () => number;
+  /** Test-only: the `link()` that puts the lock in place. */
+  link?: typeof link;
+  /** Test-only: runs after the lock was found to exist, before it is read. */
+  afterExists?: () => Promise<void>;
+  /** Test-only: runs after a takeover file was found stale, before it is removed. */
+  beforeStaleRemove?: () => Promise<void>;
+}
+
 export async function acquireLock(
   lock: string,
-  now: () => number = Date.now,
+  options: LockOptions = {},
 ): Promise<void> {
-  if (await createLock(lock)) return;
+  await takeLock(lock, options);
+  // Held: no other starter of this home runs, so a temp file of a dead pid is a leftover.
+  await sweepTemps(lock);
+}
+
+async function takeLock(lock: string, options: LockOptions): Promise<void> {
+  const now = options.now ?? Date.now;
+  const create = () => createLock(lock, options.link);
+  if (await create()) return;
+  await options.afterExists?.();
   // Unreadable reads as empty, here and below, so it is taken over once.
   const read = () => readFile(lock, "utf8").catch(() => "");
-  const seen = await read();
+  // Gone since the create (its daemon stopping): create it once more before a takeover.
+  const first = await readFile(lock, "utf8").catch((error: unknown) =>
+    (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : "",
+  );
+  if (first === undefined && (await create())) return;
+  const seen = first ?? (await read());
   const owner = Number.parseInt(seen, 10);
   if (owner > 0 && liveOwner(lock, owner)) throw running(lock);
   const takeover = `${lock}.takeover`;
@@ -130,19 +230,18 @@ export async function acquireLock(
       break;
     } catch (error) {
       if (!exists(error)) throw error;
-      const since = await stat(takeover).then(
-        (s) => now() - s.mtimeMs,
-        () => 0,
-      );
-      if (attempt > 0 || since <= TAKEOVER_STALE_MS) throw running(lock);
-      await rm(takeover, { force: true });
+      const found = await stat(takeover).catch(() => undefined);
+      if (attempt > 0 || !found || now() - found.mtimeMs <= TAKEOVER_STALE_MS)
+        throw running(lock);
+      await options.beforeStaleRemove?.();
+      if (!(await removeStale(takeover, found))) throw running(lock);
     }
   }
   try {
     // Another starter may have replaced the lock since we read it: only ours to replace if not.
     if ((await read()) !== seen) throw running(lock);
     await releaseLock(lock);
-    if (!(await createLock(lock))) throw running(lock);
+    if (!(await create())) throw running(lock);
   } finally {
     await rm(takeover, { force: true });
   }
@@ -241,14 +340,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   const paths = daemonPaths(options.home, options.env);
   await mkdir(paths.dir, { recursive: true, mode: 0o700 });
   await chmod(paths.dir, 0o700);
+  const sessionsDir = join(options.home, "sessions");
   await acquireLock(paths.lock);
+  try {
+    await mkdir(sessionsDir, { recursive: true });
+  } catch (error) {
+    // Held, but not started: a lock left here would hold off every later start.
+    await releaseLock(paths.lock);
+    throw error;
+  }
 
   const log = createLog(paths.log, now);
   const token = randomBytes(32).toString("hex");
   const startedAt = new Date(now()).toISOString();
   const debounceMs = options.debounceMs ?? DEBOUNCE_MS;
-  const sessionsDir = join(options.home, "sessions");
-  await mkdir(sessionsDir, { recursive: true });
 
   // Compiling runs as the CLI would in the session's folder; what it prints goes to the log.
   const toLog = {

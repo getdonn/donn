@@ -2,6 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -189,6 +190,84 @@ describe("the daemon lock", () => {
     });
     expect(readFileSync(lock, "utf8")).toBe(dead);
     expect(existsSync(takeover)).toBe(true);
+  });
+
+  it("a lock that vanishes before it is read is created again", async () => {
+    // Its daemon stopped between our failed create and our read.
+    // Another starter's takeover is in progress, so the takeover path would give up.
+    const lock = join(root, "daemon.lock");
+    writeFileSync(lock, `${await liveChild(true)}\n`);
+    writeFileSync(`${lock}.takeover`, "");
+    await acquireLock(lock, { afterExists: async () => rmSync(lock) });
+    expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
+  });
+
+  it("does not remove a takeover file another starter just made", async () => {
+    // The stale one was replaced between our stat and our remove: the new one is not ours.
+    const lock = join(root, "daemon.lock");
+    const takeover = `${lock}.takeover`;
+    const dead = `${deadPid()}\n`;
+    writeFileSync(lock, dead);
+    writeFileSync(takeover, "");
+    age(takeover, 11);
+    await expect(
+      acquireLock(lock, {
+        beforeStaleRemove: async () => {
+          rmSync(takeover);
+          writeFileSync(takeover, "fresh");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "daemon-running" });
+    expect(readFileSync(lock, "utf8")).toBe(dead);
+    expect(readFileSync(takeover, "utf8")).toBe("fresh");
+    expect(readdirSync(root).sort()).toEqual([
+      "daemon.lock",
+      "daemon.lock.takeover",
+    ]);
+  });
+
+  it("sweeps temp files left by starters that died", async () => {
+    const lock = join(root, "daemon.lock");
+    const gone = `${lock}.${deadPid()}.0123456789ab`;
+    const live = `${lock}.${await liveChild(false)}.ba9876543210`;
+    writeFileSync(gone, "1\n");
+    writeFileSync(live, "2\n");
+    await acquireLock(lock);
+    expect(existsSync(gone)).toBe(false);
+    expect(existsSync(live)).toBe(true);
+  });
+
+  it("creates the lock without link() where hard links are not supported", async () => {
+    for (const code of ["EPERM", "ENOTSUP", "EXDEV"]) {
+      const lock = join(root, `${code}.lock`);
+      const noLink = async () => {
+        throw Object.assign(new Error(`link: ${code}`), { code });
+      };
+      await acquireLock(lock, { link: noLink });
+      expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
+      // Held: a second start here finds it taken.
+      await expect(acquireLock(lock, { link: noLink })).rejects.toMatchObject({
+        code: "daemon-running",
+      });
+    }
+    expect(readdirSync(root).sort()).toEqual([
+      "ENOTSUP.lock",
+      "EPERM.lock",
+      "EXDEV.lock",
+    ]);
+  });
+
+  it("releases the lock when start fails after taking it", async () => {
+    const home = join(root, "home");
+    // A file where the sessions folder goes: its mkdir fails.
+    mkdirSync(home);
+    writeFileSync(join(home, "sessions"), "");
+    await expect(
+      startDaemon({ home, env: {}, version: "9.9.9" }),
+    ).rejects.toThrow();
+    expect(existsSync(daemonPaths(home, {}).lock)).toBe(false);
+    rmSync(join(home, "sessions"));
+    daemons.push(await startDaemon({ home, env: {}, version: "9.9.9" }));
   });
 
   it("leaves a live socket alone", async () => {
