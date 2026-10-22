@@ -1,13 +1,16 @@
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isMap, parseDocument } from "yaml";
 import {
   bundleLayer,
   createClient,
+  pollLogin,
   pull,
   readIndex,
   recordPublished,
   RegistryError,
+  startLogin,
   type PullChange,
 } from "@zzpersona/store-remote";
 import type { CliIo } from "../cli.js";
@@ -30,20 +33,38 @@ const HINTS: Record<string, string> = {
   "breaks-descendants": "--force",
 };
 
+/** The role a `forbidden` message names: `… needs <role> on <ref>`. */
+function grantHint(problem: { message: string; ref?: string }): string {
+  const match = /needs (\S+) on (\S+)\s*$/.exec(problem.message);
+  const role = match?.[1];
+  const ref = problem.ref ?? match?.[2];
+  return clean(
+    `ask a registry admin for ${role !== undefined ? `${role} on ` : ""}${ref ?? "this layer"}`,
+  );
+}
+
+/** Server text for a terminal: control characters (escapes, newlines, bells) dropped. */
+export function clean(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
+
 /** A registry failure as a CliError: each problem as `<code>: <message>`, with its hint. */
-function fail(error: unknown): never {
+function fail(error: unknown, options: { grantHint?: boolean } = {}): never {
   if (!(error instanceof RegistryError)) throw error;
   const problems =
     error.problems !== undefined && error.problems.length > 0
-      ? error.problems.map(({ code, message }) => ({
-          code,
-          message,
-          ...(HINTS[code] !== undefined && { hint: HINTS[code] }),
+      ? error.problems.map((p) => ({
+          code: clean(p.code),
+          message: clean(p.message),
+          ...(p.code === "forbidden" && options.grantHint
+            ? { hint: grantHint(p) }
+            : HINTS[p.code] !== undefined && { hint: HINTS[p.code] }),
         }))
       : [
           {
             code: error.code,
-            message: error.message,
+            message: clean(error.message),
             ...(HINTS[error.code] !== undefined && { hint: HINTS[error.code] }),
           },
         ];
@@ -125,13 +146,173 @@ export interface JsonOption {
   json?: boolean;
 }
 
+const dayOf = (iso: string) => iso.slice(0, 10);
+
+/** The command that opens `href` in the browser. No shell is involved on any platform. */
+export function openerCommand(
+  platform: string,
+  href: string,
+): [string, string[]] {
+  if (platform === "darwin") return ["open", [href]];
+  if (platform === "win32") {
+    return ["rundll32", ["url.dll,FileProtocolHandler", href]];
+  }
+  return ["xdg-open", [href]];
+}
+
+/** Open `href` in the person's browser; never throws and never waits for it. */
+async function defaultOpenBrowser(href: string): Promise<void> {
+  const [command, args] = openerCommand(process.platform, href);
+  try {
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    // The link is printed anyway.
+  }
+}
+
+const abortableSleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    }
+    signal.addEventListener("abort", done, { once: true });
+  });
+
+async function saveLogin(
+  io: CliIo,
+  home: string,
+  url: string,
+  token: string,
+): Promise<"keychain" | "file"> {
+  const store = await saveToken(io, home, url, token);
+  const file = join(home, "config.yaml");
+  const content = await configWithRegistry(file, url);
+  await fsStep(file, () => writeFileAtomic(file, content));
+  return store;
+}
+
+/** Sign in through the browser: start, show the link and code, poll until confirmed. */
+async function browserLogin(
+  io: CliIo,
+  url: string,
+  options: JsonOption & { browser?: boolean },
+): Promise<number> {
+  const home = homeOf(io);
+  const now = io.now ?? Date.now;
+  // Ctrl-C is ours only while we wait; other commands keep the default.
+  const own = io.signal === undefined ? new AbortController() : undefined;
+  const signal = io.signal ?? own!.signal;
+  const onSigint = () => own?.abort();
+  if (own) process.once("SIGINT", onSigint);
+  try {
+    let login;
+    try {
+      login = await startLogin(url, { signal });
+    } catch (error) {
+      if (signal.aborted) return cancelled(io);
+      if (error instanceof RegistryError && error.code === "not-found") {
+        throw new CliError(
+          "no-sign-in",
+          `this registry has no sign-in; use zzpersona login ${url} --token-stdin`,
+          { hint: "--token-stdin" },
+        );
+      }
+      fail(error);
+    }
+    // The link is the server's word: it must lead back to the registry we asked.
+    let link: URL;
+    try {
+      link = new URL(login.verifyUrl);
+    } catch {
+      link = new URL("about:blank");
+    }
+    const registryUrl = new URL(url);
+    if (
+      link.origin !== registryUrl.origin ||
+      link.protocol !== registryUrl.protocol
+    ) {
+      throw new CliError(
+        "registry-protocol",
+        `registry-protocol: the registry sent a sign-in link for another site (${clean(link.protocol === registryUrl.protocol ? link.origin : link.href.slice(0, 80))})`,
+      );
+    }
+    io.stderr.write(
+      `Open ${link.href} and confirm the code ${clean(login.code)}\n`,
+    );
+    const skipBrowser = options.browser === false || (io.env.CI ?? "") !== "";
+    if (!skipBrowser) {
+      // Fire and forget: the link is already printed, whatever the opener does.
+      void (io.openBrowser ?? defaultOpenBrowser)(link.href).catch(() => {});
+    }
+    const started = now();
+    // At least a second between polls, whatever the registry asks for.
+    let interval = Math.max(1, login.interval);
+    for (;;) {
+      const remaining = login.expiresIn * 1000 - (now() - started);
+      if (remaining <= 0) {
+        throw new CliError(
+          "login-expired",
+          `login timed out; run zzpersona login ${url} again`,
+        );
+      }
+      // Never sleep past the end: there is always a last poll before expiry.
+      const wait = Math.min(interval * 1000, remaining);
+      await (io.sleep ? io.sleep(wait) : abortableSleep(wait, signal));
+      if (signal.aborted) return cancelled(io);
+      try {
+        const session = await pollLogin(url, login.loginId, login.pollSecret, {
+          signal,
+        });
+        await saveLogin(io, home, url, session.token);
+        print(
+          io,
+          options.json,
+          `logged in to ${url} as ${clean(session.subject)} (session until ${clean(dayOf(session.expiresAt))})`,
+          { url, subject: session.subject, expiresAt: session.expiresAt },
+        );
+        return 0;
+      } catch (error) {
+        if (signal.aborted) return cancelled(io);
+        if (error instanceof RegistryError) {
+          if (error.code === "authorization-pending") continue;
+          if (error.code === "slow-down") {
+            interval += 5;
+            continue;
+          }
+          fail(error);
+        }
+        throw error;
+      }
+    }
+  } finally {
+    if (own) process.off("SIGINT", onSigint);
+  }
+}
+
+function cancelled(io: CliIo): number {
+  io.stderr.write("cancelled\n");
+  return 130;
+}
+
 export async function loginCommand(
   io: CliIo,
   urlArg: string,
-  options: JsonOption & { tokenStdin?: boolean },
+  options: JsonOption & {
+    token?: boolean;
+    tokenStdin?: boolean;
+    browser?: boolean;
+  },
 ): Promise<number> {
   const home = homeOf(io);
   const url = checkedUrl(urlArg);
+  if (!options.token && !options.tokenStdin) {
+    return browserLogin(io, url, options);
+  }
   const raw = options.tokenStdin
     ? await (io.stdin ?? readAllStdin)()
     : await (io.readSecret ?? promptHidden)("Registry token: ");
@@ -154,11 +335,8 @@ export async function loginCommand(
   } catch (error) {
     fail(error);
   }
-  const store = await saveToken(io, home, url, token);
-  const file = join(home, "config.yaml");
-  const content = await configWithRegistry(file, url);
-  await fsStep(file, () => writeFileAtomic(file, content));
-  print(io, options.json, `logged in to ${url} as ${who.subject}`, {
+  const store = await saveLogin(io, home, url, token);
+  print(io, options.json, `logged in to ${url} as ${clean(who.subject)}`, {
     url,
     subject: who.subject,
     org: who.org,
@@ -195,11 +373,21 @@ export async function whoamiCommand(
   }
   try {
     const who = await createClient({ url, token }).whoami();
-    print(io, options.json, `${who.subject} at ${url}`, {
+    const lines = [`${clean(who.subject)} at ${url}`];
+    if (who.kind === "session" && who.expiresAt !== undefined) {
+      lines.push(`session until ${clean(dayOf(who.expiresAt))}`);
+    }
+    if (who.roles !== undefined) {
+      lines.push(
+        who.roles.length === 0
+          ? "roles: none"
+          : `roles: ${who.roles.map((r) => `${r.role} ${clean(r.path)}`).join(", ")}`,
+      );
+    }
+    print(io, options.json, lines.join("\n"), {
       loggedIn: true,
       url,
-      subject: who.subject,
-      org: who.org,
+      ...who,
     });
   } catch (error) {
     fail(error);
@@ -264,10 +452,10 @@ export async function publishCommand(
     if ("dryRun" in result) {
       const lines = result.diff.map(
         (c) =>
-          `${{ added: "+", removed: "-", changed: "~" }[c.change]} ${c.path}`,
+          `${{ added: "+", removed: "-", changed: "~" }[c.change]} ${clean(c.path)}`,
       );
       if (result.broken.length > 0) {
-        lines.push(`would break: ${result.broken.join(", ")}`);
+        lines.push(`would break: ${clean(result.broken.join(", "))}`);
       }
       print(
         io,
@@ -298,7 +486,7 @@ export async function publishCommand(
       { ref, ...result, cacheUpdated },
     );
   } catch (error) {
-    fail(error);
+    fail(error, { grantHint: true });
   }
   return 0;
 }
