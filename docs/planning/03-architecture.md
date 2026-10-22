@@ -205,6 +205,11 @@ background sync.
 > 2026-10-21: the first slice (spec 14) is built. It runs as `zzpersona daemon run` inside the CLI
 > package until the build code is a package of its own. Sync, drift, the marketplace, pre-build, the
 > secrets broker and service install are later slices.
+>
+> 2026-10-22: service install and auto-start are built (spec 16, `16-daemon-service.md`):
+> `zzpersona daemon install|uninstall` (launchd, systemd --user; not Windows yet), and `zzpersona
+> claude` / `codex` start the daemon when it is not running (`daemon: { autoStart: false }` turns
+> it off). Other commands do not auto-start it.
 
 Desktop app: a **tray/menubar client** of the daemon (Tauri preferred over Electron for footprint;
 revisit if a webview constraint appears). It shows current persona per harness, a switcher, sync

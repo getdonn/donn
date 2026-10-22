@@ -1,11 +1,21 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, open, readFile, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  link,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { connect } from "node:net";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { isAlive, nodeProbe } from "@zzpersona/executor";
@@ -22,6 +32,7 @@ import type {
 } from "./client.js";
 import { createLog } from "./log.js";
 import { daemonPaths, privateSocketDir } from "./paths.js";
+import { isDaemonProcess } from "./process.js";
 import { refreshSession, type RefreshOutcome } from "./refresh.js";
 import { allowedRun, runInProcess } from "./run.js";
 import { watchKey, watchSources, type Watch } from "./watch.js";
@@ -53,27 +64,105 @@ export interface Daemon {
   closed: Promise<void>;
 }
 
-/** Take `daemon.lock` (it holds the owner's pid); a lock whose owner is gone is replaced. */
-async function acquireLock(lock: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const file = await open(lock, "wx", 0o600);
-      await file.writeFile(`${process.pid}\n`);
-      await file.close();
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const owner = Number.parseInt(
-        await readFile(lock, "utf8").catch(() => ""),
-        10,
-      );
-      if ((owner > 0 && isAlive(owner)) || attempt > 0) {
-        throw new CliError("daemon-running", "already running", { lock });
-      }
-      await rm(lock, { force: true });
-    }
+/** A takeover file older than this was left by a starter that crashed holding it. */
+const TAKEOVER_STALE_MS = 10_000;
+
+const running = (lock: string) =>
+  new CliError("daemon-running", "already running", { lock });
+
+const exists = (error: unknown) =>
+  (error as NodeJS.ErrnoException).code === "EEXIST";
+
+/**
+ * The locks this process holds. A lock naming this process is only live if it is one of them
+ * (a second daemon started in-process); else this process got a dead daemon's pid.
+ */
+const held = new Set<string>();
+
+/** Whether the lock's `owner` is a daemon that still runs. */
+const liveOwner = (lock: string, owner: number) =>
+  owner === process.pid ? held.has(lock) : isDaemonProcess(owner);
+
+/** Remove a lock this process holds. */
+async function releaseLock(lock: string): Promise<void> {
+  held.delete(lock);
+  await rm(lock, { force: true });
+}
+
+/**
+ * Create `lock` holding our pid; false when it already exists. The pid is written to a temp file
+ * first and linked into place, so the lock is never seen empty: an empty one is a leftover.
+ */
+async function createLock(lock: string): Promise<boolean> {
+  const temp = `${lock}.${process.pid}.${randomBytes(6).toString("hex")}`;
+  try {
+    await writeFile(temp, `${process.pid}\n`, { flag: "wx", mode: 0o600 });
+    await link(temp, lock);
+    held.add(lock);
+    return true;
+  } catch (error) {
+    if (exists(error)) return false;
+    throw error;
+  } finally {
+    await rm(temp, { force: true });
   }
 }
+
+/**
+ * Take `daemon.lock` (it holds the owner's pid). A lock whose owner is gone or is not a daemon
+ * (its pid reused), or an empty or unreadable one, is replaced under `daemon.lock.takeover`, so
+ * that of starters racing for it exactly one wins. See docs/planning/16-daemon-service.md §3.
+ */
+export async function acquireLock(
+  lock: string,
+  now: () => number = Date.now,
+): Promise<void> {
+  if (await createLock(lock)) return;
+  // Unreadable reads as empty, here and below, so it is taken over once.
+  const read = () => readFile(lock, "utf8").catch(() => "");
+  const seen = await read();
+  const owner = Number.parseInt(seen, 10);
+  if (owner > 0 && liveOwner(lock, owner)) throw running(lock);
+  const takeover = `${lock}.takeover`;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await (await open(takeover, "wx", 0o600)).close();
+      break;
+    } catch (error) {
+      if (!exists(error)) throw error;
+      const since = await stat(takeover).then(
+        (s) => now() - s.mtimeMs,
+        () => 0,
+      );
+      if (attempt > 0 || since <= TAKEOVER_STALE_MS) throw running(lock);
+      await rm(takeover, { force: true });
+    }
+  }
+  try {
+    // Another starter may have replaced the lock since we read it: only ours to replace if not.
+    if ((await read()) !== seen) throw running(lock);
+    await releaseLock(lock);
+    if (!(await createLock(lock))) throw running(lock);
+  } finally {
+    await rm(takeover, { force: true });
+  }
+}
+
+/** How long a connect to an existing socket may take before it counts as dead. */
+const CONNECT_MS = 200;
+
+/** Whether something accepts connections on the socket. */
+const answers = (sock: string) =>
+  new Promise<boolean>((resolve) => {
+    const socket = connect(sock);
+    const done = (alive: boolean) => {
+      socket.destroy();
+      resolve(alive);
+    };
+    socket.setTimeout(CONNECT_MS, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+  });
 
 const sameToken = (header: string | undefined, token: string) => {
   const expected = Buffer.from(`Bearer ${token}`);
@@ -193,6 +282,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     version: options.version,
     pid: process.pid,
     startedAt,
+    service: options.env.ZZPERSONA_SERVICE === "1",
     watching: watcher?.paths ?? [],
     sessions: (await listSessions(options.home))
       .filter((s) => s.running)
@@ -502,11 +592,17 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       });
       await rm(paths.sock, { force: true });
       // Last: `daemon stop` waits for the lock to go before it reports stopped.
-      await rm(paths.lock, { force: true });
+      await releaseLock(paths.lock);
       await log("stopped");
       markClosed();
     })());
 
+  // A daemon whose lock was removed by hand still answers: leave it, and release only our lock.
+  if (await answers(paths.sock)) {
+    clearInterval(poll);
+    await releaseLock(paths.lock);
+    throw running(paths.lock);
+  }
   const fallback = paths.sock !== join(paths.dir, "sock");
   try {
     // A long home's socket lives in a folder that must be the user's alone.
@@ -531,7 +627,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     clearInterval(poll);
     server.close();
     await rm(paths.token, { force: true });
-    await rm(paths.lock, { force: true });
+    await releaseLock(paths.lock);
     throw error;
   }
   await log(`started ${options.version} pid ${process.pid} on ${paths.sock}`);

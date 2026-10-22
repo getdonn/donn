@@ -85,13 +85,18 @@ export async function zz(
     env?: NodeJS.ProcessEnv;
     probe?: Probe;
   } & Partial<
-    Pick<Parameters<typeof createCli>[0], "runPlan" | "now" | "spawnDaemon">
+    Pick<
+      Parameters<typeof createCli>[0],
+      "runPlan" | "now" | "spawnDaemon" | "service"
+    >
   >,
 ): Promise<RunResult> {
   let stdout = "";
   let stderr = "";
   const cli = createCli({
     env: {
+      // Launches must not start real daemons; a test that wants auto-start sets this to "".
+      ZZPERSONA_NO_DAEMON: "1",
       ...(options.home && { ZZPERSONA_HOME: options.home }),
       ...options.env,
     },
@@ -102,6 +107,7 @@ export async function zz(
     ...(options.runPlan && { runPlan: options.runPlan }),
     ...(options.now && { now: options.now }),
     ...(options.spawnDaemon && { spawnDaemon: options.spawnDaemon }),
+    ...(options.service && { service: options.service }),
   });
   const code = await cli.run(argv);
   return { code, stdout, stderr };

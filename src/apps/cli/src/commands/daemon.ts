@@ -8,12 +8,24 @@ import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
+import { isDaemonProcess } from "../daemon/process.js";
 import { startDaemon } from "../daemon/server.js";
+import {
+  installedService,
+  absoluteHome,
+  serviceFor,
+  serviceHome,
+  serviceOf,
+  type ServiceManager,
+} from "../daemon/service.js";
 import { CliError } from "../errors.js";
+import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { NOT_RUNNING } from "./status.js";
 
 // zzpersona daemon run|start|stop|status: the daemon's lifecycle. `run` is the daemon in the
-// foreground; `start` spawns it detached. See docs/planning/14-daemon.md §1.
+// foreground; `start` spawns it detached, or starts the login service when it is installed;
+// `install` and `uninstall` manage that service. See docs/planning/14-daemon.md §1 and
+// 16-daemon-service.md §1.
 
 export interface DaemonCommandOptions {
   json?: boolean;
@@ -48,6 +60,35 @@ async function spawnDetached(io: CliIo, home: string): Promise<void> {
   }
 }
 
+/**
+ * Start a daemon for `home` without waiting for it: through the service manager when its file
+ * is installed, else (or when the manager will not start it) detached. Returns the manager
+ * that started it, if one did.
+ */
+export async function startDaemonProcess(
+  io: CliIo,
+  home: string,
+): Promise<ServiceManager | undefined> {
+  const spawnIt = () => (io.spawnDaemon ?? ((h) => spawnDetached(io, h)))(home);
+  // The service only for the home it serves: another home's daemon would never answer here.
+  const service = await serviceFor(io, home);
+  if (!service) {
+    await spawnIt();
+    return undefined;
+  }
+  try {
+    await service.manager.start();
+    return service.manager;
+  } catch (error) {
+    // A manager that cannot run here (no user systemd under WSL or SSH): a detached daemon
+    // serves as well. Its error shows only if that fails too.
+    await spawnIt().catch(() => {
+      throw error;
+    });
+    return undefined;
+  }
+}
+
 /** Poll until `done` holds or the wait runs out. */
 async function waitUntil(done: () => Promise<boolean>): Promise<boolean> {
   const deadline = Date.now() + WAIT_MS;
@@ -63,13 +104,31 @@ export async function daemonRun(
   options: DaemonCommandOptions,
 ): Promise<number> {
   const home = homeOf(io);
-  const daemon = await startDaemon({
-    home,
-    env: io.env,
-    version: cliVersion(),
-    probe: io.probe,
-    ...(io.now && { now: io.now }),
-  });
+  let daemon: Awaited<ReturnType<typeof startDaemon>>;
+  try {
+    daemon = await startDaemon({
+      home,
+      env: io.env,
+      version: cliVersion(),
+      probe: io.probe,
+      ...(io.now && { now: io.now }),
+    });
+  } catch (error) {
+    // Under the service "already running" is success, or the manager would restart it in a loop.
+    if (
+      error instanceof CliError &&
+      error.code === "daemon-running" &&
+      io.env.ZZPERSONA_SERVICE === "1"
+    ) {
+      io.stdout.write(
+        options.json
+          ? `${JSON.stringify({ running: true, already: true })}\n`
+          : "already running\n",
+      );
+      return 0;
+    }
+    throw error;
+  }
   const stop = () => void daemon.close();
   process.once("SIGTERM", stop);
   process.once("SIGINT", stop);
@@ -99,18 +158,8 @@ export async function daemonStart(
     );
     return 0;
   }
-  await (io.spawnDaemon ?? ((h) => spawnDetached(io, h)))(home);
-  let client: Awaited<ReturnType<typeof connectDaemon>>;
-  const up = await waitUntil(
-    async () => (client = await connectDaemon(home)) !== undefined,
-  );
-  if (!up || !client) {
-    const log = daemonPaths(home).log;
-    throw new CliError("daemon-start", `the daemon did not start; see ${log}`, {
-      log,
-    });
-  }
-  const status = await client.status();
+  const manager = await startDaemonProcess(io, home);
+  const status = await waitForDaemon(home, manager);
   io.stdout.write(
     options.json
       ? `${JSON.stringify({ running: true, already: false, pid: status.pid, version: status.version }, null, 2)}\n`
@@ -119,11 +168,32 @@ export async function daemonStart(
   return 0;
 }
 
-export async function daemonStop(
-  io: CliIo,
-  options: DaemonCommandOptions,
-): Promise<number> {
-  const home = homeOf(io);
+/**
+ * Wait until `home`'s daemon answers, and return its status. `manager` is the service that
+ * started it: under systemd its output is in the journal, not the log.
+ */
+async function waitForDaemon(home: string, manager?: ServiceManager) {
+  let client: Awaited<ReturnType<typeof connectDaemon>>;
+  const up = await waitUntil(
+    async () => (client = await connectDaemon(home)) !== undefined,
+  );
+  if (!up || !client) {
+    const log = daemonPaths(home).log;
+    const where =
+      manager?.kind === "systemd"
+        ? `journalctl --user -u ${manager.label}`
+        : log;
+    throw new CliError(
+      "daemon-start",
+      `the daemon did not start; see ${where}`,
+      { log },
+    );
+  }
+  return client.status();
+}
+
+/** Stop `home`'s daemon, if one runs; whether one was stopped. */
+async function stopDaemon(home: string): Promise<boolean> {
   const paths = daemonPaths(home);
   // A daemon that refuses this CLI's token is stopped by pid, like one that does not answer.
   const client = await connectDaemon(home).catch((error: unknown) => {
@@ -145,8 +215,9 @@ export async function daemonStop(
     // Stopped once the lock is released (the daemon's last step) or its process is gone.
     gone = () => !existsSync(paths.lock) || (other && !isAlive(pid));
   } else {
-    // No answer on the socket: a daemon that still runs gets SIGTERM by its pid.
-    if (other && isAlive(pid)) {
+    // No answer on the socket: a daemon that still runs gets SIGTERM by its pid; a process that
+    // is not one (the OS reused a dead daemon's pid) is left alone.
+    if (other && isDaemonProcess(pid)) {
       process.kill(pid, "SIGTERM");
       stopped = true;
     }
@@ -159,6 +230,14 @@ export async function daemonStop(
       { pid },
     );
   }
+  return stopped;
+}
+
+export async function daemonStop(
+  io: CliIo,
+  options: DaemonCommandOptions,
+): Promise<number> {
+  const stopped = await stopDaemon(homeOf(io));
   io.stdout.write(
     options.json
       ? `${JSON.stringify({ running: false, stopped }, null, 2)}\n`
@@ -176,20 +255,110 @@ const uptime = (ms: number) => {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 };
 
+/** The service manager, or the refusal where there is none. */
+function requireService(io: CliIo): ServiceManager {
+  const service = serviceOf(io);
+  if (service) return service;
+  throw new CliError(
+    "service-unsupported",
+    io.probe.platform === "win32"
+      ? "the daemon service is not supported on Windows yet"
+      : "the daemon service needs HOME to be set",
+  );
+}
+
+export async function daemonInstall(
+  io: CliIo,
+  options: DaemonCommandOptions,
+): Promise<number> {
+  const service = requireService(io);
+  const cli = findOnPath("zzpersona", io.env);
+  if (!cli) {
+    throw new CliError(
+      "cli-not-on-path",
+      `zzpersona is not on PATH, so the service cannot run it; ${CLI_ON_PATH_FIX}`,
+    );
+  }
+  // Absolute: the service manager runs the daemon from another folder.
+  const home = absoluteHome(io, homeOf(io));
+  // A daemon started outside the service would hold the lock, and the service's would exit.
+  await stopDaemon(home);
+  const paths = daemonPaths(home);
+  mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
+  await service.install({
+    command: [cli, "daemon", "run"],
+    env: {
+      PATH: io.env.PATH ?? "",
+      ...(io.env.ZZPERSONA_HOME && { ZZPERSONA_HOME: home }),
+      ZZPERSONA_SERVICE: "1",
+    },
+    log: paths.log,
+  });
+  const status = await waitForDaemon(home, service);
+  io.stdout.write(
+    options.json
+      ? `${JSON.stringify({ installed: true, path: service.path, command: cli, pid: status.pid }, null, 2)}\n`
+      : `service installed (${service.path}); daemon running (pid ${status.pid})\n`,
+  );
+  return 0;
+}
+
+export async function daemonUninstall(
+  io: CliIo,
+  options: DaemonCommandOptions,
+): Promise<number> {
+  const service = requireService(io);
+  const installed = existsSync(service.path);
+  if (installed) await service.uninstall();
+  io.stdout.write(
+    options.json
+      ? `${JSON.stringify({ installed: false, removed: installed, path: service.path }, null, 2)}\n`
+      : installed
+        ? `service uninstalled (${service.path})\n`
+        : "not installed\n",
+  );
+  return 0;
+}
+
 export async function daemonStatus(
   io: CliIo,
   options: DaemonCommandOptions,
 ): Promise<number> {
-  const client = await connectDaemon(homeOf(io));
-  if (!client) {
+  const home = homeOf(io);
+  const client = await connectDaemon(home);
+  const status = client && (await client.status());
+  // Where the platform has no service manager, status says nothing about one.
+  const manager = serviceOf(io);
+  const file = manager && (await installedService(manager));
+  // The home the service serves, which may be another than this one.
+  const served = file && serviceHome(io, file);
+  const service = manager && {
+    installed: file !== undefined,
+    path: manager.path,
+    ...(served !== undefined && { home: served }),
+    managed: status?.service === true,
+  };
+  const serviceLine = !manager
+    ? ""
+    : !file
+      ? "service: not installed\n"
+      : `service: installed (${manager.path})${
+          served !== absoluteHome(io, home)
+            ? ` for ${served}`
+            : !status
+              ? ""
+              : status.service
+                ? "; the daemon runs under it"
+                : "; the running daemon was started outside it"
+        }\n`;
+  if (!status) {
     io.stdout.write(
       options.json
-        ? `${JSON.stringify({ running: false }, null, 2)}\n`
-        : "daemon not running\n",
+        ? `${JSON.stringify({ running: false, ...(service && { service }) }, null, 2)}\n`
+        : `daemon not running\n${serviceLine}`,
     );
     return 0;
   }
-  const status = await client.status();
   const up = (io.now ?? Date.now)() - Date.parse(status.startedAt);
   if (options.json) {
     io.stdout.write(
@@ -202,6 +371,7 @@ export async function daemonStatus(
           uptimeMs: up,
           sessions: status.sessions.length,
           watching: status.watching,
+          ...(service && { service }),
         },
         null,
         2,
@@ -211,7 +381,7 @@ export async function daemonStatus(
   }
   const count = status.sessions.length;
   io.stdout.write(
-    `daemon running: pid ${status.pid}, version ${status.version}, up ${uptime(up)}, ${count} session${count === 1 ? "" : "s"} watched\n`,
+    `daemon running: pid ${status.pid}, version ${status.version}, up ${uptime(up)}, ${count} session${count === 1 ? "" : "s"} watched\n${serviceLine}`,
   );
   return 0;
 }

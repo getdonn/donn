@@ -60,6 +60,7 @@ describe("the daemon", () => {
       version: "9.9.9",
       pid: process.pid,
       startedAt: daemon.startedAt,
+      service: false,
       watching: expect.arrayContaining([join(homeIn(), "sessions")]),
       sessions: [],
     });
@@ -383,6 +384,8 @@ describe("zzpersona daemon", () => {
       [
         "-e",
         "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000);",
+        "daemon",
+        "run",
       ],
       { stdio: ["ignore", "pipe", "ignore"] },
     );
@@ -397,4 +400,22 @@ describe("zzpersona daemon", () => {
       error: { code: "daemon-stop" },
     });
   }, 15_000);
+
+  it("never signals a live process that is not the daemon", async () => {
+    // The daemon died and the OS gave its pid to an unrelated process.
+    stubborn = spawn(
+      process.execPath,
+      ["-e", "console.log('ready'); setInterval(() => {}, 1000);"],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    await new Promise((resolve) => stubborn!.stdout!.once("data", resolve));
+    const paths = daemonPaths(homeIn());
+    mkdirSync(paths.dir, { recursive: true });
+    writeFileSync(paths.pid, `${stubborn.pid}\n`);
+    writeFileSync(paths.lock, `${stubborn.pid}\n`);
+    const stopped = await run(["daemon", "stop"]);
+    expect(stopped).toMatchObject({ code: 0, stdout: "daemon not running\n" });
+    expect(stubborn.exitCode).toBeNull();
+    expect(stubborn.signalCode).toBeNull();
+  });
 });
