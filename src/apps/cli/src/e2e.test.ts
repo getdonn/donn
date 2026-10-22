@@ -457,19 +457,52 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the daemon", () => {
     const started = zzp(["daemon", "start"]);
     expect(started.status, started.stdout + started.stderr).toBe(0);
 
-    writeFileSync(
-      persona,
-      `${readFileSync(persona, "utf8")}`.replace("ONE", "TWO"),
-    );
-    let state: string | undefined;
-    for (let i = 0; i < 100 && state !== "refreshed"; i++) {
-      await new Promise((r) => setTimeout(r, 100));
+    type Entry = { state: string; at?: string };
+    const entry = (): Entry | undefined => {
       const status = zzp(["status", "--json"]);
-      state = (JSON.parse(status.stdout) as { sessions: { state: string }[] })
-        .sessions[0]?.state;
-    }
-    expect(state).toBe("refreshed");
-    expect(readFileSync(join(session, "live.json"), "utf8")).toContain("TWO");
+      try {
+        return (JSON.parse(status.stdout) as { sessions: Entry[] }).sessions[0];
+      } catch {
+        throw new Error(
+          `status --json was not JSON: ${status.stdout}${status.stderr}`,
+        );
+      }
+    };
+    const live = () => {
+      try {
+        return readFileSync(join(session, "live.json"), "utf8");
+      } catch {
+        return "";
+      }
+    };
+    const until = async (done: () => boolean) => {
+      for (let i = 0; i < 100 && !done(); i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return done();
+    };
+
+    // The startup swap (the launch hash is a dummy) comes first; then the edit.
+    expect(
+      await until(
+        () => entry()?.state === "refreshed" && live().includes("ONE"),
+      ),
+      `startup swap: ${live()}`,
+    ).toBe(true);
+    const first = entry()?.at;
+
+    writeFileSync(persona, readFileSync(persona, "utf8").replace("ONE", "TWO"));
+    expect(
+      await until(() => live().includes("TWO")),
+      `edit not picked up: ${live()}`,
+    ).toBe(true);
+    expect(
+      await until(() => {
+        const e = entry();
+        return e?.state === "refreshed" && e.at !== undefined && e.at !== first;
+      }),
+      `status after edit: ${JSON.stringify(entry())} (first at ${first})`,
+    ).toBe(true);
 
     const stopped = zzp(["daemon", "stop"]);
     expect(stopped.status, stopped.stdout + stopped.stderr).toBe(0);
