@@ -1,5 +1,12 @@
 # @zzpersona/cli
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [bf600f2]
+  - @zzpersona/mod-claude-code@0.2.1
+
 ## 0.4.0
 
 ### Minor Changes
