@@ -202,6 +202,10 @@ daemon start|stop|status`; `hatrack` CLI auto-starts it on first use (configurab
 gracefully: every CLI command works in-process with the daemon absent, just slower and without
 background sync.
 
+> 2026-10-21: the first slice (spec 14) is built. It runs as `zzpersona daemon run` inside the CLI
+> package until the build code is a package of its own. Sync, drift, the marketplace, pre-build, the
+> secrets broker and service install are later slices.
+
 Desktop app: a **tray/menubar client** of the daemon (Tauri preferred over Electron for footprint;
 revisit if a webview constraint appears). It shows current persona per harness, a switcher, sync
 and drift status, and the compile report. Enterprise can later add "assigned to you" personas and

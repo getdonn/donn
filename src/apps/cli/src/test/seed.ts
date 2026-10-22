@@ -84,7 +84,9 @@ export async function zz(
     home?: string;
     env?: NodeJS.ProcessEnv;
     probe?: Probe;
-  } & Partial<Pick<Parameters<typeof createCli>[0], "runPlan" | "now">>,
+  } & Partial<
+    Pick<Parameters<typeof createCli>[0], "runPlan" | "now" | "spawnDaemon">
+  >,
 ): Promise<RunResult> {
   let stdout = "";
   let stderr = "";
@@ -99,6 +101,7 @@ export async function zz(
     probe: options.probe ?? installedProbe,
     ...(options.runPlan && { runPlan: options.runPlan }),
     ...(options.now && { now: options.now }),
+    ...(options.spawnDaemon && { spawnDaemon: options.spawnDaemon }),
   });
   const code = await cli.run(argv);
   return { code, stdout, stderr };

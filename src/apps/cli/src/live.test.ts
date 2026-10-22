@@ -85,6 +85,16 @@ describe("zzpersona live", () => {
     );
   });
 
+  it("records the build hash", async () => {
+    const dir = await session();
+    const r = await live(["project/persona", "--session", dir]);
+    const state = JSON.parse(r.stdout);
+    expect(state.buildHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.parse(readFileSync(join(dir, "live.json"), "utf8"))).toEqual(
+      state,
+    );
+  });
+
   it("holds nothing when MCP and permissions match", async () => {
     const dir = await session();
     const state = JSON.parse(

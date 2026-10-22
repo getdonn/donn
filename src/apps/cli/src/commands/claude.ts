@@ -1,17 +1,19 @@
-import type { Detection } from "@zzpersona/adapter-sdk";
+import { dirname } from "node:path";
 import type { CliIo } from "../cli.js";
 import { launch } from "../launch.js";
-import { createSession, removeSession, sessionPlugins } from "../session.js";
+import {
+  buildHash,
+  createSession,
+  MODE_FACTS,
+  removeSession,
+  sessionPlugins,
+  type Mode,
+} from "../session.js";
 
 // `zzpersona claude`: the shared launch path, plus the session folder that `zzpersona live` swaps
 // and the managed-settings hint. See docs/planning/06-cli-core-loop.md, section 4.
 
-export type Mode = "partial" | "relaunch-no-mcp";
-
-const MODE_FACTS: Record<Mode, Detection["facts"]> = {
-  partial: { sideloadBlocked: true },
-  "relaunch-no-mcp": { managedMcp: true },
-};
+export type { Mode };
 
 /** Managed policy from MDM, registry or server is invisible to detect; a fast failure hints. */
 const QUICK_FAILURE_MS = 5000;
@@ -58,6 +60,13 @@ export async function claudeCommand(
             persona: selection.ref,
             source: selection.source,
             overlay: options.overlay,
+            harness: "claude-code",
+            ...(options.mode !== undefined && { mode: options.mode }),
+            ...(ctx.projectDir !== undefined && {
+              project: dirname(ctx.projectDir),
+            }),
+            startedAt: new Date().toISOString(),
+            buildHash: buildHash(build.output),
             snapshot: {
               mcp: build.result.ir.mcp,
               permissions: build.result.ir.permissions,

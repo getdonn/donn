@@ -31,7 +31,7 @@ export interface LiveState {
   appliedAt: string;
 }
 
-/** A live persona other than the launched one; switching back clears it. */
+/** A live persona other than the launched one: the band and the nudge name it. */
 const activeLive = (live: LiveState | undefined) =>
   live !== undefined && live.persona !== live.launched ? live : undefined;
 
@@ -227,17 +227,23 @@ export function commandText(
   return `${cleared}\n${folderLine(here, here.kind === "persona")}`;
 }
 
-/** The system prompt section a live switch adds; none once back on the launched persona. */
-export function liveSection(
-  live: LiveState,
-):
-  { id: "zzpersona:live-persona"; text: string; scope: "session" } | undefined {
-  if (!activeLive(live)) return undefined;
+/**
+ * The system prompt section a live state adds: another persona's instructions, or the launched
+ * persona's own once switched back or refreshed by the daemon (docs/planning/14-daemon.md).
+ */
+export function liveSection(live: LiveState): {
+  id: "zzpersona:live-persona";
+  text: string;
+  scope: "session";
+} {
+  const lead = activeLive(live)
+    ? `The persona for this session is now ${live.persona}.`
+    : `The instructions for this session's persona ${live.persona} were updated.`;
   return {
     id: "zzpersona:live-persona",
     scope: "session",
     text: [
-      `The persona for this session is now ${live.persona}. Disregard the section headed`,
+      `${lead} Disregard the section headed`,
       `"## zzpersona persona: ${live.launched}"; the instructions below replace it.`,
       "",
       live.instructions.trimEnd(),

@@ -284,11 +284,39 @@ describe("zzpersona claude", () => {
       persona: "project/persona",
       source: "project",
       overlay: false,
+      harness: "claude-code",
+      project: s.repo,
+      startedAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+      buildHash: expect.stringMatching(/^[0-9a-f]{64}$/),
       snapshot: {
         mcp: { servers: { "payments-schema": expect.any(Object) } },
         permissions: { deny: expect.arrayContaining(["Bash(rm -rf:*)"]) },
         settings: expect.any(Object),
       },
     });
+  });
+
+  it("records the launch mode only when --mode is given", async () => {
+    useEnvVault();
+    const launchedWith = async (args: string[]) => {
+      let launched: Record<string, unknown> | undefined;
+      await zz(["claude", ...args], {
+        cwd: s.repo,
+        home: s.home,
+        env: SECRET_ENV,
+        runPlan: async (plan: ActivationPlan) => {
+          const session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+          launched = JSON.parse(
+            readFileSync(join(session, "launched.json"), "utf8"),
+          );
+          return 0;
+        },
+      });
+      return launched;
+    };
+    expect(await launchedWith(["--mode", "relaunch-no-mcp"])).toMatchObject({
+      mode: "relaunch-no-mcp",
+    });
+    expect(await launchedWith([])).not.toHaveProperty("mode");
   });
 });

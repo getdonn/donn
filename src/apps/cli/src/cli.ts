@@ -3,8 +3,16 @@ import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
+import { statusCommand } from "./commands/status.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
+import {
+  daemonRefresh,
+  daemonRun,
+  daemonStart,
+  daemonStatus,
+  daemonStop,
+} from "./commands/daemon.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { listCommand } from "./commands/list.js";
@@ -31,6 +39,8 @@ export interface CliIo {
   runPlan?: typeof runPlan;
   /** Injected in tests; defaults to Date.now. */
   now?: () => number;
+  /** Injected in tests; defaults to spawning `zzpersona daemon run` detached. */
+  spawnDaemon?: (home: string) => Promise<void>;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -296,6 +306,60 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { checks } as JSON")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => doctorCommand(io, persona, options)),
+        );
+
+      const daemon = program
+        .command("daemon")
+        .description(
+          "Run the local daemon that keeps live sessions current (spec 14)",
+        );
+      daemon
+        .command("run")
+        .description("Run the daemon in the foreground")
+        .option("--json", "print { running, pid, socket } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonRun(io, options)),
+        );
+      daemon
+        .command("start")
+        .description("Start the daemon in the background")
+        .option("--json", "print { running, already, pid, version } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonStart(io, options)),
+        );
+      daemon
+        .command("stop")
+        .description("Stop the daemon")
+        .option("--json", "print { running, stopped } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonStop(io, options)),
+        );
+      daemon
+        .command("status")
+        .description(
+          "Show whether the daemon runs, its pid, version and uptime",
+        )
+        .option("--json", "print the daemon's status as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonStatus(io, options)),
+        );
+
+      daemon
+        .command("refresh")
+        .description("Refresh every live session now")
+        .option("--json", "print { running, refreshed } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonRefresh(io, options)),
+        );
+
+      program
+        .command("status")
+        .description(
+          "Show the live sessions and whether the daemon keeps them current",
+        )
+        .option("--json", "print { daemon, sessions } as JSON")
+        .action((options) =>
+          handle(options.json, () => statusCommand(io, options)),
         );
 
       try {

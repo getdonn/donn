@@ -80,6 +80,18 @@ hooks do not carry over: Codex has no per-launch skill folder, and it does not r
 not been told to trust. The report lists each one. (`codex exec` is non-interactive, so Codex
 runs it with approval `never`; the sandbox still applies.)
 
+## Keeping sessions current
+
+```sh
+zzpersona daemon start    # a background process, per ZZPERSONA_HOME
+zzpersona status          # the sessions it knows of, and whether each is current
+zzpersona daemon stop
+```
+
+With the daemon running, edit a persona and your running Claude Code sessions pick it up on their
+next turn. MCP servers, permissions and settings still need a relaunch. Codex sessions cannot be
+updated in place: they show as stale.
+
 ## What each harness can carry
 
 `zzpersona capabilities` shows, per harness, which persona fields are carried natively,

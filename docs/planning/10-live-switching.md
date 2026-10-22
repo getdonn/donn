@@ -181,3 +181,19 @@ Made while building this spec (`docs/plans/2026-10-21-live-switching.md`); see
 - **§3** the relaunch advice names the persona: `To apply those too, exit and run: zzpersona claude
   <persona>`, since `/persona use` saves nothing.
 
+
+### Amendment: the daemon's refreshes (2026-10-21)
+
+From the daemon (`docs/planning/14-daemon.md`, "From the smoke run"). Each overrides the section it
+names.
+
+- **§3 instructions** the superseding section now also applies when the live persona is the
+  launched one (after switching back, or after the daemon refreshes it from an edit), reading `The
+  instructions for this session's persona <p> were updated.` in place of `The persona for this
+  session is now <new>.`; the rest of the text is unchanged. "Switching back to the launched
+  persona removes the section" no longer holds: it carries the launched persona's current
+  instructions.
+- **§3 state** besides `session.start` and its own commands, the mod reads `<session>/live.json`
+  itself with `$.fs.read` in a `prompt.submit` hook and adopts it when `appliedAt` changed. This is
+  a file read, not a CLI call: an exception to the "only calls the CLI" rule above, kept to the one
+  file the CLI writes for it, because it runs every turn.
