@@ -30,12 +30,16 @@ export async function prepareBuild(
     facts?: Detection["facts"];
     overlay: boolean;
     passthrough: string[];
+    /** Resolve warnings are the caller's to print (a report that builds several harnesses). */
+    quiet?: boolean;
+    /** Detection the caller already ran. */
+    detection?: Detection;
   },
 ): Promise<PreparedBuild> {
   const adapter = await findAdapter(ctx, io.env, options.harness);
   const result = await resolvePersona(ctx, options.selection, options.overlay);
-  printWarnings(io, result);
-  const detected = await adapter.detect(io.probe);
+  if (!options.quiet) printWarnings(io, result);
+  const detected = options.detection ?? (await adapter.detect(io.probe));
   const detection: Detection = {
     ...detected,
     facts: { ...detected.facts, ...options.facts },

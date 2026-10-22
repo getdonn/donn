@@ -2,8 +2,9 @@ import { dirname } from "node:path";
 import type { CliIo } from "../cli.js";
 import { createContext, resolvePersona, type Context } from "../context.js";
 import { CliError } from "../errors.js";
-import { selectPersona } from "../select.js";
+import { selectPersona, type Selection } from "../select.js";
 import { projectKey, updateState } from "../state.js";
+import { harnessReport, reportLines } from "../switch-report.js";
 
 // zzpersona switch: choose the persona for this project, or the default for everywhere else.
 // See docs/planning/07-cli-daily-use.md, section 1.
@@ -12,6 +13,8 @@ export interface SwitchOptions {
   default?: boolean;
   clear?: boolean;
   json?: boolean;
+  /** Report this harness only. */
+  harness?: string;
 }
 
 type Scope =
@@ -36,6 +39,23 @@ export async function switchCommand(
     io.stdout.write(
       options.json ? `${JSON.stringify(json, null, 2)}\n` : `${text}\n`,
     );
+  /** After a choice is saved: what it means in each harness (spec 17). */
+  const printWithReport = async (
+    text: string,
+    json: Record<string, unknown>,
+    selection: Selection | undefined,
+    countSessions: boolean,
+  ) => {
+    if (selection === undefined) return print(text, json);
+    const results = await harnessReport(io, ctx, selection, {
+      ...(options.harness !== undefined && { only: options.harness }),
+      countSessions,
+    });
+    print([text, ...reportLines(results, selection.ref)].join("\n"), {
+      ...json,
+      harnesses: results,
+    });
+  };
 
   if (options.clear) {
     if (persona !== undefined) {
@@ -56,7 +76,14 @@ export async function switchCommand(
       print("nothing to clear", { scope: target.scope, persona: null });
       return 0;
     }
-    print(
+    // The report is for the persona that applies now, if any.
+    const now = await createContext(io);
+    const applies = await selectPersona(undefined, now).catch((error) => {
+      if (error instanceof CliError && error.code === "no-persona")
+        return undefined;
+      throw error;
+    });
+    await printWithReport(
       target.scope === "project"
         ? `cleared the switch for ${target.repo}`
         : "cleared your default",
@@ -65,6 +92,8 @@ export async function switchCommand(
         persona: previous,
         ...(target.scope === "project" && { project: target.key }),
       },
+      applies,
+      target.scope === "project",
     );
     return 0;
   }
@@ -109,7 +138,7 @@ export async function switchCommand(
     if (target.scope === "project") state.projects[target.key] = selection.ref;
     else state.default = selection.ref;
   });
-  print(
+  await printWithReport(
     target.scope === "project"
       ? `${selection.ref} is now used for ${target.repo}`
       : `${selection.ref} is now your default`,
@@ -118,6 +147,8 @@ export async function switchCommand(
       persona: selection.ref,
       ...(target.scope === "project" && { project: target.key }),
     },
+    selection,
+    target.scope === "project",
   );
   return 0;
 }
