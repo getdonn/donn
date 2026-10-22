@@ -6,6 +6,7 @@ import { daemonRequest } from "./daemon/client.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { createSession } from "./session.js";
 import { projectKey, readState } from "./state.js";
+import { reportLines } from "./switch-report.js";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
 let s: Seeded;
@@ -33,6 +34,7 @@ interface Harness {
   id: string;
   status: string;
   dropped: string[];
+  approximated: string[];
   sessions?: { count: number; persona: string; fix: string };
   message?: string;
   fix?: string;
@@ -66,22 +68,17 @@ describe("zzpersona switch: the per-harness report", () => {
     const lines = r.stdout.trimEnd().split("\n");
     expect(lines[0]).toBe(`project/persona is now used for ${s.repo}`);
     expect(lines).toContain(
-      "claude-code  drops knowledge (3 approximated), skills (1), mcp (1)",
+      "claude-code  drops skills (1), mcp (1) · approximates knowledge (3)",
     );
     expect(lines).toContain(
-      "codex        drops mcp (2), skills (2), knowledge (3 approximated), permissions (8 approximated), hooks (2)",
+      "codex        drops mcp (2), skills (2), hooks (2) · approximates knowledge (3), permissions (8)",
     );
     const json = await harnesses(["switch", "project/persona"]);
     expect(json?.find((h) => h.id === "codex")).toEqual({
       id: "codex",
       status: "drops",
-      dropped: [
-        "mcp (2)",
-        "skills (2)",
-        "knowledge (3 approximated)",
-        "permissions (8 approximated)",
-        "hooks (2)",
-      ],
+      dropped: ["mcp (2)", "skills (2)", "hooks (2)"],
+      approximated: ["knowledge (3)", "permissions (8)"],
     });
   });
 
@@ -118,6 +115,48 @@ describe("zzpersona switch: the per-harness report", () => {
       "--json",
     ]);
     expect(JSON.parse(r.stdout).error.code).toBe("unknown-harness");
+    expect(r.code).toBe(1);
+  });
+
+  it("an unknown --harness saves nothing", async () => {
+    const r = await run(["switch", "project/persona", "--harness", "nope"]);
+    expect(r.code).toBe(1);
+    expect((await readState(s.home)).projects).toEqual({});
+  });
+
+  it("a broken config adapter does not fail the switch", async () => {
+    configure(`adapters: [${join(FIXTURES, "moved-away")}]`);
+    const r = await run(["switch", "project/persona"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/^plugins +error /m);
+    expect(r.stdout).toContain("claude-code  drops");
+    const key = await projectKey(join(s.repo, ".zzpersona"));
+    expect((await readState(s.home)).projects[key]).toBe("project/persona");
+  });
+
+  it("only approximating is ok, not drops", async () => {
+    const lines = reportLines(
+      [
+        {
+          id: "claude-code",
+          status: "ok",
+          dropped: [],
+          approximated: ["knowledge (1)"],
+        },
+      ],
+      "team/x",
+    );
+    expect(lines).toEqual(["claude-code  ok · approximates knowledge (1)"]);
+  });
+
+  it("lists agents-md last", async () => {
+    expect((await run(["write"])).code).toBe(0);
+    const json = await harnesses(["switch", "project/persona"]);
+    expect(json?.map((h) => h.id)).toEqual([
+      "claude-code",
+      "codex",
+      "agents-md",
+    ]);
   });
 
   it("agents-md says what AGENTS.md carries", async () => {
@@ -129,7 +168,7 @@ describe("zzpersona switch: the per-harness report", () => {
     const shared = (await harnesses(["switch", "team/payments"]))?.find(
       (h) => h.id === "agents-md",
     );
-    expect(shared).toMatchObject({ status: "shared", dropped: [] });
+    expect(shared).toMatchObject({ status: "shared" });
     expect((await run(["switch", "team/payments"])).stdout).toContain(
       "agents-md    AGENTS.md carries project/persona (shared); team/payments applies to zzpersona launches only\n",
     );
@@ -196,8 +235,10 @@ describe("zzpersona switch: the per-harness report", () => {
       payments();
       await session("claude-code", "project/persona");
       await daemon();
+      expect((await run(["write"])).code).toBe(0);
       const json = await harnesses(["switch", "team/payments", "--default"]);
       expect(json?.some((h) => h.sessions !== undefined)).toBe(false);
+      expect(json?.map((h) => h.id)).not.toContain("agents-md");
     });
 
     it("no daemon, no sessions", async () => {

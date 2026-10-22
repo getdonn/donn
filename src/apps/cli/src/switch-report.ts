@@ -7,6 +7,7 @@ import type { CliIo } from "./cli.js";
 import { homeOf, type Context } from "./context.js";
 import { connectDaemon, type SessionStatus } from "./daemon/client.js";
 import { errorText } from "./errors.js";
+import { HARNESSES } from "./harness.js";
 import { allAdapters, findAdapter } from "./plugins.js";
 import type { Selection } from "./select.js";
 
@@ -16,7 +17,10 @@ import type { Selection } from "./select.js";
 export interface HarnessResult {
   id: string;
   status: "ok" | "drops" | "error" | "shared";
+  /** Fields the harness drops, grouped: `hooks (2)`. */
   dropped: string[];
+  /** Fields it carries approximately (approximated or advisory): `knowledge (3)`. */
+  approximated: string[];
   /** Sessions here still on another persona: how many, which (the first, "and others"), the fix. */
   sessions?: { count: number; persona: string; fix: string };
   message?: string;
@@ -25,19 +29,14 @@ export interface HarnessResult {
 
 const SHARED = "project/persona";
 
-/** Report entries grouped by field, in report order: `hooks (2)`, `knowledge (3 approximated)`. */
+/** Report entries grouped by field, in report order: `hooks (2)`. */
 function groups(entries: readonly ReportEntry[]): string[] {
   const counts = new Map<string, number>();
   for (const entry of entries) {
     const field = /^[^.[]+/.exec(entry.path)![0];
-    const key =
-      entry.outcome === "dropped" ? field : `${field}\u0000approximated`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    counts.set(field, (counts.get(field) ?? 0) + 1);
   }
-  return [...counts].map(([key, n]) => {
-    const [field, approximated] = key.split("\u0000");
-    return approximated ? `${field} (${n} approximated)` : `${field} (${n})`;
-  });
+  return [...counts].map(([field, n]) => `${field} (${n})`);
 }
 
 /** The session list of a running daemon, or undefined: never starts one, never fails. */
@@ -80,6 +79,7 @@ async function agentsMd(
     id: "agents-md",
     status: persona === SHARED ? "ok" : "shared",
     dropped: [],
+    approximated: [],
     ...(stale && { fix: "zzpersona write" }),
   };
 }
@@ -88,17 +88,39 @@ export async function harnessReport(
   io: CliIo,
   ctx: Context,
   selection: Selection,
-  options: { only?: string; countSessions: boolean },
+  /** `here`: the choice applies in this project (not `--default` inside one). */
+  options: { only?: string; here: boolean },
 ): Promise<HarnessResult[]> {
-  const adapters: HarnessAdapter[] =
-    options.only !== undefined
-      ? [await findAdapter(ctx, io.env, options.only)]
-      : await allAdapters(ctx, io.env);
-  const repo =
-    ctx.projectDir === undefined ? undefined : dirname(ctx.projectDir);
-  const sessions =
-    options.countSessions && repo ? await daemonSessions(io) : undefined;
   const results: HarnessResult[] = [];
+  let adapters: HarnessAdapter[];
+  if (options.only !== undefined) {
+    // Checked before saving (switch.ts), so this finds it.
+    adapters = [await findAdapter(ctx, io.env, options.only)];
+  } else {
+    try {
+      adapters = await allAdapters(ctx, io.env);
+    } catch (error) {
+      // A config adapter that cannot load is one line; the built-ins still report.
+      adapters = Object.values(HARNESSES);
+      results.push({
+        id: "plugins",
+        status: "error",
+        dropped: [],
+        approximated: [],
+        message: errorText(error),
+      });
+    }
+  }
+  // AGENTS.md last: it reports the shared file, not the choice.
+  adapters = [
+    ...adapters.filter((a) => a.id !== "agents-md"),
+    ...adapters.filter((a) => a.id === "agents-md"),
+  ];
+  const repo =
+    ctx.projectDir === undefined || !options.here
+      ? undefined
+      : dirname(ctx.projectDir);
+  const sessions = repo ? await daemonSessions(io) : undefined;
   for (const adapter of adapters) {
     try {
       if (adapter.id === "agents-md") {
@@ -117,11 +139,13 @@ export async function harnessReport(
         quiet: true,
         detection,
       });
-      const dropped = groups(build.output.report.entries);
+      const entries = build.output.report.entries;
+      const dropped = groups(entries.filter((e) => e.outcome === "dropped"));
       const result: HarnessResult = {
         id: adapter.id,
         status: dropped.length > 0 ? "drops" : "ok",
         dropped,
+        approximated: groups(entries.filter((e) => e.outcome !== "dropped")),
       };
       const behind = (sessions ?? []).filter(
         (session) =>
@@ -149,6 +173,7 @@ export async function harnessReport(
         id: adapter.id,
         status: "error",
         dropped: [],
+        approximated: [],
         message: errorText(error),
       });
     }
@@ -169,6 +194,8 @@ export function reportLines(
       text = `AGENTS.md carries ${SHARED} (shared); ${persona} applies to zzpersona launches only`;
     else if (r.status === "drops") text = `drops ${r.dropped.join(", ")}`;
     else text = "ok";
+    if (r.approximated.length > 0)
+      text += ` · approximates ${r.approximated.join(", ")}`;
     if (r.fix !== undefined) text += ` — ${r.fix}`;
     if (r.sessions !== undefined) {
       const { count, persona: running, fix } = r.sessions;
