@@ -38,9 +38,10 @@ describe("client", () => {
   it("each method parses", async () => {
     const registry = await mock();
     const client = createClient({ url: registry.url, token: registry.token });
-    expect(await client.whoami()).toEqual({
+    expect(await client.whoami()).toMatchObject({
       subject: "mock-user",
       org: "acme",
+      kind: "service",
     });
     expect(await client.listLayers()).toEqual([]);
     const result = await client.publish("org/acme", {
@@ -69,6 +70,26 @@ describe("client", () => {
     expect((error as RegistryError).code).toBe("missing-file");
     expect((error as RegistryError).problems?.[0]?.path).toBe("a.md");
     expect((error as RegistryError).message).toContain("a.md");
+  });
+
+  it("an unknown problem code falls back to the status", async () => {
+    const url = await fake((_req, res) => {
+      res.writeHead(401, { "content-type": "application/problem+json" });
+      res.end(
+        JSON.stringify({
+          type: "urn:x",
+          title: "t",
+          status: 401,
+          detail: "no",
+          problems: [{ code: "brand-new", message: "no" }],
+        }),
+      );
+    });
+    const client = createClient({ url, token: "t" });
+    await expect(client.whoami()).rejects.toMatchObject({
+      code: "unauthorized",
+      problems: [{ code: "brand-new", message: "no" }],
+    });
   });
 
   it("a wrong token is unauthorized and a missing version not-found", async () => {
