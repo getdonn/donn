@@ -10,6 +10,9 @@ import {
   type SecretContext,
 } from "./index.js";
 
+const REAL44 =
+  "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.";
+
 type Reply = { exitCode: number; stdout?: string; stderr?: string };
 
 /** A context whose run records each call and answers with `reply`. */
@@ -78,9 +81,15 @@ describe("keychain", () => {
     expect(
       await failureFor(
         "secret://keychain/s/a",
-        fake("darwin", { exitCode: 44 }).ctx,
+        fake("darwin", { exitCode: 44, stderr: REAL44 }).ctx,
       ),
     ).toBe("not found in the keychain");
+    expect(
+      await failureFor(
+        "secret://keychain/s/a",
+        fake("linux", { exitCode: 1, stderr: "no D-Bus" }).ctx,
+      ),
+    ).toBe("secret-tool exited 1: no D-Bus");
     expect(
       await failureFor(
         "secret://keychain/s/a",
@@ -229,12 +238,19 @@ describe("keychain writes", () => {
   });
 
   it("delete reports a missing item as false", async () => {
-    expect(await deleteKeychainItem(recorder("darwin", 44).ctx, "s", "a")).toBe(
-      false,
-    );
+    expect(
+      await deleteKeychainItem(recorder("darwin", 44, REAL44).ctx, "s", "a"),
+    ).toBe(false);
     expect(await deleteKeychainItem(recorder("linux", 1).ctx, "s", "a")).toBe(
       false,
     );
+    expect(
+      await deleteKeychainItem(
+        recorder("linux", 1, "no D-Bus").ctx,
+        "s",
+        "a",
+      ).catch((e: unknown) => (e as Error).message),
+    ).toBe("secret-tool exited 1: no D-Bus");
     const ok = recorder("darwin");
     expect(await deleteKeychainItem(ok.ctx, "s", "a")).toBe(true);
     expect(ok.calls[0]!.args).toEqual([

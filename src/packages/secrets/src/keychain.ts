@@ -30,8 +30,14 @@ export function keychainSupported(platform: string): boolean {
   return platform === "darwin" || platform === "linux";
 }
 
-/** The exit code that, with no stderr, means the item is not there. */
-const MISSING: Record<string, number> = { darwin: 44, linux: 1 };
+/** security exits 44 for a missing item (and says so on stderr); secret-tool's exit 1 only counts when quiet. */
+const isMissing = (
+  platform: string,
+  r: { exitCode: number; stderr: string },
+) =>
+  platform === "darwin"
+    ? r.exitCode === 44
+    : r.exitCode === 1 && r.stderr.trim() === "";
 
 type Result = { exitCode: number; stdout: string; stderr: string };
 
@@ -75,10 +81,7 @@ export async function getKeychainItem(
   if (result.exitCode === 0) return result.stdout.replace(/\n$/, "");
   // secret-tool exits 1 for "not found" and for real failures (no D-Bus, a locked keyring):
   // only a quiet exit 1 means the item is missing.
-  if (
-    result.exitCode === MISSING[ctx.platform] &&
-    result.stderr.trim() === ""
-  ) {
+  if (isMissing(ctx.platform, result)) {
     return undefined;
   }
   return fail(command, result);
@@ -139,10 +142,7 @@ export async function deleteKeychainItem(
       : ["clear", "service", service, "account", account];
   const result = await ctx.run(command, args);
   if (result.exitCode === 0) return true;
-  if (
-    result.exitCode === MISSING[ctx.platform] &&
-    result.stderr.trim() === ""
-  ) {
+  if (isMissing(ctx.platform, result)) {
     return false;
   }
   return fail(command, result);
