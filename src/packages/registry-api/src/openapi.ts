@@ -18,7 +18,7 @@ const SCHEMAS = {
   LayerSummary: ConformanceSchemas.LayerSummary,
   LayerVersion: ConformanceSchemas.LayerVersion,
   PublishRequest,
-  Change,
+  Change: ConformanceSchemas.Change,
   PublishResult: ConformanceSchemas.PublishResult,
   Problem: ConformanceSchemas.Problem,
   Role,

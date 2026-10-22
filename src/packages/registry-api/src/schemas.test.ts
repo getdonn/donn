@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ConformanceSchemas,
   LayerVersion,
+  LoginToken,
   Problem,
   PublishResult,
   Whoami,
@@ -22,6 +23,49 @@ describe("tolerant schemas", () => {
         kind: "session",
       }),
     ).toEqual({ subject: "ann", org: "acme", kind: "session" });
+    expect(
+      Whoami.parse({
+        subject: "ann",
+        org: "acme",
+        kind: "robot",
+        roles: [{ role: "admin", path: "*" }],
+        expiresAt: "2030-01-01T00:00:00+00:00",
+      }),
+    ).toEqual({
+      subject: "ann",
+      org: "acme",
+      kind: "robot",
+      roles: [{ role: "admin", path: "*" }],
+      expiresAt: "2030-01-01T00:00:00+00:00",
+    });
+    expect(
+      ConformanceSchemas.Whoami.safeParse({
+        subject: "a",
+        org: "b",
+        kind: "robot",
+      }).success,
+    ).toBe(false);
+    expect(
+      ConformanceSchemas.Whoami.safeParse({
+        subject: "a",
+        org: "b",
+        roles: [{ role: "admin", path: "*" }],
+      }).success,
+    ).toBe(false);
+    const token = {
+      token: "t",
+      subject: "s",
+      expiresAt: "2030-01-01T00:00:00+00:00",
+    };
+    expect(LoginToken.safeParse(token).success).toBe(true);
+    expect(ConformanceSchemas.LoginToken.safeParse(token).success).toBe(false);
+    expect(
+      ConformanceSchemas.Whoami.safeParse({
+        subject: "a",
+        org: "b",
+        expiresAt: "2030-01-01T00:00:00+00:00",
+      }).success,
+    ).toBe(false);
     const problem = Problem.parse({
       type: "urn:x",
       title: "t",

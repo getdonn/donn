@@ -643,7 +643,10 @@ export function registryConformance(
         if (!registry.completeLogin) return ctx.skip();
         const answer = await startLogin();
         expect(answer.status).toBe(201);
-        expect(() => new URL(answer.body.verifyUrl)).not.toThrow();
+        const verify = new URL(answer.body.verifyUrl);
+        const own = new URL(registry.url);
+        expect(verify.origin).toBe(own.origin);
+        expect(verify.protocol).toBe(own.protocol);
         expect(answer.body.code).toHaveLength(8);
       });
 

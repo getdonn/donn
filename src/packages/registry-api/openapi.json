@@ -933,7 +933,8 @@
         "required": [
           "path",
           "change"
-        ]
+        ],
+        "additionalProperties": false
       },
       "PublishResult": {
         "anyOf": [

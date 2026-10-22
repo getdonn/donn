@@ -111,3 +111,63 @@ SAML; refreshing groups between logins.
 ## Open questions
 
 None.
+
+## Amendments from implementation (2026-10-22)
+
+Rulings made while building, each changing or settling what is written above.
+
+- **`PublishResult` variant order.** The union tries the dry run and the unchanged result before
+  the publish, so tolerance for unknown fields never reads a dry run or an unchanged answer as a
+  publish.
+- **Tolerant `BundleFile` in responses.** Responses are read with a tolerant file shape; requests
+  and the conformance kit stay strict.
+- **`openapi.json`** is built from `ConformanceSchemas`, so it lists the problem codes and closes
+  its objects.
+- **Unknown problem codes map by HTTP status:** 401 `unauthorized`, 403 `forbidden`, 404
+  `not-found`, 409 `stale-base`. This keeps the login hint on a 401 whose code the client does not
+  know.
+- **Kit hooks.** The kit's start signature is `start(options?)`, so a case can ask for a non-zero
+  `interval`. Optional hooks: `supportsLoginTiming` (the slow-down and expiry cases are skipped
+  without it), `limitedToken` (the grant cases), `completeLogin`, and `refuseLogin` (the login
+  cases). A registry without a hook skips the cases that need it. `signIn` gates
+  only the `404 not-found` case for `POST /v1/auth/logins`: `signIn: false` declares a registry
+  without sign-in and runs that case; when `signIn` is unset or `true`, that case is skipped. The
+  other sign-in cases are gated by `completeLogin`, `refuseLogin`, `supportsLoginTiming` and
+  `limitedToken`.
+- **Strict kit problems.** The kit's `ConformanceSchemas.Problem` items are strict: an unknown
+  field inside `problems[]` fails a server (clients stay tolerant).
+- **The sign-in link must have the registry's own protocol and origin, or it is refused** with
+  `registry-protocol` (a `blob:` link has a matching origin, so the protocol is checked too). Only
+  the parsed `href` is printed or opened.
+- **A 401 on `POST /v1/auth/logins` is read as no sign-in** (registries before control plane 0.2
+  check auth before routing, and a route that takes no token cannot answer 401 on purpose). The
+  CLI treats it like 404 and prints the no-sign-in message.
+- **Order of checks on `POST /v1/layers/{ref}/versions`** (the mock's order; private spec 02 must
+  match): token, then body parse, then (a dry run skips grants) the `publish` grant, then the
+  `lock` grant, then the engine. A body that does not parse skips the grant checks, and the
+  engine reports `invalid`.
+- **The tolerant `Whoami` reads any `kind` and any role string**, and the tolerant datetimes
+  accept an offset; the strict copies in `ConformanceSchemas` keep the enums and `Z` datetimes.
+  The kit also checks that `verifyUrl` has the registry's own origin and protocol.
+- **The opener.** `open` on macOS, `xdg-open` elsewhere, and on Windows `rundll32
+  url.dll,FileProtocolHandler`. No shell is ever used.
+- **Polling.** The interval is floored at 1 second, and each sleep is capped at the time remaining,
+  so there is always a last poll before expiry.
+- **One helper strips control characters** from every server string the CLI prints (subject, code,
+  messages, hints).
+- **The grant hint** (`ask a registry admin for <role> on <ref>`) appears only on `publish`.
+- **`--token`** now carries the old hidden paste prompt; `--token-stdin` is unchanged.
+- **`doctor`** shows the session end date, and warns when it is close.
+
+Deferred minors:
+
+- Contract: a malformed `{ dryRun: true, version, digest, ... }` body without `diff` parses as a
+  publish (`dryRun` is stripped); a discriminated union would refuse it.
+- Mock and kit: the mock compares `pollSecret` with `!==` (use `timingSafeEqual`); the "same locks
+  again" assertion is vacuous; the expiry case sleeps 1.2 s (poll until 410 instead); `openapi.json`
+  attaches every error status to every route.
+- CLI: a transient unreachable or timeout ends the login (retry until `expiresIn`); `doctor`'s
+  expiry warning hides the file-storage warning (combine them); the default SIGINT path and
+  `abortableSleep` are untested; a sign-in link with userinfo is accepted (host and protocol are
+  pinned; reject a non-empty username or password); `--json` output carries raw server strings
+  (JSON-escaped; U+202E passes).

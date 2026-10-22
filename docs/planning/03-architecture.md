@@ -255,6 +255,10 @@ cwd walk-up finds .hatrack/persona.yaml → compare to state.current → nudge i
 > name and a GitHub org exist, the private repo consumes this one as a git submodule pinned to a
 > release tag, through package `exports` only.
 
+> 2026-10-22: identity is brokered by the server (an OIDC confidential client); the CLI never
+> talks to the identity provider. Sessions are server-issued `zzp_` tokens, and grants are
+> `publish`/`lock` per layer path, managed on the server. See spec 20, `20-registry-identity.md`.
+
 - **API:** REST + JSON; OpenAPI published; the OSS `store-remote` is the only client the CLI needs.
 - **Tenancy:** single-tenant per deployment in v1 (self-hosted). Multi-tenant SaaS is a later
   decision, not an architectural assumption — keep `org_id` on every row from day one anyway.

@@ -34,14 +34,26 @@ const Digest = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 // when a server adds fields; `ConformanceSchemas` holds strict copies the kit checks servers with.
 // Request schemas stay strict. See docs/planning/20-registry-identity.md §2.
 
-const whoamiShape = (object: ObjectOf) => ({
+const whoamiShape = (
+  object: ObjectOf,
+  kind: z.ZodType<string> = z.enum(["session", "service"]),
+  role: z.ZodType<string> = Role,
+  datetime: z.ZodType<string> = z.iso.datetime(),
+) => ({
   subject: z.string().min(1),
   org: z.string().min(1),
-  kind: z.enum(["session", "service"]).optional(),
-  roles: z.array(object({ role: Role, path: z.string().min(1) })).optional(),
-  expiresAt: z.iso.datetime().optional(),
+  kind: kind.optional(),
+  roles: z.array(object({ role, path: z.string().min(1) })).optional(),
+  expiresAt: datetime.optional(),
 });
-export const Whoami = z.object(whoamiShape(z.object));
+export const Whoami = z.object(
+  whoamiShape(
+    z.object,
+    z.string(),
+    z.string(),
+    z.iso.datetime({ offset: true }),
+  ),
+);
 export type Whoami = z.infer<typeof Whoami>;
 
 const layerSummaryShape = {
@@ -164,12 +176,15 @@ export type LoginStart = z.infer<typeof LoginStart>;
 export const LoginPoll = z.strictObject({ pollSecret: z.string().min(1) });
 export type LoginPoll = z.infer<typeof LoginPoll>;
 
-const loginTokenShape = {
+const loginTokenShape = (datetime: z.ZodType<string> = z.iso.datetime()) => ({
   token: z.string().min(1),
   subject: z.string().min(1),
-  expiresAt: z.iso.datetime(),
-};
-export const LoginToken = z.object(loginTokenShape);
+  expiresAt: datetime,
+});
+// Tolerant: a failed parse would lose a single-use token, so offsets are accepted.
+export const LoginToken = z.object(
+  loginTokenShape(z.iso.datetime({ offset: true })),
+);
 export type LoginToken = z.infer<typeof LoginToken>;
 
 /** Strict copies of the response schemas: the conformance kit checks servers with these. */
@@ -178,9 +193,10 @@ export const ConformanceSchemas = {
   LayerSummary: z.strictObject(layerSummaryShape),
   LayerVersion: z.strictObject(layerVersionShape(z.strictObject)),
   PublishResult: z.union(publishResultVariants(z.strictObject)),
+  Change: changeOf(z.strictObject),
   Problem: z.strictObject(problemShape(ProblemCode, z.strictObject)),
   LoginStart: z.strictObject(loginStartShape),
-  LoginToken: z.strictObject(loginTokenShape),
+  LoginToken: z.strictObject(loginTokenShape()),
 } as const;
 
 /**
