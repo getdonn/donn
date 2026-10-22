@@ -200,9 +200,15 @@ async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
  * persona changes (docs/planning/14-daemon.md). A file read, not the CLI: this runs every turn.
  */
 async function onSubmit($: Mod$, e: unknown, next: Next): Promise<unknown> {
-  // An older Claude Code has no $.fs: the session keeps what it has.
-  if (session !== undefined && typeof $.fs?.read === "function") {
-    const text = await $.fs.read(`${session}/live.json`).catch(() => undefined);
+  if (session !== undefined) {
+    // An older Claude Code has no $.fs: the read throws and the session keeps what it has. No
+    // feature check: Claude Code 2.1.307 refuses a mod that uses a noun of $ as a value.
+    let text: string | undefined;
+    try {
+      text = await $.fs.read(`${session}/live.json`);
+    } catch {
+      text = undefined;
+    }
     let read: LiveState | undefined;
     try {
       read = text === undefined ? undefined : asLive(JSON.parse(text));

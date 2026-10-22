@@ -24,8 +24,8 @@ export interface Mod$ {
     invalidate(event: "ui.render" | "prompt.section"): void;
     resolve(e: unknown): { Box: unknown; Text: unknown };
   };
-  /** Missing on an older Claude Code. */
-  fs?: {
+  /** Missing on an older Claude Code: callers wrap its use in try/catch. */
+  fs: {
     /** A file's text; rejects when it is missing. */
     read(path: string): Promise<string>;
   };
