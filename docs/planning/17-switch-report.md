@@ -117,3 +117,20 @@ None.
   the final review) one line each for `claude-code`, with `1 session here still runs
   project/persona: /persona use team/web`, and `codex`; `switch --clear` reported both again for `project/persona`, with no session line.
   The demo app has no `AGENTS.md` block, so no `agents-md` line.
+
+## Hardening (0.8.1) (2026-10-22)
+
+- **Sessions match by real path.** A session counts when its project and the repo resolve to the
+  same real path (`realpath`, the raw path if that fails), so a symlinked checkout or `/tmp` vs
+  `/private/tmp` no longer hides it.
+- **A harness has 5 s.** Each harness's detect and build is limited to 5 s; one that never settles
+  is `error timed out after 5s` and the others still report. The limit is `limits.harnessMs` in
+  `switch-report.ts`, so a test can shorten it.
+- **Less repeated work.** Sessions come from the status `connectDaemon` already probed, not a second
+  request; harnesses are detected and built in parallel (the report order, `agents-md` last, is
+  unchanged); `switch --clear` reuses its context with the new state, so a stray-layer warning
+  prints once.
+- **`agents-md` wording.** The line reads `carries project/persona`, not `ok`, because `ok` read
+  like "keeps everything". The JSON `status` stays `ok`. When `project/persona` extends a user
+  layer, `zzpersona write` refuses it (`user-layer-in-shared-file`), so the line no longer suggests
+  `— zzpersona write`.
