@@ -10,7 +10,9 @@ import { connectDaemon } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
 import { startDaemon } from "../daemon/server.js";
 import {
-  installedCommand,
+  installedService,
+  serviceFor,
+  serviceHome,
   serviceOf,
   type ServiceManager,
 } from "../daemon/service.js";
@@ -64,9 +66,10 @@ export async function startDaemonProcess(
   io: CliIo,
   home: string,
 ): Promise<void> {
-  const service = serviceOf(io);
-  if (service && (await installedCommand(service)) !== undefined) {
-    await service.start();
+  // The service only for the home it serves: another home's daemon would never answer here.
+  const service = await serviceFor(io, home);
+  if (service) {
+    await service.manager.start();
     return;
   }
   await (io.spawnDaemon ?? ((h) => spawnDetached(io, h)))(home);
@@ -296,26 +299,32 @@ export async function daemonStatus(
   io: CliIo,
   options: DaemonCommandOptions,
 ): Promise<number> {
-  const client = await connectDaemon(homeOf(io));
+  const home = homeOf(io);
+  const client = await connectDaemon(home);
   const status = client && (await client.status());
   // Where the platform has no service manager, status says nothing about one.
   const manager = serviceOf(io);
-  const installed = manager !== undefined && existsSync(manager.path);
+  const file = manager && (await installedService(manager));
+  // The home the service serves, which may be another than this one.
+  const served = file && serviceHome(io, file);
   const service = manager && {
-    installed,
+    installed: file !== undefined,
     path: manager.path,
+    ...(served !== undefined && { home: served }),
     managed: status?.service === true,
   };
   const serviceLine = !manager
     ? ""
-    : !installed
+    : !file
       ? "service: not installed\n"
       : `service: installed (${manager.path})${
-          !status
-            ? ""
-            : status.service
-              ? "; the daemon runs under it"
-              : "; the running daemon was started outside it"
+          served !== home
+            ? ` for ${served}`
+            : !status
+              ? ""
+              : status.service
+                ? "; the daemon runs under it"
+                : "; the running daemon was started outside it"
         }\n`;
   if (!status) {
     io.stdout.write(

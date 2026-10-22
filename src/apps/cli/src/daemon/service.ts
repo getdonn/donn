@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import type { CliIo } from "../cli.js";
+import { homeOf } from "../context.js";
 import { CliError } from "../errors.js";
 import { currentUid } from "./paths.js";
 
@@ -30,6 +31,9 @@ export interface ServiceManager {
 }
 
 const LABEL = "zzpersona.daemon";
+/** How long a reinstall waits for launchd to let go of the old job. */
+const UNLOAD_WAIT_MS = 5_000;
+const UNLOAD_POLL_MS = 50;
 const UNIT = "zzpersona-daemon";
 
 type ServiceIo = Pick<CliIo, "env" | "probe">;
@@ -53,21 +57,73 @@ export function serviceManager(io: ServiceIo): ServiceManager | undefined {
       );
 }
 
+export interface InstalledService {
+  /** The `zzpersona` the file runs ("" when the file names none). */
+  command: string;
+  /** The file's environment. */
+  env: Record<string, string>;
+}
+
+/** What the installed file runs, or undefined when no file. */
+export async function installedService(
+  manager: ServiceManager,
+): Promise<InstalledService | undefined> {
+  const text = await readFile(manager.path, "utf8").catch(() => undefined);
+  if (text === undefined) return undefined;
+  if (manager.kind === "launchd") {
+    const command =
+      /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(
+        text,
+      )?.[1];
+    const vars =
+      /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(
+        text,
+      )?.[1] ?? "";
+    const env: Record<string, string> = {};
+    for (const [, key, value] of vars.matchAll(
+      /<key>([^<]*)<\/key>\s*<string>([^<]*)<\/string>/g,
+    )) {
+      env[xmlUnescape(key!)] = xmlUnescape(value!);
+    }
+    return { command: command === undefined ? "" : xmlUnescape(command), env };
+  }
+  const line = /^ExecStart=(.*)$/m.exec(text)?.[1] ?? "";
+  const env: Record<string, string> = {};
+  for (const [, quoted] of text.matchAll(/^Environment=(".*")$/gm)) {
+    const pair = unitUnescape(firstUnitWord(quoted!));
+    const at = pair.indexOf("=");
+    if (at > 0) env[pair.slice(0, at)] = pair.slice(at + 1);
+  }
+  return { command: unitUnescape(firstUnitWord(line)), env };
+}
+
 /** The installed file's command path, or undefined when no file. */
 export async function installedCommand(
   manager: ServiceManager,
 ): Promise<string | undefined> {
-  const text = await readFile(manager.path, "utf8").catch(() => undefined);
-  if (text === undefined) return undefined;
-  if (manager.kind === "launchd") {
-    const match =
-      /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(
-        text,
-      );
-    return match ? xmlUnescape(match[1]!) : "";
-  }
-  const line = /^ExecStart=(.*)$/m.exec(text)?.[1] ?? "";
-  return unitUnescape(firstUnitWord(line));
+  return (await installedService(manager))?.command;
+}
+
+/** The home the installed service's daemon serves: its ZZPERSONA_HOME, else the default home. */
+export function serviceHome(io: CliIo, installed: InstalledService): string {
+  return homeOf({
+    ...io,
+    env: { ...io.env, ZZPERSONA_HOME: installed.env.ZZPERSONA_HOME },
+  });
+}
+
+/** The service, when its file is installed for `home`; else undefined. */
+export async function serviceFor(
+  io: CliIo,
+  home: string,
+): Promise<
+  { manager: ServiceManager; installed: InstalledService } | undefined
+> {
+  const manager = serviceOf(io);
+  const installed = manager && (await installedService(manager));
+  if (!manager || !installed || serviceHome(io, installed) !== home)
+    return undefined;
+  return { manager, installed };
 }
 
 async function writeServiceFile(path: string, text: string): Promise<void> {
@@ -142,6 +198,8 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
       "</plist>\n",
     ].join("");
   const unload = () => probe.run("launchctl", ["bootout", target]);
+  const loaded = async () =>
+    (await probe.run("launchctl", ["print", target])).exitCode === 0;
   return {
     kind: "launchd",
     label,
@@ -149,8 +207,14 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
     render,
     install: async (spec) => {
       await writeServiceFile(path, render(spec));
-      // Not loaded, or loaded but broken: either way bootstrap decides.
+      // Not loaded, or loaded but broken: either way bootstrap decides. bootout returns before
+      // the job is gone, and a bootstrap too soon fails: wait until print no longer finds it.
       await unload();
+      const deadline = Date.now() + UNLOAD_WAIT_MS;
+      while (await loaded()) {
+        if (Date.now() >= deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, UNLOAD_POLL_MS));
+      }
       await run(probe, "launchctl", ["bootstrap", domain, path]);
     },
     uninstall: async () => {
@@ -158,8 +222,7 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
       await rm(path, { force: true });
     },
     start: () => run(probe, "launchctl", ["kickstart", target]),
-    loaded: async () =>
-      (await probe.run("launchctl", ["print", target])).exitCode === 0,
+    loaded,
   };
 }
 

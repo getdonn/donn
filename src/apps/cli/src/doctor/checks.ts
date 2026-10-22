@@ -23,7 +23,7 @@ import {
   versionMismatch,
 } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
-import { installedCommand, serviceOf } from "../daemon/service.js";
+import { serviceFor } from "../daemon/service.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
 import { missingHint, shellHint, shellLookup } from "../shell.js";
@@ -469,16 +469,17 @@ export async function runChecks(
     );
 
   // daemon: optional; running at the version of this CLI, or not at all. An installed service
-  // must name a zzpersona that exists and be loaded.
-  const service = serviceOf(io);
-  const serviceCommand = service && (await installedCommand(service));
+  // must name a zzpersona that exists and be loaded. A service for another home is not this
+  // home's concern: `daemon install` here would take it over.
+  const service = await serviceFor(io, home);
+  const serviceCommand = service?.installed.command;
   const reinstall = "zzpersona daemon install";
   let serviceProblem: string | undefined;
   if (service && serviceCommand !== undefined) {
     if (!existsSync(serviceCommand)) {
       serviceProblem = `the daemon service runs ${serviceCommand}, which no longer exists`;
-    } else if (!(await service.loaded())) {
-      serviceProblem = `the daemon service is installed but not loaded (${service.path})`;
+    } else if (!(await service.manager.loaded())) {
+      serviceProblem = `the daemon service is installed but not loaded (${service.manager.path})`;
     }
   }
   let refused: string | undefined;

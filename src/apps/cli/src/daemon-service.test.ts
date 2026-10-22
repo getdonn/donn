@@ -52,20 +52,28 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** A probe that records each command line and fails the ones `fails` names. */
+/**
+ * A probe that records each command line and fails the ones `fails` names. Like launchctl,
+ * `print` finds the job between a `bootstrap` and a `bootout`.
+ */
 function fakeProbe(
   platform: Platform,
   fails: (call: string) => boolean = () => false,
 ) {
   const calls: string[] = [];
+  let loaded = false;
   const probe: Probe = {
     platform,
     run: async (command, args) => {
       const call = [command, ...args].join(" ");
       calls.push(call);
-      return fails(call)
-        ? { exitCode: 5, stdout: "", stderr: `${command} said no\n` }
-        : { exitCode: 0, stdout: "", stderr: "" };
+      if (fails(call))
+        return { exitCode: 5, stdout: "", stderr: `${command} said no\n` };
+      if (command === "launchctl" && args[0] === "bootout") loaded = false;
+      if (command === "launchctl" && args[0] === "bootstrap") loaded = true;
+      if (command === "launchctl" && args[0] === "print" && !loaded)
+        return { exitCode: 113, stdout: "", stderr: "" };
+      return { exitCode: 0, stdout: "", stderr: "" };
     },
     readFile: async () => undefined,
     listDir: async () => undefined,
@@ -94,12 +102,24 @@ function binWithCli(): string {
   return bin;
 }
 
-/** Write a service file as `install` would, without loading anything. */
-function writeServiceFile(manager: ServiceManager, command: string) {
+/**
+ * Write a service file as `install` would, without loading anything; it serves `home`, or with
+ * `null` the default home (no ZZPERSONA_HOME).
+ */
+function writeServiceFile(
+  manager: ServiceManager,
+  command: string,
+  home: string | null = zzHome(),
+) {
   mkdirSync(dirname(manager.path), { recursive: true });
+  const { ZZPERSONA_HOME: _, ...env } = SPEC.env;
   writeFileSync(
     manager.path,
-    manager.render({ ...SPEC, command: [command, "daemon", "run"] }),
+    manager.render({
+      ...SPEC,
+      command: [command, "daemon", "run"],
+      env: home === null ? env : { ...env, ZZPERSONA_HOME: home },
+    }),
   );
 }
 
@@ -182,6 +202,7 @@ describe("the service managers", () => {
 
     const install = [
       `launchctl bootout gui/${uid}/zzpersona.daemon`,
+      `launchctl print gui/${uid}/zzpersona.daemon`,
       `launchctl bootstrap gui/${uid} ${plist}`,
     ];
     expect(calls).toEqual([
@@ -258,7 +279,27 @@ describe("the service managers", () => {
     );
     const manager = serviceManager({ env: { HOME: userHome() }, probe })!;
     await manager.install(SPEC);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("waits for launchd to let go of the old job before bootstrapping", async () => {
+    const calls: string[] = [];
+    let prints = 0;
+    const probe: Probe = {
+      ...fakeProbe("darwin").probe,
+      run: async (command, args) => {
+        calls.push(args[0]!);
+        const still = args[0] === "print" && ++prints <= 2;
+        return {
+          exitCode: args[0] === "print" && !still ? 113 : 0,
+          stdout: "",
+          stderr: "",
+        };
+      },
+    };
+    const manager = serviceManager({ env: { HOME: userHome() }, probe })!;
+    await manager.install(SPEC);
+    expect(calls).toEqual(["bootout", "print", "print", "print", "bootstrap"]);
   });
 
   it("fails with the manager's stderr when loading fails", async () => {
@@ -355,6 +396,7 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(status.service).toEqual({
       installed: true,
       path: base.path,
+      home: zzHome(),
       managed: true,
     });
   });
@@ -443,6 +485,40 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(json(r)).toMatchObject({ running: true, already: false });
   });
 
+  it("daemon start uses the service only for the home it serves", async () => {
+    const base = launchd().manager;
+    let started = 0;
+    let spawned = 0;
+    const start = (home?: string) =>
+      zz(["daemon", "start"], {
+        cwd: root,
+        ...(home && { home }),
+        env: { HOME: userHome() },
+        service: {
+          ...base,
+          start: async () => {
+            started++;
+            await inProcessDaemon(home ?? join(userHome(), ".zzpersona"));
+          },
+        },
+        spawnDaemon: async (h) => {
+          spawned++;
+          await inProcessDaemon(h);
+        },
+      });
+
+    writeServiceFile(base, "/u/bin/zzpersona", join(root, "a"));
+    expect((await start(join(root, "b"))).code).toBe(0);
+    expect({ started, spawned }).toEqual({ started: 0, spawned: 1 });
+
+    // No ZZPERSONA_HOME in the file: it serves the default home.
+    writeServiceFile(base, "/u/bin/zzpersona", null);
+    expect((await start()).code).toBe(0);
+    expect({ started, spawned }).toEqual({ started: 1, spawned: 1 });
+    expect((await start(join(root, "c"))).code).toBe(0);
+    expect({ started, spawned }).toEqual({ started: 1, spawned: 2 });
+  });
+
   it("Windows is refused", async () => {
     for (const command of ["install", "uninstall"]) {
       const r = await zz(["daemon", command, "--json"], {
@@ -461,6 +537,43 @@ describe("zzpersona daemon install|uninstall", () => {
 });
 
 describe("the service elsewhere", () => {
+  it("status and doctor leave another home's service alone", async () => {
+    const base = launchd().manager;
+    const service: ServiceManager = { ...base, loaded: async () => false };
+    const other = join(root, "other");
+    writeServiceFile(base, join(root, "gone/zzpersona"), other);
+    const r = await zz(["daemon", "status"], {
+      cwd: root,
+      home: zzHome(),
+      service,
+    });
+    expect(r.stdout).toBe(
+      `daemon not running\nservice: installed (${base.path}) for ${other}\n`,
+    );
+
+    await inProcessDaemon(zzHome(), {}, "0.0.1");
+    const s = seed();
+    try {
+      const d = await zz(["doctor", "--json"], {
+        cwd: s.repo,
+        home: zzHome(),
+        service,
+      });
+      expect(
+        (
+          JSON.parse(d.stdout) as {
+            checks: { id: string; fix?: string }[];
+          }
+        ).checks.find((c) => c.id === "daemon"),
+      ).toMatchObject({
+        status: "warn",
+        fix: "zzpersona daemon stop && zzpersona daemon start",
+      });
+    } finally {
+      s.cleanup();
+    }
+  });
+
   it("already running exits 0 under the service", async () => {
     await inProcessDaemon(zzHome());
     const run = (env: NodeJS.ProcessEnv) =>
@@ -515,6 +628,7 @@ describe("the service elsewhere", () => {
     expect(JSON.parse((await status(true)).stdout).service).toEqual({
       installed: true,
       path: base.path,
+      home: zzHome(),
       managed: false,
     });
 
