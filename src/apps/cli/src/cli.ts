@@ -3,9 +3,11 @@ import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
+import { statusCommand } from "./commands/status.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
 import {
+  daemonRefresh,
   daemonRun,
   daemonStart,
   daemonStatus,
@@ -340,6 +342,24 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print the daemon's status as JSON")
         .action((options) =>
           handle(options.json, () => daemonStatus(io, options)),
+        );
+
+      daemon
+        .command("refresh")
+        .description("Refresh every live session now")
+        .option("--json", "print { running, refreshed } as JSON")
+        .action((options) =>
+          handle(options.json, () => daemonRefresh(io, options)),
+        );
+
+      program
+        .command("status")
+        .description(
+          "Show the live sessions and whether the daemon keeps them current",
+        )
+        .option("--json", "print { daemon, sessions } as JSON")
+        .action((options) =>
+          handle(options.json, () => statusCommand(io, options)),
         );
 
       try {

@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import { access, constants, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { findBuildLeftovers, removeBuildLeftovers } from "@zzpersona/executor";
+import {
+  findBuildLeftovers,
+  isAlive,
+  removeBuildLeftovers,
+} from "@zzpersona/executor";
 import {
   keychainParts,
   parseSecretRef,
@@ -11,7 +15,14 @@ import {
 import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
+import { cliVersion } from "../commands/daemon.js";
 import { bundledMod, installedModVersion } from "../commands/mod.js";
+import {
+  connectDaemon,
+  daemonSocket,
+  versionMismatch,
+} from "../daemon/client.js";
+import { daemonPaths } from "../daemon/paths.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
 import { secretContext } from "../secret-context.js";
@@ -428,6 +439,50 @@ export async function runChecks(
       "zzpersona is not on PATH, so the Claude Code mod cannot run it",
       CLI_ON_PATH_FIX,
     );
+
+  // daemon: optional; running at the version of this CLI, or not at all
+  const daemon = await connectDaemon(home);
+  if (daemon) {
+    const status = daemon.probed;
+    if (status.version !== cliVersion()) {
+      add(
+        "daemon",
+        "warn",
+        versionMismatch(status.version, cliVersion()),
+        "zzpersona daemon stop && zzpersona daemon start",
+      );
+    } else {
+      add(
+        "daemon",
+        "ok",
+        `daemon ${status.version} running (pid ${status.pid})`,
+      );
+    }
+  } else {
+    // Nothing answers: a socket or pid file left behind is a daemon that died.
+    const paths = daemonPaths(home);
+    const pid = Number.parseInt(
+      await readFile(paths.pid, "utf8").catch(() => ""),
+      10,
+    );
+    if (pid > 0 && isAlive(pid)) {
+      add(
+        "daemon",
+        "warn",
+        `the daemon (pid ${pid}) is unresponsive`,
+        "zzpersona daemon stop",
+      );
+    } else if (existsSync(await daemonSocket(home)) || pid > 0) {
+      add(
+        "daemon",
+        "warn",
+        `the daemon's socket or pid file is stale in ${paths.dir}`,
+        "zzpersona daemon start",
+      );
+    } else {
+      add("daemon", "ok", "daemon not running (optional)");
+    }
+  }
 
   // mod: the Claude Code mod this zzpersona ships, installed and current
   const installed = await installedModVersion(home);
