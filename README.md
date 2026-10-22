@@ -29,6 +29,11 @@ zzpersona doctor                              # checks the setup, says what to f
 `zzpersona` must be a real executable on `PATH`, not a shell alias: the Claude Code mod and
 `zzpersona claude` start programs without a shell.
 
+## Examples
+
+`examples/` has a demo project with org, team and project personas to try everything on; see
+[`examples/README.md`](examples/README.md).
+
 ## First use
 
 ```sh
