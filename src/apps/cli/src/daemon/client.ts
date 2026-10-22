@@ -65,13 +65,14 @@ export interface DaemonResponse {
   body: unknown;
 }
 
-/** One request to the daemon at `socket`; the body is parsed JSON. */
+/** One request to the daemon at `socket`, with `body` sent as JSON; the answer is parsed JSON. */
 export function daemonRequest(
   socket: string,
   token: string | undefined,
   method: string,
   path: string,
   timeoutMs?: number,
+  body?: unknown,
 ): Promise<DaemonResponse> {
   return new Promise((resolve, reject) => {
     const req = request(
@@ -79,8 +80,10 @@ export function daemonRequest(
         socketPath: socket,
         method,
         path,
-        headers:
-          token === undefined ? {} : { authorization: `Bearer ${token}` },
+        headers: {
+          ...(token !== undefined && { authorization: `Bearer ${token}` }),
+          ...(body !== undefined && { "content-type": "application/json" }),
+        },
         ...(timeoutMs !== undefined && { timeout: timeoutMs }),
       },
       (res) => {
@@ -98,7 +101,7 @@ export function daemonRequest(
     );
     req.on("timeout", () => req.destroy(new Error("timed out")));
     req.on("error", reject);
-    req.end();
+    req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
 
