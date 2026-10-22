@@ -67,6 +67,12 @@ export interface CliIo {
   stdin?: () => Promise<string>;
   /** A line typed without echo; undefined when there is no terminal. Defaults to a TTY prompt. */
   readSecret?: (prompt: string) => Promise<string | undefined>;
+  /** Opens the sign-in page; errors are ignored. Defaults to open / xdg-open / cmd /c start. */
+  openBrowser?: (url: string) => Promise<void>;
+  /** Waits between sign-in polls; defaults to setTimeout. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Cancels a sign-in (Ctrl-C); defaults to a SIGINT handler held only while it waits. */
+  signal?: AbortSignal;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -356,8 +362,16 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .command("login")
         .description("Sign in to a layer registry and remember it")
         .argument("<url>", "the registry's base URL")
-        .option("--token-stdin", "read the token from stdin instead of asking")
-        .option("--json", "print { url, subject, org, tokenStore } as JSON")
+        .option("--token", "paste a registry token instead of signing in")
+        .option(
+          "--token-stdin",
+          "read the token from stdin instead of signing in",
+        )
+        .option("--no-browser", "print the sign-in link without opening it")
+        .option(
+          "--json",
+          "print { url, subject, expiresAt } (sign-in) or { url, subject, org, tokenStore } (token) as JSON",
+        )
         .action((url: string, options) =>
           handle(options.json, () => loginCommand(io, url, options)),
         );

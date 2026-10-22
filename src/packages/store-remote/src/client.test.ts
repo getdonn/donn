@@ -2,7 +2,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { startMockRegistry } from "@zzpersona/registry-api/mock";
-import { RegistryError, createClient } from "./client.js";
+import {
+  RegistryError,
+  createClient,
+  pollLogin,
+  startLogin,
+} from "./client.js";
 import { file, persona } from "./testing/helpers.js";
 
 const stops: (() => Promise<void>)[] = [];
@@ -189,5 +194,34 @@ describe("client", () => {
     });
     await createClient({ url: `${url}/zz`, token: "t" }).whoami();
     expect(seen).toBe("/zz/v1/whoami");
+  });
+});
+
+describe("sign-in", () => {
+  it("starts a login and polls it without a token", async () => {
+    const registry = await mock();
+    const login = await startLogin(registry.url);
+    expect(login.verifyUrl).toBe(`${registry.url}/login/${login.code}`);
+    await expect(
+      pollLogin(registry.url, login.loginId, login.pollSecret),
+    ).rejects.toMatchObject({ code: "authorization-pending" });
+    registry.completeLogin(login.verifyUrl, { email: "alice@corp.com" });
+    const session = await pollLogin(
+      registry.url,
+      login.loginId,
+      login.pollSecret,
+    );
+    expect(session.subject).toBe("alice@corp.com");
+    await expect(
+      pollLogin(registry.url, login.loginId, login.pollSecret),
+    ).rejects.toMatchObject({ code: "login-expired" });
+  });
+
+  it("not-found when the registry has no sign-in", async () => {
+    const registry = await startMockRegistry({ signIn: false });
+    stops.push(registry.stop);
+    await expect(startLogin(registry.url)).rejects.toMatchObject({
+      code: "not-found",
+    });
   });
 });

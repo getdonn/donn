@@ -2,6 +2,8 @@ export { normaliseUrl, routeUrl } from "./url.js";
 export {
   RegistryError,
   createClient,
+  pollLogin,
+  startLogin,
   type ClientOptions,
   type RegistryClient,
   type RegistryErrorCode,

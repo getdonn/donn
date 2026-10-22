@@ -1,0 +1,386 @@
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Probe } from "@zzpersona/adapter-sdk";
+import { startMockRegistry } from "@zzpersona/registry-api/mock";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createCli, type CliIo } from "./cli.js";
+import { installedProbe } from "./test/seed.js";
+
+const EXAMPLES = join(import.meta.dirname, "../../../../examples/personas");
+const noKeychain: Probe = { ...installedProbe, platform: "win32" };
+const DAY = 24 * 60 * 60 * 1000;
+
+let registry: Awaited<ReturnType<typeof startMockRegistry>>;
+let roots: string[] = [];
+let opens: string[] = [];
+/** What the running command has printed so far. */
+let live = { stdout: "", stderr: "" };
+/** Everything every command printed, for the leak scan. */
+const outputs: string[] = [];
+
+const openBrowser = async (url: string) => {
+  opens.push(url);
+};
+
+beforeEach(async () => {
+  opens = [];
+  registry = await startMockRegistry();
+});
+afterEach(async () => {
+  await registry.stop();
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  roots = [];
+});
+
+interface Machine {
+  home: string;
+  cwd: string;
+}
+
+function machine(withRegistry = false): Machine {
+  const root = mkdtempSync(join(tmpdir(), "zzp-login-"));
+  roots.push(root);
+  const home = join(root, "home");
+  const personas = join(root, "personas");
+  const cwd = join(root, "cwd");
+  mkdirSync(home, { recursive: true });
+  mkdirSync(cwd, { recursive: true });
+  cpSync(EXAMPLES, personas, { recursive: true });
+  writeFileSync(
+    join(home, "config.yaml"),
+    `personas: ${personas}\n${withRegistry ? `registry:\n  url: ${registry.url}\n` : ""}`,
+  );
+  return { home, cwd };
+}
+
+interface Out {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+async function run(
+  m: Machine,
+  argv: string[],
+  io: Partial<CliIo> = {},
+): Promise<Out> {
+  live = { stdout: "", stderr: "" };
+  const { env, ...rest } = io;
+  const cli = createCli({
+    env: { ZZPERSONA_NO_DAEMON: "1", ZZPERSONA_HOME: m.home, ...env },
+    cwd: m.cwd,
+    stdout: { write: (s: string) => (live.stdout += s) },
+    stderr: { write: (s: string) => (live.stderr += s) },
+    probe: installedProbe,
+    secretProbe: noKeychain,
+    ...rest,
+  });
+  const code = await cli.run(argv);
+  outputs.push(live.stdout, live.stderr);
+  return { code, ...live };
+}
+
+/** The verify URL the running login printed. */
+const shownUrl = () =>
+  /Open (\S+) and confirm the code/.exec(live.stderr)?.[1] ?? "";
+
+/** A sleep that finishes the login as alice on its first call. */
+const finishOnFirstSleep =
+  (seen: number[] = [], groups?: string[]) =>
+  async (ms: number) => {
+    seen.push(ms);
+    if (seen.length === 1) {
+      registry.completeLogin(shownUrl(), {
+        email: "alice@corp.com",
+        ...(groups && { groups }),
+      });
+    }
+  };
+
+const tokenFile = (m: Machine) => join(m.home, "registry-token");
+const configText = (m: Machine) =>
+  readFileSync(join(m.home, "config.yaml"), "utf8");
+
+describe("login through the browser", () => {
+  it("signs in through the browser", async () => {
+    const m = machine();
+    const inputs: string[] = [];
+    const r = await run(m, ["login", registry.url], {
+      openBrowser,
+      sleep: finishOnFirstSleep(),
+      secretProbe: { ...installedProbe, platform: "darwin" },
+      runInput: async (_c, _a, input) => {
+        inputs.push(input ?? "");
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    expect(r.code, r.stderr).toBe(0);
+    const match = /Open (\S+) and confirm the code (\S+)/.exec(r.stderr)!;
+    expect(match).not.toBeNull();
+    expect(match[2]).toMatch(/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/);
+    expect(opens).toEqual([match[1]]);
+    expect(match[1]).toMatch(new RegExp(`^${registry.url}/login/`));
+    expect(r.stdout).toMatch(
+      new RegExp(
+        `^logged in to ${registry.url}/ as alice@corp.com \\(session until \\d{4}-\\d\\d-\\d\\d\\)\\n$`,
+      ),
+    );
+    expect(inputs.some((i) => i.includes("zzp_"))).toBe(true);
+    expect(configText(m)).toContain(`${registry.url}/`);
+  });
+
+  it("backs off on slow-down", async () => {
+    await registry.stop();
+    registry = await startMockRegistry({ loginInterval: 1 });
+    const m = machine();
+    const seen: number[] = [];
+    const r = await run(m, ["login", registry.url, "--no-browser"], {
+      sleep: async (ms) => {
+        seen.push(ms);
+        // Polls 1 and 2 come at once (the second is too soon: slow-down); the third waits it out.
+        if (seen.length === 2) {
+          registry.completeLogin(shownUrl(), { email: "alice@corp.com" });
+        }
+        if (seen.length === 3) await new Promise((r) => setTimeout(r, 1100));
+      },
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(seen).toEqual([1000, 1000, 6000]);
+  });
+
+  it("an expired or refused login stores nothing", async () => {
+    const m = machine();
+    const refused = await run(m, ["login", registry.url, "--no-browser"], {
+      sleep: async () =>
+        registry.refuseLogin(shownUrl(), "alice is not in the payments group"),
+    });
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain("alice is not in the payments group");
+
+    const expired = await run(m, ["login", registry.url, "--no-browser"], {
+      sleep: async () => {},
+      now: (() => {
+        let t = Date.now();
+        return () => (t += 400_000);
+      })(),
+    });
+    expect(expired.code).toBe(1);
+    expect(expired.stderr).toContain(
+      `login timed out; run zzpersona login ${registry.url}/ again`,
+    );
+    expect(existsSync(tokenFile(m))).toBe(false);
+    expect(configText(m)).not.toContain("registry:");
+
+    await registry.stop();
+    registry = await startMockRegistry({ loginExpiresIn: 1 });
+    const gone = await run(
+      m,
+      ["login", registry.url, "--no-browser", "--json"],
+      {
+        sleep: () => new Promise((r) => setTimeout(r, 1200)),
+      },
+    );
+    expect(gone.code).toBe(1);
+    expect(JSON.parse(gone.stdout).error.code).toBe("login-expired");
+    expect(existsSync(tokenFile(m))).toBe(false);
+    expect(configText(m)).not.toContain("registry:");
+  });
+
+  it("Ctrl-C stops with 130 and stores nothing", async () => {
+    const m = machine();
+    const controller = new AbortController();
+    const r = await run(m, ["login", registry.url, "--no-browser"], {
+      signal: controller.signal,
+      sleep: async () => controller.abort(),
+    });
+    expect(r.code).toBe(130);
+    expect(existsSync(tokenFile(m))).toBe(false);
+    expect(configText(m)).not.toContain("registry:");
+  });
+
+  it("the browser is optional", async () => {
+    const flag = await run(machine(), ["login", registry.url, "--no-browser"], {
+      openBrowser,
+      sleep: finishOnFirstSleep(),
+    });
+    expect(flag.code, flag.stderr).toBe(0);
+    expect(flag.stderr).toContain("and confirm the code");
+
+    const ci = await run(machine(), ["login", registry.url], {
+      openBrowser,
+      env: { CI: "true" },
+      sleep: finishOnFirstSleep(),
+    });
+    expect(ci.code, ci.stderr).toBe(0);
+    expect(ci.stderr).toContain("and confirm the code");
+    expect(opens).toEqual([]);
+
+    const failing = await run(machine(), ["login", registry.url], {
+      openBrowser: async () => {
+        throw new Error("no display");
+      },
+      sleep: finishOnFirstSleep(),
+    });
+    expect(failing.code, failing.stderr).toBe(0);
+    expect(failing.stderr).toContain("and confirm the code");
+    expect(failing.stdout).toContain("logged in to");
+  });
+
+  it("login never prints the token or poll secret", async () => {
+    const stored: string[] = [];
+    const io = {
+      secretProbe: { ...installedProbe, platform: "darwin" as const },
+      runInput: async (_c: string, _a: string[], input?: string) => {
+        if (input) stored.push(input);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+      sleep: finishOnFirstSleep(),
+    };
+    const text = await run(
+      machine(),
+      ["login", registry.url, "--no-browser"],
+      io,
+    );
+    const json = await run(
+      machine(),
+      ["login", registry.url, "--no-browser", "--json"],
+      { ...io, sleep: finishOnFirstSleep() },
+    );
+    const token = /zzp_[0-9a-f]+/.exec(stored.join(" "))![0];
+    for (const r of [text, json]) {
+      expect(r.stdout + r.stderr).not.toContain(token);
+      expect(r.stdout + r.stderr).not.toMatch(/zzp_/);
+    }
+    const parsed = JSON.parse(json.stdout) as Record<string, unknown>;
+    expect(Object.keys(parsed).sort()).toEqual(["expiresAt", "subject", "url"]);
+    expect(parsed.subject).toBe("alice@corp.com");
+    // stderr stays text in JSON mode: the code line only
+    expect(json.stderr).toContain("and confirm the code");
+  });
+
+  it("a registry without sign-in points to --token-stdin", async () => {
+    await registry.stop();
+    registry = await startMockRegistry({ signIn: false });
+    const m = machine();
+    const r = await run(m, ["login", registry.url, "--no-browser"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(
+      "this registry has no sign-in; use zzpersona login",
+    );
+    expect(r.stderr).toContain("--token-stdin");
+    expect(configText(m)).not.toContain("registry:");
+  });
+
+  it("--token prompts for a pasted token as before", async () => {
+    const m = machine();
+    const prompts: string[] = [];
+    const r = await run(m, ["login", registry.url, "--token"], {
+      readSecret: async (p) => {
+        prompts.push(p);
+        return `${registry.token}\n`;
+      },
+    });
+    expect(r.code, r.stderr).toBe(0);
+    expect(prompts).toEqual(["Registry token: "]);
+    expect(r.stdout).toBe(`logged in to ${registry.url}/ as mock-user\n`);
+    const piped = await run(
+      machine(),
+      ["login", registry.url, "--token-stdin"],
+      {
+        stdin: async () => registry.token,
+      },
+    );
+    expect(piped.code, piped.stderr).toBe(0);
+  });
+});
+
+/** Sign in as alice and return her machine. */
+async function aliceMachine(): Promise<Machine> {
+  const m = machine();
+  const r = await run(m, ["login", registry.url, "--no-browser"], {
+    sleep: finishOnFirstSleep(),
+  });
+  expect(r.code, r.stderr).toBe(0);
+  return m;
+}
+
+describe("a signed-in session", () => {
+  it("whoami shows the session and roles", async () => {
+    registry.grant("user:alice@corp.com", "publish", "team/payments");
+    registry.grant("user:alice@corp.com", "lock", "org");
+    const m = await aliceMachine();
+    const r = await run(m, ["whoami"]);
+    expect(r.code, r.stderr).toBe(0);
+    const lines = r.stdout.trimEnd().split("\n");
+    expect(lines[0]).toBe(`alice@corp.com at ${registry.url}/`);
+    expect(lines[1]).toMatch(/^session until \d{4}-\d\d-\d\d$/);
+    expect(lines[2]).toBe("roles: publish team/payments, lock org");
+
+    const json = await run(m, ["whoami", "--json"]);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      loggedIn: true,
+      subject: "alice@corp.com",
+      kind: "session",
+      roles: [
+        { role: "publish", path: "team/payments" },
+        { role: "lock", path: "org" },
+      ],
+    });
+  });
+
+  it("whoami says roles: none when there are none", async () => {
+    const m = await aliceMachine();
+    const r = await run(m, ["whoami"]);
+    expect(r.stdout).toContain("roles: none");
+  });
+
+  it("whoami of a service token prints no session line", async () => {
+    const m = machine(true);
+    const r = await run(m, ["whoami"], {
+      env: { ZZPERSONA_REGISTRY_TOKEN: registry.token },
+    });
+    expect(r.stdout).not.toContain("session until");
+  });
+
+  it("publish forbidden hints the grant", async () => {
+    const m = await aliceMachine();
+    const r = await run(m, ["publish", "org/acme"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("forbidden:");
+    expect(r.stderr).toContain(
+      "hint: ask a registry admin for publish on org/acme",
+    );
+  });
+
+  it("doctor warns when the session ends within 2 days", async () => {
+    const m = await aliceMachine();
+    const checkOf = async (now: number) => {
+      const r = await run(m, ["doctor", "--json"], { now: () => now });
+      return (
+        JSON.parse(r.stdout).checks as {
+          id: string;
+          status: string;
+          message: string;
+          fix?: string;
+        }[]
+      ).find((c) => c.id === "registry-token")!;
+    };
+    const soon = await checkOf(Date.now() + 29 * DAY);
+    expect(soon.status).toBe("warn");
+    expect(soon.message).toMatch(/^session ends \d{4}-\d\d-\d\d/);
+    expect(`${soon.message} ${soon.fix}`).toContain(
+      `zzpersona login ${registry.url}/`,
+    );
+    const later = await checkOf(Date.now() + 10 * DAY);
+    expect(later.message).toContain("accepted as alice@corp.com");
+  });
+});

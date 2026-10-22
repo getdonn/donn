@@ -4,6 +4,8 @@ import {
   ROUTES,
   type LayerSummary,
   type LayerVersion,
+  type LoginStart,
+  type LoginToken,
   type ProblemCode,
   type PublishRequest,
   type PublishResult,
@@ -38,7 +40,13 @@ export interface ClientOptions {
 
 type RouteName = keyof typeof ROUTES;
 
-export function createClient(options: ClientOptions): RegistryClient {
+type Call = (
+  name: RouteName,
+  params: Record<string, string>,
+  body?: unknown,
+) => Promise<unknown>;
+
+function makeCall(options: ClientOptions): Call {
   const base = normaliseUrl(options.url);
   const { token, timeoutMs = 10_000 } = options;
 
@@ -46,11 +54,7 @@ export function createClient(options: ClientOptions): RegistryClient {
   const scrub = (text: string) =>
     token === "" ? text : text.split(token).join("***");
 
-  async function call<N extends RouteName>(
-    name: N,
-    params: Record<string, string>,
-    body?: unknown,
-  ): Promise<unknown> {
+  return async function call(name, params, body) {
     const route = ROUTES[name];
     const label = `${route.method} ${route.path}`;
     const timeout = AbortSignal.timeout(timeoutMs);
@@ -64,7 +68,7 @@ export function createClient(options: ClientOptions): RegistryClient {
       const response = await fetch(routeUrl(base, route.path, params), {
         method: route.method,
         headers: {
-          authorization: `Bearer ${token}`,
+          ...(!("auth" in route) && { authorization: `Bearer ${token}` }),
           accept: "application/json, application/problem+json",
           ...(body !== undefined && { "content-type": "application/json" }),
         },
@@ -134,8 +138,40 @@ export function createClient(options: ClientOptions): RegistryClient {
       );
     }
     return parsed.data;
-  }
+  };
+}
 
+/** Start a sign-in; needs no token. `not-found` when the registry has no sign-in. */
+export function startLogin(
+  url: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<LoginStart> {
+  return makeCall({ url, token: "", ...options })(
+    "startLogin",
+    {},
+  ) as Promise<LoginStart>;
+}
+
+/**
+ * Ask for the session token of a sign-in. Throws RegistryError `authorization-pending` or
+ * `slow-down` while waiting, `login-expired` or `forbidden` when it is over.
+ */
+export function pollLogin(
+  url: string,
+  loginId: string,
+  pollSecret: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<LoginToken> {
+  // The poll secret is scrubbed from error text like a token.
+  return makeCall({ url, token: pollSecret, ...options })(
+    "pollLogin",
+    { loginId },
+    { pollSecret },
+  ) as Promise<LoginToken>;
+}
+
+export function createClient(options: ClientOptions): RegistryClient {
+  const call = makeCall(options);
   return {
     whoami: () => call("whoami", {}) as Promise<Whoami>,
     listLayers: () => call("listLayers", {}) as Promise<LayerSummary[]>,

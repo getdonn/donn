@@ -160,7 +160,18 @@ async function registryChecks(
       const inFile =
         io.env.ZZPERSONA_REGISTRY_TOKEN === undefined &&
         existsSync(join(home, "registry-token"));
-      if (inFile) {
+      if (
+        who.kind === "session" &&
+        who.expiresAt !== undefined &&
+        Date.parse(who.expiresAt) - (io.now ?? Date.now)() < 2 * 86_400_000
+      ) {
+        add(
+          "registry-token",
+          "warn",
+          `session ends ${who.expiresAt.slice(0, 10)}`,
+          `zzpersona login ${url}`,
+        );
+      } else if (inFile) {
         add(
           "registry-token",
           "warn",

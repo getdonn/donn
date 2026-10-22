@@ -161,7 +161,7 @@ describe("login, logout, whoami", () => {
 
   it("login without a terminal or --token-stdin hints --token-stdin", async () => {
     const m = machine(null);
-    const r = await run(m, ["login", registry.url, "--json"], {
+    const r = await run(m, ["login", registry.url, "--token", "--json"], {
       token: false,
       readSecret: async () => undefined,
     });
@@ -257,7 +257,9 @@ describe("login, logout, whoami", () => {
   it("whoami prints the subject and URL", async () => {
     const m = machine();
     const r = await run(m, ["whoami"]);
-    expect(r.stdout).toBe(`mock-user at ${NORMALISED()}\n`);
+    expect(r.stdout).toBe(
+      `mock-user at ${NORMALISED()}\nroles: publish *, lock *\n`,
+    );
   });
 });
 
