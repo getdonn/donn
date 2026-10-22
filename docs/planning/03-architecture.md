@@ -323,6 +323,8 @@ docs/planning/       (these documents)
    `API_VERSION = "zzpersona/v0"`; the IR carries `irVersion`.*
 2. **Multi-harness switch atomicity.** `switch --harness all` can partially fail. Per-harness
    state with a summary, or all-or-nothing? (Lean: per-harness; report.)
+   *Decided 2026-10-22 (spec 17): one choice for every harness, saved first; `switch` then reports
+   per harness, and a harness that fails is reported without undoing the choice.*
 3. **Where in-session UX lives for harnesses without a mod/extension API.** Likely: none, CLI only.
 4. **Skills portability.** Skill formats differ per harness. Treat a skill as a directory with a
    `SKILL.md` and let adapters translate, or define a harness-neutral skill manifest? (Lean: the

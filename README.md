@@ -47,6 +47,25 @@ zzpersona mod install                         # the Claude Code mod: band, nudge
 Inside a `zzpersona claude` session: `/persona`, `/persona list`, `/persona use <persona>` (this
 session only) and `/persona switch <persona>` (remembered for the folder, and applied now).
 
+## Switching
+
+`zzpersona switch <persona>` chooses the persona for this repo (outside a repo, or with
+`--default`, your default); every harness uses it from its next launch. After saving, it says what
+the choice means in each installed harness:
+
+```
+team/web is now used for ~/src/web
+claude-code  drops knowledge (1 approximated) · 1 session here still runs project/persona: /persona use team/web
+codex        drops skills (1), knowledge (1 approximated), permissions (5 approximated)
+agents-md    AGENTS.md carries project/persona (shared); team/web applies to zzpersona launches only
+```
+
+Sessions are counted when the daemon runs. `AGENTS.md` always carries the repo's shared project
+persona, so other tools that read it do not follow your switch. `--harness <id>` reports one
+harness; `switch --clear` reports for the persona that applies after clearing; `--json` adds a
+`harnesses` list. A harness that cannot compile the persona is reported as `error`; the switch is
+still saved.
+
 Every command takes `--json`. `zzpersona --help` lists them.
 
 ## Shared `AGENTS.md`

@@ -95,3 +95,17 @@ A choice per harness; showing the report in `/persona switch`; writing `AGENTS.m
 ## Open questions
 
 None.
+
+## Amendments from implementation (2026-10-22)
+
+- **`sessions`** in `--json` is `{ count, persona, fix }`: `persona` names what the sessions still
+  run (the first, then "and others"), which the line shows too.
+- **`prepareBuild`** takes the caller's `detection` as well as `quiet`, so the report detects each
+  harness once.
+- **`switch --clear` with nothing to clear** prints "nothing to clear" and no report.
+- **Check run** (the user's Mac, `examples/demo-app`, real `claude` 2.1.308 and `codex`, the
+  service daemon with the demo-app session open): `switch team/web` printed
+  `claude-code  drops knowledge (1 approximated) · 1 session here still runs project/persona:
+  /persona use team/web` and `codex  drops skills (1), knowledge (1 approximated), permissions (5
+  approximated)`; `switch --clear` reported both again for `project/persona`, with no session line.
+  The demo app has no `AGENTS.md` block, so no `agents-md` line.
