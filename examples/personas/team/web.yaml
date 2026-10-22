@@ -1,0 +1,20 @@
+# Team layer: the web team adds its own rules and a review skill on top of Acme's.
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: web
+  description: Acme's web team
+extends:
+  - org/acme
+instructions:
+  - id: web-stack
+    inline: >-
+      The web team builds with TypeScript and React. Prefer server components
+      and keep client bundles small.
+skills:
+  include:
+    - ./skills/web-review
+permissions:
+  allow:
+    - "Bash(pnpm test:*)"
+    - "Bash(pnpm lint:*)"
