@@ -9,7 +9,12 @@ import {
   type PersonaSource,
 } from "@zzpersona/resolver";
 import { Persona, PersonaDocument } from "@zzpersona/spec";
-import { MAX_BUNDLE_BYTES, bundleDigest, referencedPaths } from "./bundle.js";
+import {
+  MAX_BUNDLE_BYTES,
+  bundleDigest,
+  normalizeBundlePath,
+  referencedPaths,
+} from "./bundle.js";
 import {
   LayerRef,
   PublishRequest,
@@ -138,7 +143,16 @@ export async function startMockRegistry(
 
     const seen = new Set<string>();
     for (const { path } of request.files) {
-      const clean = posix.normalize(path);
+      // eslint-disable-next-line no-control-regex
+      if (/[\u0000-\u001f\u007f]/.test(path)) {
+        throw refuse(
+          422,
+          "invalid",
+          `file path contains a control character: ${JSON.stringify(path)}`,
+          { ref },
+        );
+      }
+      const clean = normalizeBundlePath(path);
       if (posix.isAbsolute(path) || clean === ".." || clean.startsWith("../")) {
         throw refuse(
           422,
@@ -174,7 +188,7 @@ export async function startMockRegistry(
     const { files, dirs } = referencedPaths(doc);
     const problems: ProblemItem[] = [];
     for (const path of [...files, ...dirs]) {
-      const clean = posix.normalize(path);
+      const clean = normalizeBundlePath(path);
       if (
         clean === ".." ||
         clean.startsWith("../") ||
@@ -232,6 +246,25 @@ export async function startMockRegistry(
     }
     const request = parsed.data;
     const doc = checkBundle(ref, request);
+
+    const current = latest(ref);
+    const digest = bundleDigest(request.source, request.files);
+    if (!request.dryRun) {
+      if (request.baseVersion !== (current?.version ?? 0)) {
+        throw refuse(
+          409,
+          "stale-base",
+          `${ref} is at version ${current?.version ?? 0}, not ${request.baseVersion}`,
+          { ref },
+        );
+      }
+      if (current?.digest === digest) {
+        return {
+          status: 200,
+          body: { unchanged: true, version: current.version, digest },
+        };
+      }
+    }
 
     for (const parent of doc.extends ?? []) {
       if (parent !== ref && latest(parent) === undefined) {
@@ -291,7 +324,6 @@ export async function startMockRegistry(
       if ((await resolves(other, after)) === undefined) broken.push(other);
     }
 
-    const current = latest(ref);
     if (request.dryRun) {
       const previous = current && (await resolves(ref, before));
       return {
@@ -312,21 +344,6 @@ export async function startMockRegistry(
           message: `${other} no longer resolves with this change to ${ref}`,
         })),
       );
-    }
-    if (request.baseVersion !== (current?.version ?? 0)) {
-      throw refuse(
-        409,
-        "stale-base",
-        `${ref} is at version ${current?.version ?? 0}, not ${request.baseVersion}`,
-        { ref },
-      );
-    }
-    const digest = bundleDigest(request.source, request.files);
-    if (current?.digest === digest) {
-      return {
-        status: 200,
-        body: { unchanged: true, version: current.version, digest },
-      };
     }
     const version = (current?.version ?? 0) + 1;
     store.set(ref, [

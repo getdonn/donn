@@ -331,6 +331,72 @@ export function registryConformance(
       });
     });
 
+    describe("check order", () => {
+      it("answers 409 stale-base before ancestor and lock checks", async () => {
+        await publish("org/base", layer("base"));
+        expectProblem(
+          await publish(
+            "team/web",
+            layer("web", "extends:\n  - org/missing\n"),
+            [],
+            4,
+          ),
+          409,
+          "stale-base",
+        );
+        await publish(
+          "org/locked",
+          layer(
+            "locked",
+            "locks:\n  - permissions.deny\npermissions:\n  deny:\n    - Bash(rm:*)\n",
+          ),
+        );
+        expectProblem(
+          await publish(
+            "team/web",
+            layer(
+              "web",
+              "extends:\n  - org/locked\npermissions:\n  remove:\n    deny:\n      - Bash(rm:*)\n",
+            ),
+            [],
+            4,
+          ),
+          409,
+          "stale-base",
+        );
+      });
+
+      it("answers 409 for an identical re-publish with a stale base, 200 with the current one", async () => {
+        await publish("org/base", layer("base"));
+        expectProblem(
+          await publish("org/base", layer("base"), [], 0),
+          409,
+          "stale-base",
+        );
+        expect((await publish("org/base", layer("base"), [], 1)).status).toBe(
+          200,
+        );
+      });
+
+      it("refuses a hook script without ./ that is not in the bundle", async () => {
+        const source = layer(
+          "base",
+          "hooks:\n  stop:\n    - id: h\n      run: hooks/h.sh\n",
+        );
+        const answer = await publish("org/base", source);
+        expectProblem(answer, 422, "missing-file");
+        expect(answer.body.problems[0].path).toBe("hooks/h.sh");
+      });
+
+      it("refuses a file path with a control character as invalid", async () => {
+        expectProblem(
+          await publish("org/base", layer("base"), [file("a\nb.md", "x")]),
+          422,
+          "invalid",
+        );
+      });
+    });
+
     describe("descendants and dry runs", () => {
       const web = layer(
         "web",

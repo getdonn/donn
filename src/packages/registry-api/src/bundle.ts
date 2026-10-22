@@ -1,31 +1,43 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
-import type { Persona } from "@zzpersona/spec";
+import type { Hook, Persona } from "@zzpersona/spec";
 import type { BundleFile } from "./schemas.js";
 
 export const MAX_BUNDLE_BYTES = 10 * 1024 * 1024;
 
-/**
- * The sha256 of the canonical manifest: the YAML and the files sorted by path. File order in the
- * request never changes the digest.
- */
-export function bundleDigest(source: string, files: BundleFile[]): string {
-  const sorted = [...files]
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-    .map(({ path, content }) => ({ path, content }));
-  const manifest = JSON.stringify({ source, files: sorted });
-  return `sha256:${createHash("sha256").update(manifest).digest("hex")}`;
-}
+const sha256 = (data: string | Buffer): string =>
+  createHash("sha256").update(data).digest("hex");
 
-const isUrl = (value: string): boolean =>
-  /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
-
-const relative = (path: string): string =>
+/** A bundle path as hashed and stored: a leading `./` stripped, then `posix.normalize`. */
+export const normalizeBundlePath = (path: string): string =>
   posix.normalize(path.startsWith("./") ? path.slice(2) : path);
 
 /**
+ * The bundle digest, version 1: `sha256:` plus the hex sha256 of this UTF-8 text.
+ *
+ *     zzpersona-bundle/1\n
+ *     layer.yaml <sha256hex(UTF-8 bytes of source)>\n
+ *     <path> <sha256hex(decoded file bytes)>\n        (one line per file)
+ *
+ * Paths are normalised first (see `normalizeBundlePath`) and the file lines are sorted by the
+ * UTF-8 bytes of the normalised path, so file order and a leading `./` never change the digest.
+ * Paths with control characters are refused at publish, so a line never contains a newline.
+ */
+export function bundleDigest(source: string, files: BundleFile[]): string {
+  const lines = files
+    .map(({ path, content }) => ({
+      path: Buffer.from(normalizeBundlePath(path)),
+      hash: sha256(Buffer.from(content, "base64")),
+    }))
+    .sort((a, b) => Buffer.compare(a.path, b.path))
+    .map(({ path, hash }) => `${path.toString("utf8")} ${hash}\n`);
+  const text = `zzpersona-bundle/1\nlayer.yaml ${sha256(source)}\n${lines.join("")}`;
+  return `sha256:${sha256(text)}`;
+}
+
+/**
  * The files and folders a layer points at, relative to the layer's folder: instruction files,
- * local skill folders and hook scripts (`run` values starting `./`). URLs and registry skills are
+ * local skill folders and hook scripts (every `run` is a path, as in the resolver). Skills containing `://` are
  * skipped. Paths are normalised but not checked; callers refuse the ones that escape.
  */
 export function referencedPaths(doc: Persona): {
@@ -35,17 +47,15 @@ export function referencedPaths(doc: Persona): {
   const files: string[] = [];
   const dirs: string[] = [];
   for (const fragment of doc.instructions ?? []) {
-    if ("file" in fragment) files.push(relative(fragment.file));
+    if ("file" in fragment) files.push(normalizeBundlePath(fragment.file));
   }
   for (const skill of doc.skills?.include ?? []) {
-    if (!isUrl(skill)) dirs.push(relative(skill));
+    if (!skill.includes("://")) dirs.push(normalizeBundlePath(skill));
   }
-  for (const hooks of Object.values(doc.hooks ?? {})) {
-    if (!Array.isArray(hooks)) continue;
-    for (const hook of hooks) {
-      if (typeof hook !== "string" && hook.run.startsWith("./"))
-        files.push(relative(hook.run));
-    }
+  for (const [event, hooks] of Object.entries(doc.hooks ?? {})) {
+    if (event === "remove") continue;
+    for (const hook of hooks as Hook[])
+      files.push(normalizeBundlePath(hook.run));
   }
   return { files, dirs };
 }
