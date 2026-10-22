@@ -10,6 +10,7 @@ import { connectDaemon } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
 import { startDaemon } from "../daemon/server.js";
 import { CliError } from "../errors.js";
+import { NOT_RUNNING } from "./status.js";
 
 // zzpersona daemon run|start|stop|status: the daemon's lifecycle. `run` is the daemon in the
 // foreground; `start` spawns it detached. See docs/planning/14-daemon.md §1.
@@ -204,6 +205,25 @@ export async function daemonStatus(
   const count = status.sessions.length;
   io.stdout.write(
     `daemon running: pid ${status.pid}, version ${status.version}, up ${uptime(up)}, ${count} session${count === 1 ? "" : "s"} watched\n`,
+  );
+  return 0;
+}
+
+export async function daemonRefresh(
+  io: CliIo,
+  options: DaemonCommandOptions,
+): Promise<number> {
+  const client = await connectDaemon(homeOf(io), {
+    version: cliVersion(),
+    warn: (message) => io.stderr.write(`${message}\n`),
+  });
+  if (client) await client.refresh();
+  io.stdout.write(
+    options.json
+      ? `${JSON.stringify({ running: client !== undefined, refreshed: client !== undefined }, null, 2)}\n`
+      : client
+        ? "refreshed\n"
+        : `${NOT_RUNNING}\n`,
   );
   return 0;
 }

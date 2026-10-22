@@ -54,6 +54,8 @@ export interface DaemonClient {
 }
 
 const PROBE_TIMEOUT_MS = 500;
+/** A call after the probe: a daemon that wedges must not hang the CLI. */
+const CALL_TIMEOUT_MS = 5_000;
 
 export interface DaemonResponse {
   status: number;
@@ -115,32 +117,55 @@ function ok(res: DaemonResponse): unknown {
   );
 }
 
+/** The copy for a daemon that runs another version than this CLI. */
+export const versionMismatch = (daemon: string, cli: string) =>
+  `daemon runs ${daemon}, CLI is ${cli}; zzpersona daemon stop && zzpersona daemon start`;
+
+export interface ConnectOptions {
+  /** This CLI's version: a daemon that runs another is reported once, through `warn`. */
+  version?: string;
+  warn?: (message: string) => void;
+}
+
 /** A client of the home's daemon, or undefined when no socket answers within 500 ms. */
 export async function connectDaemon(
   home: string,
+  options: ConnectOptions = {},
 ): Promise<DaemonClient | undefined> {
-  const socket = await daemonSocket(home);
-  const token = await readFile(daemonPaths(home).token, "utf8").catch(
-    () => undefined,
-  );
-  if (token === undefined) return undefined;
-  const call = (method: string, path: string, timeoutMs?: number) =>
-    daemonRequest(socket, token.trim(), method, path, timeoutMs).then(ok);
+  // The socket and token are read on every call: a daemon restarted in the same home has a new token.
+  const target = async () => {
+    const token = await readFile(daemonPaths(home).token, "utf8").catch(
+      () => undefined,
+    );
+    return { socket: await daemonSocket(home), token: token?.trim() };
+  };
+  const call = async (method: string, path: string, timeoutMs: number) => {
+    const { socket, token } = await target();
+    return ok(await daemonRequest(socket, token, method, path, timeoutMs));
+  };
+  const probe = await target();
+  if (probe.token === undefined) return undefined;
   const first = await call("GET", "/status", PROBE_TIMEOUT_MS).catch(
     () => undefined,
   );
   if (first === undefined) return undefined;
+  const running = (first as DaemonStatus).version;
+  if (options.version !== undefined && running !== options.version) {
+    options.warn?.(versionMismatch(running, options.version));
+  }
   return {
-    status: async () => (await call("GET", "/status")) as DaemonStatus,
-    refresh: async () => void (await call("POST", "/refresh")),
-    shutdown: async () => void (await call("POST", "/shutdown")),
+    status: async () =>
+      (await call("GET", "/status", CALL_TIMEOUT_MS)) as DaemonStatus,
+    refresh: async () => void (await call("POST", "/refresh", CALL_TIMEOUT_MS)),
+    shutdown: async () =>
+      void (await call("POST", "/shutdown", CALL_TIMEOUT_MS)),
     events: (on) => {
       const req = request(
         {
-          socketPath: socket,
+          socketPath: probe.socket,
           method: "GET",
           path: "/events",
-          headers: { authorization: `Bearer ${token.trim()}` },
+          headers: { authorization: `Bearer ${probe.token}` },
         },
         (res) => {
           let buffer = "";

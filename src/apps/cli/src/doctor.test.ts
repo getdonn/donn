@@ -9,7 +9,10 @@ import {
 import { join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cliVersion } from "./commands/daemon.js";
 import { bundledMod } from "./commands/mod.js";
+import { daemonPaths } from "./daemon/paths.js";
+import { startDaemon, type Daemon } from "./daemon/server.js";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
 let s: Seeded;
@@ -78,6 +81,7 @@ const IDS = [
   "claude",
   "codex",
   "cli",
+  "daemon",
   "mod",
   "secrets",
   "build",
@@ -116,6 +120,7 @@ describe("zzpersona doctor", () => {
       claude: "ok",
       codex: "ok",
       cli: "warn",
+      daemon: "ok",
       mod: "warn",
       secrets: "skipped",
       build: "ok",
@@ -228,6 +233,55 @@ describe("doctor text output", () => {
     expect(r.stdout).toMatch(/^skipped personas  /m);
     expect(r.stdout).toMatch(/^ok      home      /m);
     expect(r.stdout).toMatch(/^ {8}fix: /m);
+  });
+});
+
+describe("zzpersona doctor (daemon)", () => {
+  const daemonCheck = async () => {
+    const { checks } = await doctor([], { env: healthy() });
+    return checks.find((c) => c.id === "daemon")!;
+  };
+  let daemon: Daemon | undefined;
+  afterEach(async () => {
+    await daemon?.close();
+    daemon = undefined;
+  });
+
+  it("is ok when no daemon runs", async () => {
+    expect(await daemonCheck()).toMatchObject({
+      status: "ok",
+      message: "daemon not running (optional)",
+    });
+  });
+
+  it("reports a running daemon", async () => {
+    daemon = await startDaemon({
+      home: s.home,
+      env: {},
+      version: cliVersion(),
+    });
+    expect(await daemonCheck()).toMatchObject({
+      status: "ok",
+      message: `daemon ${cliVersion()} running (pid ${process.pid})`,
+    });
+  });
+
+  it("warns on a version mismatch", async () => {
+    daemon = await startDaemon({ home: s.home, env: {}, version: "0.0.1" });
+    expect(await daemonCheck()).toMatchObject({
+      status: "warn",
+      message: `daemon runs 0.0.1, CLI is ${cliVersion()}; zzpersona daemon stop && zzpersona daemon start`,
+    });
+  });
+
+  it("warns on a stale socket or pid file", async () => {
+    const paths = daemonPaths(s.home);
+    mkdirSync(paths.dir, { recursive: true });
+    writeFileSync(paths.sock, "");
+    const check = await daemonCheck();
+    expect(check.status).toBe("warn");
+    expect(check.message).toContain("stale");
+    expect(check.fix).toBe("zzpersona daemon start");
   });
 });
 
