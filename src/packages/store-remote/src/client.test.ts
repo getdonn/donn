@@ -135,6 +135,30 @@ describe("client", () => {
     }
   });
 
+  it("the token never appears in problems or detail", async () => {
+    const token = "tok-echo-4d2e";
+    const url = await fake((_req, res) => {
+      res.writeHead(422, { "content-type": "application/problem+json" });
+      res.end(
+        JSON.stringify({
+          type: "about:blank",
+          title: "Invalid",
+          status: 422,
+          detail: `request had Bearer ${token}`,
+          problems: [{ code: "invalid", message: `bad Bearer ${token}` }],
+        }),
+      );
+    });
+    const client = createClient({ url, token });
+    const error = await client.whoami().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RegistryError);
+    const e = error as RegistryError;
+    expect(e.message).not.toContain(token);
+    expect(e.problems).toHaveLength(1);
+    for (const p of e.problems ?? []) expect(p.message).not.toContain(token);
+    expect(JSON.stringify(e.problems)).not.toContain(token);
+  });
+
   it("keeps the URL's path prefix", async () => {
     let seen = "";
     const url = await fake((req, res) => {

@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer as createHttp } from "node:http";
 import { createServer, type Server } from "node:net";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -260,6 +261,47 @@ describe("login, logout, whoami", () => {
   });
 });
 
+/** A registry that answers every request with a 422 that echoes the bearer token back. */
+async function echoRegistry(token: string): Promise<string> {
+  const server = createHttp((_req, res) => {
+    res.writeHead(422, { "content-type": "application/problem+json" });
+    res.end(
+      JSON.stringify({
+        type: "about:blank",
+        title: "Invalid",
+        status: 422,
+        detail: `saw Bearer ${token}`,
+        problems: [{ code: "invalid", message: `bad Bearer ${token}` }],
+      }),
+    );
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  hanging.push(server as unknown as Server);
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+describe("echoing registry", () => {
+  it("publish and login never print a token the server echoes", async () => {
+    const url = await echoRegistry(TOKEN);
+    for (const json of [false, true]) {
+      const flag = json ? ["--json"] : [];
+      const m = machine(url);
+      const publish = await run(m, ["publish", "org/acme", ...flag]);
+      expect(publish.code).toBe(1);
+      const login = await run(m, ["login", url, "--token-stdin", ...flag], {
+        token: false,
+        stdin: async () => TOKEN,
+      });
+      expect(login.code).toBe(1);
+      for (const r of [publish, login]) {
+        expect(r.stdout).not.toContain(TOKEN);
+        expect(r.stderr).not.toContain(TOKEN);
+        expect(`${r.stdout}${r.stderr}`).toContain("bad Bearer");
+      }
+    }
+  });
+});
+
 describe("pull and publish", () => {
   it("pull prints changes", async () => {
     const author = machine();
@@ -484,23 +526,39 @@ describe("freshness", () => {
   });
 
   it("freshness without a token", async () => {
+    // `switch` runs the same freshness step as claude without claude's own advisory lines,
+    // so stderr can be compared exactly.
     const m = machine();
+    const r = await run(m, ["switch", "team/web"], { token: false });
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stderr).toBe(
+      `not logged in to ${NORMALISED()}; using cached layers\n`,
+    );
     const rec = recorder();
-    const r = await run(m, ["claude", "team/web"], {
+    const c = await run(machine(), ["claude", "team/web"], {
       runPlan: rec.runPlan,
       token: false,
     });
-    expect(r.code, r.stderr).toBe(0);
+    expect(c.code, c.stderr).toBe(0);
     expect(rec.plans).toHaveLength(1);
-    expect(r.stderr).toContain(
+    expect(c.stderr).toContain(
       `not logged in to ${NORMALISED()}; using cached layers\n`,
     );
-    // No registry at all: nothing is said.
-    const bare = await run(machine(null), ["claude", "team/web"], {
-      runPlan: recorder().runPlan,
+    // No registry at all: the freshness step says nothing.
+    const bare = await run(machine(null), ["switch", "team/web"], {
       token: false,
     });
-    expect(bare.stderr).not.toContain("logged in");
+    expect(bare.code, bare.stderr).toBe(0);
+    expect(bare.stderr).toBe("");
+  });
+
+  it("freshness with a refused token says so", async () => {
+    const m = machine();
+    const r = await run(m, ["switch", "team/web"], { token: WRONG });
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stderr).toBe(
+      `registry refused the token for ${NORMALISED()}; using cached layers \u2014 zzpersona login ${NORMALISED()}\n`,
+    );
   });
 
   it("--json and --dry-run never pull", async () => {

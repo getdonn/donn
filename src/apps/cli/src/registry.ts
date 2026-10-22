@@ -218,7 +218,13 @@ export async function ensureFresh(
       timeoutMs: options.budgetMs,
     });
     await pull(ctx.home, client, url, () => new Date(now()), signal);
-  } catch {
+  } catch (error) {
+    if (error instanceof RegistryError && error.code === "unauthorized") {
+      io.stderr.write(
+        `registry refused the token for ${url}; using cached layers \u2014 zzpersona login ${url}\n`,
+      );
+      return;
+    }
     const pulled = current && Date.parse(current.pulledAt);
     io.stderr.write(
       pulled !== undefined && Number.isFinite(pulled)

@@ -90,7 +90,13 @@ export function createClient(options: ClientOptions): RegistryClient {
     if (!(route.statuses as readonly number[]).includes(status)) {
       const problem = Problem.safeParse(json);
       if (problem.success) {
-        const { detail, problems } = problem.data;
+        const detail = scrub(problem.data.detail);
+        const problems = problem.data.problems?.map((p) => ({
+          ...p,
+          message: scrub(p.message),
+          ...(p.ref !== undefined && { ref: scrub(p.ref) }),
+          ...(p.path !== undefined && { path: scrub(p.path) }),
+        }));
         const message = [detail, ...(problems ?? []).map((p) => p.message)];
         const code =
           problems?.[0]?.code ??
@@ -101,7 +107,7 @@ export function createClient(options: ClientOptions): RegistryClient {
               : "registry-protocol");
         throw new RegistryError(
           code,
-          scrub([...new Set(message)].join("; ")),
+          [...new Set(message)].join("; "),
           problems,
         );
       }
