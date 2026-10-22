@@ -5,6 +5,8 @@ import { ResolveError } from "./errors.js";
 export interface PersonaSource {
   /** The raw parsed document for `ref`, or undefined if no persona has that ref. */
   load(ref: Ref): Promise<unknown>;
+  /** The virtual folder this layer's relative paths resolve against; default posix.dirname(ref). */
+  dir?(ref: Ref): string;
 }
 
 export async function loadDocument(

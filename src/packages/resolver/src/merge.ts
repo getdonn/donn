@@ -59,6 +59,7 @@ const skillName = (source: string): string =>
 
 export class Merge {
   private layer!: Ref;
+  private dir = "";
   private isOverlay = false;
 
   private readonly provenance = new Map<string, Ref>();
@@ -82,8 +83,9 @@ export class Merge {
   private readonly providers = new Map<string, SecretProvider>();
   private readonly targets: Record<string, unknown> = {};
 
-  apply(layer: Ref, doc: Persona | PersonaOverlay): void {
+  apply(layer: Ref, doc: Persona | PersonaOverlay, dir?: string): void {
     this.layer = layer;
+    this.dir = dir ?? posix.dirname(layer);
     this.isOverlay = doc.kind === "PersonaOverlay";
     const declared = doc.kind === "Persona" ? (doc.locks ?? []) : [];
     if (declared.length > 0 && layer.startsWith("user/")) {
@@ -426,7 +428,7 @@ export class Merge {
 
   /** A path in this layer's file, made relative to the personas root. */
   private local(path: string): string {
-    return posix.join(posix.dirname(this.layer), path);
+    return posix.join(this.dir, path);
   }
 
   /** This layer set the value at `path`; if another layer had set it, that is an override. */
