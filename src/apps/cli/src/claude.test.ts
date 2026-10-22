@@ -168,6 +168,39 @@ describe("zzpersona claude", () => {
     expect(launched.stderr).toContain("claude is not installed");
   });
 
+  it("says why claude is missing when the shell has it", async () => {
+    const probe: Probe = {
+      ...installedProbe,
+      run: async (command) =>
+        command === "/bin/zsh"
+          ? {
+              exitCode: 0,
+              stdout: "claude is an alias for /opt/claude/claude\n",
+              stderr: "",
+            }
+          : { exitCode: 127, stdout: "", stderr: "" },
+    };
+    const r = await zz(["claude", "--json"], {
+      cwd: s.repo,
+      home: s.home,
+      probe,
+      env: { ...SECRET_ENV, SHELL: "/bin/zsh", PATH: join(s.home, "none") },
+      runPlan: recorder().runPlan,
+    });
+    const launched = await zz(["claude"], {
+      cwd: s.repo,
+      home: s.home,
+      probe,
+      env: { ...SECRET_ENV, SHELL: "/bin/zsh", PATH: join(s.home, "none") },
+      runPlan: recorder().runPlan,
+    });
+    expect(r.code).toBe(0);
+    expect(launched.code).toBe(1);
+    expect(launched.stderr).toContain(
+      "claude is not installed (or not on PATH); your shell has claude as an alias for /opt/claude/claude",
+    );
+  });
+
   it("tells the session which persona it runs", async () => {
     useEnvVault();
     const { calls, runPlan } = recorder();

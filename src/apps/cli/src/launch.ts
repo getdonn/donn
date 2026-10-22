@@ -8,7 +8,9 @@ import type { CliIo } from "./cli.js";
 import { secretContext } from "./secret-context.js";
 import { createContext, type Context } from "./context.js";
 import { CliError } from "./errors.js";
+import { findOnPath } from "./path.js";
 import { selectPersona, type Selection } from "./select.js";
+import { shellHint, shellLookup } from "./shell.js";
 
 // The launch path the harness commands share: select → compile → write → resolve secrets → run.
 // See docs/planning/06-cli-core-loop.md, section 4, and 12-codex.md, section 2.
@@ -82,9 +84,16 @@ export async function launch(
     return 0;
   }
   if (!build.detection.installed) {
+    const hint = shellHint(
+      options.binary,
+      await shellLookup(options.binary, io),
+      findOnPath(options.binary, io.env),
+      io.env.SHELL,
+    );
     throw new CliError(
       options.notInstalled,
-      `${options.binary} is not installed (or not on PATH)`,
+      `${options.binary} is not installed (or not on PATH)${hint ? `; ${hint}` : ""}`,
+      hint ? { hint } : {},
     );
   }
 
