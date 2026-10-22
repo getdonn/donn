@@ -137,6 +137,29 @@ service when it is installed), waiting at most a second; the launch goes ahead e
 the next login). To turn that off, set `daemon: { autoStart: false }` in `config.yaml` (in
 `~/.zzpersona`, or `ZZPERSONA_HOME`), or `ZZPERSONA_NO_DAEMON=1` for one run.
 
+## Registry
+
+A team lead can publish a layer (`org/*`, `area/*` or `team/*`) to a registry; everyone else pulls it
+and resolves against exactly what was published, offline once pulled.
+
+```sh
+zzpersona login https://registry.example.com   # token from a prompt, or --token-stdin
+zzpersona publish team/web --dry-run           # what would change; nothing is stored
+zzpersona publish team/web                     # published team/web @2
+zzpersona pull                                 # team/web 1 → 2
+```
+
+Pulled layers sit in a read-only cache under `~/.zzpersona/cache/registry/`. A published layer wins
+over a same-name file in your personas folder, with `team/web: using published @2; local copy
+differs` once per command; `--local` on `resolve`, `compile` and `diff` leaves the cache out, for
+authoring. `claude`, `codex` and `switch` pull first when the cache is older than `registry.maxAge`
+(15 minutes), within a second; if the registry is down, or you are not logged in or the token is
+refused, they say so and use the cache. `publish` refuses a stale base (`zzpersona pull`, then
+publish again) and a change that breaks a published layer below it (`--force` publishes anyway).
+The token goes in the OS keychain (`ZZPERSONA_REGISTRY_TOKEN` overrides it for CI) and never in
+output. `resolve --json` and `switch --json` list the published versions used as `builtFrom`.
+`zzpersona logout` removes the token; the contract is `docs/planning/18-registry-contract.md`.
+
 ## What each harness can carry
 
 `zzpersona capabilities` shows, per harness, which persona fields are carried natively,
