@@ -38,13 +38,16 @@ function grantHint(problem: { message: string; ref?: string }): string {
   const match = /needs (\S+) on (\S+)\s*$/.exec(problem.message);
   const role = match?.[1];
   const ref = problem.ref ?? match?.[2];
-  return `ask a registry admin for ${role !== undefined ? `${role} on ` : ""}${ref ?? "this layer"}`;
+  return clean(
+    `ask a registry admin for ${role !== undefined ? `${role} on ` : ""}${ref ?? "this layer"}`,
+  );
 }
 
 /** Server text for a terminal: control characters (escapes, newlines, bells) dropped. */
-// eslint-disable-next-line no-control-regex
-const clean = (text: string) =>
-  text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+export function clean(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
 
 /** A registry failure as a CliError: each problem as `<code>: <message>`, with its hint. */
 function fail(error: unknown, options: { grantHint?: boolean } = {}): never {
@@ -228,10 +231,14 @@ async function browserLogin(
     } catch {
       link = new URL("about:blank");
     }
-    if (link.origin !== new URL(url).origin) {
+    const registryUrl = new URL(url);
+    if (
+      link.origin !== registryUrl.origin ||
+      link.protocol !== registryUrl.protocol
+    ) {
       throw new CliError(
         "registry-protocol",
-        `registry-protocol: the registry sent a sign-in link for another site (${clean(link.origin)})`,
+        `registry-protocol: the registry sent a sign-in link for another site (${clean(link.protocol === registryUrl.protocol ? link.origin : link.href.slice(0, 80))})`,
       );
     }
     io.stderr.write(
@@ -445,10 +452,10 @@ export async function publishCommand(
     if ("dryRun" in result) {
       const lines = result.diff.map(
         (c) =>
-          `${{ added: "+", removed: "-", changed: "~" }[c.change]} ${c.path}`,
+          `${{ added: "+", removed: "-", changed: "~" }[c.change]} ${clean(c.path)}`,
       );
       if (result.broken.length > 0) {
-        lines.push(`would break: ${result.broken.join(", ")}`);
+        lines.push(`would break: ${clean(result.broken.join(", "))}`);
       }
       print(
         io,

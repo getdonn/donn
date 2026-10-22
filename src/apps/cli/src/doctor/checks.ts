@@ -19,6 +19,7 @@ import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { cliVersion } from "../commands/daemon.js";
 import { bundledMod, installedModVersion } from "../commands/mod.js";
+import { clean } from "../commands/registry.js";
 import {
   connectDaemon,
   daemonSocket,
@@ -157,8 +158,7 @@ async function registryChecks(
         timeoutMs: 3000,
       }).whoami();
       add("registry", "ok", `${url} is reachable`);
-      // eslint-disable-next-line no-control-regex
-      const subject = who.subject.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+      const subject = clean(who.subject);
       const until =
         who.kind === "session" && who.expiresAt !== undefined
           ? `, session until ${who.expiresAt.slice(0, 10)}`

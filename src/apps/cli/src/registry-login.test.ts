@@ -422,8 +422,9 @@ describe("the sign-in link", () => {
       "https://evil.example.com/login/ABCD2345",
       "file:///etc/passwd",
       "-oProxyCommand=x",
+      'blob:HTTPSORIGIN/x" &calc',
     ]) {
-      const fake = await lyingRegistry(link);
+      const fake = await lyingRegistry((o) => link.replace("HTTPSORIGIN", o));
       const m = machine();
       const r = await run(m, ["login", fake.url], {
         openBrowser,
@@ -526,5 +527,66 @@ describe("the sign-in link", () => {
       JSON.parse(r.stdout).checks as { id: string; message: string }[]
     ).find((c) => c.id === "registry-token")!;
     expect(check.message).toMatch(/session until \d{4}-\d\d-\d\d/);
+  });
+});
+
+/** A registry whose publish answers `status` with `body`, whatever was sent. */
+async function publishRegistry(status: number, body: unknown) {
+  const server = createServer((req, res) => {
+    req.resume();
+    res.statusCode = status;
+    res.setHeader(
+      "content-type",
+      status === 200 ? "application/json" : "application/problem+json",
+    );
+    res.end(JSON.stringify(body));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const m = machine();
+  writeFileSync(
+    join(m.home, "config.yaml"),
+    `${readFileSync(join(m.home, "config.yaml"), "utf8")}registry:\n  url: ${url}\n`,
+  );
+  return { m, stop: () => server.close() };
+}
+
+describe("server text in publish output", () => {
+  it("the forbidden hint has no escape sequences", async () => {
+    const fake = await publishRegistry(403, {
+      type: "about:blank",
+      title: "forbidden",
+      status: 403,
+      detail: "no",
+      problems: [
+        {
+          code: "forbidden",
+          ref: "team/x\u001b[2J",
+          message: "bob may not publish: needs pub\u001b[2Jlish on team/x",
+        },
+      ],
+    });
+    const r = await run(fake.m, ["publish", "org/acme"], {
+      env: { ZZPERSONA_REGISTRY_TOKEN: "tok-9f3a" },
+    });
+    fake.stop();
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("hint: ask a registry admin for pub[2Jlish on");
+    expect(r.stderr).not.toContain("\u001b");
+  });
+
+  it("a dry-run diff path has no escape sequences", async () => {
+    const fake = await publishRegistry(200, {
+      dryRun: true,
+      diff: [{ path: "instructions\u001b[2J", change: "added" }],
+      broken: [],
+    });
+    const r = await run(fake.m, ["publish", "org/acme", "--dry-run"], {
+      env: { ZZPERSONA_REGISTRY_TOKEN: "tok-9f3a" },
+    });
+    fake.stop();
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain("+ instructions[2J");
+    expect(r.stdout).not.toContain("\u001b");
   });
 });
