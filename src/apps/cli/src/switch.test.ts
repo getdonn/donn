@@ -19,7 +19,10 @@ describe("zzpersona switch", () => {
       home: s.home,
     });
     expect(r.code, r.stderr).toBe(0);
-    expect(r.stdout).toBe(`team/payments is now used for ${s.repo}\n`);
+    // The first line; the per-harness report follows (switch-report.test.ts).
+    expect(r.stdout.split("\n")[0]).toBe(
+      `team/payments is now used for ${s.repo}`,
+    );
     const key = await projectKey(join(s.repo, ".zzpersona"));
     expect((await readState(s.home)).projects[key]).toBe("team/payments");
     const resolved = await zz(["resolve", "--json"], {
@@ -48,7 +51,10 @@ describe("zzpersona switch", () => {
       cwd: s.repo,
       home: s.home,
     });
-    expect(json(r.stdout)).toEqual({ scope: "default", persona: "org/base" });
+    expect(json(r.stdout)).toMatchObject({
+      scope: "default",
+      persona: "org/base",
+    });
     expect((await readState(s.home)).default).toBe("org/base");
   });
 
@@ -64,7 +70,9 @@ describe("zzpersona switch", () => {
       cwd: s.repo,
       home: s.home,
     });
-    expect(cleared.stdout).toBe(`cleared the switch for ${s.repo}\n`);
+    expect(cleared.stdout.split("\n")[0]).toBe(
+      `cleared the switch for ${s.repo}`,
+    );
     expect((await readState(s.home)).projects).toEqual({});
     const again = await zz(["switch", "--clear"], {
       cwd: s.repo,

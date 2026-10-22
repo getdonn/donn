@@ -280,6 +280,10 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .option("--default", "set or clear the default even inside a project")
         .option("--clear", "remove this project's switch (or the default)")
+        .option(
+          "--harness <id>",
+          "report what the choice means in this harness only",
+        )
         .option("--json", "print the result as JSON")
         .action((persona: string | undefined, options) =>
           handle(options.json, () => switchCommand(io, persona, options)),
