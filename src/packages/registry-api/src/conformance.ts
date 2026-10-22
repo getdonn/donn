@@ -1,20 +1,55 @@
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MAX_BUNDLE_BYTES, bundleDigest } from "./bundle.js";
 import { ROUTES, routePath } from "./routes.js";
 import {
-  Problem,
+  ConformanceSchemas,
   type BundleFile,
   type ProblemCode,
   type PublishRequest,
 } from "./schemas.js";
 
+/** What `start` may be asked for; a real server may ignore it and skip the cases that need it. */
+export interface StartOptions {
+  /** Minimum seconds between login polls. */
+  loginInterval?: number;
+  /** Seconds a login lasts. */
+  loginExpiresIn?: number;
+}
+
 export interface RegistryUnderTest {
   url: string;
   token: string;
   stop(): Promise<void>;
+  /** false: the registry has no identity provider (sign-in routes answer 404). */
+  signIn?: boolean;
+  /** A valid token with no grants. Without it the role cases are skipped. */
+  limitedToken?: string;
+  /**
+   * Finish the login at `verifyUrl` as `identity`, as the person would in the browser. Without it
+   * the sign-in cases are skipped.
+   */
+  completeLogin?(
+    verifyUrl: string,
+    identity: { email: string; groups?: string[] },
+  ): Promise<void>;
+  /** Refuse the login at `verifyUrl`; without it the refused-login case is skipped. */
+  refuseLogin?(verifyUrl: string, reason: string): Promise<void>;
+  /** true: `start` honours `loginInterval` and `loginExpiresIn`; else those cases are skipped. */
+  supportsLoginTiming?: boolean;
 }
 
 type RouteName = keyof typeof ROUTES;
+
+/** The strict schema the kit holds each route's success answer to. */
+const STRICT_RESPONSES = {
+  whoami: ConformanceSchemas.Whoami,
+  listLayers: z.array(ConformanceSchemas.LayerSummary),
+  getVersion: ConformanceSchemas.LayerVersion,
+  publish: ConformanceSchemas.PublishResult,
+  startLogin: ConformanceSchemas.LoginStart,
+  pollLogin: ConformanceSchemas.LoginToken,
+} as const satisfies Record<RouteName, z.ZodType>;
 
 interface Answer {
   status: number;
@@ -37,7 +72,7 @@ const layer = (name: string, extra = ""): string =>
  * against itself.
  */
 export function registryConformance(
-  start: () => Promise<RegistryUnderTest>,
+  start: (options?: StartOptions) => Promise<RegistryUnderTest>,
 ): void {
   describe("registry conformance", () => {
     let registry: RegistryUnderTest;
@@ -47,6 +82,12 @@ export function registryConformance(
     afterEach(async () => {
       await registry.stop();
     });
+
+    /** Replace the registry under test with one started with `options`. */
+    async function restart(options: StartOptions): Promise<void> {
+      await registry.stop();
+      registry = await start(options);
+    }
 
     /** Call a route; the response must parse as its schema (success) or as a Problem. */
     async function call(
@@ -71,12 +112,12 @@ export function registryConformance(
       );
       const parsed: unknown = await response.json();
       if ((route.statuses as readonly number[]).includes(response.status)) {
-        expect(route.response.safeParse(parsed).error).toBeUndefined();
+        expect(STRICT_RESPONSES[name].safeParse(parsed).error).toBeUndefined();
       } else {
         expect(response.headers.get("content-type")).toContain(
           "application/problem+json",
         );
-        const problem = Problem.safeParse(parsed);
+        const problem = ConformanceSchemas.Problem.safeParse(parsed);
         expect(problem.error).toBeUndefined();
         expect(problem.data?.status).toBe(response.status);
       }
@@ -112,7 +153,9 @@ export function registryConformance(
       expect(response.headers.get("content-type")).toContain(
         "application/problem+json",
       );
-      expect(Problem.safeParse(parsed).error).toBeUndefined();
+      expect(
+        ConformanceSchemas.Problem.safeParse(parsed).error,
+      ).toBeUndefined();
       return { status: response.status, body: parsed };
     }
 
@@ -140,6 +183,7 @@ export function registryConformance(
         const params = { ref: "org/base", version: "1" };
         const body = { source: layer("base"), files: [], baseVersion: 0 };
         for (const name of Object.keys(ROUTES) as RouteName[]) {
+          if ("auth" in ROUTES[name]) continue; // the sign-in routes take no token
           const request = name === "publish" ? body : undefined;
           expectProblem(
             await call(name, params, request, null),
@@ -576,6 +620,136 @@ export function registryConformance(
         }
         const listed = (await call("listLayers")).body as { version: number }[];
         expect(listed.map((l) => l.version)).toEqual([2]);
+      });
+    });
+
+    describe("sign-in", () => {
+      const ann = { email: "ann@acme.test", groups: ["leads"] };
+      const startLogin = () => call("startLogin", {}, undefined, null);
+      const poll = (login: { loginId: string; pollSecret: string }) =>
+        call(
+          "pollLogin",
+          { loginId: login.loginId },
+          { pollSecret: login.pollSecret },
+          null,
+        );
+
+      it("answers 404 not-found on the sign-in routes when the registry has no sign-in", async (ctx) => {
+        if (registry.signIn !== false) return ctx.skip();
+        expectProblem(await startLogin(), 404, "not-found");
+      });
+
+      it("starts a login with an 8-character code and a verify URL", async (ctx) => {
+        if (!registry.completeLogin) return ctx.skip();
+        const answer = await startLogin();
+        expect(answer.status).toBe(201);
+        const verify = new URL(answer.body.verifyUrl);
+        const own = new URL(registry.url);
+        expect(verify.origin).toBe(own.origin);
+        expect(verify.protocol).toBe(own.protocol);
+        expect(answer.body.code).toHaveLength(8);
+      });
+
+      it("answers 428 authorization-pending until the person finishes", async (ctx) => {
+        if (!registry.completeLogin) return ctx.skip();
+        const login = (await startLogin()).body;
+        expectProblem(await poll(login), 428, "authorization-pending");
+      });
+
+      it("answers 429 slow-down when polled inside the interval", async (ctx) => {
+        if (!registry.completeLogin || !registry.supportsLoginTiming) {
+          return ctx.skip();
+        }
+        await restart({ loginInterval: 30 });
+        const login = (await startLogin()).body;
+        expectProblem(await poll(login), 428, "authorization-pending");
+        expectProblem(await poll(login), 429, "slow-down");
+      });
+
+      it("answers 410 login-expired once the login has expired", async (ctx) => {
+        if (!registry.completeLogin || !registry.supportsLoginTiming) {
+          return ctx.skip();
+        }
+        await restart({ loginExpiresIn: 1 });
+        const login = (await startLogin()).body;
+        await new Promise((done) => setTimeout(done, 1200));
+        expectProblem(await poll(login), 410, "login-expired");
+      });
+
+      it("answers 404 for an unknown login and for a wrong poll secret", async (ctx) => {
+        if (!registry.completeLogin) return ctx.skip();
+        const login = (await startLogin()).body;
+        expectProblem(
+          await poll({ loginId: "nope", pollSecret: login.pollSecret }),
+          404,
+          "not-found",
+        );
+        expectProblem(
+          await poll({ loginId: login.loginId, pollSecret: "wrong" }),
+          404,
+          "not-found",
+        );
+      });
+
+      it("gives a finished login a session token, once", async (ctx) => {
+        if (!registry.completeLogin) return ctx.skip();
+        const login = (await startLogin()).body;
+        await registry.completeLogin(login.verifyUrl, ann);
+        const done = await poll(login);
+        expect(done.status).toBe(200);
+        expect(done.body.subject).toBe(ann.email);
+        const me = await call("whoami", {}, undefined, done.body.token);
+        expect(me.status).toBe(200);
+        expect(me.body.subject).toBe(ann.email);
+        expect(me.body.kind).toBe("session");
+        expect(me.body.expiresAt).toEqual(expect.any(String));
+        expect(
+          (await call("listLayers", {}, undefined, done.body.token)).status,
+        ).toBe(200);
+        expectProblem(await poll(login), 410, "login-expired");
+      });
+
+      it("answers 403 forbidden with the reason when the person is refused", async (ctx) => {
+        if (!registry.completeLogin || !registry.refuseLogin) return ctx.skip();
+        const login = (await startLogin()).body;
+        await registry.refuseLogin(login.verifyUrl, "domain not allowed");
+        const answer = await poll(login);
+        expectProblem(answer, 403, "forbidden");
+        expect(answer.body.detail).toContain("domain not allowed");
+      });
+    });
+
+    describe("roles", () => {
+      it("lets a token without grants read and dry-run but not publish", async (ctx) => {
+        const limited = registry.limitedToken;
+        if (limited === undefined) return ctx.skip();
+        const me = await call("whoami", {}, undefined, limited);
+        expect(me.status).toBe(200);
+        expect(me.body.roles).toEqual([]);
+        expect((await call("listLayers", {}, undefined, limited)).status).toBe(
+          200,
+        );
+
+        const body = { source: layer("base"), files: [], baseVersion: 0 };
+        const refused = await call(
+          "publish",
+          { ref: "org/base" },
+          body,
+          limited,
+        );
+        expectProblem(refused, 403, "forbidden");
+        expect(refused.body.problems[0].ref).toBe("org/base");
+        expect(refused.body.problems[0].message).toContain("org/base");
+        expect((await call("listLayers")).body).toEqual([]);
+
+        const dry = await call(
+          "publish",
+          { ref: "org/base" },
+          { ...body, dryRun: true },
+          limited,
+        );
+        expect(dry.status).toBe(200);
+        expect(dry.body.dryRun).toBe(true);
       });
     });
 

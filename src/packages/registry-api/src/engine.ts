@@ -79,10 +79,14 @@ type ProblemItem = NonNullable<Problem["problems"]>[number];
 
 const TITLES: Record<number, string> = {
   401: "Unauthorized",
+  403: "Forbidden",
   404: "Not found",
   409: "Conflict",
+  410: "Gone",
   413: "Payload too large",
   422: "Unprocessable bundle",
+  428: "Precondition required",
+  429: "Too many requests",
 };
 
 /** An `application/problem+json` body for these problems. */

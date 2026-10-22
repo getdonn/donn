@@ -267,3 +267,9 @@ None.
 The §2 publish rules now live in `publishLayer` (`@zzpersona/registry-api`, spec 19,
 `19-publish-engine.md`); the mock is an in-memory `LayerStore` on it, and the control plane will be
 a Postgres one. The wire contract above is unchanged.
+
+## Note (2026-10-22, identity)
+
+From spec 20 on, clients read responses tolerantly: unknown fields are ignored and an unknown
+problem code is mapped by its HTTP status. Identity (browser sign-in, sessions, roles) is added by
+spec 20, `20-registry-identity.md`; the routes above are otherwise unchanged.

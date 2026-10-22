@@ -1,7 +1,18 @@
+import { randomBytes, randomInt } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
+import { parse } from "yaml";
 import { memoryStore, problemOf, publishLayer } from "./engine.js";
-import type { LayerSummary, ProblemCode } from "./schemas.js";
+import {
+  LoginPoll,
+  PublishRequest,
+  grantCovers,
+  type LayerSummary,
+  type Problem,
+  type ProblemCode,
+  type Role,
+  type Whoami,
+} from "./schemas.js";
 
 // An in-memory registry that implements docs/planning/18-registry-contract.md §1-§2 on the
 // publish engine (docs/planning/19-publish-engine.md). It is the
@@ -10,11 +21,51 @@ import type { LayerSummary, ProblemCode } from "./schemas.js";
 /** A request body over this is refused before parsing, as bundle-too-large. */
 const MAX_BODY_BYTES = 15 * 1024 * 1024;
 
-interface ProblemItem {
-  code: ProblemCode;
-  ref?: string;
-  path?: string;
-  message: string;
+type ProblemItem = NonNullable<Problem["problems"]>[number];
+
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const SESSION_DAYS = 30;
+
+/** Someone to sign in as: an email, and the identity-provider groups they belong to. */
+export interface MockIdentity {
+  email: string;
+  groups?: string[];
+}
+
+interface Caller {
+  kind: "session" | "service";
+  subject: string;
+  /** Principals whose grants apply: `user:<email>`, `group:<g>` or `service:<name>`. */
+  principals: string[];
+  expiresAt?: Date;
+}
+
+interface Login {
+  code: string;
+  pollSecret: string;
+  verifyUrl: string;
+  interval: number;
+  expiresAt: number;
+  lastPoll?: number;
+  state: "pending" | "done" | "refused" | "redeemed";
+  identity?: MockIdentity;
+  reason?: string;
+}
+
+/** The sorted, de-duplicated `locks` of a layer's YAML; undefined when it does not parse. */
+function locksOf(source: string): string[] | undefined {
+  let doc: unknown;
+  try {
+    doc = parse(source);
+  } catch {
+    return undefined;
+  }
+  if (typeof doc !== "object" || doc === null) return undefined;
+  const locks = (doc as { locks?: unknown }).locks;
+  const list = Array.isArray(locks)
+    ? locks.filter((l): l is string => typeof l === "string")
+    : [];
+  return [...new Set(list)].sort();
 }
 
 class Failure extends Error {
@@ -42,6 +93,12 @@ export interface MockRegistryOptions {
   token?: string;
   subject?: string;
   org?: string;
+  /** Minimum seconds between login polls; 0 (the default) never answers slow-down. */
+  loginInterval?: number;
+  /** Seconds a login lasts (default 600). */
+  loginExpiresIn?: number;
+  /** false: the registry has no identity provider and answers 404 on the sign-in routes. */
+  signIn?: boolean;
 }
 
 export interface MockRegistry {
@@ -50,6 +107,14 @@ export interface MockRegistry {
   stop(): Promise<void>;
   /** The latest version of every published layer. */
   layers(): LayerSummary[];
+  /** Finish the login shown at `verifyUrl` as `identity`; its next poll yields a session token. */
+  completeLogin(verifyUrl: string, identity: MockIdentity): void;
+  /** Refuse the login at `verifyUrl`; its next poll answers 403 forbidden with `reason`. */
+  refuseLogin(verifyUrl: string, reason: string): void;
+  /** Grant `role` on `path` to `user:<email>`, `group:<g>` or `service:<name>`. */
+  grant(principal: string, role: Role, path: string): void;
+  /** A new service token that holds no grants. */
+  limitedToken(): string;
 }
 
 export async function startMockRegistry(
@@ -58,16 +123,85 @@ export async function startMockRegistry(
   const token = options.token ?? "mock-token";
   const subject = options.subject ?? "mock-user";
   const org = options.org ?? "acme";
+  const loginInterval = options.loginInterval ?? 0;
+  const loginExpiresIn = options.loginExpiresIn ?? 600;
+  const signIn = options.signIn ?? true;
   const store = memoryStore();
+  let base = "";
   /** Publishes run one at a time, as the engine requires. */
   let queue: Promise<unknown> = Promise.resolve();
 
+  const callers = new Map<string, Caller>([
+    [
+      token,
+      {
+        kind: "service",
+        subject,
+        principals: [`service:${subject}`],
+      },
+    ],
+  ]);
+  const grants: { principal: string; role: Role; path: string }[] = [
+    { principal: `service:${subject}`, role: "publish", path: "*" },
+    { principal: `service:${subject}`, role: "lock", path: "*" },
+  ];
+  const logins = new Map<string, Login>();
+  let limited = 0;
+
   const summaries = (): LayerSummary[] => store.summaries();
 
-  async function publish(ref: string, body: unknown): Promise<Reply> {
-    const run = queue.then(() =>
-      publishLayer(store, ref, body, { subject, now: new Date() }),
-    );
+  const rolesOf = (caller: Caller): NonNullable<Whoami["roles"]> => {
+    const seen = new Set<string>();
+    const roles: NonNullable<Whoami["roles"]> = [];
+    for (const g of grants) {
+      const key = `${g.role} ${g.path}`;
+      if (caller.principals.includes(g.principal) && !seen.has(key)) {
+        seen.add(key);
+        roles.push({ role: g.role, path: g.path });
+      }
+    }
+    return roles;
+  };
+
+  const may = (caller: Caller, role: Role, ref: string): boolean =>
+    rolesOf(caller).some((g) => g.role === role && grantCovers(g.path, ref));
+
+  const forbid = (caller: Caller, ref: string, role: Role) =>
+    new Failure(403, [
+      {
+        code: "forbidden",
+        ref,
+        message: `${caller.subject} may not publish ${ref}: needs ${role} on ${ref}`,
+      },
+    ]);
+
+  async function publish(
+    caller: Caller,
+    ref: string,
+    body: unknown,
+  ): Promise<Reply> {
+    const run = queue.then(async () => {
+      const request = PublishRequest.safeParse(body);
+      if (request.success && request.data.dryRun !== true) {
+        // Dry runs need no grant; a body that does not parse is the engine's to refuse.
+        if (!may(caller, "publish", ref)) throw forbid(caller, ref, "publish");
+        const wanted = locksOf(request.data.source);
+        if (wanted !== undefined) {
+          const latest = await store.latest(ref);
+          const current = latest ? (locksOf(latest.source) ?? []) : [];
+          if (
+            wanted.join("\n") !== current.join("\n") &&
+            !may(caller, "lock", ref)
+          ) {
+            throw forbid(caller, ref, "lock");
+          }
+        }
+      }
+      return publishLayer(store, ref, body, {
+        subject: caller.subject,
+        now: new Date(),
+      });
+    });
     queue = run.catch(() => undefined);
     const outcome = await run;
     if ("problem" in outcome) {
@@ -76,16 +210,132 @@ export async function startMockRegistry(
     return { status: outcome.status, body: outcome.result };
   }
 
+  function startLogin(): Reply {
+    const code = Array.from(
+      { length: 8 },
+      () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]!,
+    ).join("");
+    const loginId = randomBytes(12).toString("hex");
+    const pollSecret = randomBytes(24).toString("hex");
+    const verifyUrl = `${base}/login/${code}`;
+    logins.set(loginId, {
+      code,
+      pollSecret,
+      verifyUrl,
+      interval: loginInterval,
+      expiresAt: Date.now() + loginExpiresIn * 1000,
+      state: "pending",
+    });
+    return {
+      status: 201,
+      body: {
+        loginId,
+        verifyUrl,
+        code,
+        pollSecret,
+        interval: loginInterval,
+        expiresIn: loginExpiresIn,
+      },
+    };
+  }
+
+  function pollLogin(loginId: string, body: unknown): Reply {
+    const poll = LoginPoll.safeParse(body);
+    if (!poll.success)
+      throw refuse(422, "invalid", "body must be { pollSecret }");
+    const login = logins.get(loginId);
+    if (!login || login.pollSecret !== poll.data.pollSecret) {
+      throw refuse(404, "not-found", "no such login");
+    }
+    const now = Date.now();
+    if (login.state === "redeemed" || now >= login.expiresAt) {
+      throw refuse(410, "login-expired", "the login expired or was used");
+    }
+    const tooSoon =
+      login.lastPoll !== undefined &&
+      now - login.lastPoll < login.interval * 1000;
+    login.lastPoll = now;
+    if (tooSoon) {
+      throw refuse(429, "slow-down", `poll at most every ${login.interval}s`);
+    }
+    if (login.state === "pending") {
+      throw refuse(428, "authorization-pending", "the sign-in is not finished");
+    }
+    if (login.state === "refused") {
+      login.state = "redeemed";
+      throw refuse(403, "forbidden", login.reason ?? "sign-in refused");
+    }
+    const identity = login.identity!;
+    login.state = "redeemed";
+    const sessionToken = `zzp_${randomBytes(24).toString("hex")}`;
+    const expiresAt = new Date(now + SESSION_DAYS * 24 * 60 * 60 * 1000);
+    callers.set(sessionToken, {
+      kind: "session",
+      subject: identity.email,
+      principals: [
+        `user:${identity.email}`,
+        ...(identity.groups ?? []).map((g) => `group:${g}`),
+      ],
+      expiresAt,
+    });
+    return {
+      status: 200,
+      body: {
+        token: sessionToken,
+        subject: identity.email,
+        expiresAt: expiresAt.toISOString(),
+      },
+    };
+  }
+
+  function loginAt(verifyUrl: string): Login {
+    for (const login of logins.values()) {
+      if (login.verifyUrl === verifyUrl) return login;
+    }
+    throw new Error(`no login at ${verifyUrl}`);
+  }
+
   async function route(
     request: IncomingMessage,
     method: string,
     path: string,
   ): Promise<Reply> {
-    if (request.headers.authorization !== `Bearer ${token}`) {
+    if (method === "POST" && path === "/v1/auth/logins") {
+      if (!signIn)
+        throw refuse(404, "not-found", "this registry has no sign-in");
+      return startLogin();
+    }
+    const polled = /^\/v1\/auth\/logins\/([^/]+)\/token$/.exec(path);
+    if (method === "POST" && polled) {
+      if (!signIn)
+        throw refuse(404, "not-found", "this registry has no sign-in");
+      let loginId: string;
+      try {
+        loginId = decodeURIComponent(polled[1]!);
+      } catch {
+        throw refuse(404, "not-found", "no such login");
+      }
+      return pollLogin(loginId, await readJson(request));
+    }
+    const bearer = /^Bearer (.+)$/.exec(request.headers.authorization ?? "");
+    const caller = bearer ? callers.get(bearer[1]!) : undefined;
+    if (
+      !caller ||
+      (caller.expiresAt && caller.expiresAt.getTime() <= Date.now())
+    ) {
       throw refuse(401, "unauthorized", "missing or refused token");
     }
     if (method === "GET" && path === "/v1/whoami") {
-      return { status: 200, body: { subject, org } };
+      const body: Whoami = {
+        subject: caller.subject,
+        org,
+        kind: caller.kind,
+        roles: rolesOf(caller),
+        ...(caller.expiresAt
+          ? { expiresAt: caller.expiresAt.toISOString() }
+          : {}),
+      };
+      return { status: 200, body };
     }
     if (method === "GET" && path === "/v1/layers") {
       return { status: 200, body: summaries() };
@@ -114,7 +364,7 @@ export async function startMockRegistry(
         return { status: 200, body: found };
       }
       if (method === "POST" && match[2] === undefined) {
-        return publish(ref, await readJson(request));
+        return publish(caller, ref, await readJson(request));
       }
     }
     throw refuse(404, "not-found", `no route for ${method} ${path}`);
@@ -160,10 +410,35 @@ export async function startMockRegistry(
     server.listen(0, "127.0.0.1", resolveListen),
   );
   const { port } = server.address() as AddressInfo;
+  base = `http://127.0.0.1:${port}`;
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: base,
     token,
     layers: summaries,
+    completeLogin(verifyUrl, identity) {
+      const login = loginAt(verifyUrl);
+      login.state = "done";
+      login.identity = identity;
+    },
+    refuseLogin(verifyUrl, reason) {
+      const login = loginAt(verifyUrl);
+      login.state = "refused";
+      login.reason = reason;
+    },
+    grant(principal, role, path) {
+      grants.push({ principal, role, path });
+    },
+    limitedToken() {
+      limited += 1;
+      const name = `limited-${limited}`;
+      const limitedTokenValue = `limited-token-${randomBytes(12).toString("hex")}`;
+      callers.set(limitedTokenValue, {
+        kind: "service",
+        subject: name,
+        principals: [`service:${name}`],
+      });
+      return limitedTokenValue;
+    },
     stop: () =>
       new Promise<void>((resolveStop, reject) => {
         server.closeAllConnections();

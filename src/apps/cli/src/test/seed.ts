@@ -95,6 +95,9 @@ export async function zz(
       | "stdin"
       | "readSecret"
       | "secretProbe"
+      | "openBrowser"
+      | "sleep"
+      | "signal"
     >
   >,
 ): Promise<RunResult> {
@@ -119,6 +122,9 @@ export async function zz(
     ...(options.stdin && { stdin: options.stdin }),
     ...(options.readSecret && { readSecret: options.readSecret }),
     ...(options.secretProbe && { secretProbe: options.secretProbe }),
+    ...(options.openBrowser && { openBrowser: options.openBrowser }),
+    ...(options.sleep && { sleep: options.sleep }),
+    ...(options.signal && { signal: options.signal }),
   });
   const code = await cli.run(argv);
   return { code, stdout, stderr };
