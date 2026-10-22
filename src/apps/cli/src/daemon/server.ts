@@ -6,7 +6,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { isAlive, nodeProbe } from "@zzpersona/executor";
 import type { CliIo } from "../cli.js";
@@ -21,7 +21,7 @@ import type {
   SessionStatus,
 } from "./client.js";
 import { createLog } from "./log.js";
-import { daemonPaths } from "./paths.js";
+import { daemonPaths, privateSocketDir } from "./paths.js";
 import { refreshSession, type RefreshOutcome } from "./refresh.js";
 import { watchKey, watchSources, type Watch } from "./watch.js";
 
@@ -46,7 +46,7 @@ export interface Daemon {
   token: string;
   startedAt: string;
   refresh(): Promise<void>;
-  /** Stop serving and remove `sock`, `pid`, `where` and the lock. Safe to call twice. */
+  /** Stop serving and remove `sock`, `pid`, `where`, `token` and the lock. Safe to call twice. */
   close(): Promise<void>;
   /** Settles once the daemon has closed, by `close()` or `POST /shutdown`. */
   closed: Promise<void>;
@@ -105,7 +105,7 @@ const failure = (code: string, message: string) => ({
 
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   const now = options.now ?? Date.now;
-  const paths = daemonPaths(options.home);
+  const paths = daemonPaths(options.home, options.env);
   await mkdir(paths.dir, { recursive: true, mode: 0o700 });
   await chmod(paths.dir, 0o700);
   await acquireLock(paths.lock);
@@ -406,7 +406,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       // Before the socket, which closing the server unlinks: a client that sees the socket gone
       // finds the pid gone too.
       await Promise.all(
-        [paths.pid, paths.where].map((p) => rm(p, { force: true })),
+        [paths.pid, paths.where, paths.token].map((p) =>
+          rm(p, { force: true }),
+        ),
       );
       await new Promise<void>((resolve) => {
         // Requests still being answered get a grace period, then are cut.
@@ -427,7 +429,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       markClosed();
     })());
 
+  const fallback = paths.sock !== join(paths.dir, "sock");
   try {
+    // A long home's socket lives in a folder that must be the user's alone.
+    if (fallback) await privateSocketDir(dirname(paths.sock));
     // We hold the lock: anything at these paths is left from a daemon that died.
     await rm(paths.sock, { force: true });
     await rm(paths.where, { force: true });
@@ -440,13 +445,14 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       });
     });
     await chmod(paths.sock, 0o600);
-    if (paths.sock !== join(paths.dir, "sock")) {
+    if (fallback) {
       await writeFileAtomic(paths.where, `${paths.sock}\n`, 0o600);
     }
     await writeFileAtomic(paths.pid, `${process.pid}\n`, 0o600);
   } catch (error) {
     clearInterval(poll);
     server.close();
+    await rm(paths.token, { force: true });
     await rm(paths.lock, { force: true });
     throw error;
   }

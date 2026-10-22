@@ -1,7 +1,8 @@
-import { readFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { lstat, readFile } from "node:fs/promises";
 import { request } from "node:http";
 import { CliError } from "../errors.js";
-import { daemonPaths } from "./paths.js";
+import { currentUid, daemonPaths } from "./paths.js";
 
 // A client of a home's daemon, over its socket with its token. See docs/planning/14-daemon.md §4.
 
@@ -108,6 +109,12 @@ export async function daemonSocket(home: string): Promise<string> {
   return where?.trim() || paths.sock;
 }
 
+/** Whether a socket's `lstat` shows a socket the user owns: only one gets the token. */
+export const ownSocket = (
+  stats: Pick<Stats, "uid" | "isSocket"> | undefined,
+  uid = currentUid(),
+): boolean => stats !== undefined && stats.isSocket() && stats.uid === uid;
+
 /** The body of a successful response; an error response becomes a CliError with its code. */
 function ok(res: DaemonResponse): unknown {
   if (res.status >= 200 && res.status < 300) return res.body;
@@ -127,6 +134,8 @@ export interface ConnectOptions {
   /** This CLI's version: a daemon that runs another is reported once, through `warn`. */
   version?: string;
   warn?: (message: string) => void;
+  /** The user the socket must belong to; this process's. */
+  uid?: number;
 }
 
 /** A client of the home's daemon, or undefined when no socket answers within 500 ms. */
@@ -135,14 +144,21 @@ export async function connectDaemon(
   options: ConnectOptions = {},
 ): Promise<DaemonClient | undefined> {
   // The socket and token are read on every call: a daemon restarted in the same home has a new token.
+  // A socket that is not the user's own is someone else's listener: no token goes to it.
   const target = async () => {
+    const socket = await daemonSocket(home);
+    const stats = await lstat(socket).catch(() => undefined);
+    if (!ownSocket(stats, options.uid)) return { socket, token: undefined };
     const token = await readFile(daemonPaths(home).token, "utf8").catch(
       () => undefined,
     );
-    return { socket: await daemonSocket(home), token: token?.trim() };
+    return { socket, token: token?.trim() };
   };
   const call = async (method: string, path: string, timeoutMs: number) => {
     const { socket, token } = await target();
+    if (token === undefined) {
+      throw new CliError("daemon", "daemon: not running");
+    }
     return ok(await daemonRequest(socket, token, method, path, timeoutMs));
   };
   const probe = await target();

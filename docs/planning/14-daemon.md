@@ -183,3 +183,19 @@ Verified (second smoke run, Claude Code 2.1.306, the dev mod loaded with `--plug
 installed one; one band drew): Claude answered `SMOKE-ALPHA`; the persona's instruction was edited
 to `SMOKE-BRAVO`; `zzpersona status` showed `refreshed` within a second; on the very next turn of
 the same session Claude answered `SMOKE-BRAVO`. The refresh applies to the turn the prompt starts.
+
+### From the final review (2026-10-21)
+
+- **Fallback socket location** (replaces "a short path under the system temp directory" in §1): a
+  long home's socket goes in a folder of the user's own, `$XDG_RUNTIME_DIR` when set, else
+  `<tmpdir>/zzpd-<uid>` (created 0700), as `zzpd-<hash>.sock`. On Linux `/tmp` is shared, so a bare
+  predictable name there could be taken by another user first. The daemon refuses to start
+  (`daemon-socket-dir`) unless the folder is a real directory, not a symlink, owned by the user,
+  mode 0700. Clients `lstat` the socket and treat one that is not a socket owned by the user as no
+  daemon: the token is never sent to it. `where` still names the socket.
+- **Token file:** removed when the daemon stops and when a start fails, with `pid` and `where`.
+- **`daemon start`** runs the detached daemon with the home as its working directory.
+- **A refresh never undoes a switch:** the daemon's swap re-reads `live.json` under the session's
+  lock; when the persona or `appliedAt` changed since the refresh read the session (a `/persona use`
+  or `zzpersona live` landed meanwhile), nothing is swapped and the refresh is logged as a skip
+  (`skip <session> <persona>: superseded`), leaving the session's state as it was.
