@@ -2,6 +2,8 @@ import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ActivationPlan } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cliVersion } from "./commands/daemon.js";
+import { workingDir } from "./startup.js";
 import { seed, zz, type Seeded } from "./test/seed.js";
 
 let s: Seeded;
@@ -65,5 +67,35 @@ describe("runtime hardening (spec 07)", () => {
     });
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toContain("checkout-api (project/persona)");
+  });
+});
+
+describe("real-use hardening (0.5.2)", () => {
+  it("prints its version with --version or -V", async () => {
+    for (const flag of ["--version", "-V"]) {
+      const r = await zz([flag], { cwd: s.repo, home: s.home });
+      expect(r.code, r.stderr).toBe(0);
+      expect(r.stdout).toBe(`${cliVersion()}\n`);
+    }
+    const json = await zz(["--version", "--json"], {
+      cwd: s.repo,
+      home: s.home,
+    });
+    expect(JSON.parse(json.stdout)).toEqual({ version: cliVersion() });
+  });
+
+  it("explains a working folder that no longer exists", () => {
+    const gone = Object.assign(new Error("no such file or directory, uv_cwd"), {
+      code: "ENOENT",
+      syscall: "uv_cwd",
+    });
+    expect(
+      workingDir(() => {
+        throw gone;
+      }),
+    ).toEqual({
+      error: "the current folder no longer exists; cd into it again",
+    });
+    expect(workingDir(() => "/here")).toEqual({ cwd: "/here" });
   });
 });

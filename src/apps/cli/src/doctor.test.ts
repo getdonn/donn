@@ -148,6 +148,13 @@ describe("zzpersona doctor", () => {
     expect(personas.fix).toContain("git init");
   });
 
+  it("accepts a personas folder inside a larger git repository", async () => {
+    mkdirSync(join(s.personas, "..", ".git"));
+    const { checks } = await doctor([]);
+    const personas = checks.find((c) => c.id === "personas")!;
+    expect(personas.message).not.toContain("not a git repository");
+  });
+
   it("finds orphaned switch entries and removes them with --fix", async () => {
     const env = healthy();
     writeFileSync(

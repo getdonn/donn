@@ -221,6 +221,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     // The user switched mid-refresh: their switch stands, and the state is left as it was.
     if (outcome.superseded) {
       await log(`skip ${session.dir} ${persona}: superseded`);
+      // One more check, so the persona they chose is compiled from today's files.
+      void refresh();
       return;
     }
     if (outcome.state === "current") {
@@ -274,6 +276,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     });
   };
 
+  /** Dead sessions whose folder could not be removed. */
+  const abandoned = new Set<string>();
+
   const ended = async (dir: string) => {
     tracked.delete(dir);
     await log(`ended ${dir}`);
@@ -285,7 +290,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const running: SessionInfo[] = [];
     for (const session of await listSessions(options.home)) {
       if (!session.running) {
-        await removeSession(session.dir);
+        if (abandoned.has(session.dir)) continue;
+        // A folder that cannot be removed is let go of, not retried every poll.
+        await removeSession(session.dir).catch(async (error: Error) => {
+          abandoned.add(session.dir);
+          await log(`could not remove ${session.dir}: ${error.message}`);
+        });
         await ended(session.dir);
         continue;
       }
