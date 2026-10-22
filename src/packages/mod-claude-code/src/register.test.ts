@@ -265,14 +265,16 @@ describe("register", () => {
   });
 
   it("says how to fix it when both fail", async () => {
-    const UNAVAILABLE =
-      "zzpersona unavailable: start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+    const REASON =
+      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+    const STATUS = `unavailable: ${REASON}`;
+    const UNAVAILABLE = `zzpersona ${STATUS}`;
     const blocked = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
       throw new Error("Acme policy: no process.run");
     });
     await blocked.call("session.start");
     await blocked.settle();
-    expect(blocked.statuses).toEqual([UNAVAILABLE]);
+    expect(blocked.statuses).toEqual([STATUS]);
     const out = (await blocked.call("command.run", {
       command: "persona",
       args: "list",

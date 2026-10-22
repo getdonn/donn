@@ -116,8 +116,7 @@ export function nudgeText(
   const switched = activeLive(live);
   const launched =
     switched && current ? { ...current, persona: switched.persona } : current;
-  if (here.kind === "unavailable")
-    return `zzpersona unavailable: ${here.reason}`;
+  if (here.kind === "unavailable") return `unavailable: ${here.reason}`;
   if (!folderSpecific(here)) return undefined;
   if (!launched) {
     return `this folder uses ${here.persona}; start with zzpersona claude to load it`;

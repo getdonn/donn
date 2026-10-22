@@ -94,7 +94,7 @@ describe("nudge", () => {
         kind: "unavailable",
         reason: "zzpersona not found on PATH",
       }),
-    ).toBe("zzpersona unavailable: zzpersona not found on PATH");
+    ).toBe("unavailable: zzpersona not found on PATH");
   });
 });
 
