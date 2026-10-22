@@ -5,6 +5,50 @@
 > `00-handoff.md` → "Naming".
 > Status: brainstorm, 2026-10-20. Nothing here is decided.
 
+## Problem and mission
+
+> Added 2026-10-22: a problem statement and mission statement distilled from the sections below
+> and `00-handoff.md`. They restate decisions already made; they do not make new ones.
+
+### Problem statement
+
+Developers in large organizations work across many projects, teams and business areas. Each of
+those contexts comes with its own AI-tooling setup: instructions, skills, MCP servers and their
+credentials, permission policies, hooks, and pointers to knowledge that lives outside the repo.
+Some of it applies to the whole org, some to a business area, some to a team, some to one
+project, and some to one person.
+
+Today that setup is spread across `~/.claude`, each repo's `.claude/`, `.mcp.json`, shell aliases
+and tribal knowledge. Nothing models the layering. So:
+
+- **Switching context is manual.** A developer rebuilds their setup by hand every time they move
+  between work.
+- **Nobody can say what a person actually gets.** "What does a new hire on team X have?" has no
+  answer, and neither does "which tools can which teams reach, and who changed that?"
+- **Governance stops at the machine or the gateway.** Gateways control tools per key or team, but
+  nothing ties *who you are and what you're working on* to *which instructions, skills,
+  permissions and tools you get* as one versioned unit you can audit.
+- **Every harness is its own island.** Enterprises run Claude Code, Codex, Cursor, Copilot and
+  Gemini CLI side by side, and each needs its own config. Any one vendor will only ever solve
+  this for itself.
+
+### Mission statement
+
+> Give every developer the right AI setup for the work in front of them, defined once as a
+> composable persona that inherits from org to team to project to user, and compiled faithfully
+> to any harness they use, with nothing dropped silently.
+
+Short form: **Define your AI context once. Inherit it, govern it, and take it to any harness.**
+
+Notes on the wording:
+
+- "Any harness" is deliberate: a single-harness switcher dies the day a vendor ships native
+  profiles (see "Why 'switcher' alone is not enough"), so harness neutrality is the thesis, not
+  an extra.
+- "Nothing dropped silently" is the `CompileReport` promise (`05-adapter-sdk.md`).
+- The paid control plane is left out on purpose: the OSS tool must be fully useful to a solo
+  developer, and the mission should not imply otherwise.
+
 ## The problem
 
 Developers in large organizations work across several projects, teams, and business areas,
