@@ -33,12 +33,13 @@ describe("buildOpenApi", () => {
     const doc = buildOpenApi() as {
       components: { schemas: Record<string, any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
     };
-    const { Problem, Whoami } = doc.components.schemas;
+    const { Problem, Whoami, Change } = doc.components.schemas;
     expect(Problem.properties.problems.items.properties.code.enum).toEqual([
       ...PROBLEM_CODES,
     ]);
     expect(PROBLEM_CODES).toHaveLength(15);
     expect(Problem.properties.problems.items.additionalProperties).toBe(false);
     expect(Whoami.additionalProperties).toBe(false);
+    expect(Change.additionalProperties).toBe(false);
   });
 });

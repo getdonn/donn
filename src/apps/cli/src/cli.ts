@@ -67,7 +67,7 @@ export interface CliIo {
   stdin?: () => Promise<string>;
   /** A line typed without echo; undefined when there is no terminal. Defaults to a TTY prompt. */
   readSecret?: (prompt: string) => Promise<string | undefined>;
-  /** Opens the sign-in page; errors are ignored. Defaults to open / xdg-open / cmd /c start. */
+  /** Opens the sign-in page; errors are ignored. Defaults to open / xdg-open / rundll32 url.dll,FileProtocolHandler. */
   openBrowser?: (url: string) => Promise<void>;
   /** Waits between sign-in polls; defaults to setTimeout. */
   sleep?: (ms: number) => Promise<void>;

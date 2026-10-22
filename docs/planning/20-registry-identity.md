@@ -139,6 +139,16 @@ Rulings made while building, each changing or settling what is written above.
 - **The sign-in link must have the registry's own protocol and origin, or it is refused** with
   `registry-protocol` (a `blob:` link has a matching origin, so the protocol is checked too). Only
   the parsed `href` is printed or opened.
+- **A 401 on `POST /v1/auth/logins` is read as no sign-in** (registries before control plane 0.2
+  check auth before routing, and a route that takes no token cannot answer 401 on purpose). The
+  CLI treats it like 404 and prints the no-sign-in message.
+- **Order of checks on `POST /v1/layers/{ref}/versions`** (the mock's order; private spec 02 must
+  match): token, then body parse, then (a dry run skips grants) the `publish` grant, then the
+  `lock` grant, then the engine. A body that does not parse skips the grant checks, and the
+  engine reports `invalid`.
+- **The tolerant `Whoami` reads any `kind` and any role string**, and the tolerant datetimes
+  accept an offset; the strict copies in `ConformanceSchemas` keep the enums and `Z` datetimes.
+  The kit also checks that `verifyUrl` has the registry's own origin and protocol.
 - **The opener.** `open` on macOS, `xdg-open` elsewhere, and on Windows `rundll32
   url.dll,FileProtocolHandler`. No shell is ever used.
 - **Polling.** The interval is floored at 1 second, and each sleep is capped at the time remaining,

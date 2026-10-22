@@ -46,7 +46,10 @@ function grantHint(problem: { message: string; ref?: string }): string {
 /** Server text for a terminal: control characters (escapes, newlines, bells) dropped. */
 export function clean(text: string): string {
   // eslint-disable-next-line no-control-regex
-  return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+  return text.replace(
+    /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,
+    "",
+  );
 }
 
 /** A registry failure as a CliError: each problem as `<code>: <message>`, with its hint. */
@@ -214,8 +217,13 @@ async function browserLogin(
     try {
       login = await startLogin(url, { signal });
     } catch (error) {
+      // A route that takes no token cannot answer 401 on purpose: registries before
+      // control plane 0.2 check auth before routing, so 401 here means no sign-in.
       if (signal.aborted) return cancelled(io);
-      if (error instanceof RegistryError && error.code === "not-found") {
+      if (
+        error instanceof RegistryError &&
+        (error.code === "not-found" || error.code === "unauthorized")
+      ) {
         throw new CliError(
           "no-sign-in",
           `this registry has no sign-in; use zzpersona login ${url} --token-stdin`,
@@ -381,7 +389,7 @@ export async function whoamiCommand(
       lines.push(
         who.roles.length === 0
           ? "roles: none"
-          : `roles: ${who.roles.map((r) => `${r.role} ${clean(r.path)}`).join(", ")}`,
+          : `roles: ${who.roles.map((r) => `${clean(r.role)} ${clean(r.path)}`).join(", ")}`,
       );
     }
     print(io, options.json, lines.join("\n"), {

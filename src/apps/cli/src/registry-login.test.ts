@@ -15,7 +15,7 @@ import type { Probe } from "@zzpersona/adapter-sdk";
 import { startMockRegistry } from "@zzpersona/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCli, type CliIo } from "./cli.js";
-import { openerCommand } from "./commands/registry.js";
+import { clean, openerCommand } from "./commands/registry.js";
 import { installedProbe } from "./test/seed.js";
 
 const EXAMPLES = join(import.meta.dirname, "../../../../examples/personas");
@@ -283,6 +283,35 @@ describe("login through the browser", () => {
     expect(configText(m)).not.toContain("registry:");
   });
 
+  it("a registry that answers 401 to everything is read as no sign-in", async () => {
+    const server = createServer((_req, res) => {
+      res.statusCode = 401;
+      res.setHeader("content-type", "application/problem+json");
+      res.end(
+        JSON.stringify({
+          type: "urn:zzpersona:problem:unauthorized",
+          title: "Unauthorized",
+          status: 401,
+          detail: "missing or refused token",
+          problems: [
+            { code: "unauthorized", message: "missing or refused token" },
+          ],
+        }),
+      );
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const m = machine();
+    const r = await run(m, ["login", url, "--no-browser"]);
+    server.close();
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(
+      "this registry has no sign-in; use zzpersona login",
+    );
+    expect(r.stderr).toContain("--token-stdin");
+    expect(configText(m)).not.toContain("registry:");
+  });
+
   it("--token prompts for a pasted token as before", async () => {
     const m = machine();
     const prompts: string[] = [];
@@ -438,6 +467,7 @@ describe("the sign-in link", () => {
         "registry-protocol: the registry sent a sign-in link for another site",
       );
       expect(r.stderr).not.toContain("confirm the code");
+      expect(r.stdout + r.stderr).not.toContain("secret-1");
       expect(opens).toEqual([]);
       expect(existsSync(tokenFile(m))).toBe(false);
       expect(configText(m)).not.toContain("registry:");
@@ -455,6 +485,10 @@ describe("the sign-in link", () => {
     fake.stop();
     void r;
     expect(opens).toEqual([`${fake.url}/login/a%20b&calc`]);
+  });
+
+  it("clean strips bidi controls", () => {
+    expect(clean("ann\u202Eevil\u2066x\u2069\u202A")).toBe("annevilx");
   });
 
   it("the Windows opener uses rundll32", () => {
