@@ -95,6 +95,8 @@ export async function zz(
   let stderr = "";
   const cli = createCli({
     env: {
+      // Launches must not start real daemons; a test that wants auto-start sets this to "".
+      ZZPERSONA_NO_DAEMON: "1",
       ...(options.home && { ZZPERSONA_HOME: options.home }),
       ...options.env,
     },

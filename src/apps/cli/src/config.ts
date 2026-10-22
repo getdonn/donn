@@ -13,6 +13,8 @@ const Config = z.strictObject({
   adapters: z.array(z.string().min(1)).optional(),
   /** Secret provider packages, listed the same way. */
   secretProviders: z.array(z.string().min(1)).optional(),
+  /** `autoStart: false` stops `claude` and `codex` starting the daemon. See spec 16 §2. */
+  daemon: z.strictObject({ autoStart: z.boolean().optional() }).optional(),
 });
 export type Config = z.infer<typeof Config>;
 
