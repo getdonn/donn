@@ -144,6 +144,24 @@ async function writeServiceFile(path: string, text: string): Promise<void> {
   await chmod(path, 0o644);
 }
 
+/**
+ * Write the file and load it. A load that fails takes the file away again: left in place, it
+ * would make every start try a service that cannot run.
+ */
+async function installFile(
+  path: string,
+  text: string,
+  load: () => Promise<void>,
+): Promise<void> {
+  await writeServiceFile(path, text);
+  try {
+    await load();
+  } catch (error) {
+    await rm(path, { force: true });
+    throw error;
+  }
+}
+
 async function run(probe: Probe, command: string, args: string[]) {
   const result = await probe.run(command, args);
   if (result.exitCode !== 0) {
@@ -219,18 +237,18 @@ function launchd(probe: Probe, home: string, label: string): ServiceManager {
     label,
     path,
     render,
-    install: async (spec) => {
-      await writeServiceFile(path, render(spec));
-      // Not loaded, or loaded but broken: either way bootstrap decides. bootout returns before
-      // the job is gone, and a bootstrap too soon fails: wait until print no longer finds it.
-      await unload();
-      const deadline = Date.now() + UNLOAD_WAIT_MS;
-      while (await loaded()) {
-        if (Date.now() >= deadline) break;
-        await new Promise((resolve) => setTimeout(resolve, UNLOAD_POLL_MS));
-      }
-      await load();
-    },
+    install: (spec) =>
+      installFile(path, render(spec), async () => {
+        // Not loaded, or loaded but broken: either way bootstrap decides. bootout returns before
+        // the job is gone, and a bootstrap too soon fails: wait until print no longer finds it.
+        await unload();
+        const deadline = Date.now() + UNLOAD_WAIT_MS;
+        while (await loaded()) {
+          if (Date.now() >= deadline) break;
+          await new Promise((resolve) => setTimeout(resolve, UNLOAD_POLL_MS));
+        }
+        await load();
+      }),
     uninstall: async () => {
       await unload();
       await rm(path, { force: true });
@@ -308,15 +326,18 @@ function systemd(probe: Probe, config: string, stem: string): ServiceManager {
     label: stem,
     path,
     render,
-    install: async (spec) => {
-      await writeServiceFile(path, render(spec));
-      await unload();
-      await load();
-    },
+    install: (spec) =>
+      installFile(path, render(spec), async () => {
+        await unload();
+        await load();
+      }),
     uninstall: async () => {
       await unload();
       await rm(path, { force: true });
-      await run(probe, "systemctl", systemctl("daemon-reload"));
+      // Without a user systemd (WSL, a container) this fails; the file is gone all the same.
+      await probe
+        .run("systemctl", systemctl("daemon-reload"))
+        .catch(() => undefined);
     },
     start: async () =>
       (await loaded())

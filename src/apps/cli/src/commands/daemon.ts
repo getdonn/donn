@@ -62,19 +62,31 @@ async function spawnDetached(io: CliIo, home: string): Promise<void> {
 
 /**
  * Start a daemon for `home` without waiting for it: through the service manager when its file
- * is installed, else detached.
+ * is installed, else (or when the manager will not start it) detached. Returns the manager
+ * that started it, if one did.
  */
 export async function startDaemonProcess(
   io: CliIo,
   home: string,
-): Promise<void> {
+): Promise<ServiceManager | undefined> {
+  const spawnIt = () => (io.spawnDaemon ?? ((h) => spawnDetached(io, h)))(home);
   // The service only for the home it serves: another home's daemon would never answer here.
   const service = await serviceFor(io, home);
-  if (service) {
-    await service.manager.start();
-    return;
+  if (!service) {
+    await spawnIt();
+    return undefined;
   }
-  await (io.spawnDaemon ?? ((h) => spawnDetached(io, h)))(home);
+  try {
+    await service.manager.start();
+    return service.manager;
+  } catch (error) {
+    // A manager that cannot run here (no user systemd under WSL or SSH): a detached daemon
+    // serves as well. Its error shows only if that fails too.
+    await spawnIt().catch(() => {
+      throw error;
+    });
+    return undefined;
+  }
 }
 
 /** Poll until `done` holds or the wait runs out. */
@@ -146,8 +158,8 @@ export async function daemonStart(
     );
     return 0;
   }
-  await startDaemonProcess(io, home);
-  const status = await waitForDaemon(home);
+  const manager = await startDaemonProcess(io, home);
+  const status = await waitForDaemon(home, manager);
   io.stdout.write(
     options.json
       ? `${JSON.stringify({ running: true, already: false, pid: status.pid, version: status.version }, null, 2)}\n`
@@ -156,17 +168,26 @@ export async function daemonStart(
   return 0;
 }
 
-/** Wait until `home`'s daemon answers, and return its status. */
-async function waitForDaemon(home: string) {
+/**
+ * Wait until `home`'s daemon answers, and return its status. `manager` is the service that
+ * started it: under systemd its output is in the journal, not the log.
+ */
+async function waitForDaemon(home: string, manager?: ServiceManager) {
   let client: Awaited<ReturnType<typeof connectDaemon>>;
   const up = await waitUntil(
     async () => (client = await connectDaemon(home)) !== undefined,
   );
   if (!up || !client) {
     const log = daemonPaths(home).log;
-    throw new CliError("daemon-start", `the daemon did not start; see ${log}`, {
-      log,
-    });
+    const where =
+      manager?.kind === "systemd"
+        ? `journalctl --user -u ${manager.label}`
+        : log;
+    throw new CliError(
+      "daemon-start",
+      `the daemon did not start; see ${where}`,
+      { log },
+    );
   }
   return client.status();
 }
@@ -273,7 +294,7 @@ export async function daemonInstall(
     },
     log: paths.log,
   });
-  const status = await waitForDaemon(home);
+  const status = await waitForDaemon(home, service);
   io.stdout.write(
     options.json
       ? `${JSON.stringify({ installed: true, path: service.path, command: cli, pid: status.pid }, null, 2)}\n`

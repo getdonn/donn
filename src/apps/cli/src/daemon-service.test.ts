@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import type { Platform, Probe } from "@zzpersona/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
+import { CliError } from "./errors.js";
 import { connectDaemon } from "./daemon/client.js";
 import { daemonPaths } from "./daemon/paths.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
@@ -340,6 +341,36 @@ describe("the service managers", () => {
     ).rejects.toMatchObject({ code: "service" });
   });
 
+  it("a failed install removes the file it wrote", async () => {
+    const mac = serviceManager({
+      env: { HOME: userHome() },
+      probe: fakeProbe("darwin", (call) => call.includes("bootstrap")).probe,
+    })!;
+    await expect(mac.install(SPEC)).rejects.toMatchObject({ code: "service" });
+    expect(existsSync(mac.path)).toBe(false);
+
+    // Linux without a user systemd (WSL, containers, SSH): daemon-reload fails.
+    const linux = serviceManager({
+      env: { HOME: userHome() },
+      probe: fakeProbe("linux", (call) => call.includes("daemon-reload")).probe,
+    })!;
+    await expect(linux.install(SPEC)).rejects.toMatchObject({
+      code: "service",
+      message: expect.stringContaining("systemctl said no"),
+    });
+    expect(existsSync(linux.path)).toBe(false);
+  });
+
+  it("uninstall ignores a failing reload once the file is gone", async () => {
+    const linux = serviceManager({
+      env: { HOME: userHome() },
+      probe: fakeProbe("linux", (call) => call.includes("daemon-reload")).probe,
+    })!;
+    writeServiceFile(linux, "/u/bin/zzpersona");
+    await linux.uninstall();
+    expect(existsSync(linux.path)).toBe(false);
+  });
+
   it("has no manager on Windows", () => {
     expect(
       serviceManager({
@@ -480,6 +511,64 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(r.code).toBe(1);
     expect(json(r).error.code).toBe("daemon-start");
   }, 10_000);
+
+  it("names the journal when the systemd service's daemon never answers", async () => {
+    const bin = binWithCli();
+    const base = serviceManager({
+      env: { HOME: userHome() },
+      probe: fakeProbe("linux").probe,
+    })!;
+    const r = await zz(["daemon", "install", "--json"], {
+      cwd: root,
+      home: zzHome(),
+      env: { HOME: userHome(), PATH: bin },
+      service: { ...base, install: async () => {} },
+    });
+    expect(r.code).toBe(1);
+    expect(json(r).error).toMatchObject({
+      code: "daemon-start",
+      message: expect.stringContaining("journalctl --user -u zzpersona-daemon"),
+    });
+  }, 10_000);
+
+  it("daemon start falls back to a detached daemon when the service will not start", async () => {
+    const base = launchd().manager;
+    writeServiceFile(base, "/u/bin/zzpersona");
+    let spawned = 0;
+    const refused = async () => {
+      throw new CliError("service", "systemctl --user start failed: no bus");
+    };
+    const r = await zz(["daemon", "start", "--json"], {
+      cwd: root,
+      home: zzHome(),
+      env: { HOME: userHome() },
+      service: { ...base, start: refused },
+      spawnDaemon: async (home) => {
+        spawned++;
+        await inProcessDaemon(home);
+      },
+    });
+    expect(r.code).toBe(0);
+    expect(spawned).toBe(1);
+    expect(json(r)).toMatchObject({ running: true, already: false });
+
+    // The service's error shows only when the fallback fails too.
+    writeServiceFile(base, "/u/bin/zzpersona", join(root, "other"));
+    const both = await zz(["daemon", "start", "--json"], {
+      cwd: root,
+      home: join(root, "other"),
+      env: { HOME: userHome() },
+      service: { ...base, start: refused },
+      spawnDaemon: async () => {
+        throw new Error("spawn failed");
+      },
+    });
+    expect(both.code).toBe(1);
+    expect(json(both).error).toMatchObject({
+      code: "service",
+      message: expect.stringContaining("no bus"),
+    });
+  });
 
   it("daemon uninstall removes the file, or says it is not installed", async () => {
     const { calls, probe, manager } = launchd();
