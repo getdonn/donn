@@ -172,6 +172,16 @@ describe("auto-start", () => {
     expect(r.stderr).toContain(FAILURE("did not answer within 1 s"));
   });
 
+  it("a start that never settles still launches within 1.5 s", async () => {
+    const h = harness(() => new Promise<void>(() => {}));
+    const began = Date.now();
+    const r = await zz(["claude"], options(h));
+    expect(Date.now() - began).toBeLessThan(1500);
+    expect(h.events).toEqual(["spawn", "run"]);
+    expect(r.code).toBe(3);
+    expect(r.stderr).toContain(FAILURE("did not answer within 1 s"));
+  });
+
   it("codex starts it too", async () => {
     const h = harness();
     await zz(["codex"], options(h));

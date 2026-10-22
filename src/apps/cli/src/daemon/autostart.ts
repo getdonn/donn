@@ -28,19 +28,37 @@ export async function ensureDaemon(
 ): Promise<void> {
   if (config.daemon?.autoStart === false) return;
   if (io.env.ZZPERSONA_NO_DAEMON === "1") return;
-  try {
+  const deadline = Date.now() + WAIT_MS;
+  const work = async () => {
     if (await answers(io, home)) return;
     await startDaemonProcess(io, home);
-    const deadline = Date.now() + WAIT_MS;
     while (Date.now() < deadline) {
       if (await answers(io, home)) return;
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
     throw new Error("did not answer within 1 s");
+  };
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    // One budget for the probe, the start and the wait: a start still running when it passes
+    // carries on in the background, and its rejection is dropped.
+    const running = work();
+    running.catch(() => {});
+    await Promise.race([
+      running,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("did not answer within 1 s")),
+          WAIT_MS,
+        );
+      }),
+    ]);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     io.stderr.write(
       `zzpersona: daemon not started (${reason}); live refresh is off for this session\n`,
     );
+  } finally {
+    clearTimeout(timer);
   }
 }
