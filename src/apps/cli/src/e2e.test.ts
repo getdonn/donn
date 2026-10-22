@@ -1,14 +1,17 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
+  existsSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createSession } from "./session.js";
 
 // Opt-in (ZZP_E2E=1): the built `zzpersona` binary, against real `claude`, from personas on
 // disk. One Haiku call. The Phase 1 core loop, end to end.
@@ -394,3 +397,82 @@ describe.skipIf(process.env.ZZP_E2E !== "1" || !hasCodex)(
     }, 300_000);
   },
 );
+
+// Opt-in: the daemon keeps a live session current from the built binary. The session is owned by a
+// real child process so the registry sees it running.
+describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the daemon", () => {
+  let dir = "";
+  let zzhome = "";
+  let proj = "";
+  let persona = "";
+  let child: ReturnType<typeof spawn> | undefined;
+  const zzp = (args: string[]) =>
+    spawnSync(process.execPath, [BIN, ...args], {
+      cwd: proj,
+      env: { ...process.env, ZZPERSONA_HOME: zzhome },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "zzp-daemon-e2e-"));
+    zzhome = join(dir, "home");
+    proj = join(dir, "project");
+    persona = join(dir, "personas/team/d.yaml");
+    execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+    put(join(zzhome, "config.yaml"), `personas: ${join(dir, "personas")}\n`);
+    put(
+      persona,
+      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata: { name: d }\ninstructions:\n  - id: a\n    inline: Codeword ONE.\n",
+    );
+    mkdirSync(proj, { recursive: true });
+  });
+
+  afterAll(() => {
+    if (dir) zzp(["daemon", "stop"]);
+    child?.kill();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("refreshes a live session from the built binary", async () => {
+    const compiled = zzp(["compile", "team/d", "--json"]);
+    expect(compiled.status, compiled.stderr).toBe(0);
+    const { buildDir } = JSON.parse(compiled.stdout) as { buildDir: string };
+    child = spawn(process.execPath, ["-e", "setInterval(()=>{},1e9)"], {
+      stdio: "ignore",
+    });
+    const session = await createSession(
+      zzhome,
+      join(buildDir, "plugin"),
+      {
+        persona: "team/d",
+        source: "argument",
+        overlay: false,
+        harness: "claude-code",
+        startedAt: new Date().toISOString(),
+        buildHash: "e2e-launch",
+      },
+      child.pid!,
+    );
+    const started = zzp(["daemon", "start"]);
+    expect(started.status, started.stdout + started.stderr).toBe(0);
+
+    writeFileSync(
+      persona,
+      `${readFileSync(persona, "utf8")}`.replace("ONE", "TWO"),
+    );
+    let state: string | undefined;
+    for (let i = 0; i < 100 && state !== "refreshed"; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const status = zzp(["status", "--json"]);
+      state = (JSON.parse(status.stdout) as { sessions: { state: string }[] })
+        .sessions[0]?.state;
+    }
+    expect(state).toBe("refreshed");
+    expect(readFileSync(join(session, "live.json"), "utf8")).toContain("TWO");
+
+    const stopped = zzp(["daemon", "stop"]);
+    expect(stopped.status, stopped.stdout + stopped.stderr).toBe(0);
+    expect(existsSync(join(zzhome, "daemon/sock"))).toBe(false);
+  }, 60_000);
+});

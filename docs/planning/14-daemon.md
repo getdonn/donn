@@ -142,3 +142,18 @@ secrets broker; sync, drift and the local marketplace; live refresh for Codex; W
 1. Whether the mod should listen to `/events` instead of checking on its next turn (with mod
    transport).
 2. Whether recursive `fs.watch` on Linux holds up on large personas folders, or needs polling.
+
+## Amendments from implementation (2026-10-21)
+
+- **Skips:** a skip is a log line only, not an event; the event list stays the six names.
+- **`launched.json` mode:** it also records `mode` when `zzpersona claude` was given `--mode`, and
+  refresh and `applyLive` compile with that mode's facts.
+- **Polling:** the daemon polls session pids every second (`pollMs`), so a session whose process
+  died is removed without a file event.
+- **Status entries** carry `at` (when it was refreshed) and `error` (the refresh-failed message).
+- **`daemon stop`** waits for the daemon's lock to be released (or, on the SIGTERM fallback, for the
+  pid to exit) and fails with `daemon-stop` otherwise.
+- **Doctor** tells an unresponsive daemon (live pid, no answer; fix `zzpersona daemon stop`) from a
+  stale one (dead pid or leftover socket; fix `zzpersona daemon start`).
+- **Probe reuse:** `zzpersona status` and doctor read the status the client probed on connect rather
+  than requesting it again.
