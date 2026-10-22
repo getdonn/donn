@@ -92,3 +92,12 @@ Auto-start and service install; the per-turn `live.json` read; Codex; Windows.
 
 1. How a real managed policy treats `$.http` over a unix socket (the stub refusal of
    `process.run` is the closest test here).
+
+## Amendments from implementation (2026-10-21)
+
+- The 1 MiB request body cap is introduced for `POST /run`; no other endpoint reads a body.
+- `daemonRequest` gained an optional JSON body (a sixth argument).
+- The mod no longer feature-checks `$`. Claude Code 2.1.307's validator rejects
+  `typeof $.fs?.read` ("$ is always spelled $.noun.event(...)"), so a missing API is handled by
+  try/catch. This also fixes the released 0.2.2 mod not loading on 2.1.307.
+- Smoke run: (pending, recorded by the controller)

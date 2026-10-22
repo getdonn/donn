@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { daemonRequest, daemonSocket } from "./daemon/client.js";
 import { createSession } from "./session.js";
 
 // Opt-in (ZZP_E2E=1): the built `zzpersona` binary, against real `claude`, from personas on
@@ -507,5 +508,67 @@ describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the daemon", () => {
     const stopped = zzp(["daemon", "stop"]);
     expect(stopped.status, stopped.stdout + stopped.stderr).toBe(0);
     expect(existsSync(join(zzhome, "daemon/sock"))).toBe(false);
+  }, 60_000);
+});
+
+describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the mod transport", () => {
+  let dir = "";
+  let zzhome = "";
+  let proj = "";
+  const zzp = (args: string[]) =>
+    spawnSync(process.execPath, [BIN, ...args], {
+      cwd: proj,
+      env: { ...process.env, ZZPERSONA_HOME: zzhome },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "zzp-transport-e2e-"));
+    zzhome = join(dir, "home");
+    proj = join(dir, "project");
+    execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+    put(join(zzhome, "config.yaml"), `personas: ${join(dir, "personas")}\n`);
+    put(
+      join(dir, "personas/team/d.yaml"),
+      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata: { name: d }\ninstructions:\n  - id: a\n    inline: Codeword ONE.\n",
+    );
+    mkdirSync(proj, { recursive: true });
+  });
+
+  afterAll(() => {
+    if (dir) zzp(["daemon", "stop"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("serves the mod's commands over the socket", async () => {
+    const started = zzp(["daemon", "start"]);
+    expect(started.status, started.stdout + started.stderr).toBe(0);
+    const socket = await daemonSocket(zzhome);
+    const token = readFileSync(join(zzhome, "daemon/token"), "utf8").trim();
+
+    for (const argv of [
+      ["list", "--json"],
+      ["switch", "--json"],
+    ]) {
+      const own = zzp(argv);
+      const served = await daemonRequest(
+        socket,
+        token,
+        "POST",
+        "/run",
+        10_000,
+        { argv, cwd: proj },
+      );
+      expect(served.status, JSON.stringify(served.body)).toBe(200);
+      expect(served.body).toEqual({
+        exitCode: own.status,
+        stdout: own.stdout,
+        stderr: own.stderr,
+      });
+    }
+
+    const stopped = zzp(["daemon", "stop"]);
+    expect(stopped.status, stopped.stdout + stopped.stderr).toBe(0);
   }, 60_000);
 });

@@ -155,6 +155,11 @@ harnesses; Windows.
    environment; `/persona` can only explain why it is unavailable. A daemon (Phase 2) could serve
    the mod over a socket instead.
 
+## Amendment: open question 3 answered (2026-10-21)
+
+Spec 15 answers open question 3: the mod reaches the daemon over its socket with `$.http.fetch`.
+`/persona` works when `process.run` is refused, as long as the daemon runs.
+
 ## Amendments from implementation and the smoke run (2026-10-21)
 
 Made while building this spec (`docs/plans/2026-10-21-mod-claude-code.md`); see
