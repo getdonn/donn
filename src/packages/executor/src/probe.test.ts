@@ -35,4 +35,25 @@ describe("nodeProbe timeouts", () => {
     expect(result.exitCode).toBe(124);
     expect(result.stderr).toContain("timed out");
   });
+
+  it("gives a command no stdin, so a read sees end of input", async () => {
+    const result = await nodeProbe({ timeoutMs: 2000 }).run("sh", [
+      "-c",
+      "read x; echo done",
+    ]);
+    expect(result).toMatchObject({ exitCode: 0, stdout: "done\n" });
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "kills a command that ignores SIGTERM, and what it started",
+    async () => {
+      const started = Date.now();
+      const result = await nodeProbe({ timeoutMs: 200 }).run("sh", [
+        "-c",
+        "trap '' TERM; sleep 30 & sleep 30",
+      ]);
+      expect(result.exitCode).toBe(124);
+      expect(Date.now() - started).toBeLessThan(3000);
+    },
+  );
 });

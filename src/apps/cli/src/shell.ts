@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 
@@ -16,6 +17,9 @@ export async function shellLookup(
   binary: string,
   io: { env: Record<string, string | undefined>; probe: Probe },
 ): Promise<ShellLookup> {
+  // The name goes into a shell command line.
+  if (!/^[\w.-]+$/.test(binary))
+    throw new Error(`not a command name: ${binary}`);
   const shell = io.env.SHELL;
   if (!shell || io.probe.platform === "win32") return { kind: "unknown" };
   const result = await io.probe.run(shell, ["-ic", `type ${binary}`]);
@@ -38,9 +42,34 @@ export async function shellLookup(
   return { kind: "unknown" };
 }
 
-/** The alias's command, without arguments or quotes. */
-const aliasCommand = (target: string) =>
-  target.split(/\s+/)[0]!.replace(/^["']|["']$/g, "");
+/** Words an alias may put before the command it runs. */
+const WRAPPERS = new Set([
+  "command",
+  "builtin",
+  "exec",
+  "noglob",
+  "nocorrect",
+  "env",
+]);
+
+/** The command an alias runs, with ~ and $HOME expanded: quotes, wrappers and arguments dropped. */
+function aliasCommand(target: string, home: string): string | undefined {
+  const words = target
+    .split(/\s+/)
+    .map((w) => w.replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+  const command = words.find((w) => !WRAPPERS.has(w) && !/^\w+=/.test(w));
+  if (command === undefined || !home) return command;
+  return command.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home);
+}
+
+const real = (path: string) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
 
 /**
  * Why the shell runs a different `binary` than PATH gives zzpersona, and how to fix it, or
@@ -51,17 +80,21 @@ export function shellHint(
   lookup: ShellLookup,
   onPath: string | undefined,
   shell = "",
+  home = "",
 ): string | undefined {
   if (lookup.kind === "alias") {
-    const command = aliasCommand(lookup.target);
+    const command = aliasCommand(lookup.target, home);
+    // An alias for the binary itself (with flags, say), or for a command it cannot place.
+    if (command === undefined || !isAbsolute(command)) return undefined;
     if (onPath !== undefined) {
-      return command === onPath
+      return real(command) === real(onPath)
         ? undefined
         : `your shell's ${binary} alias runs ${command}, but zzpersona runs ${onPath} (PATH)`;
     }
-    const fix = isAbsolute(command)
-      ? `export PATH="${dirname(command)}:$PATH" in your shell's startup file`
-      : "add the folder that holds it to PATH";
+    const fix =
+      basename(command) === binary
+        ? `export PATH="${dirname(command)}:$PATH" in your shell's startup file`
+        : `put a ${binary} on PATH that runs ${command}`;
     return `your shell has ${binary} as an alias for ${lookup.target}; zzpersona runs the ${binary} on PATH, which aliases don't change: ${fix}`;
   }
   if (lookup.kind === "path" && onPath === undefined) {
@@ -69,4 +102,24 @@ export function shellHint(
     return `a new shell finds ${binary} at ${lookup.path}, but this one predates a PATH change: run exec ${name} or open a new terminal`;
   }
   return undefined;
+}
+
+/**
+ * Why a harness detection found no `binary`: one on PATH that did not answer, or what the shell
+ * knows (asked only then), or undefined.
+ */
+export async function missingHint(
+  binary: string,
+  onPath: string | undefined,
+  io: { env: Record<string, string | undefined>; probe: Probe },
+): Promise<string | undefined> {
+  if (onPath !== undefined)
+    return `${onPath} is on PATH but \`${binary} --version\` failed: run it to see why`;
+  return shellHint(
+    binary,
+    await shellLookup(binary, io),
+    undefined,
+    io.env.SHELL,
+    io.env.HOME,
+  );
 }

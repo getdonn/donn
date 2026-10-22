@@ -211,6 +211,25 @@ describe("zzpersona doctor", () => {
     expect(stale.fix).toContain("run exec zsh or open a new terminal");
   });
 
+  it("names a claude on PATH that does not answer --version", async () => {
+    mkdirSync(join(s.home, "bin"));
+    writeFileSync(join(s.home, "bin/claude"), "#!/bin/sh\n");
+    chmodSync(join(s.home, "bin/claude"), 0o755);
+    const broken: Probe = {
+      ...installedProbe,
+      run: async () => ({ exitCode: 1, stdout: "", stderr: "boom" }),
+    };
+    const claude = (
+      await doctor([], {
+        env: { SHELL: "/bin/zsh", PATH: join(s.home, "bin") },
+        probe: broken,
+      })
+    ).checks.find((c) => c.id === "claude")!;
+    expect(claude.fix).toBe(
+      `${join(s.home, "bin/claude")} is on PATH but \`claude --version\` failed: run it to see why`,
+    );
+  });
+
   it("warns when the shell's claude alias is not the claude on PATH", async () => {
     mkdirSync(join(s.home, "bin"));
     writeFileSync(join(s.home, "bin/claude"), "#!/bin/sh\n");

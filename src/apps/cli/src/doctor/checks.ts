@@ -25,7 +25,7 @@ import {
 import { daemonPaths } from "../daemon/paths.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { findOrphanSessions, removeSession } from "../session.js";
-import { shellHint, shellLookup } from "../shell.js";
+import { missingHint, shellHint, shellLookup } from "../shell.js";
 import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
@@ -370,12 +370,7 @@ export async function runChecks(
   const detection = await HARNESSES["claude-code"]!.detect(io.probe);
   const claudePath = findOnPath("claude", io.env);
   if (!detection.installed) {
-    const hint = shellHint(
-      "claude",
-      await shellLookup("claude", io),
-      undefined,
-      io.env.SHELL,
-    );
+    const hint = await missingHint("claude", claudePath, io);
     add(
       "claude",
       "error",
@@ -392,7 +387,13 @@ export async function runChecks(
     const differs =
       claudePath === undefined
         ? undefined
-        : shellHint("claude", await shellLookup("claude", io), claudePath);
+        : shellHint(
+            "claude",
+            await shellLookup("claude", io),
+            claudePath,
+            "",
+            io.env.HOME,
+          );
     if (differs) {
       findings.push(differs);
       fixes.push(
