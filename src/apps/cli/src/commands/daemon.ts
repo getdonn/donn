@@ -125,7 +125,12 @@ export async function daemonStop(
 ): Promise<number> {
   const home = homeOf(io);
   const paths = daemonPaths(home);
-  const client = await connectDaemon(home);
+  // A daemon that refuses this CLI's token is stopped by pid, like one that does not answer.
+  const client = await connectDaemon(home).catch((error: unknown) => {
+    if (error instanceof CliError && error.code === "daemon-unauthorized")
+      return undefined;
+    throw error;
+  });
   const pid = Number.parseInt(
     await readFile(paths.pid, "utf8").catch(() => ""),
     10,

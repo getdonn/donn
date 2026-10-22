@@ -3,6 +3,7 @@ import type { runPlan } from "@zzpersona/executor";
 import { Command, CommanderError, Option } from "commander";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
+import { cliVersion } from "./commands/daemon.js";
 import { statusCommand } from "./commands/status.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
@@ -71,6 +72,17 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           code = report(io, json === true, error);
         }
       };
+
+      // `--version` / `-V` on its own (with or without --json): this CLI's version.
+      if (ours.some((a) => a === "--version" || a === "-V")) {
+        const version = cliVersion();
+        io.stdout.write(
+          wantsJson
+            ? `${JSON.stringify({ version }, null, 2)}\n`
+            : `${version}\n`,
+        );
+        return 0;
+      }
 
       const program = new Command("zzpersona")
         .description("Compile personas to AI coding harnesses and launch them")

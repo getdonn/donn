@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { access, constants, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   findBuildLeftovers,
   isAlive,
@@ -113,6 +113,14 @@ function secretsFix(
   return `${store.join("; ")}${note}`;
 }
 
+/** Whether `dir` is in a git work tree: a `.git` (folder, or a worktree's file) here or above. */
+function insideGit(dir: string): boolean {
+  for (let at = resolve(dir); ; at = dirname(at)) {
+    if (existsSync(join(at, ".git"))) return true;
+    if (dirname(at) === at) return false;
+  }
+}
+
 export async function runChecks(
   io: CliIo,
   options: { persona?: string; fix: boolean },
@@ -179,7 +187,7 @@ export async function runChecks(
   } else {
     const problems: string[] = [];
     const fixes: string[] = [];
-    if (!existsSync(join(config.personas, ".git"))) {
+    if (!insideGit(config.personas)) {
       problems.push(`${config.personas} is not a git repository`);
       fixes.push(
         `run \`git init\` in ${config.personas} to track your personas`,
@@ -441,8 +449,22 @@ export async function runChecks(
     );
 
   // daemon: optional; running at the version of this CLI, or not at all
-  const daemon = await connectDaemon(home);
-  if (daemon) {
+  let refused: string | undefined;
+  const daemon = await connectDaemon(home).catch((error: unknown) => {
+    if (error instanceof CliError && error.code === "daemon-unauthorized") {
+      refused = error.message;
+      return undefined;
+    }
+    throw error;
+  });
+  if (refused !== undefined) {
+    add(
+      "daemon",
+      "warn",
+      refused.replace(/^daemon: /, "the daemon ").replace(/;.*$/, ""),
+      "zzpersona daemon stop && zzpersona daemon start",
+    );
+  } else if (daemon) {
     const status = daemon.probed;
     if (status.version !== cliVersion()) {
       add(

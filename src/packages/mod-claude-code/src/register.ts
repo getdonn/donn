@@ -200,7 +200,8 @@ async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
  * persona changes (docs/planning/14-daemon.md). A file read, not the CLI: this runs every turn.
  */
 async function onSubmit($: Mod$, e: unknown, next: Next): Promise<unknown> {
-  if (session !== undefined) {
+  // An older Claude Code has no $.fs: the session keeps what it has.
+  if (session !== undefined && typeof $.fs?.read === "function") {
     const text = await $.fs.read(`${session}/live.json`).catch(() => undefined);
     let read: LiveState | undefined;
     try {

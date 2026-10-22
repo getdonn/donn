@@ -60,7 +60,7 @@ function engine(
       ) => Promise<unknown>
     )($, e, async () => below);
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-  return { call, settle, runs, statuses, invalidated, files };
+  return { call, settle, runs, statuses, invalidated, files, $ };
 }
 
 const json = (value: unknown): ProcessRunResult => ({
@@ -480,6 +480,22 @@ describe("live switching", () => {
     expect(await sectionText(e, "env_info_simple")).toContain(
       "Be team/platform.",
     );
+  });
+
+  it("lets the prompt through on a host without $.fs", async () => {
+    const e = engine(
+      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      reply({ launched: "team/payments" }),
+    );
+    await e.call("session.start");
+    await e.settle();
+    // An older Claude Code: no file system API for mods.
+    (e.$ as { fs?: unknown }).fs = undefined;
+    e.invalidated.length = 0;
+    expect(await e.call("prompt.submit", { text: "hi" }, "ENTERED")).toBe(
+      "ENTERED",
+    );
+    expect(e.invalidated).toEqual([]);
   });
 
   it("reads no live.json without a session folder", async () => {
