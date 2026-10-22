@@ -1,5 +1,20 @@
 # @zzpersona/cli
 
+## 0.4.0
+
+### Minor Changes
+
+- 2ff9978: The daemon, first slice. `zzpersona daemon start|stop|status|refresh` runs a background process per
+  home with a socket API and a session registry; it watches persona sources and refreshes live Claude
+  Code sessions on their next turn when a persona is edited (Codex sessions show as stale).
+  `zzpersona status` lists the sessions the daemon knows of, and `doctor` gains a `daemon` check that
+  tells an unresponsive daemon from a stale one.
+
+### Patch Changes
+
+- Updated dependencies [02319f1]
+  - @zzpersona/mod-claude-code@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes

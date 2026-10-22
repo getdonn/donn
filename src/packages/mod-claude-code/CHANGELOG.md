@@ -1,5 +1,13 @@
 # @zzpersona/mod-claude-code
 
+## 0.2.0
+
+### Minor Changes
+
+- 02319f1: The mod applies the daemon's refreshes on the next turn: a `prompt.submit` hook reads the session's
+  `live.json` and, when it changed, supersedes the instructions. The superseding section now also
+  carries the launched persona's own instructions after they change or after switching back.
+
 ## 0.1.1
 
 ### Patch Changes
