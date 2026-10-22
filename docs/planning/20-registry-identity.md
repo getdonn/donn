@@ -111,3 +111,37 @@ SAML; refreshing groups between logins.
 ## Open questions
 
 None.
+
+## Amendments from implementation (2026-10-22)
+
+Rulings made while building, each changing or settling what is written above.
+
+- **`PublishResult` variant order.** The union tries the dry run and the unchanged result before
+  the publish, so tolerance for unknown fields never reads a dry run or an unchanged answer as a
+  publish.
+- **Tolerant `BundleFile` in responses.** Responses are read with a tolerant file shape; requests
+  and the conformance kit stay strict.
+- **`openapi.json`** is built from `ConformanceSchemas`, so it lists the problem codes and closes
+  its objects.
+- **Unknown problem codes map by HTTP status:** 401 `unauthorized`, 403 `forbidden`, 404
+  `not-found`, 409 `stale-base`. This keeps the login hint on a 401 whose code the client does not
+  know.
+- **Kit hooks.** The kit's start signature is `start(options?)`, so a case can ask for a non-zero
+  `interval`. Optional hooks: `supportsLoginTiming` (the slow-down and expiry cases are skipped
+  without it), `limitedToken` (the grant cases), `completeLogin`, `refuseLogin` and `signIn` (the
+  login cases). A registry without a hook skips the cases that need it.
+- **The sign-in link must have the registry's own protocol and origin, or it is refused** with
+  `registry-protocol` (a `blob:` link has a matching origin, so the protocol is checked too). Only
+  the parsed `href` is printed or opened.
+- **The opener.** `open` on macOS, `xdg-open` elsewhere, and on Windows `rundll32
+  url.dll,FileProtocolHandler`. No shell is ever used.
+- **Polling.** The interval is floored at 1 second, and each sleep is capped at the time remaining,
+  so there is always a last poll before expiry.
+- **One helper strips control characters** from every server string the CLI prints (subject, code,
+  messages, hints).
+- **The grant hint** (`ask a registry admin for <role> on <ref>`) appears only on `publish`.
+- **`--token`** now carries the old hidden paste prompt; `--token-stdin` is unchanged.
+- **`doctor`** shows the session end date, and warns when it is close.
+
+Deferred minors: a sign-in link with userinfo is accepted (host and protocol are pinned); `--json`
+output carries raw server strings; a transient unreachable ends the login.

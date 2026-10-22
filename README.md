@@ -143,7 +143,7 @@ A team lead can publish a layer (`org/*`, `area/*` or `team/*`) to a registry; e
 and resolves against exactly what was published, offline once pulled.
 
 ```sh
-zzpersona login https://registry.example.com   # token from a prompt, or --token-stdin
+zzpersona login https://registry.example.com   # sign in through your browser
 zzpersona publish team/web --dry-run           # what would change; nothing is stored
 zzpersona publish team/web                     # published team/web @2
 zzpersona pull                                 # team/web 1 → 2
@@ -159,6 +159,27 @@ publish again) and a change that breaks a published layer below it (`--force` pu
 The token goes in the OS keychain (`ZZPERSONA_REGISTRY_TOKEN` overrides it for CI) and never in
 output. `resolve --json` and `switch --json` list the published versions used as `builtFrom`.
 `zzpersona logout` removes the token; the contract is `docs/planning/18-registry-contract.md`.
+
+### Signing in
+
+`zzpersona login <url>` signs you in through the registry's own identity provider. The terminal
+prints `Open <link> and confirm the code ABCD-EFGH` and opens the link in your browser; the page
+shows the same code, you sign in there and confirm, and the terminal finishes with `logged in to
+<url> as <you> (session until <date>)`. Ctrl-C cancels. The code is your check that the browser and
+the terminal are the same sign-in: if they differ, close the page. `--no-browser` only prints the
+link (so does `CI`), for a remote shell. The link must have the registry's own protocol and
+origin, or the CLI refuses it; it never opens anything else.
+
+For a registry with no sign-in, or for CI, `--token` asks for a token at a hidden prompt and
+`--token-stdin` reads it from stdin (`ZZPERSONA_REGISTRY_TOKEN` still overrides the stored one).
+Sessions end: `whoami` and `doctor` show the date, and you sign in again after it.
+
+`zzpersona whoami` lists your roles, e.g. `roles: publish team/web, lock org`. Who may publish or
+lock which layer is set on the registry, not in your persona files. When a `publish` is refused
+with `forbidden`, the hint names the grant to ask a registry admin for.
+
+A registry with sign-in needs `@zzpersona/cli` 0.9.0 or later, which is this release (product
+0.11.0): older CLIs reject the new fields in its answers.
 
 ## What each harness can carry
 
