@@ -85,7 +85,11 @@ export function bandText(
     const held = listing(switched.held.map((h) => HELD_BAND[h]));
     return `persona ${switched.persona} · live${held ? ` · ${held} from ${switched.launched}` : ""}`;
   }
-  if (launched) return `persona ${launched.persona} · ${launched.source}`;
+  if (launched) {
+    // A refresh of the launched persona that changed what only a relaunch applies.
+    const held = listing((live?.held ?? []).map((h) => HELD_BAND[h]));
+    return `persona ${launched.persona} · ${launched.source}${held ? ` · relaunch for ${held}` : ""}`;
+  }
   if (folderSpecific(here))
     return `persona none · this folder uses ${here.persona}`;
   return undefined;
@@ -239,14 +243,24 @@ export function liveSection(live: LiveState): {
   const lead = activeLive(live)
     ? `The persona for this session is now ${live.persona}.`
     : `The instructions for this session's persona ${live.persona} were updated.`;
+  // A heading of its own: for the launched persona the compiled heading is the same as the launch
+  // section's, and this section sits above it, so "disregard" must name which one by text.
+  const heading = `## zzpersona persona: ${live.persona} (updated ${live.appliedAt})`;
+  const body = live.instructions.trimEnd();
+  const compiled = /^## zzpersona persona: [^\n]*\n*/;
   return {
     id: "zzpersona:live-persona",
     scope: "session",
     text: [
-      `${lead} Disregard the section headed`,
-      `"## zzpersona persona: ${live.launched}"; the instructions below replace it.`,
+      `${lead} Disregard the section headed exactly`,
+      `"## zzpersona persona: ${live.launched}" (the launch instructions), wherever it appears in this`,
+      `prompt; the section headed "## zzpersona persona: ${live.persona} (updated`,
+      `${live.appliedAt})" below is current. Answers given earlier in this conversation may`,
+      "be outdated.",
       "",
-      live.instructions.trimEnd(),
+      heading,
+      "",
+      compiled.test(body) ? body.replace(compiled, "") : body,
     ].join("\n"),
   };
 }

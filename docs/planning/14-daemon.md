@@ -199,3 +199,16 @@ the same session Claude answered `SMOKE-BRAVO`. The refresh applies to the turn 
   lock; when the persona or `appliedAt` changed since the refresh read the session (a `/persona use`
   or `zzpersona live` landed meanwhile), nothing is swapped and the refresh is logged as a skip
   (`skip <session> <persona>: superseded`), leaving the session's state as it was.
+
+### From a test run on the examples (2026-10-21)
+
+A test matrix on `examples/demo-app` with Haiku found that a refresh of the *launched* persona was
+ambiguous to the model: the superseding section's instructions began with the same
+`## zzpersona persona: <id>` heading as the launch section, and the section sits above the launch
+section in the prompt, so "disregard the section headed …" matched both and Haiku kept the launch
+text (Opus had resolved it in the smoke run). Fixed in the mod: the superseding instructions are
+re-headed `## zzpersona persona: <id> (updated <appliedAt>)`, the note names the launch heading
+exactly, "wherever it appears", and says earlier answers may be outdated. The band also shows
+`relaunch for <held>` when a same-persona refresh holds MCP, permissions or settings. Re-tested on
+Haiku with the dev mod: a conflicting edit, a second edit, and a switch away and back all answered
+the new codeword on the first try.
