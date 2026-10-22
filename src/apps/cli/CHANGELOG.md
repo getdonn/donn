@@ -1,5 +1,12 @@
 # @zzpersona/cli
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @zzpersona/mod-claude-code@0.2.3
+
 ## 0.4.2
 
 ### Patch Changes
