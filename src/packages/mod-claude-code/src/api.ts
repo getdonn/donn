@@ -28,6 +28,30 @@ export interface Mod$ {
   fs: {
     /** A file's text; rejects when it is missing. */
     read(path: string): Promise<string>;
+    /** What a path leads to (a link followed); rejects when it is missing. */
+    stat(path: string): Promise<{
+      kind: "file" | "dir" | "other";
+      isLink: boolean;
+    }>;
+  };
+  /** Missing on an older Claude Code. */
+  http?: {
+    /** Resolves once the body is read, any status; it has no timeout. */
+    fetch(
+      url: string,
+      init?: {
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string;
+        /** A Unix socket to go over instead of TCP. */
+        socketPath?: string;
+      },
+    ): Promise<{ status: number; ok: boolean; text: string }>;
+  };
+  /** Missing on an older Claude Code. */
+  clock?: {
+    /** Calls `fn` once after `ms` milliseconds; `cancel()` before then stops it. */
+    after(ms: number, fn: () => void): { cancel(): void };
   };
   command: {
     register(spec: {

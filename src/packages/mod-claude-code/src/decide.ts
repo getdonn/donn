@@ -43,6 +43,16 @@ const LAYER_ORDER: readonly string[] = [
   "user",
 ];
 
+/** Why the mod has no zzpersona: no daemon answered, and policy refused it the CLI (spec 15). */
+export const UNAVAILABLE =
+  "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+
+/** What `/persona` prints for a command that failed. */
+export const failureText = (reason: string, code?: string): string =>
+  code === "unavailable"
+    ? `zzpersona unavailable: ${reason}`
+    : `zzpersona: ${reason}`;
+
 export const USAGE =
   "usage: /persona [list | switch <persona> [--default] | use <persona> | clear [--default]]";
 
