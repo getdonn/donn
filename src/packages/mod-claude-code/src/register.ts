@@ -173,9 +173,7 @@ async function applyLive(
   live = asLive(result.json);
   $.ui.invalidate("ui.render");
   $.ui.invalidate("prompt.section");
-  return live
-    ? liveText(live, saved)
-    : `zzpersona: unexpected answer from live`;
+  return live ? liveText(live, saved) : `unexpected answer from live`;
 }
 
 /**

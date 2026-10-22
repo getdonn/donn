@@ -105,4 +105,4 @@ Auto-start and service install; the per-turn `live.json` read; Codex; Windows.
   `/persona list` answered through the daemon (its log shows `run ["list","--json"]` and the mod's
   start-up `switch` and `live --show`); `/persona use team/web` switched live through `/run` and the
   band showed `persona team/web · live`; with the daemon stopped, `/persona list` printed the
-  unavailable copy. Found: the copy shows doubled, `zzpersona: zzpersona unavailable: …`.
+  unavailable copy. Found: the copy shows doubled, `zzpersona: zzpersona unavailable: …`; fixed: the mod's replies no longer start with `zzpersona` (the host adds the prefix).

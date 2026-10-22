@@ -185,7 +185,7 @@ describe("register", () => {
       command: "persona",
       args: "switch team/nope",
     })) as { text: string };
-    expect(out.text).toBe("zzpersona: no persona named team/nope");
+    expect(out.text).toBe("no persona named team/nope");
   });
 
   it("respects the band and nudge settings", async () => {
@@ -268,7 +268,7 @@ describe("register", () => {
     const REASON =
       "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
     const STATUS = `unavailable: ${REASON}`;
-    const UNAVAILABLE = `zzpersona ${STATUS}`;
+    const UNAVAILABLE = STATUS;
     const blocked = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
       throw new Error("Acme policy: no process.run");
     });
@@ -279,7 +279,10 @@ describe("register", () => {
       command: "persona",
       args: "list",
     })) as { text: string };
-    expect(out.text).toBe(UNAVAILABLE);
+    expect(out.text).toBe(
+      "unavailable: start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
+    );
+    expect(out.text.startsWith("zzpersona")).toBe(false);
   });
 
   it("swallows a failure in the background refresh", async () => {

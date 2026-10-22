@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bandText,
   commandText,
+  failureText,
   launchedFrom,
   liveSection,
   liveText,
@@ -407,5 +408,15 @@ describe("0.3.1 hints", () => {
         "  zzpersona claude team/platform",
       ].join("\n"),
     );
+  });
+});
+
+describe("host-displayed text never starts with zzpersona", () => {
+  it("failure and folder texts leave the prefix to the host", () => {
+    expect(failureText("boom", "unavailable")).toBe("unavailable: boom");
+    expect(failureText("boom")).toBe("boom");
+    expect(
+      commandText("list", {}, undefined, { kind: "unavailable", reason: "x" }),
+    ).not.toMatch(/^zzpersona/);
   });
 });
