@@ -10,6 +10,7 @@ import { errorText } from "./errors.js";
 import { HARNESSES } from "./harness.js";
 import { allAdapters, findAdapter } from "./plugins.js";
 import type { Selection } from "./select.js";
+import { abandonWork } from "./startup.js";
 
 // What a switch means in each harness: what it keeps and drops, which sessions here still run
 // another persona, and what the committed AGENTS.md carries. See docs/planning/17-switch-report.md.
@@ -36,10 +37,10 @@ export const limits = { harnessMs: 5000 };
 function within<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`timed out after ${ms / 1000}s`)),
-      ms,
-    );
+    timer = setTimeout(() => {
+      abandonWork();
+      reject(new Error(`timed out after ${ms / 1000}s`));
+    }, ms);
     timer.unref();
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));

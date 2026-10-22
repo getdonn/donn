@@ -119,8 +119,11 @@ async function createLock(
   }
 }
 
+/** How long an empty lock may be one a starter is still writing its pid into. */
+const EMPTY_LOCK_MS = 1000;
+
 /** What `link()` fails with on a filesystem without hard links. */
-const NO_LINK = new Set(["EPERM", "ENOTSUP", "EXDEV"]);
+const NO_LINK = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV"]);
 
 /**
  * Where there are no hard links: create the lock exclusively and write the pid into it. A racer
@@ -205,7 +208,8 @@ export async function acquireLock(
 ): Promise<void> {
   await takeLock(lock, options);
   // Held: no other starter of this home runs, so a temp file of a dead pid is a leftover.
-  await sweepTemps(lock);
+  // Best effort: a sweep that fails must not leave the lock held.
+  await sweepTemps(lock).catch(() => {});
 }
 
 async function takeLock(lock: string, options: LockOptions): Promise<void> {
@@ -223,6 +227,12 @@ async function takeLock(lock: string, options: LockOptions): Promise<void> {
   const seen = first ?? (await read());
   const owner = Number.parseInt(seen, 10);
   if (owner > 0 && liveOwner(lock, owner)) throw running(lock);
+  // An empty lock under a second old may be one still being written (createLockInPlace).
+  if (seen === "") {
+    const found = await stat(lock).catch(() => undefined);
+    if (found?.size === 0 && now() - found.mtimeMs < EMPTY_LOCK_MS)
+      throw running(lock);
+  }
   const takeover = `${lock}.takeover`;
   for (let attempt = 0; ; attempt++) {
     try {

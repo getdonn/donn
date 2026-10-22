@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { nodeProbe } from "@zzpersona/executor";
 import { createCli } from "./cli.js";
-import { workingDir } from "./startup.js";
+import { abandonedWork, workingDir } from "./startup.js";
 
 const here = workingDir();
 if ("error" in here) {
@@ -19,3 +19,5 @@ const cli = createCli({
   secretProbe: nodeProbe({ timeoutMs: 300_000 }),
 });
 process.exitCode = await cli.run(process.argv.slice(2));
+// Abandoned work (a harness past its time limit) may hold a handle; don't wait for it.
+if (abandonedWork() > 0) process.stdout.write("", () => process.exit());

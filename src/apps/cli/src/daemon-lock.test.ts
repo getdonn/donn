@@ -116,8 +116,20 @@ describe("the daemon lock", () => {
   it("an empty lock is stale", async () => {
     const lock = join(root, "daemon.lock");
     writeFileSync(lock, "");
+    const old = (Date.now() - 2000) / 1000;
+    utimesSync(lock, old, old);
     await acquireLock(lock);
     expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
+  });
+
+  it("a just-created empty lock may still be written: running", async () => {
+    // Where there are no hard links, a starter creates the lock, then writes its pid.
+    const lock = join(root, "daemon.lock");
+    writeFileSync(lock, "");
+    await expect(acquireLock(lock)).rejects.toMatchObject({
+      code: "daemon-running",
+    });
+    expect(readFileSync(lock, "utf8")).toBe("");
   });
 
   it("a live owner keeps the lock", async () => {

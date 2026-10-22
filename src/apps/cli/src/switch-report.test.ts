@@ -6,6 +6,7 @@ import { daemonRequest } from "./daemon/client.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { createSession } from "./session.js";
 import { projectKey, readState } from "./state.js";
+import { abandonedWork } from "./startup.js";
 import { limits, reportLines } from "./switch-report.js";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
@@ -214,10 +215,13 @@ describe("zzpersona switch: the per-harness report", () => {
   it("times out a harness that never settles; the others report", async () => {
     configure(`adapters: [${join(FIXTURES, "hanging-adapter")}]`);
     limits.harnessMs = 100;
+    const before = abandonedWork();
     try {
       const r = await run(["switch", "project/persona"]);
       expect(r.code, r.stderr).toBe(0);
       expect(r.stdout).toMatch(/^hanging +error timed out after 0\.1s$/m);
+      // The hung work may hold a handle: bin.ts ends the process once the report is out.
+      expect(abandonedWork()).toBe(before + 1);
       expect(r.stdout).toContain("claude-code  drops");
     } finally {
       limits.harnessMs = 5000;
