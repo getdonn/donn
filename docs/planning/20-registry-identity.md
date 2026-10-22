@@ -129,9 +129,11 @@ Rulings made while building, each changing or settling what is written above.
 - **Kit hooks.** The kit's start signature is `start(options?)`, so a case can ask for a non-zero
   `interval`. Optional hooks: `supportsLoginTiming` (the slow-down and expiry cases are skipped
   without it), `limitedToken` (the grant cases), `completeLogin`, and `refuseLogin` (the login
-  cases). A registry without a hook skips the cases that need it. `signIn: false` declares a
-  registry without sign-in and selects the `404 not-found` case for `POST /v1/auth/logins`; unset
-  or `true`, nothing is skipped.
+  cases). A registry without a hook skips the cases that need it. `signIn` gates
+  only the `404 not-found` case for `POST /v1/auth/logins`: `signIn: false` declares a registry
+  without sign-in and runs that case; when `signIn` is unset or `true`, that case is skipped. The
+  other sign-in cases are gated by `completeLogin`, `refuseLogin`, `supportsLoginTiming` and
+  `limitedToken`.
 - **Strict kit problems.** The kit's `ConformanceSchemas.Problem` items are strict: an unknown
   field inside `problems[]` fails a server (clients stay tolerant).
 - **The sign-in link must have the registry's own protocol and origin, or it is refused** with
