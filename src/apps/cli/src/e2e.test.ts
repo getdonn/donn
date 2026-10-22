@@ -1,14 +1,17 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
+  existsSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createSession } from "./session.js";
 
 // Opt-in (ZZP_E2E=1): the built `zzpersona` binary, against real `claude`, from personas on
 // disk. One Haiku call. The Phase 1 core loop, end to end.
@@ -394,3 +397,115 @@ describe.skipIf(process.env.ZZP_E2E !== "1" || !hasCodex)(
     }, 300_000);
   },
 );
+
+// Opt-in: the daemon keeps a live session current from the built binary. The session is owned by a
+// real child process so the registry sees it running.
+describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: the daemon", () => {
+  let dir = "";
+  let zzhome = "";
+  let proj = "";
+  let persona = "";
+  let child: ReturnType<typeof spawn> | undefined;
+  const zzp = (args: string[]) =>
+    spawnSync(process.execPath, [BIN, ...args], {
+      cwd: proj,
+      env: { ...process.env, ZZPERSONA_HOME: zzhome },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "zzp-daemon-e2e-"));
+    zzhome = join(dir, "home");
+    proj = join(dir, "project");
+    persona = join(dir, "personas/team/d.yaml");
+    execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
+    put(join(zzhome, "config.yaml"), `personas: ${join(dir, "personas")}\n`);
+    put(
+      persona,
+      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata: { name: d }\ninstructions:\n  - id: a\n    inline: Codeword ONE.\n",
+    );
+    mkdirSync(proj, { recursive: true });
+  });
+
+  afterAll(() => {
+    if (dir) zzp(["daemon", "stop"]);
+    child?.kill();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("refreshes a live session from the built binary", async () => {
+    const compiled = zzp(["compile", "team/d", "--json"]);
+    expect(compiled.status, compiled.stderr).toBe(0);
+    const { buildDir } = JSON.parse(compiled.stdout) as { buildDir: string };
+    child = spawn(process.execPath, ["-e", "setInterval(()=>{},1e9)"], {
+      stdio: "ignore",
+    });
+    const session = await createSession(
+      zzhome,
+      join(buildDir, "plugin"),
+      {
+        persona: "team/d",
+        source: "argument",
+        overlay: false,
+        harness: "claude-code",
+        startedAt: new Date().toISOString(),
+        buildHash: "e2e-launch",
+      },
+      child.pid!,
+    );
+    const started = zzp(["daemon", "start"]);
+    expect(started.status, started.stdout + started.stderr).toBe(0);
+
+    type Entry = { state: string; at?: string };
+    const entry = (): Entry | undefined => {
+      const status = zzp(["status", "--json"]);
+      try {
+        return (JSON.parse(status.stdout) as { sessions: Entry[] }).sessions[0];
+      } catch {
+        throw new Error(
+          `status --json was not JSON: ${status.stdout}${status.stderr}`,
+        );
+      }
+    };
+    const live = () => {
+      try {
+        return readFileSync(join(session, "live.json"), "utf8");
+      } catch {
+        return "";
+      }
+    };
+    const until = async (done: () => boolean) => {
+      for (let i = 0; i < 100 && !done(); i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return done();
+    };
+
+    // The startup swap (the launch hash is a dummy) comes first; then the edit.
+    expect(
+      await until(
+        () => entry()?.state === "refreshed" && live().includes("ONE"),
+      ),
+      `startup swap: ${live()}`,
+    ).toBe(true);
+    const first = entry()?.at;
+
+    writeFileSync(persona, readFileSync(persona, "utf8").replace("ONE", "TWO"));
+    expect(
+      await until(() => live().includes("TWO")),
+      `edit not picked up: ${live()}`,
+    ).toBe(true);
+    expect(
+      await until(() => {
+        const e = entry();
+        return e?.state === "refreshed" && e.at !== undefined && e.at !== first;
+      }),
+      `status after edit: ${JSON.stringify(entry())} (first at ${first})`,
+    ).toBe(true);
+
+    const stopped = zzp(["daemon", "stop"]);
+    expect(stopped.status, stopped.stdout + stopped.stderr).toBe(0);
+    expect(existsSync(join(zzhome, "daemon/sock"))).toBe(false);
+  }, 60_000);
+});
