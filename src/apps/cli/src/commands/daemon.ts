@@ -8,6 +8,7 @@ import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon } from "../daemon/client.js";
 import { daemonPaths } from "../daemon/paths.js";
+import { isDaemonProcess } from "../daemon/process.js";
 import { startDaemon } from "../daemon/server.js";
 import {
   installedService,
@@ -193,8 +194,9 @@ async function stopDaemon(home: string): Promise<boolean> {
     // Stopped once the lock is released (the daemon's last step) or its process is gone.
     gone = () => !existsSync(paths.lock) || (other && !isAlive(pid));
   } else {
-    // No answer on the socket: a daemon that still runs gets SIGTERM by its pid.
-    if (other && isAlive(pid)) {
+    // No answer on the socket: a daemon that still runs gets SIGTERM by its pid; a process that
+    // is not one (the OS reused a dead daemon's pid) is left alone.
+    if (other && isDaemonProcess(pid)) {
       process.kill(pid, "SIGTERM");
       stopped = true;
     }
