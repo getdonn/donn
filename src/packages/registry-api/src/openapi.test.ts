@@ -22,7 +22,9 @@ describe("buildOpenApi", () => {
     });
     for (const route of Object.values(ROUTES)) {
       const operation = doc.paths[route.path]?.[route.method.toLowerCase()];
-      expect(operation?.security).toEqual([{ bearer: [] }]);
+      expect(operation?.security).toEqual(
+        "auth" in route ? [] : [{ bearer: [] }],
+      );
     }
   });
 });

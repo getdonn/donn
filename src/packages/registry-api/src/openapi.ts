@@ -6,9 +6,13 @@ import {
   LayerRef,
   LayerSummary,
   LayerVersion,
+  LoginPoll,
+  LoginStart,
+  LoginToken,
   Problem,
   PublishRequest,
   PublishResult,
+  Role,
   Whoami,
 } from "./schemas.js";
 
@@ -22,6 +26,10 @@ const SCHEMAS = {
   Change,
   PublishResult,
   Problem,
+  Role,
+  LoginStart,
+  LoginPoll,
+  LoginToken,
 } as const;
 
 const json = (schema: z.ZodType): Record<string, unknown> => {
@@ -33,9 +41,13 @@ const json = (schema: z.ZodType): Record<string, unknown> => {
 
 const ERRORS: Record<number, string> = {
   401: "Missing or refused token",
+  403: "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
   404: "Unknown ref or version",
   409: "baseVersion is not the latest version",
+  410: "The sign-in expired, was refused or was already redeemed (login-expired)",
   422: "The bundle or its place in the layer graph is refused",
+  428: "The sign-in is not finished yet (authorization-pending)",
+  429: "Polled faster than the login's interval (slow-down)",
 };
 
 const PARAMS: Record<string, Record<string, unknown>> = {
@@ -46,6 +58,13 @@ const PARAMS: Record<string, Record<string, unknown>> = {
     description:
       "A layer ref such as team/web, URL-encoded as one path segment (team%2Fweb).",
     schema: { $ref: "#/components/schemas/LayerRef" },
+  },
+  loginId: {
+    name: "loginId",
+    in: "path",
+    required: true,
+    description: "The loginId from POST /v1/auth/logins.",
+    schema: { type: "string" },
   },
   version: {
     name: "version",
@@ -61,6 +80,13 @@ const ROUTE_SCHEMA_NAME: Record<keyof typeof ROUTES, string | undefined> = {
   listLayers: undefined,
   getVersion: "LayerVersion",
   publish: "PublishResult",
+  startLogin: "LoginStart",
+  pollLogin: "LoginToken",
+};
+
+const REQUEST_SCHEMA_NAME: Partial<Record<keyof typeof ROUTES, string>> = {
+  publish: "PublishRequest",
+  pollLogin: "LoginPoll",
 };
 
 /** The OpenAPI 3.1 document for `ROUTES`, built from the zod schemas. */
@@ -103,7 +129,7 @@ export function buildOpenApi(): Record<string, unknown> {
     paths[route.path] = {
       [route.method.toLowerCase()]: {
         operationId: name,
-        security: [{ bearer: [] }],
+        security: "auth" in route ? [] : [{ bearer: [] }],
         ...(parameters.length > 0 ? { parameters } : {}),
         ...("request" in route
           ? {
@@ -111,7 +137,9 @@ export function buildOpenApi(): Record<string, unknown> {
                 required: true,
                 content: {
                   "application/json": {
-                    schema: { $ref: "#/components/schemas/PublishRequest" },
+                    schema: {
+                      $ref: `#/components/schemas/${REQUEST_SCHEMA_NAME[name]!}`,
+                    },
                   },
                 },
               },

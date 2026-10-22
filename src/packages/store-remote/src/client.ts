@@ -1,13 +1,15 @@
 import {
+  PROBLEM_CODES,
   Problem,
   ROUTES,
   type LayerSummary,
   type LayerVersion,
+  type ProblemCode,
   type PublishRequest,
   type PublishResult,
   type Whoami,
 } from "@zzpersona/registry-api";
-import { RegistryError } from "./error.js";
+import { RegistryError, type RegistryErrorCode } from "./error.js";
 import { normaliseUrl, routeUrl } from "./url.js";
 
 export { RegistryError, type RegistryErrorCode } from "./error.js";
@@ -98,13 +100,18 @@ export function createClient(options: ClientOptions): RegistryClient {
           ...(p.path !== undefined && { path: scrub(p.path) }),
         }));
         const message = [detail, ...(problems ?? []).map((p) => p.message)];
-        const code =
-          problems?.[0]?.code ??
-          (status === 401
-            ? "unauthorized"
-            : status === 404
-              ? "not-found"
-              : "registry-protocol");
+        const first = problems?.[0]?.code;
+        // A code this client does not know stays in `problems`; the error itself is a protocol one.
+        const code: RegistryErrorCode =
+          first !== undefined
+            ? (PROBLEM_CODES as readonly string[]).includes(first)
+              ? (first as ProblemCode)
+              : "registry-protocol"
+            : status === 401
+              ? "unauthorized"
+              : status === 404
+                ? "not-found"
+                : "registry-protocol";
         throw new RegistryError(
           code,
           [...new Set(message)].join("; "),

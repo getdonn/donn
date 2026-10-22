@@ -40,6 +40,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Unknown ref or version",
             "content": {
@@ -60,8 +70,38 @@
               }
             }
           },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -105,6 +145,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Unknown ref or version",
             "content": {
@@ -125,8 +175,38 @@
               }
             }
           },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -188,6 +268,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Unknown ref or version",
             "content": {
@@ -208,8 +298,38 @@
               }
             }
           },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -281,6 +401,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Unknown ref or version",
             "content": {
@@ -301,8 +431,255 @@
               }
             }
           },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logins": {
+      "post": {
+        "operationId": "startLogin",
+        "security": [],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginStart"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or refused token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown ref or version",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "baseVersion is not the latest version",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logins/{loginId}/token": {
+      "post": {
+        "operationId": "pollLogin",
+        "security": [],
+        "parameters": [
+          {
+            "name": "loginId",
+            "in": "path",
+            "required": true,
+            "description": "The loginId from POST /v1/auth/logins.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginPoll"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or refused token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown ref or version",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "baseVersion is not the latest version",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -355,13 +732,47 @@
           "org": {
             "type": "string",
             "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "session",
+              "service"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "publish",
+                    "lock"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "role",
+                "path"
+              ]
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
           }
         },
         "required": [
           "subject",
           "org"
-        ],
-        "additionalProperties": false
+        ]
       },
       "LayerSummary": {
         "type": "object",
@@ -384,8 +795,7 @@
           "ref",
           "version",
           "digest"
-        ],
-        "additionalProperties": false
+        ]
       },
       "LayerVersion": {
         "type": "object",
@@ -445,8 +855,7 @@
           "files",
           "publishedAt",
           "publishedBy"
-        ],
-        "additionalProperties": false
+        ]
       },
       "PublishRequest": {
         "type": "object",
@@ -520,8 +929,7 @@
         "required": [
           "path",
           "change"
-        ],
-        "additionalProperties": false
+        ]
       },
       "PublishResult": {
         "anyOf": [
@@ -549,8 +957,7 @@
               "version",
               "digest",
               "broken"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -573,8 +980,7 @@
               "unchanged",
               "version",
               "digest"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -611,8 +1017,7 @@
                   "required": [
                     "path",
                     "change"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               },
               "broken": {
@@ -627,8 +1032,7 @@
               "dryRun",
               "diff",
               "broken"
-            ],
-            "additionalProperties": false
+            ]
           }
         ]
       },
@@ -655,20 +1059,7 @@
               "type": "object",
               "properties": {
                 "code": {
-                  "type": "string",
-                  "enum": [
-                    "unauthorized",
-                    "not-found",
-                    "stale-base",
-                    "invalid",
-                    "not-publishable",
-                    "missing-file",
-                    "path-escapes-layer",
-                    "bundle-too-large",
-                    "unpublished-ancestor",
-                    "lock-violation",
-                    "breaks-descendants"
-                  ]
+                  "type": "string"
                 },
                 "ref": {
                   "type": "string"
@@ -683,8 +1074,7 @@
               "required": [
                 "code",
                 "message"
-              ],
-              "additionalProperties": false
+              ]
             }
           }
         },
@@ -693,8 +1083,89 @@
           "title",
           "status",
           "detail"
+        ]
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "publish",
+          "lock"
+        ]
+      },
+      "LoginStart": {
+        "type": "object",
+        "properties": {
+          "loginId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verifyUrl": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$"
+          },
+          "pollSecret": {
+            "type": "string",
+            "minLength": 1
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "loginId",
+          "verifyUrl",
+          "code",
+          "pollSecret",
+          "interval",
+          "expiresIn"
+        ]
+      },
+      "LoginPoll": {
+        "type": "object",
+        "properties": {
+          "pollSecret": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "pollSecret"
         ],
         "additionalProperties": false
+      },
+      "LoginToken": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "token",
+          "subject",
+          "expiresAt"
+        ]
       }
     }
   }

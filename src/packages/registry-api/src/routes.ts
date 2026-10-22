@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
   LayerSummary,
+  LoginPoll,
+  LoginStart,
+  LoginToken,
   LayerVersion,
   PublishRequest,
   PublishResult,
@@ -15,6 +18,8 @@ interface Route {
   response: z.ZodType;
   /** Success statuses the route can answer. */
   statuses: readonly number[];
+  /** `false` when no bearer token is required (the sign-in routes). */
+  auth?: false;
 }
 
 export const ROUTES = {
@@ -42,6 +47,21 @@ export const ROUTES = {
     request: PublishRequest,
     response: PublishResult,
     statuses: [200, 201],
+  },
+  startLogin: {
+    method: "POST",
+    path: "/v1/auth/logins",
+    response: LoginStart,
+    statuses: [201],
+    auth: false,
+  },
+  pollLogin: {
+    method: "POST",
+    path: "/v1/auth/logins/{loginId}/token",
+    request: LoginPoll,
+    response: LoginToken,
+    statuses: [200],
+    auth: false,
   },
 } as const satisfies Record<string, Route>;
 

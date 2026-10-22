@@ -38,9 +38,10 @@ describe("client", () => {
   it("each method parses", async () => {
     const registry = await mock();
     const client = createClient({ url: registry.url, token: registry.token });
-    expect(await client.whoami()).toEqual({
+    expect(await client.whoami()).toMatchObject({
       subject: "mock-user",
       org: "acme",
+      kind: "service",
     });
     expect(await client.listLayers()).toEqual([]);
     const result = await client.publish("org/acme", {
