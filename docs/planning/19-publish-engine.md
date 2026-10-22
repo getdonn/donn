@@ -115,3 +115,11 @@ None.
 - **Already held after the engine layer:** malformed refs, unknown routes, non-object bodies and the
   concurrent publish passed once the mock queued publishes; only strict base64 and a malformed `%`
   in `{ref}` needed changes.
+- **Final review (2026-10-22):** the `LayerStore` contract is stated in code. The caller holds an
+  **org-wide** lock (a per-ref lock is not enough: an `org/base` lock and a `team/web` change touch
+  different rows). The engine memoises reads, so each ref is read at most once and `refs()` once
+  per publish. `insert` comes last, with `version` = the latest read + 1, and **must reject** a
+  `(ref, version)` that exists (a unique constraint in Postgres); `memoryStore` does. `refs()`
+  returns the publishing org's refs only. The kit's race case fires five publishes at once and
+  expects exactly one 201 and four `409 stale-base`; a race can show a missing lock, never prove
+  there is none, so the unique-version rule is the real guard.

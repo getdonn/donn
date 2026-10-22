@@ -557,23 +557,23 @@ export function registryConformance(
         );
       });
 
-      it("lets one of two concurrent publishes from one base win", async () => {
+      // A race can show a missing lock, never prove there is none: run several at once.
+      it("lets exactly one of five concurrent publishes from one base win", async () => {
         await publish("org/base", layer("base"));
-        const answers = await Promise.all([
-          publish(
-            "org/base",
-            layer("base", "permissions:\n  allow:\n    - Bash(ls)\n"),
-            [],
-            1,
+        const answers = await Promise.all(
+          ["ls", "pwd", "date", "id", "env"].map((command) =>
+            publish(
+              "org/base",
+              layer("base", `permissions:\n  allow:\n    - Bash(${command})\n`),
+              [],
+              1,
+            ),
           ),
-          publish(
-            "org/base",
-            layer("base", "permissions:\n  allow:\n    - Bash(pwd)\n"),
-            [],
-            1,
-          ),
-        ]);
-        expect(answers.map((a) => a.status).sort()).toEqual([201, 409]);
+        );
+        expect(answers.filter((a) => a.status === 201)).toHaveLength(1);
+        for (const answer of answers.filter((a) => a.status !== 201)) {
+          expectProblem(answer, 409, "stale-base");
+        }
         const listed = (await call("listLayers")).body as { version: number }[];
         expect(listed.map((l) => l.version)).toEqual([2]);
       });
