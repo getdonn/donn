@@ -1,5 +1,14 @@
 # @zzpersona/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- 2b19309: `zzpersona switch` says what the choice means in each installed harness: what it drops or
+  approximates, which sessions here still run another persona (and how to move them), and that the
+  committed `AGENTS.md` keeps the shared project persona. `--harness <id>` reports one harness; the
+  `--json` result gains `harnesses`.
+
 ## 0.6.0
 
 ### Minor Changes
