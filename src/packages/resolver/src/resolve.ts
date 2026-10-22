@@ -26,7 +26,9 @@ export async function resolve(
   const personas = await loadGraph(source, target);
   const layers = linearize(personas, target);
   const merge = new Merge();
-  for (const ref of layers) merge.apply(ref, personas.get(ref)!);
+  for (const ref of layers) {
+    merge.apply(ref, personas.get(ref)!, source.dir?.(ref));
+  }
 
   if (overlay !== undefined) {
     const doc = await loadDocument(source, overlay);

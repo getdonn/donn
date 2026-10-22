@@ -16,46 +16,143 @@ export function keychainParts(
 
 const firstLine = (text: string) => text.split("\n")[0]!.trim();
 
+export interface KeychainContext {
+  platform: string;
+  /** Runs a command, writing `input` to its stdin. Never throws for a missing command: 127. */
+  run(
+    command: string,
+    args: string[],
+    input?: string,
+  ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+}
+
+export function keychainSupported(platform: string): boolean {
+  return platform === "darwin" || platform === "linux";
+}
+
+/** The exit code that, with no stderr, means the item is not there. */
+const MISSING: Record<string, number> = { darwin: 44, linux: 1 };
+
+type Result = { exitCode: number; stdout: string; stderr: string };
+
+function fail(command: string, result: Result): never {
+  if (result.exitCode === 124) {
+    throw new Error(
+      `timed out waiting for ${command} (was a keychain prompt left open?)`,
+    );
+  }
+  if (result.exitCode === 127) {
+    throw new Error(
+      command === "secret-tool"
+        ? "secret-tool is not installed (install libsecret-tools)"
+        : `${command} is not installed`,
+    );
+  }
+  throw new Error(
+    `${command} exited ${result.exitCode}: ${firstLine(result.stderr)}`,
+  );
+}
+
+function commandFor(platform: string): string {
+  if (!keychainSupported(platform)) {
+    throw new Error(`keychain is not supported on ${platform}`);
+  }
+  return platform === "darwin" ? "security" : "secret-tool";
+}
+
+/** The stored value, or undefined when there is no such item. */
+export async function getKeychainItem(
+  ctx: KeychainContext,
+  service: string,
+  account: string,
+): Promise<string | undefined> {
+  const command = commandFor(ctx.platform);
+  const args =
+    ctx.platform === "darwin"
+      ? ["find-generic-password", "-s", service, "-a", account, "-w"]
+      : ["lookup", "service", service, "account", account];
+  const result = await ctx.run(command, args);
+  if (result.exitCode === 0) return result.stdout.replace(/\n$/, "");
+  // secret-tool exits 1 for "not found" and for real failures (no D-Bus, a locked keyring):
+  // only a quiet exit 1 means the item is missing.
+  if (
+    result.exitCode === MISSING[ctx.platform] &&
+    result.stderr.trim() === ""
+  ) {
+    return undefined;
+  }
+  return fail(command, result);
+}
+
+/** `security -i` reads quoted words, so none of these can be escaped safely: refuse them. */
+function checkQuotable(name: string, text: string): void {
+  if (/["\\\n\r]/.test(text)) {
+    throw new Error(
+      `keychain ${name} must not contain a quote, a backslash or a newline`,
+    );
+  }
+}
+
+/** Stores a value. It goes to the command's stdin, so it never shows up in `ps`. */
+export async function setKeychainItem(
+  ctx: KeychainContext,
+  service: string,
+  account: string,
+  value: string,
+): Promise<void> {
+  const command = commandFor(ctx.platform);
+  checkQuotable("service", service);
+  checkQuotable("account", account);
+  checkQuotable("value", value);
+  const result =
+    ctx.platform === "darwin"
+      ? await ctx.run(
+          command,
+          ["-i"],
+          `add-generic-password -U -s "${service}" -a "${account}" -w "${value}"\n`,
+        )
+      : await ctx.run(
+          command,
+          [
+            "store",
+            "--label=zzpersona registry",
+            "service",
+            service,
+            "account",
+            account,
+          ],
+          value,
+        );
+  if (result.exitCode !== 0) fail(command, result);
+}
+
+/** Removes an item. False when it was not there. */
+export async function deleteKeychainItem(
+  ctx: KeychainContext,
+  service: string,
+  account: string,
+): Promise<boolean> {
+  const command = commandFor(ctx.platform);
+  const args =
+    ctx.platform === "darwin"
+      ? ["delete-generic-password", "-s", service, "-a", account]
+      : ["clear", "service", service, "account", account];
+  const result = await ctx.run(command, args);
+  if (result.exitCode === 0) return true;
+  if (
+    result.exitCode === MISSING[ctx.platform] &&
+    result.stderr.trim() === ""
+  ) {
+    return false;
+  }
+  return fail(command, result);
+}
+
 export const keychainBackend: SecretBackend = {
   type: "keychain",
   async resolve(path, _config, ctx) {
     const parts = keychainParts(path);
     if (!parts) throw new Error(USAGE);
-    const { service, account } = parts;
-    let command: string;
-    let args: string[];
-    let missing: number;
-    if (ctx.platform === "darwin") {
-      command = "security";
-      args = ["find-generic-password", "-s", service, "-a", account, "-w"];
-      missing = 44;
-    } else if (ctx.platform === "linux") {
-      command = "secret-tool";
-      args = ["lookup", "service", service, "account", account];
-      missing = 1;
-    } else {
-      throw new Error(`keychain is not supported on ${ctx.platform}`);
-    }
-    const result = await ctx.run(command, args);
-    if (result.exitCode === 0) return result.stdout.replace(/\n$/, "");
-    // secret-tool exits 1 for "not found" and for real failures (no D-Bus, a locked keyring):
-    // only a quiet exit 1 means the item is missing.
-    if (result.exitCode === missing && result.stderr.trim() === "")
-      return undefined;
-    if (result.exitCode === 124) {
-      throw new Error(
-        `timed out waiting for ${command} (was a keychain prompt left open?)`,
-      );
-    }
-    if (result.exitCode === 127) {
-      throw new Error(
-        command === "secret-tool"
-          ? "secret-tool is not installed (install libsecret-tools)"
-          : `${command} is not installed`,
-      );
-    }
-    throw new Error(
-      `${command} exited ${result.exitCode}: ${firstLine(result.stderr)}`,
-    );
+    return getKeychainItem(ctx, parts.service, parts.account);
   },
 };

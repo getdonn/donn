@@ -78,4 +78,29 @@ describe("resolve", () => {
     await resolve("team/t", { source });
     expect(loads.filter((ref) => ref === "org/base")).toHaveLength(1);
   });
+  it("a source's dir() places a layer's relative paths", async () => {
+    const docs = {
+      "org/a": persona("a", {
+        instructions: [{ id: "x", file: "./instructions/x.md" }],
+        hooks: {
+          "pre-tool-use": [{ id: "h", run: "./hooks/h.sh" }],
+        },
+      }),
+    };
+    const plain = await resolve("org/a", { source: memory(docs).source });
+    expect(plain.ir.instructions[0]).toMatchObject({
+      file: "org/instructions/x.md",
+    });
+    const source: PersonaSource = {
+      load: async (ref) => docs[ref as keyof typeof docs],
+      dir: (ref) => `.registry/${ref}`,
+    };
+    const { ir } = await resolve("org/a", { source });
+    expect(ir.instructions[0]).toMatchObject({
+      file: ".registry/org/a/instructions/x.md",
+    });
+    expect(ir.hooks["pre-tool-use"]![0]!.run).toBe(
+      ".registry/org/a/hooks/h.sh",
+    );
+  });
 });
