@@ -74,11 +74,25 @@ export async function launchedOf(dir: string): Promise<Launched> {
   return launched;
 }
 
-/** Swap `persona` into the session at `sessionDir`; nothing is touched if anything fails first. */
+/**
+ * Thrown by `applyLive` given `expect` when the session switched since: the swap would undo it.
+ */
+export class LiveSuperseded extends Error {
+  constructor(readonly persona: string) {
+    super(`the session switched to ${persona}`);
+  }
+}
+
+/**
+ * Swap `persona` into the session at `sessionDir`; nothing is touched if anything fails first.
+ * With `expect`, the session must still run what the caller read (its persona and live.json's
+ * `appliedAt`) when the swap begins, or `LiveSuperseded` is thrown and nothing is touched.
+ */
 export async function applyLive(
   io: CliIo,
   sessionDir: string,
   persona: string,
+  expect?: { persona: string; appliedAt?: string },
 ): Promise<LiveState & { buildHash: string }> {
   const dir = sessionDir;
   const launched = await launchedOf(dir);
@@ -127,6 +141,17 @@ export async function applyLive(
 
   // One switch at a time per session: two overlapping swaps could remove each other's plugin.
   return withFileLock(join(dir, "live.lock"), async () => {
+    const current = await readJson<LiveState>(join(dir, "live.json"));
+    // A switch made while this one compiled wins: the daemon must never undo the user's.
+    if (expect) {
+      const running = current?.persona ?? launched.persona;
+      if (
+        running !== expect.persona ||
+        current?.appliedAt !== expect.appliedAt
+      ) {
+        throw new LiveSuperseded(running);
+      }
+    }
     // Copy the new plugin in before removing the old: the session always has one.
     const plugins = sessionPlugins(dir);
     const source = join(build.buildDir, "plugin");
@@ -141,9 +166,7 @@ export async function applyLive(
         await rm(join(plugins, child), { recursive: true, force: true });
     }
 
-    const previous =
-      (await readJson<LiveState>(join(dir, "live.json")))?.persona ??
-      launched.persona;
+    const previous = current?.persona ?? launched.persona;
     const prompt = build.output.files["system-prompt.md"];
     const state: LiveState & { buildHash: string } = {
       persona: selection.ref,

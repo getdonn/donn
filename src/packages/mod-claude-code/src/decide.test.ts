@@ -259,7 +259,26 @@ describe("live switching", () => {
         "You are running the platform persona.",
       ].join("\n"),
     });
-    expect(liveSection(live({ persona: "team/payments" }))).toBeUndefined();
+  });
+
+  it("supersedes the launch instructions when the launched persona changes", () => {
+    const refreshed = live({
+      persona: "team/payments",
+      instructions:
+        "## zzpersona persona: team/payments\n\nYou are running the edited payments persona.\n",
+    });
+    expect(liveSection(refreshed)).toEqual({
+      id: "zzpersona:live-persona",
+      scope: "session",
+      text: [
+        "The instructions for this session's persona team/payments were updated. Disregard the section headed",
+        '"## zzpersona persona: team/payments"; the instructions below replace it.',
+        "",
+        "## zzpersona persona: team/payments",
+        "",
+        "You are running the edited payments persona.",
+      ].join("\n"),
+    });
   });
 
   it("explains a live switch", () => {

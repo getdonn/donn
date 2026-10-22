@@ -1,19 +1,23 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
-import { connectDaemon, daemonRequest } from "./daemon/client.js";
-import { daemonPaths } from "./daemon/paths.js";
+import { connectDaemon, daemonRequest, ownSocket } from "./daemon/client.js";
+import { daemonPaths, privateSocketDir } from "./daemon/paths.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { zz } from "./test/seed.js";
 
@@ -33,8 +37,8 @@ afterEach(async () => {
 
 const homeIn = (name = "home") => join(root, name);
 
-async function start(home = homeIn()) {
-  const daemon = await startDaemon({ home, env: {}, version: "9.9.9" });
+async function start(home = homeIn(), env: NodeJS.ProcessEnv = {}) {
+  const daemon = await startDaemon({ home, env, version: "9.9.9" });
   daemons.push(daemon);
   return daemon;
 }
@@ -175,6 +179,7 @@ describe("the daemon", () => {
     await waitFor(() => !existsSync(daemon.socket));
     expect(existsSync(paths.pid)).toBe(false);
     expect(existsSync(paths.lock)).toBe(false);
+    expect(existsSync(paths.token)).toBe(false);
     expect(await connectDaemon(home)).toBeUndefined();
   });
 
@@ -190,21 +195,117 @@ describe("the daemon", () => {
   });
 
   it("moves the socket for a long home", async () => {
-    let home = homeIn();
-    while (Buffer.byteLength(join(home, "daemon/sock")) <= 103) {
-      home = join(home, "a-rather-long-folder-name");
-    }
+    const home = longHome();
     const daemon = await start(home);
-    const paths = daemonPaths(home);
+    const paths = daemonPaths(home, {});
+    const dir = join(tmpdir(), `zzpd-${process.getuid!()}`);
     expect(daemon.socket).toMatch(
-      new RegExp(`^${tmpdir()}/zzpd-[0-9a-f]{8}\\.sock$`),
+      new RegExp(`^${dir}/zzpd-[0-9a-f]{8}\\.sock$`),
     );
+    expect(paths.sock).toBe(daemon.socket);
+    // A folder of the user's own, so no one else can take the socket's name.
+    const stats = lstatSync(dir);
+    expect(stats.isDirectory()).toBe(true);
+    expect(stats.uid).toBe(process.getuid!());
+    expect(stats.mode & 0o777).toBe(0o700);
     expect(readFileSync(paths.where, "utf8").trim()).toBe(daemon.socket);
     expect((await (await connectDaemon(home))!.status()).pid).toBe(process.pid);
     await daemon.close();
     expect(existsSync(paths.where)).toBe(false);
   });
+
+  it("puts a long home's socket in XDG_RUNTIME_DIR when set", async () => {
+    const run = join(root, "run");
+    mkdirSync(run, { mode: 0o700 });
+    const home = longHome();
+    const daemon = await start(home, { XDG_RUNTIME_DIR: run });
+    expect(daemon.socket).toMatch(
+      new RegExp(`^${run}/zzpd-[0-9a-f]{8}\\.sock$`),
+    );
+    expect((await (await connectDaemon(home))!.status()).pid).toBe(process.pid);
+  });
+
+  it("refuses a socket folder others could reach", async () => {
+    const loose = join(root, "loose");
+    mkdirSync(loose);
+    chmodSync(loose, 0o755);
+    const home = longHome();
+    await expect(start(home, { XDG_RUNTIME_DIR: loose })).rejects.toMatchObject(
+      { code: "daemon-socket-dir" },
+    );
+    // A failed start leaves nothing a client would take for a daemon.
+    const paths = daemonPaths(home, { XDG_RUNTIME_DIR: loose });
+    expect(existsSync(paths.lock)).toBe(false);
+    expect(existsSync(paths.token)).toBe(false);
+    expect(existsSync(paths.sock)).toBe(false);
+  });
+
+  it("checks the socket folder is a private directory of the user's", async () => {
+    const mine = join(root, "mine");
+    await privateSocketDir(mine);
+    expect(lstatSync(mine).mode & 0o777).toBe(0o700);
+    // Someone else's folder.
+    await expect(
+      privateSocketDir(mine, process.getuid!() + 1),
+    ).rejects.toMatchObject({ code: "daemon-socket-dir" });
+    // A symlink to a folder that would pass.
+    const link = join(root, "link");
+    symlinkSync(mine, link);
+    await expect(privateSocketDir(link)).rejects.toMatchObject({
+      code: "daemon-socket-dir",
+    });
+    const loose = join(root, "loose");
+    mkdirSync(loose, { mode: 0o700 });
+    chmodSync(loose, 0o750);
+    await expect(privateSocketDir(loose)).rejects.toMatchObject({
+      code: "daemon-socket-dir",
+    });
+  });
+
+  it("sends its token only to a socket of the user's", async () => {
+    const home = homeIn();
+    const paths = daemonPaths(home);
+    mkdirSync(paths.dir, { recursive: true });
+    writeFileSync(paths.token, "secret");
+    const seen: IncomingHttpHeaders[] = [];
+    const listener = createServer((req, res) => {
+      seen.push(req.headers);
+      res.end("{}");
+    });
+    await new Promise<void>((r) => listener.listen(paths.sock, r));
+    try {
+      // The socket stands for one another user listens on.
+      const other = process.getuid!() + 1;
+      expect(await connectDaemon(home, { uid: other })).toBeUndefined();
+      expect(seen).toEqual([]);
+      expect(await connectDaemon(home)).toBeDefined();
+      expect(seen[0]?.authorization).toBe("Bearer secret");
+    } finally {
+      await new Promise((r) => listener.close(r));
+    }
+  });
+
+  it("knows a socket of the user's", () => {
+    const uid = process.getuid!();
+    const socket = (owner: number, isSocket = true) => ({
+      uid: owner,
+      isSocket: () => isSocket,
+    });
+    expect(ownSocket(socket(uid))).toBe(true);
+    expect(ownSocket(socket(uid + 1))).toBe(false);
+    expect(ownSocket(socket(uid, false))).toBe(false);
+    expect(ownSocket(undefined)).toBe(false);
+  });
 });
+
+/** A home whose `<home>/daemon/sock` is too long for a socket path. */
+function longHome() {
+  let home = homeIn();
+  while (Buffer.byteLength(join(home, "daemon/sock")) <= 103) {
+    home = join(home, "a-rather-long-folder-name");
+  }
+  return home;
+}
 
 async function waitFor(check: () => boolean) {
   for (let i = 0; i < 200 && !check(); i++) {

@@ -43,10 +43,20 @@ let live: LiveState | undefined;
 
 const NO_SESSION = "live switching needs a session started by zzpersona claude";
 
-const asLive = (json: unknown): LiveState | undefined =>
-  typeof json === "object" && json !== null && "persona" in json
+const HELD: readonly unknown[] = ["mcp", "permissions", "settings"];
+
+/** A live state with every field the mod uses well formed; anything else counts as none. */
+function asLive(json: unknown): LiveState | undefined {
+  if (typeof json !== "object" || json === null) return undefined;
+  const s = json as Partial<Record<keyof LiveState, unknown>>;
+  const strings = [s.persona, s.launched, s.instructions, s.appliedAt];
+  return strings.every((value) => typeof value === "string") &&
+    Array.isArray(s.held) &&
+    s.held.every((part) => HELD.includes(part)) &&
+    typeof s.stricter === "boolean"
     ? (json as LiveState)
     : undefined;
+}
 
 /** What this folder selects, asked once at start and again after a /persona command. */
 async function refresh($: Mod$): Promise<void> {
@@ -185,7 +195,30 @@ async function onCompose($: Mod$, e: unknown, next: Next): Promise<unknown> {
   return result;
 }
 
-/** While a live switch is in effect, the anchor section carries the superseding text. */
+/**
+ * Before each turn, pick up a live.json written since: the daemon refreshes the session when its
+ * persona changes (docs/planning/14-daemon.md). A file read, not the CLI: this runs every turn.
+ */
+async function onSubmit($: Mod$, e: unknown, next: Next): Promise<unknown> {
+  if (session !== undefined) {
+    const text = await $.fs.read(`${session}/live.json`).catch(() => undefined);
+    let read: LiveState | undefined;
+    try {
+      read = text === undefined ? undefined : asLive(JSON.parse(text));
+    } catch {
+      read = undefined;
+    }
+    // Only a newer state: a read racing a /persona use must not roll it back.
+    if (read && read.appliedAt > (live?.appliedAt ?? "")) {
+      live = read;
+      $.ui.invalidate("prompt.section");
+      $.ui.invalidate("ui.render");
+    }
+  }
+  return next(e);
+}
+
+/** While a live state is in effect, the anchor section carries the superseding text. */
 async function onSection(
   $: Mod$,
   e: { name?: string },
@@ -193,7 +226,7 @@ async function onSection(
 ): Promise<unknown> {
   if (e.name !== undefined) seen.add(e.name);
   const result = (await next(e)) as { text?: string | null };
-  const section = live && liveSection(live);
+  const section = live ? liveSection(live) : undefined;
   if (!section || e.name !== anchor) return result;
   return { ...result, text: `${result.text ?? ""}\n\n${section.text}` };
 }
@@ -213,4 +246,5 @@ export function register(on: On, options: Options = {}): void {
   on("command.run", { command: "persona" }, onPersona as Hook);
   on("prompt.compose", onCompose as Hook);
   on("prompt.section", onSection as Hook);
+  on("prompt.submit", onSubmit as Hook);
 }

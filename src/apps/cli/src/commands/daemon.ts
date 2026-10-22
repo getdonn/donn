@@ -38,6 +38,8 @@ async function spawnDetached(io: CliIo, home: string): Promise<void> {
     const bin = fileURLToPath(new URL("../bin.js", import.meta.url));
     spawn(process.execPath, [bin, "daemon", "run"], {
       detached: true,
+      // Not the caller's folder: the daemon must not hold a directory the user may remove.
+      cwd: home,
       stdio: ["ignore", out, out],
       env: { ...io.env, ZZPERSONA_HOME: home },
     }).unref();
