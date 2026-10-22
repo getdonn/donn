@@ -3,6 +3,11 @@
 > Status: design, 2026-10-21. Phase 2, fourth item (order agreed: agents-md, Codex, capability
 > matrix, daemon). Builds on `03` §Local daemon, `10-live-switching.md` (session folders, the
 > live swap) and `12-codex.md`. Built as a `gh stack`: layer 0 is this spec and its plan.
+>
+> 2026-10-22: the next slice, service install and auto-start, is built (spec 16,
+> `16-daemon-service.md`): `zzpersona daemon install|uninstall`, `daemon start` through the service
+> when installed, `zzpersona claude` / `codex` starting the daemon, and a lock that holds under a
+> start race.
 
 ## Intent
 

@@ -1,5 +1,6 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -13,18 +14,38 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { daemonRequest } from "./daemon/client.js";
 import { daemonPaths } from "./daemon/paths.js";
+import { isDaemonProcess } from "./daemon/process.js";
 import { acquireLock, startDaemon, type Daemon } from "./daemon/server.js";
 
 let root: string;
 let daemons: Daemon[];
+let children: ChildProcess[];
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "zzp-lock-"));
   daemons = [];
+  children = [];
 });
 afterEach(async () => {
   await Promise.all(daemons.map((d) => d.close()));
+  for (const child of children) child.kill("SIGKILL");
   rmSync(root, { recursive: true, force: true });
 });
+
+/** A live child process; with `daemon`, its command line ends in `daemon run` like a daemon's. */
+async function liveChild(daemon: boolean): Promise<number> {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      "console.log('ready'); setInterval(() => {}, 1000);",
+      ...(daemon ? ["daemon", "run"] : []),
+    ],
+    { stdio: ["ignore", "pipe", "ignore"] },
+  );
+  children.push(child);
+  await new Promise((resolve) => child.stdout!.once("data", resolve));
+  return child.pid!;
+}
 
 /** A pid that belonged to a process that has exited. */
 const deadPid = () => spawnSync("true").pid!;
@@ -75,7 +96,7 @@ describe("the daemon lock", () => {
 
   it("leaves no temp file when it fails", async () => {
     const lock = join(root, "daemon.lock");
-    writeFileSync(lock, `${process.pid}\n`);
+    writeFileSync(lock, `${await liveChild(true)}\n`);
     await expect(acquireLock(lock)).rejects.toMatchObject({
       code: "daemon-running",
     });
@@ -100,12 +121,54 @@ describe("the daemon lock", () => {
 
   it("a live owner keeps the lock", async () => {
     const lock = join(root, "daemon.lock");
-    writeFileSync(lock, `${process.pid}\n`);
+    const owner = `${await liveChild(true)}\n`;
+    writeFileSync(lock, owner);
     await expect(acquireLock(lock)).rejects.toMatchObject({
       code: "daemon-running",
     });
+    expect(readFileSync(lock, "utf8")).toBe(owner);
+  });
+
+  it("a live process that is not a daemon does not keep the lock", async () => {
+    // Its pid was reused: the owner that wrote it is gone.
+    const lock = join(root, "daemon.lock");
+    writeFileSync(lock, `${await liveChild(false)}\n`);
+    await acquireLock(lock);
     expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
   });
+
+  it("a lock naming this process is stale unless this process took it", async () => {
+    const lock = join(root, "daemon.lock");
+    writeFileSync(lock, `${process.pid}\n`);
+    await acquireLock(lock);
+    expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
+    // Now this process holds it: a second start here finds it taken.
+    await expect(acquireLock(lock)).rejects.toMatchObject({
+      code: "daemon-running",
+    });
+  });
+
+  it("a readable lock that names no pid is stale", async () => {
+    const lock = join(root, "daemon.lock");
+    writeFileSync(lock, "not a pid\n");
+    await acquireLock(lock);
+    expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "an unreadable lock is stale, taken over once",
+    async () => {
+      const lock = join(root, "daemon.lock");
+      writeFileSync(lock, `${await liveChild(true)}\n`);
+      chmodSync(lock, 0o000);
+      const results = await Promise.allSettled([
+        acquireLock(lock),
+        acquireLock(lock),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(readFileSync(lock, "utf8")).toBe(`${process.pid}\n`);
+    },
+  );
 
   it("removes a takeover file older than 10 s", async () => {
     const lock = join(root, "daemon.lock");
@@ -149,5 +212,19 @@ describe("the daemon lock", () => {
       "/status",
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("isDaemonProcess", () => {
+  it("is a live process whose command line runs the daemon", async () => {
+    expect(isDaemonProcess(await liveChild(true))).toBe(true);
+    expect(isDaemonProcess(await liveChild(false))).toBe(false);
+    expect(isDaemonProcess(deadPid())).toBe(false);
+  });
+
+  it("falls back to liveness where the command line cannot be read", async () => {
+    const none = () => undefined;
+    expect(isDaemonProcess(await liveChild(false), none)).toBe(true);
+    expect(isDaemonProcess(deadPid(), none)).toBe(false);
   });
 });

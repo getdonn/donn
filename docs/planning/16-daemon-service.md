@@ -135,3 +135,50 @@ version.
 ## Open questions
 
 1. Whether `zzpersona mod install` should offer `daemon install` (one setup step instead of two).
+
+## Amendments from implementation (2026-10-22)
+
+- **The lock is linked into place:** the starter writes its pid to a temp file and `link()`s it to
+  `daemon.lock`, so the lock is never seen empty; an empty lock is a leftover.
+- **The live-socket check comes first** (replaces the `EADDRINUSE` check in §3): before it writes
+  anything, the daemon connects to the socket for up to 200 ms; one that answers means "already
+  running". It does not wait for a bind to fail.
+- **A launchd reinstall waits for the old job:** `bootout` returns before the job is gone and a
+  `bootstrap` too soon fails, so `install` polls `launchctl print` (up to 5 s) until the job is
+  gone, then bootstraps.
+- **The service only for the home it serves:** `daemon start` and auto-start use the service only
+  when its home (its `ZZPERSONA_HOME` resolved, else `~/.zzpersona`) is this home; homes are
+  compared resolved. Another home's daemon would never answer on this home's socket.
+- **`daemon start` loads an unloaded service:** a service file that is installed but not loaded (a
+  failed install, a manual `bootout`) is loaded rather than kickstarted, which would fail.
+- **No HOME, no service manager:** without `HOME` there is nowhere for the service file;
+  `install` and `uninstall` refuse with `service-unsupported`.
+- **Linux logs:** the unit sets no output files, so the daemon's output goes to the journal
+  (`journalctl --user -u zzpersona-daemon`), not `daemon.log`.
+- **Auto-start's 1 s** bounds the whole step: the probe, the start and the wait together.
+- **A pid is a daemon's only if it runs `daemon run`:** a dead daemon's pid may be reused by an
+  unrelated process. `daemon stop` (and `install`, which stops first) sends SIGTERM only to a live
+  process whose command line (`ps -o command= -p <pid>`) holds `daemon run`, and the lock counts
+  any other live owner as gone. Where `ps` cannot tell (Windows, a failing `ps`) liveness decides.
+  A lock naming the starter's own pid is live only if this process took it.
+- **A service that cannot load leaves nothing behind:** when the load fails during `install` (Linux
+  without a user systemd: WSL, containers, SSH), the file just written is removed and the `service`
+  error shows. `uninstall` ignores a failing trailing `daemon-reload`. When the manager will not
+  start an installed service, `daemon start` and auto-start spawn the daemon detached; the
+  manager's error shows only if that fails too. Under systemd, `daemon-start` names `journalctl`.
+- **An unreadable lock is stale** like an empty one: both reads of it fall back to empty, so it is
+  taken over once.
+- **E2e** (`ZZP_E2E_SERVICE=1`, macOS 26.6.2, Node 26.12.0): the built binary on a temp PATH as
+  `zzpersona`, a temp `HOME` and `ZZPERSONA_HOME`, label `zzpersona.daemon.e2e-<random>`. Install
+  answered and `daemon status` showed the service installed and managing the daemon; after
+  `kill -9`, launchd brought a new pid back within the 15 s bound (the whole test took 15 s,
+  launchd's 10 s respawn throttle included); `daemon stop` held for 3 s; uninstall removed the
+  plist and `launchctl print` no longer found the job. Passed on the first run.
+- **Smoke** (2026-10-22, the user's Mac, Claude Code 2.1.308, herdr): the real `zzpersona daemon
+  install` replaced a detached 0.5.1 daemon with the launchd one (`zzpersona.daemon`, the plist's
+  `ProgramArguments` the pnpm `zzpersona`, `PATH` copied); `daemon status` showed the service
+  managing it. `zzpersona claude -- --continue` in `examples/demo-app` showed the band and
+  `zzpersona status` listed the session `current`. After `kill -9`, launchd had a new pid within
+  1 s (`runs = 2`) and the session was still watched. `daemon stop` held for 12 s ("daemon not
+  running", the service still installed); `daemon start` went through launchd (`runs = 3`) and
+  the session was watched again.
