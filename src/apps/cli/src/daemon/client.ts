@@ -46,6 +46,8 @@ export interface DaemonEvent {
 }
 
 export interface DaemonClient {
+  /** The status the connecting probe returned: no second request needed to show it. */
+  probed: DaemonStatus;
   status(): Promise<DaemonStatus>;
   refresh(): Promise<void>;
   shutdown(): Promise<void>;
@@ -149,11 +151,13 @@ export async function connectDaemon(
     () => undefined,
   );
   if (first === undefined) return undefined;
-  const running = (first as DaemonStatus).version;
+  const probed = first as DaemonStatus;
+  const running = probed.version;
   if (options.version !== undefined && running !== options.version) {
     options.warn?.(versionMismatch(running, options.version));
   }
   return {
+    probed,
     status: async () =>
       (await call("GET", "/status", CALL_TIMEOUT_MS)) as DaemonStatus,
     refresh: async () => void (await call("POST", "/refresh", CALL_TIMEOUT_MS)),

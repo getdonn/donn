@@ -443,7 +443,7 @@ export async function runChecks(
   // daemon: optional; running at the version of this CLI, or not at all
   const daemon = await connectDaemon(home);
   if (daemon) {
-    const status = await daemon.status();
+    const status = daemon.probed;
     if (status.version !== cliVersion()) {
       add(
         "daemon",
@@ -465,9 +465,14 @@ export async function runChecks(
       await readFile(paths.pid, "utf8").catch(() => ""),
       10,
     );
-    const stale =
-      existsSync(await daemonSocket(home)) || (pid > 0 && !isAlive(pid));
-    if (stale) {
+    if (pid > 0 && isAlive(pid)) {
+      add(
+        "daemon",
+        "warn",
+        `the daemon (pid ${pid}) is unresponsive`,
+        "zzpersona daemon stop",
+      );
+    } else if (existsSync(await daemonSocket(home)) || pid > 0) {
       add(
         "daemon",
         "warn",

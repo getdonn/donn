@@ -35,7 +35,7 @@ export async function statusCommand(
     warn: (message) => io.stderr.write(`${message}\n`),
   });
   if (client) {
-    const status = await client.status();
+    const status = client.probed;
     io.stdout.write(
       options.json
         ? `${JSON.stringify({ daemon: true, ...status }, null, 2)}\n`

@@ -1,3 +1,4 @@
+import { createServer, type Server } from "node:net";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -141,6 +142,45 @@ describe("zzpersona status", () => {
     expect(r.stdout.split("\n")[0]).toBe(
       "daemon 0.0.1 (pid " + process.pid + ")",
     );
+  });
+});
+
+describe("a daemon that answers no one", () => {
+  let wedged: Server | undefined;
+  afterEach(() => void wedged?.close());
+
+  /** A listener on the daemon's socket that accepts connections and never responds. */
+  async function wedge() {
+    const paths = daemonPaths(home);
+    mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
+    writeFileSync(paths.token, "t");
+    writeFileSync(paths.pid, `${process.pid}\n`);
+    wedged = createServer(() => {});
+    await new Promise<void>((resolve) => wedged!.listen(paths.sock, resolve));
+  }
+
+  it("lets status fall back to the session folders", async () => {
+    session("a");
+    await wedge();
+    const began = Date.now();
+    const r = await zz(["status"], { cwd: root, home });
+    expect(Date.now() - began).toBeLessThan(2000);
+    expect(r.code).toBe(0);
+    expect(r.stdout.split("\n")[0]).toBe(NOT_RUNNING);
+    expect(r.stdout).toContain("team/payments");
+  });
+
+  it("is reported by doctor as unresponsive, to be stopped", async () => {
+    await wedge();
+    const r = await zz(["doctor", "--json"], { cwd: root, home });
+    const check = (
+      JSON.parse(r.stdout) as {
+        checks: { id: string; status: string; message: string; fix?: string }[];
+      }
+    ).checks.find((c) => c.id === "daemon")!;
+    expect(check.status).toBe("warn");
+    expect(check.message).toContain("unresponsive");
+    expect(check.fix).toContain("zzpersona daemon stop");
   });
 });
 
