@@ -45,7 +45,13 @@ const PROMPT = `Configuration test. Report:
 const zzpersona = (args: string[]) =>
   spawnSync(process.execPath, [BIN, ...args], {
     cwd: project,
-    env: { ...process.env, ZZPERSONA_HOME: home, ZZ_E2E_TOKEN: "e2e-token" },
+    env: {
+      ...process.env,
+      ZZPERSONA_HOME: home,
+      ZZ_E2E_TOKEN: "e2e-token",
+      // Launches would start a detached daemon that outlives the run.
+      ZZPERSONA_NO_DAEMON: "1",
+    },
     encoding: "utf8",
     timeout: 240_000,
   });
@@ -384,6 +390,8 @@ describe.skipIf(process.env.ZZP_E2E !== "1" || !hasCodex)(
             ...process.env,
             ZZPERSONA_HOME: join(dir, "home"),
             ZZ_E2E_TOKEN: "e2e-secret",
+            // The launch would start a detached daemon that outlives the run.
+            ZZPERSONA_NO_DAEMON: "1",
           },
           encoding: "utf8",
           timeout: 240_000,
