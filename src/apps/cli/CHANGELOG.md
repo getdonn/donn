@@ -1,5 +1,13 @@
 # @zzpersona/cli
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [eed515f]
+  - @zzpersona/registry-api@0.3.0
+  - @zzpersona/store-remote@0.2.1
+
 ## 0.8.0
 
 ### Minor Changes
