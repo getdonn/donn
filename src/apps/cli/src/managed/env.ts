@@ -1,4 +1,5 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -18,12 +19,53 @@ export interface ManagedEnv {
   root: string;
   /** Root on POSIX; on Windows, allowed to write the policy folder. */
   isAdmin(): boolean;
-  /** Parsed MDM policy (macOS profile via `plutil -convert json -o -`, Windows `reg query`), or undefined. */
+  /** True when policy folders must be root's (running as root on POSIX). */
+  strict(): boolean;
+  /** lstat of a path (owner uid, permission bits), or undefined when it does not exist. */
+  inspect(path: string): Promise<PathInfo | undefined>;
+  /**
+   * Parsed MDM policy (macOS profile via `plutil -convert json -o -`, Windows `reg query`), or
+   * undefined when there is none. Throws when one is present but cannot be read or parsed.
+   */
   mdmPolicy(): Promise<Record<string, unknown> | undefined>;
   /** `<CLAUDE_CONFIG_DIR or ~/.claude>/remote-settings.json` */
   remoteSettingsFile: string;
   /** Asks a yes/no question; undefined when there is no terminal to ask on. */
   confirm(question: string): Promise<boolean | undefined>;
+  /** Called before each policy file is written; tests throw from it to simulate a crash. */
+  onWrite?(path: string): void;
+}
+
+export interface PathInfo {
+  kind: "dir" | "file" | "symlink" | "other";
+  uid: number;
+  /** Permission bits (mode & 0o7777). */
+  mode: number;
+}
+
+async function lstatInfo(path: string): Promise<PathInfo | undefined> {
+  try {
+    const info = await lstat(path);
+    return {
+      kind: info.isSymbolicLink()
+        ? "symlink"
+        : info.isDirectory()
+          ? "dir"
+          : info.isFile()
+            ? "file"
+            : "other",
+      uid: info.uid,
+      mode: info.mode & 0o7777,
+    };
+  } catch (error) {
+    if (
+      ["ENOENT", "ENOTDIR"].includes(
+        (error as NodeJS.ErrnoException).code ?? "",
+      )
+    )
+      return undefined;
+    throw error;
+  }
 }
 
 export const MACOS_PROFILE =
@@ -96,6 +138,11 @@ export function managedEnv(io: CliIo): ManagedEnv {
   return {
     os,
     root,
+    strict:
+      seam.strict ??
+      (() => process.platform !== "win32" && process.getuid?.() === 0),
+    inspect: seam.inspect ?? lstatInfo,
+    ...(seam.onWrite && { onWrite: seam.onWrite }),
     isAdmin:
       seam.isAdmin ??
       (() =>
@@ -112,7 +159,12 @@ export function managedEnv(io: CliIo): ManagedEnv {
             "-",
             MACOS_PROFILE,
           ]);
-          return r.exitCode === 0 ? parsePlutilJson(r.stdout) : undefined;
+          const policy =
+            r.exitCode === 0 ? parsePlutilJson(r.stdout) : undefined;
+          if (policy === undefined) {
+            throw new Error(`plutil could not read ${MACOS_PROFILE}`);
+          }
+          return policy;
         }
         if (os === "windows") {
           const r = await io.probe.run("reg", [
@@ -121,7 +173,13 @@ export function managedEnv(io: CliIo): ManagedEnv {
             "/v",
             "Settings",
           ]);
-          return r.exitCode === 0 ? parseRegQuery(r.stdout) : undefined;
+          // Exit 1: no Settings value. Anything else that does not parse is a broken policy.
+          if (r.exitCode !== 0) return undefined;
+          const policy = parseRegQuery(r.stdout);
+          if (policy === undefined) {
+            throw new Error(`${WINDOWS_KEY} Settings is not a JSON object`);
+          }
+          return policy;
         }
         return undefined;
       }),

@@ -2,7 +2,7 @@ import { AdapterInputError } from "@zzpersona/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
 import { report } from "./errors.js";
-import { installedProbe, zz } from "./test/seed.js";
+import { installedProbe, safeManaged, zz } from "./test/seed.js";
 
 function io() {
   const out = { stdout: "", stderr: "" };
@@ -12,6 +12,7 @@ function io() {
     stdout: { write: (s: string) => (out.stdout += s) },
     stderr: { write: (s: string) => (out.stderr += s) },
     probe: installedProbe,
+    managed: safeManaged(),
   };
   return { cliIo, out };
 }

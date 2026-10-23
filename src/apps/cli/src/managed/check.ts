@@ -6,7 +6,7 @@ import { CliError, errorText } from "../errors.js";
 import { buildBundle } from "./build.js";
 import { MANIFEST_PATH, sha256 } from "./bundle-io.js";
 import { MACOS_PROFILE, WINDOWS_KEY, type ManagedEnv } from "./env.js";
-import { readInstalled, SETTINGS_PATH, under } from "./install.js";
+import { readInstalled, readPending, SETTINGS_PATH, under } from "./install.js";
 
 // zzpersona managed check: is what the policy folder holds what zzpersona installed, is it what
 // the layers compile to today, and does Claude Code read it? See
@@ -28,6 +28,8 @@ export const CHECK_STATES: readonly CheckState[] = [
 export interface Finding {
   state: CheckState;
   detail: string;
+  /** What to do about it, when the state's general advice does not fit. */
+  fix?: string;
 }
 
 export interface CheckResult {
@@ -61,6 +63,11 @@ async function readJson(
  * highest source that says anything does not set `managedSourcesBehavior: "merge"`. Claude Code
  * then uses that source alone and skips the policy files.
  */
+const delivers = (p: Record<string, unknown> | undefined | null) =>
+  p !== undefined &&
+  p !== null &&
+  Object.keys(p).some((k) => !CONTROL_KEYS.has(k));
+
 async function ignoredBy(env: ManagedEnv): Promise<Finding | undefined> {
   const mdmName =
     env.os === "windows"
@@ -71,17 +78,24 @@ async function ignoredBy(env: ManagedEnv): Promise<Finding | undefined> {
       name: `the server-managed settings cache (${env.remoteSettingsFile})`,
       policy: await readJson(env.remoteSettingsFile),
     },
-    { name: mdmName, policy: await env.mdmPolicy() },
+    { name: mdmName, policy: await env.mdmPolicy().catch(() => null) },
   ];
-  const delivers = (p: Record<string, unknown> | undefined) =>
-    p !== undefined && Object.keys(p).some((k) => !CONTROL_KEYS.has(k));
+  // A profile Claude Code cannot read stops it from starting; either way, it is not our files.
+  const broken = sources.find((s) => s.policy === null);
+  const remote = sources[0]!;
+  if (broken && !delivers(remote.policy)) {
+    return {
+      state: "ignored",
+      detail: `MDM profile present but unreadable: ${broken.name}`,
+    };
+  }
   const delivering = sources.find((s) => delivers(s.policy));
   if (delivering === undefined) return undefined;
   // Claude Code reads the behavior from the highest source carrying it or a policy key.
   const decider = sources.find(
     (s) =>
       delivers(s.policy) ||
-      (s.policy !== undefined && "managedSourcesBehavior" in s.policy),
+      (s.policy != null && "managedSourcesBehavior" in s.policy),
   )!;
   if (decider.policy?.managedSourcesBehavior === "merge") return undefined;
   return {
@@ -183,7 +197,15 @@ async function staleness(
   }
   let fresh: Record<string, string>;
   try {
-    const result = await buildBundle(await context(), {
+    const ctx = await context();
+    // Built elsewhere (say, by an admin for many machines): nothing here to compare with.
+    if (!(await ctx.store.list()).includes(ref)) {
+      return {
+        state: "current",
+        detail: `cannot check for newer layers: ${ref} is not in the store`,
+      };
+    }
+    const result = await buildBundle(ctx, {
       layer: ref,
       os: installed.os,
       fromRegistry: false,
@@ -226,19 +248,38 @@ export async function checkManaged(
 ): Promise<CheckResult> {
   const lazy = typeof context === "function" ? context : async () => context;
   let installed;
+  let pending;
   try {
     installed = await readInstalled(env.root);
+    pending = await readPending(env.root);
   } catch (error) {
-    if (
-      error instanceof CliError &&
-      ["managed-bad-installed", "managed-foreign-path"].includes(error.code)
-    ) {
+    if (error instanceof CliError && error.code === "managed-bad-installed") {
+      const path = String(error.details.path);
       return {
         state: "edited",
-        findings: [{ state: "edited", detail: error.message }],
+        findings: [
+          {
+            state: "edited",
+            detail: error.message,
+            fix: `remove ${path} by hand, then remove or reinstall the files it listed`,
+          },
+        ],
       };
     }
     throw error;
+  }
+  const interrupted: Finding[] =
+    pending === undefined
+      ? []
+      : [
+          {
+            state: "edited",
+            detail:
+              "an interrupted install; re-run zzpersona managed install or uninstall",
+          },
+        ];
+  if (installed === undefined && pending !== undefined) {
+    return { state: "edited", findings: interrupted };
   }
   if (installed === undefined) {
     return {
@@ -248,7 +289,7 @@ export async function checkManaged(
       ],
     };
   }
-  const findings: Finding[] = [];
+  const findings: Finding[] = [...interrupted];
   const ignored = await ignoredBy(env);
   if (ignored) findings.push(ignored);
   findings.push(...(await editedFiles(env.root, installed.files)));

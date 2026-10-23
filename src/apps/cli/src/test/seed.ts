@@ -77,6 +77,29 @@ export interface RunResult {
   stderr: string;
 }
 
+/** Where tests that do not exercise managed settings keep `managed install|check` pointed. */
+export const NO_MANAGED_ROOT = join(
+  tmpdir(),
+  "zzp-no-managed-root",
+  "ClaudeCode",
+);
+
+/**
+ * The `CliIo.managed` seam for tests: never the real system folder, MDM profile, registry or
+ * ~/.claude (`doctor` and `status` read them). The root does not exist, so nothing is installed.
+ * Every CliIo a test builds by hand must carry it.
+ */
+export function safeManaged(): Partial<ManagedEnv> {
+  return {
+    root: NO_MANAGED_ROOT,
+    isAdmin: () => false,
+    strict: () => false,
+    mdmPolicy: async () => undefined,
+    remoteSettingsFile: join(dirname(NO_MANAGED_ROOT), "remote.json"),
+    confirm: async () => undefined,
+  };
+}
+
 /** Run `zzpersona <argv>` in-process. */
 export async function zz(
   argv: string[],
@@ -117,16 +140,7 @@ export async function zz(
     stdout: { write: (s: string) => (stdout += s) },
     stderr: { write: (s: string) => (stderr += s) },
     probe: options.probe ?? installedProbe,
-    // Never the real system folder, MDM profile, registry or ~/.claude: `doctor` and `status`
-    // read them. The root does not exist, so nothing is installed.
-    managed: {
-      root: join(tmpdir(), "zzp-no-managed-root", "ClaudeCode"),
-      isAdmin: () => false,
-      mdmPolicy: async () => undefined,
-      remoteSettingsFile: join(tmpdir(), "zzp-no-managed-root", "remote.json"),
-      confirm: async () => undefined,
-      ...options.managed,
-    },
+    managed: { ...safeManaged(), ...options.managed },
     ...(options.runPlan && { runPlan: options.runPlan }),
     ...(options.now && { now: options.now }),
     ...(options.spawnDaemon && { spawnDaemon: options.spawnDaemon }),
@@ -155,5 +169,6 @@ export function quietIo(options: {
     stdout: { write: () => true },
     stderr: { write: () => true },
     probe: installedProbe,
+    managed: safeManaged(),
   };
 }

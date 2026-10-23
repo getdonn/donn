@@ -156,6 +156,8 @@ export async function managedInstallCommand(
     removed: plan.removed,
   };
   if (planIsEmpty(plan)) {
+    // Only an interrupted install's pending.json, if any, to tidy away.
+    await applyInstall(env, planned);
     io.stdout.write(
       options.json
         ? `${JSON.stringify(result, null, 2)}\n`
@@ -190,7 +192,7 @@ export async function managedInstallCommand(
       );
     }
   }
-  await applyInstall(final);
+  await applyInstall(env, final);
   io.stdout.write(
     options.json
       ? `${JSON.stringify(result, null, 2)}\n`
@@ -275,8 +277,8 @@ export function managedFix(result: CheckResult, os: ManagedOs): string {
       "remove the value from the later drop-in, or ask its owner to; zzpersona never edits other drop-ins",
     stale: `zzpersona managed build, then ${install}`,
   };
-  const states = [...new Set(result.findings.map((f) => f.state))];
-  return states.flatMap((s) => fixes[s] ?? []).join("; ");
+  const all = result.findings.flatMap((f) => f.fix ?? fixes[f.state] ?? []);
+  return [...new Set(all)].join("; ");
 }
 
 /** The `managed:` line of `zzpersona status`, or undefined when nothing is installed. */

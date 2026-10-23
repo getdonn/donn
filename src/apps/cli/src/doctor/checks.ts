@@ -760,7 +760,12 @@ export async function runChecks(
     if (result.state === "missing") {
       add("managed", "skipped", `no managed policy installed in ${root}`);
     } else if (result.state === "current") {
-      add("managed", "ok", `${root}: current`);
+      const notes = result.findings.map((f) => f.detail);
+      add(
+        "managed",
+        "ok",
+        `${root}: current${notes.length > 0 ? ` (${notes.join("; ")})` : ""}`,
+      );
     } else {
       add(
         "managed",

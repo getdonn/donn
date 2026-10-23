@@ -4,26 +4,30 @@ import {
   chown,
   lstat,
   mkdir,
+  open,
   readFile,
   rename,
   rm,
   rmdir,
   stat,
-  writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { ManagedManifest } from "@zzpersona/adapter-sdk";
 import { CliError } from "../errors.js";
-import { fsStep } from "../fs.js";
 import { checkedPath, MANIFEST_PATH, readBundle } from "./bundle-io.js";
 import type { ManagedEnv } from "./env.js";
 
 // Put a bundle into the policy folder, or take it out again. Only files zzpersona owns (listed
-// in the installed manifest) are ever replaced or removed; anything else that is in the way is
-// refused, by name, before the first write. See docs/planning/21-managed-settings.md, section 3.
+// in the installed manifest, or in pending.json after an interrupted install) are ever replaced
+// or removed; anything else that is in the way is refused, by name, before the first write.
+// See docs/planning/21-managed-settings.md, section 3.
 
 export const SETTINGS_PATH = "managed-settings.d/50-zzpersona.json";
 const HOOKS_DIR = "zzpersona/hooks";
+/** Written before an install's first write, removed after its manifest: what it may have written. */
+export const PENDING_PATH = "zzpersona/pending.json";
+/** Every folder an OWN_PATH lives in, below the root. */
+const OWN_FOLDERS = ["managed-settings.d", "zzpersona", HOOKS_DIR];
 
 /** The only paths zzpersona ever writes or removes under the root. */
 const OWN_PATH =
@@ -35,6 +39,15 @@ const isMissing = (error: unknown) =>
 /** A root-relative path, `/`-separated, as an absolute path under `root`. */
 export const under = (root: string, path: string) =>
   join(root, ...path.split("/"));
+
+function isOwnPath(path: string): boolean {
+  try {
+    checkedPath(path);
+  } catch {
+    return false;
+  }
+  return OWN_PATH.test(path);
+}
 
 function ownPath(path: string, listedIn: string): string {
   checkedPath(path);
@@ -106,7 +119,10 @@ export async function readInstalled(
   ) {
     throw bad("is not a format 1 manifest");
   }
-  for (const key of Object.keys(files)) ownPath(key, path);
+  for (const key of Object.keys(files)) {
+    if (!isOwnPath(key))
+      throw bad(`lists ${key}, which zzpersona never installs`);
+  }
   return manifest as unknown as ManagedManifest;
 }
 
@@ -127,6 +143,82 @@ async function onDisk(path: string): Promise<OnDisk> {
 const sameBytes = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && Buffer.compare(a, b) === 0;
 
+/**
+ * The paths an interrupted install may have written (its pending.json), or undefined when no
+ * install is pending. Throws `managed-bad-installed` when the file cannot be read.
+ */
+export async function readPending(root: string): Promise<string[] | undefined> {
+  const path = under(root, PENDING_PATH);
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw error;
+  }
+  let paths: unknown;
+  try {
+    paths = (JSON.parse(text) as { paths?: unknown }).paths;
+  } catch {
+    paths = undefined;
+  }
+  if (
+    !Array.isArray(paths) ||
+    paths.some((p) => typeof p !== "string" || !isOwnPath(p))
+  ) {
+    throw new CliError(
+      "managed-bad-installed",
+      `${path} cannot be read; zzpersona cannot tell which files an interrupted install wrote`,
+      { path },
+    );
+  }
+  return paths as string[];
+}
+
+const unsafe = (path: string, reason: string) =>
+  new CliError("managed-unsafe", `${path} ${reason}; nothing was changed`, {
+    path,
+    reason,
+  });
+
+/**
+ * Before any write or removal: the root and zzpersona's folders must be real folders (never a
+ * symbolic link, so nothing is written or removed through one), and its bookkeeping files real
+ * files. Running as root, each must also be root's and not writable by group or others, or
+ * someone else could change what root installs.
+ */
+async function checkFolders(env: ManagedEnv): Promise<void> {
+  const items: [string, "dir" | "file"][] = [
+    [env.root, "dir"],
+    ...OWN_FOLDERS.map((d): [string, "dir"] => [under(env.root, d), "dir"]),
+    [under(env.root, MANIFEST_PATH), "file"],
+    [under(env.root, PENDING_PATH), "file"],
+  ];
+  for (const [path, want] of items) {
+    const info = await env.inspect(path);
+    if (info === undefined) continue;
+    if (info.kind === "symlink") {
+      throw unsafe(
+        path,
+        "is a symbolic link; zzpersona never writes through one",
+      );
+    }
+    if (info.kind !== want) {
+      throw unsafe(path, want === "dir" ? "is not a folder" : "is not a file");
+    }
+    if (!env.strict()) continue;
+    if (info.uid !== 0) {
+      throw unsafe(path, `is owned by uid ${info.uid}, not root`);
+    }
+    if ((info.mode & 0o022) !== 0) {
+      throw unsafe(
+        path,
+        `is writable by group or others (mode ${info.mode.toString(8).padStart(4, "0")})`,
+      );
+    }
+  }
+}
+
 export interface InstallPlan {
   root: string;
   /** Paths in write order; the manifest, when it changes, is last. */
@@ -134,6 +226,10 @@ export interface InstallPlan {
   replaced: string[];
   removed: string[];
   unchanged: string[];
+  /** What pending.json lists while this install runs: every path it may own. */
+  pending: string[];
+  /** An earlier install was interrupted; its pending.json goes once this one finishes. */
+  hadPending: boolean;
 }
 
 export interface PlannedInstall {
@@ -156,16 +252,21 @@ export async function planInstall(
       { bundle: manifest.os, machine: env.os },
     );
   }
+  await checkFolders(env);
   const installed = await readInstalled(env.root);
-  const owned = new Set(
-    installed ? [...Object.keys(installed.files), MANIFEST_PATH] : [],
-  );
+  const pending = await readPending(env.root);
+  const owned = new Set([
+    ...(installed ? [...Object.keys(installed.files), MANIFEST_PATH] : []),
+    ...(pending ?? []),
+  ]);
   const plan: InstallPlan = {
     root: env.root,
     written: [],
     replaced: [],
     removed: [],
     unchanged: [],
+    pending: [...new Set([...owned, ...Object.keys(files)])].sort(),
+    hadPending: pending !== undefined,
   };
   const refused: string[] = [];
   const order = [
@@ -175,9 +276,10 @@ export async function planInstall(
   for (const path of order) {
     const current = await onDisk(under(env.root, path));
     if (current.kind === "missing") plan.written.push(path);
-    else if (!owned.has(path)) refused.push(under(env.root, path));
+    // Already the bundle's bytes: nothing to write, whoever wrote it (an interrupted install).
     else if (current.kind === "file" && sameBytes(current.bytes, files[path]!))
       plan.unchanged.push(path);
+    else if (!owned.has(path)) refused.push(under(env.root, path));
     else plan.replaced.push(path);
   }
   if (refused.length > 0) {
@@ -189,8 +291,8 @@ export async function planInstall(
       { paths: refused },
     );
   }
-  for (const path of Object.keys(installed?.files ?? {}).sort()) {
-    if (path in files) continue;
+  for (const path of [...owned].sort()) {
+    if (path in files || path === MANIFEST_PATH) continue;
     if ((await onDisk(under(env.root, path))).kind !== "missing")
       plan.removed.push(path);
   }
@@ -202,6 +304,39 @@ export const planIsEmpty = (plan: InstallPlan) =>
 
 /** Chown to root only when running as root on POSIX; elsewhere the folder's defaults apply. */
 const asRoot = () => process.platform !== "win32" && process.getuid?.() === 0;
+
+/** Run a filesystem step; an OS error becomes a `filesystem` error saying what failed. */
+async function step<T>(
+  verb: "write" | "remove",
+  path: string,
+  body: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await body();
+  } catch (error) {
+    const errno = (error as NodeJS.ErrnoException).code;
+    if (errno === undefined) throw error;
+    throw new CliError("filesystem", `could not ${verb} ${path}: ${errno}`, {
+      path,
+      errno,
+    });
+  }
+}
+
+/** Flush a folder's entries (a rename or removal) to disk; not possible on Windows. */
+async function syncDir(dir: string): Promise<void> {
+  if (process.platform === "win32") return;
+  try {
+    const handle = await open(dir, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // The change itself is done; a folder that cannot be flushed is not worth failing over.
+  }
+}
 
 /** Create `dir` and any missing parents, each 0755 (and root's when running as root). */
 async function ensureDir(dir: string): Promise<void> {
@@ -222,7 +357,7 @@ async function ensureDir(dir: string): Promise<void> {
     }
   }
   for (const at of missing) {
-    await fsStep(at, async () => {
+    await step("write", at, async () => {
       await mkdir(at, { mode: 0o755 });
       await chmod(at, 0o755);
       if (asRoot()) await chown(at, 0, 0);
@@ -230,7 +365,7 @@ async function ensureDir(dir: string): Promise<void> {
   }
 }
 
-/** Temp file in the same folder, mode and owner set, then renamed over the target. */
+/** Temp file in the same folder, flushed, mode and owner set, then renamed over the target. */
 async function writeAtomic(
   root: string,
   path: string,
@@ -244,9 +379,15 @@ async function writeAtomic(
     dirname(file),
     `.${basename(file)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`,
   );
-  await fsStep(file, async () => {
+  await step("write", file, async () => {
     try {
-      await writeFile(tmp, bytes, { mode, flag: "wx" });
+      const handle = await open(tmp, "wx", mode);
+      try {
+        await handle.writeFile(bytes);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
       await chmod(tmp, mode);
       if (asRoot()) await chown(tmp, 0, 0);
       await rename(tmp, file);
@@ -255,11 +396,13 @@ async function writeAtomic(
       throw error;
     }
   });
+  await syncDir(dirname(file));
 }
 
 async function remove(root: string, path: string): Promise<void> {
   const file = under(root, path);
-  await fsStep(file, () => rm(file, { force: true }));
+  await step("remove", file, () => rm(file, { force: true }));
+  await syncDir(dirname(file));
 }
 
 /** Remove our own folders once they are empty; anyone else's file keeps them. */
@@ -269,46 +412,76 @@ async function prune(root: string, dirs: string[]): Promise<void> {
   }
 }
 
-/** Write the planned files, remove the old ones, and write the manifest last. */
-export async function applyInstall({
-  plan,
-  files,
-}: PlannedInstall): Promise<void> {
-  const changed = new Set([...plan.written, ...plan.replaced]);
-  for (const path of [...plan.written, ...plan.replaced]) {
-    if (path !== MANIFEST_PATH)
+const pendingBytes = (paths: string[]) =>
+  new TextEncoder().encode(
+    `${JSON.stringify({ format: 1, paths }, null, 2)}\n`,
+  );
+
+/**
+ * pending.json first, then the planned files, the removals and the manifest; pending.json goes
+ * last. An install interrupted anywhere leaves pending.json naming everything it may have
+ * written, so the next install or uninstall owns those files.
+ */
+export async function applyInstall(
+  env: ManagedEnv,
+  { plan, files }: PlannedInstall,
+): Promise<void> {
+  if (!planIsEmpty(plan)) {
+    await writeAtomic(plan.root, PENDING_PATH, pendingBytes(plan.pending));
+    for (const path of [...plan.written, ...plan.replaced]) {
+      if (path === MANIFEST_PATH) continue;
+      env.onWrite?.(path);
       await writeAtomic(plan.root, path, files[path]!);
+    }
+    for (const path of plan.removed) await remove(plan.root, path);
+    if (plan.removed.some((p) => p.startsWith(`${HOOKS_DIR}/`)))
+      await prune(plan.root, [HOOKS_DIR]);
+    if ([...plan.written, ...plan.replaced].includes(MANIFEST_PATH)) {
+      env.onWrite?.(MANIFEST_PATH);
+      await writeAtomic(plan.root, MANIFEST_PATH, files[MANIFEST_PATH]!);
+    }
   }
-  for (const path of plan.removed) await remove(plan.root, path);
-  if (plan.removed.some((p) => p.startsWith(`${HOOKS_DIR}/`)))
-    await prune(plan.root, [HOOKS_DIR]);
-  // Last: an interrupted install never claims files it did not write.
-  if (changed.has(MANIFEST_PATH))
-    await writeAtomic(plan.root, MANIFEST_PATH, files[MANIFEST_PATH]!);
+  if (!planIsEmpty(plan) || plan.hadPending)
+    await remove(plan.root, PENDING_PATH);
 }
 
-/** The files `uninstall` removes: every listed file still there, then the manifest. */
+/**
+ * What `uninstall` removes: every file the manifest or a pending install lists that is still
+ * there, then the manifest and pending.json. Undefined when neither exists.
+ */
 export async function planUninstall(
   env: ManagedEnv,
 ): Promise<string[] | undefined> {
+  await checkFolders(env);
   const installed = await readInstalled(env.root);
-  if (installed === undefined) return undefined;
+  const pending = await readPending(env.root);
+  if (installed === undefined && pending === undefined) return undefined;
+  const listed = new Set([
+    ...Object.keys(installed?.files ?? {}),
+    ...(pending ?? []),
+  ]);
+  listed.delete(MANIFEST_PATH);
   const removed: string[] = [];
-  for (const path of Object.keys(installed.files).sort()) {
+  for (const path of [...listed].sort()) {
     if ((await onDisk(under(env.root, path))).kind !== "missing")
       removed.push(path);
   }
-  return [...removed, MANIFEST_PATH];
+  return [
+    ...removed,
+    ...(installed ? [MANIFEST_PATH] : []),
+    ...(pending ? [PENDING_PATH] : []),
+  ];
 }
 
-/** Remove the files, the manifest last (an interrupted uninstall can be run again). */
+/** Remove the files, then the manifest, then pending.json (an interrupted uninstall can run again). */
 export async function applyUninstall(
   root: string,
   removed: string[],
 ): Promise<void> {
+  const bookkeeping = [MANIFEST_PATH, PENDING_PATH];
   for (const path of removed) {
-    if (path !== MANIFEST_PATH) await remove(root, path);
+    if (!bookkeeping.includes(path)) await remove(root, path);
   }
-  await remove(root, MANIFEST_PATH);
+  for (const path of bookkeeping) await remove(root, path);
   await prune(root, [HOOKS_DIR, "zzpersona"]);
 }

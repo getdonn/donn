@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -95,6 +98,7 @@ function seam(
     os: "linux",
     root: m.system,
     isAdmin: () => true,
+    strict: () => false,
     mdmPolicy: async () => undefined,
     remoteSettingsFile: m.remote,
     confirm: async () => {
@@ -121,6 +125,44 @@ async function build(m: Machine, os: ManagedOs = "linux", out = "bundle") {
 }
 
 const read = (path: string) => readFileSync(path, "utf8");
+const PENDING = "zzpersona/pending.json";
+
+/** Install `bundle`, stopping as a crash would right after the settings file is written. */
+const crash = (m: Machine, bundle: string) =>
+  expect(
+    cli(m, ["managed", "install", bundle, "--yes"], {
+      onWrite: (path) => {
+        if (path !== SETTINGS)
+          throw new Error(`simulated crash before ${path}`);
+      },
+    }),
+  ).rejects.toThrow("simulated crash");
+
+/** lstat with every owner reported as root, except `others` (path → uid). */
+function rootOwned(others: Record<string, number> = {}): Partial<ManagedEnv> {
+  return {
+    strict: () => true,
+    inspect: async (path) => {
+      let info;
+      try {
+        info = lstatSync(path);
+      } catch {
+        return undefined;
+      }
+      return {
+        kind: info.isSymbolicLink()
+          ? "symlink"
+          : info.isDirectory()
+            ? "dir"
+            : info.isFile()
+              ? "file"
+              : "other",
+        uid: others[path] ?? 0,
+        mode: info.mode & 0o7777,
+      };
+    },
+  };
+}
 const manifestOf = (dir: string) =>
   JSON.parse(read(join(dir, MANIFEST))) as ManagedManifest;
 /** Every file under `dir`, `/`-separated and sorted. */
@@ -174,17 +216,82 @@ describe("zzpersona managed install", () => {
     expect(r.stdout).toContain(`write    ${SETTINGS}`);
   });
 
-  it("writes the manifest last: an interrupted install claims nothing", async () => {
+  it("refuses a blocked parent folder before any write", async () => {
     const m = machine();
     const bundle = await build(m);
-    // A file where the hooks folder belongs makes the hook write fail after the settings file.
     put(join(m.system, "zzpersona/hooks"), "in the way");
     const r = await cli(m, ["managed", "install", bundle, "--yes"]);
     expect(r.code).toBe(1);
-    expect(existsSync(join(m.system, SETTINGS))).toBe(true);
-    expect(existsSync(join(m.system, MANIFEST))).toBe(false);
-    // No temporary files are left behind.
-    expect(tree(m.system)).toEqual([SETTINGS, "zzpersona/hooks"]);
+    expect(r.stderr).toContain(
+      `${join(m.system, "zzpersona/hooks")} is not a folder`,
+    );
+    expect(tree(m.system)).toEqual(["zzpersona/hooks"]);
+  });
+
+  it("an interrupted install leaves pending.json; a re-run with a newer bundle finishes", async () => {
+    const m = machine();
+    const first = await build(m, "linux", "first");
+    await crash(m, first);
+    // The settings file was written; the manifest never was; pending.json claims both bundles' files.
+    expect(tree(m.system)).toEqual([SETTINGS, PENDING]);
+    const pending = JSON.parse(read(join(m.system, PENDING))) as {
+      paths: string[];
+    };
+    expect(pending.paths).toEqual(
+      [...Object.keys(manifestOf(first).files), MANIFEST].sort(),
+    );
+    // A different bundle now: the half-written settings file differs, but pending.json owns it.
+    put(
+      join(m.personas, "org/acme.yaml"),
+      ORG.replace("Bash(rm -rf:*)", "Bash(sudo:*)"),
+    );
+    const second = await build(m, "linux", "second");
+    const r = await cli(m, ["managed", "install", second, "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(tree(m.system)).toEqual(
+      [...Object.keys(manifestOf(second).files), MANIFEST].sort(),
+    );
+    expect(read(join(m.system, SETTINGS))).toBe(read(join(second, SETTINGS)));
+    expect((await check(m)).out.state).toBe("current");
+  });
+
+  it("an interrupted install can be uninstalled", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    await crash(m, bundle);
+    put(join(m.system, "managed-settings.d/90-org.json"), "{}\n");
+    const r = await cli(m, ["managed", "uninstall", "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(tree(m.system)).toEqual(["managed-settings.d/90-org.json"]);
+  });
+
+  it("adopts a file of zzpersona's that already holds the bundle's bytes", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    put(join(m.system, SETTINGS), read(join(bundle, SETTINGS)));
+    age(m.system);
+    const before = statSync(join(m.system, SETTINGS)).mtimeMs;
+    const r = await cli(m, ["managed", "install", bundle, "--yes", "--json"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout).written).not.toContain(SETTINGS);
+    expect(statSync(join(m.system, SETTINGS)).mtimeMs).toBe(before);
+    expect(manifestOf(m.system).files[SETTINGS]).toBeDefined();
+  });
+
+  it("removal errors say could not remove", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    expect((await cli(m, ["managed", "install", bundle, "--yes"])).code).toBe(
+      0,
+    );
+    const hook = tree(join(m.system, "zzpersona/hooks"))[0]!;
+    rmSync(join(m.system, "zzpersona/hooks", hook));
+    put(join(m.system, "zzpersona/hooks", hook, "inside"), "x");
+    const r = await cli(m, ["managed", "uninstall", "--yes"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(
+      `could not remove ${join(m.system, "zzpersona/hooks", hook)}`,
+    );
   });
 
   it("prints the plan and asks unless --yes", async () => {
@@ -429,6 +536,85 @@ describe("zzpersona managed install", () => {
   });
 });
 
+describe("unsafe policy folders", () => {
+  async function installed() {
+    const m = machine();
+    const bundle = await build(m);
+    const r = await cli(m, ["managed", "install", bundle, "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    return { m, bundle };
+  }
+
+  it("passes when every folder is root's and not group or other writable", async () => {
+    const { m, bundle } = await installed();
+    for (const dir of [
+      "",
+      "managed-settings.d",
+      "zzpersona",
+      "zzpersona/hooks",
+    ])
+      chmodSync(join(m.system, dir), 0o755);
+    const r = await cli(
+      m,
+      ["managed", "install", bundle, "--yes"],
+      rootOwned(),
+    );
+    expect(r.code, r.stderr).toBe(0);
+  });
+
+  it("refuses a symlinked zzpersona/hooks, for install and uninstall", async () => {
+    const { m, bundle } = await installed();
+    const elsewhere = join(m.root, "elsewhere");
+    put(join(elsewhere, "keep.sh"), "#!/bin/sh\n");
+    rmSync(join(m.system, "zzpersona/hooks"), { recursive: true });
+    symlinkSync(elsewhere, join(m.system, "zzpersona/hooks"));
+    const path = join(m.system, "zzpersona/hooks");
+    for (const argv of [
+      ["managed", "install", bundle, "--yes"],
+      ["managed", "uninstall", "--yes"],
+    ]) {
+      const r = await cli(m, argv, rootOwned());
+      expect(r.code, argv.join(" ")).toBe(1);
+      expect(r.stderr).toContain(`${path} is a symbolic link`);
+      // Not root either: a symlinked folder is never written through.
+      const plain = await cli(m, argv);
+      expect(plain.code, argv.join(" ")).toBe(1);
+    }
+    expect(tree(elsewhere)).toEqual(["keep.sh"]);
+    expect(existsSync(join(m.system, MANIFEST))).toBe(true);
+  });
+
+  it("refuses a folder not owned by root", async () => {
+    const { m, bundle } = await installed();
+    const path = join(m.system, "zzpersona");
+    const r = await cli(
+      m,
+      ["managed", "install", bundle, "--yes"],
+      rootOwned({ [path]: 501 }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(`${path} is owned by uid 501, not root`);
+  });
+
+  it("refuses a group-writable folder, and a manifest that is", async () => {
+    const { m } = await installed();
+    for (const dir of ["", "zzpersona", "zzpersona/hooks"])
+      chmodSync(join(m.system, dir), 0o755);
+    chmodSync(join(m.system, "managed-settings.d"), 0o775);
+    const r = await cli(m, ["managed", "uninstall", "--yes"], rootOwned());
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(
+      `${join(m.system, "managed-settings.d")} is writable by group or others`,
+    );
+    chmodSync(join(m.system, "managed-settings.d"), 0o755);
+    chmodSync(join(m.system, MANIFEST), 0o666);
+    const again = await cli(m, ["managed", "uninstall", "--yes"], rootOwned());
+    expect(again.code).toBe(1);
+    expect(again.stderr).toContain(join(m.system, MANIFEST));
+    expect(existsSync(join(m.system, SETTINGS))).toBe(true);
+  });
+});
+
 describe("zzpersona managed uninstall", () => {
   it("removes exactly the manifest's files and the manifest", async () => {
     const m = machine();
@@ -512,13 +698,69 @@ describe("zzpersona managed check", () => {
     expect(r.code).toBe(1);
   });
 
-  it("stale: a layer that no longer compiles is a finding, not a crash", async () => {
+  it("a layer that is not in the store skips the freshness comparison", async () => {
     const m = await installed();
     rmSync(join(m.personas, "org/acme.yaml"));
     const { r, out } = await check(m);
-    expect(out.state).toBe("stale");
-    expect(out.findings[0]!.detail).toContain("org/acme");
+    expect(out).toEqual({
+      state: "current",
+      findings: [
+        {
+          state: "current",
+          detail: "cannot check for newer layers: org/acme is not in the store",
+        },
+      ],
+    });
+    expect(r.code).toBe(0);
+  });
+
+  it("stale: a layer that no longer compiles, or is refused, says why", async () => {
+    const m = await installed();
+    rmSync(join(m.personas, "org/hooks/guard.sh"));
+    const missing = await check(m);
+    expect(missing.out.state).toBe("stale");
+    expect(missing.out.findings[0]!.detail).toContain(
+      "cannot compile org/acme",
+    );
+    expect(missing.r.code).toBe(1);
+    put(join(m.personas, "org/hooks/guard.sh"), "#!/bin/sh\nexit 2\n");
+    put(
+      join(m.personas, "org/acme.yaml"),
+      `${ORG}targets:\n  claude-code:\n    managed:\n      notARealKey: 1\n`,
+    );
+    const refused = await check(m);
+    expect(refused.out.state).toBe("stale");
+    expect(refused.out.findings[0]!.detail).toContain(
+      "org/acme no longer compiles",
+    );
+    expect(refused.out.findings[0]!.detail).toContain("notARealKey");
+  });
+
+  it("edited while an install is pending", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    await crash(m, bundle);
+    const { r, out } = await check(m);
+    expect(out.state).toBe("edited");
+    expect(out.findings).toContainEqual({
+      state: "edited",
+      detail:
+        "an interrupted install; re-run zzpersona managed install or uninstall",
+    });
     expect(r.code).toBe(1);
+  });
+
+  it("ignored: an MDM profile that is present but unreadable wins", async () => {
+    const m = await installed();
+    const { out } = await check(m, {
+      mdmPolicy: async () => {
+        throw new Error("plutil: malformed");
+      },
+    });
+    expect(out.state).toBe("ignored");
+    expect(out.findings[0]!.detail).toContain(
+      "MDM profile present but unreadable",
+    );
   });
 
   it("edited: a byte changed, or a file is gone", async () => {
@@ -681,6 +923,22 @@ describe("doctor and status", () => {
     expect(warn.status).toBe("warn");
     expect(warn.message).toContain(`${SETTINGS} is missing`);
     expect(warn.fix).toContain("zzpersona managed install");
+  });
+
+  it("doctor: an unreadable installed manifest names the file to remove", async () => {
+    const m = machine();
+    put(join(m.system, MANIFEST), "not json");
+    const c = await doctorManaged(m);
+    expect(c.status).toBe("warn");
+    expect(c.fix).toContain(`remove ${join(m.system, MANIFEST)} by hand`);
+  });
+
+  it("doctor: warns while an install is pending", async () => {
+    const m = machine();
+    await crash(m, await build(m));
+    const c = await doctorManaged(m);
+    expect(c.status).toBe("warn");
+    expect(c.message).toContain("an interrupted install");
   });
 
   it("doctor: a newer manifest format is a warning", async () => {
