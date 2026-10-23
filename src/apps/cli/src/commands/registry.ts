@@ -52,6 +52,12 @@ export function clean(text: string): string {
   );
 }
 
+/** A sign-in code as people compare it: XXXX-XXXX, the way the confirm page shows it. */
+function showCode(code: string): string {
+  const plain = clean(code);
+  return plain.length === 8 ? `${plain.slice(0, 4)}-${plain.slice(4)}` : plain;
+}
+
 /** A registry failure as a CliError: each problem as `<code>: <message>`, with its hint. */
 function fail(error: unknown, options: { grantHint?: boolean } = {}): never {
   if (!(error instanceof RegistryError)) throw error;
@@ -250,7 +256,7 @@ async function browserLogin(
       );
     }
     io.stderr.write(
-      `Open ${link.href} and confirm the code ${clean(login.code)}\n`,
+      `Open ${link.href} and confirm the code ${showCode(login.code)}\n`,
     );
     const skipBrowser = options.browser === false || (io.env.CI ?? "") !== "";
     if (!skipBrowser) {
