@@ -18,7 +18,9 @@ import { createLocalStore } from "@zzpersona/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { cliVersion } from "../commands/daemon.js";
+import { checkHere, managedFix } from "../commands/managed.js";
 import { bundledMod, installedModVersion } from "../commands/mod.js";
+import { managedEnv } from "../managed/env.js";
 import { clean } from "../commands/registry.js";
 import {
   connectDaemon,
@@ -748,6 +750,34 @@ export async function runChecks(
         `zzpersona doctor --fix (it removes only what no running session uses; deleting ${buildRoot} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
       );
     }
+  }
+
+  // managed: the Claude Code policy `zzpersona managed install` put on this machine (spec 21).
+  // Most machines have none, which is not a problem to flag.
+  try {
+    const result = await checkHere(io);
+    const { root, os } = managedEnv(io);
+    if (result.state === "missing") {
+      add("managed", "skipped", `no managed policy installed in ${root}`);
+    } else if (result.state === "current") {
+      add("managed", "ok", `${root}: current`);
+    } else {
+      add(
+        "managed",
+        "warn",
+        result.findings.map((f) => `${f.state}: ${f.detail}`).join("; "),
+        managedFix(result, os),
+      );
+    }
+  } catch (error) {
+    add(
+      "managed",
+      "warn",
+      errorText(error),
+      error instanceof CliError && error.code === "managed-newer-format"
+        ? "upgrade zzpersona"
+        : undefined,
+    );
   }
 
   return checks;

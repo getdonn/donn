@@ -20,7 +20,12 @@ import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { listCommand } from "./commands/list.js";
 import { writeCommand } from "./commands/write.js";
-import { managedBuildCommand } from "./commands/managed.js";
+import {
+  managedBuildCommand,
+  managedCheckCommand,
+  managedInstallCommand,
+  managedUninstallCommand,
+} from "./commands/managed.js";
 import { liveCommand } from "./commands/live.js";
 import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
@@ -34,6 +39,7 @@ import {
 import { resolveCommand } from "./commands/resolve.js";
 import { switchCommand } from "./commands/switch.js";
 import type { ServiceManager } from "./daemon/service.js";
+import type { ManagedEnv } from "./managed/env.js";
 import { CliError, report } from "./errors.js";
 
 // The zzpersona command line. Everything goes through createCli(io) so tests run commands
@@ -74,6 +80,8 @@ export interface CliIo {
   sleep?: (ms: number) => Promise<void>;
   /** Cancels a sign-in (Ctrl-C); defaults to a SIGINT handler held only while it waits. */
   signal?: AbortSignal;
+  /** Test seam for `managed install|uninstall|check`: the system folder, MDM reader and prompt. */
+  managed?: Partial<ManagedEnv>;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -426,6 +434,36 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { out, report } as JSON")
         .action((options) =>
           handle(options.json, () => managedBuildCommand(io, options)),
+        );
+      managed
+        .command("install")
+        .description(
+          "Install a bundle into Claude Code's policy folder (needs administrator rights)",
+        )
+        .argument("<dir>", "a bundle folder from zzpersona managed build")
+        .option("--yes", "do not ask before writing")
+        .option("--json", "print { root, written, replaced, removed } as JSON")
+        .action((dir: string, options) =>
+          handle(options.json, () => managedInstallCommand(io, dir, options)),
+        );
+      managed
+        .command("uninstall")
+        .description(
+          "Remove exactly the files the installed bundle lists (needs administrator rights)",
+        )
+        .option("--yes", "do not ask before removing")
+        .option("--json", "print { root, removed } as JSON")
+        .action((options) =>
+          handle(options.json, () => managedUninstallCommand(io, options)),
+        );
+      managed
+        .command("check")
+        .description(
+          "Report whether the installed policy is current, edited, stale, overridden or ignored",
+        )
+        .option("--json", "print { state, findings } as JSON")
+        .action((options) =>
+          handle(options.json, () => managedCheckCommand(io, options)),
         );
 
       const daemon = program

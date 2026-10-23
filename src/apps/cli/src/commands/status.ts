@@ -4,6 +4,7 @@ import { connectDaemon, type SessionStatus } from "../daemon/client.js";
 import { updateFix } from "../daemon/service.js";
 import { listSessions } from "../session.js";
 import { cliVersion } from "./daemon.js";
+import { managedStatus } from "./managed.js";
 
 // zzpersona status: what the daemon knows of live sessions, or what the registry shows without
 // it. See docs/planning/14-daemon.md §4.
@@ -36,12 +37,14 @@ export async function statusCommand(
     warn: (message) => io.stderr.write(`${message}\n`),
     fix: () => updateFix(io, home),
   });
+  const managed = await managedStatus(io);
+  const managedLine = managed.line === undefined ? [] : [managed.line];
   if (client) {
     const status = client.probed;
     io.stdout.write(
       options.json
-        ? `${JSON.stringify({ daemon: true, ...status }, null, 2)}\n`
-        : `${[`daemon ${status.version} (pid ${status.pid})`, ...status.sessions.map(line)].join("\n")}\n`,
+        ? `${JSON.stringify({ daemon: true, ...status, managed: managed.json }, null, 2)}\n`
+        : `${[`daemon ${status.version} (pid ${status.pid})`, ...status.sessions.map(line), ...managedLine].join("\n")}\n`,
     );
     return 0;
   }
@@ -60,8 +63,8 @@ export async function statusCommand(
     }));
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ daemon: false, sessions }, null, 2)}\n`
-      : `${[NOT_RUNNING, ...sessions.map(line)].join("\n")}\n`,
+      ? `${JSON.stringify({ daemon: false, sessions, managed: managed.json }, null, 2)}\n`
+      : `${[NOT_RUNNING, ...sessions.map(line), ...managedLine].join("\n")}\n`,
   );
   return 0;
 }
