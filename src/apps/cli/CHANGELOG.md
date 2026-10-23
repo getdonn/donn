@@ -1,5 +1,11 @@
 # @zzpersona/cli
 
+## 0.9.1
+
+### Patch Changes
+
+- a7c3615: `zzpersona login` shows the sign-in code as `XXXX-XXXX`, the way the confirm page shows it, so the two can be compared at a glance.
+
 ## 0.9.0
 
 ### Minor Changes

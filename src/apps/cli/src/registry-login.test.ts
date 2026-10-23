@@ -129,7 +129,11 @@ describe("login through the browser", () => {
     expect(r.code, r.stderr).toBe(0);
     const match = /Open (\S+) and confirm the code (\S+)/.exec(r.stderr)!;
     expect(match).not.toBeNull();
-    expect(match[2]).toMatch(/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/);
+    // Shown as XXXX-XXXX, as the confirm page shows it (spec 20 §1).
+    expect(match[2]).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(match[2]!.replace("-", "")).toBe(
+      match[1]!.split("/").pop()!.replace("-", ""),
+    );
     expect(opens).toEqual([match[1]]);
     expect(match[1]).toMatch(new RegExp(`^${registry.url}/login/`));
     expect(r.stdout).toMatch(
