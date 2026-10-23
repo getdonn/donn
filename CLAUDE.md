@@ -40,6 +40,7 @@ overrides them.
 18. `docs/planning/18-registry-contract.md` — Phase 3 starts: the registry contract (`@zzpersona/registry-api`, mock, conformance kit), `store-remote`, `zzpersona login|logout|whoami|pull|publish`, `--local`
 19. `docs/planning/19-publish-engine.md` — the publish rules as a storage-independent engine (`publishLayer` over a `LayerStore`) shared by the mock and the control plane; a harder conformance kit
 20. `docs/planning/20-registry-identity.md` — registry identity: browser sign-in (`zzpersona login <url>`), server-issued sessions, roles in `whoami`, tolerant reading of registry answers; the OSS half of C
+21. `docs/planning/21-managed-settings.md` — Claude Code enforcement (open-source half of E): org/area/team locks compiled to a managed policy bundle, `policy` block, `zzpersona managed build|install|uninstall|check`, `/v1/managed/bundle`
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
