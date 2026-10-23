@@ -175,15 +175,20 @@ function secretIn(value: unknown, prefix: string): string | undefined {
 /**
  * `over` laid on `base` the way Claude Code merges drop-ins: objects per key, lists combined
  * without duplicates. A value `base` already holds is never replaced: an unequal one is a
- * conflict, named by its dotted path.
+ * conflict, named by its dotted path (with a leading dot). Below a `sealed` path nothing may be
+ * added either: a locked server is taken whole.
  */
 function overlay(
   base: unknown,
   over: unknown,
   path: string,
+  sealed: (path: string) => boolean,
 ): { value: unknown; conflict?: string } {
   if (base === undefined || isDeepStrictEqual(base, over)) {
     return { value: base === undefined ? over : base };
+  }
+  if (sealed(path) && !(isObject(base) && isObject(over))) {
+    return { value: base, conflict: path };
   }
   if (Array.isArray(base) && Array.isArray(over)) {
     const seen = new Set(base.map((item) => JSON.stringify(item)));
@@ -199,10 +204,15 @@ function overlay(
       ([key]) => !Object.hasOwn(over, key),
     );
     for (const [key, value] of Object.entries(over)) {
+      const childPath = `${path}.${key}`;
+      if (!Object.hasOwn(base, key) && sealed(childPath)) {
+        return { value: base, conflict: childPath };
+      }
       const child = overlay(
         Object.hasOwn(base, key) ? base[key] : undefined,
         value,
-        `${path}.${key}`,
+        childPath,
+        sealed,
       );
       if (child.conflict !== undefined) return child;
       merged.push([key, child.value]);
@@ -216,6 +226,22 @@ function overlay(
 /** The settings paths the compile wrote, with the IR values each came from. */
 class Sources {
   private readonly map = new Map<string, { path: string; layer: Ref }[]>();
+
+  private readonly whole = new Set<string>();
+
+  /** Like add(), and nothing may be added below `setting` either. */
+  seal(setting: string, path: string, layer: Ref): void {
+    this.whole.add(setting);
+    this.add(setting, path, layer);
+  }
+
+  /** Whether `setting` (a dotted path with a leading dot) is strictly below a sealed one. */
+  readonly sealed = (setting: string): boolean => {
+    for (const whole of this.whole) {
+      if (setting.startsWith(`.${whole}.`)) return true;
+    }
+    return false;
+  };
 
   add(setting: string, path: string, layer: Ref): void {
     const list = this.map.get(setting) ?? [];
@@ -294,14 +320,17 @@ const mcpJsonServer = (server: Exclude<McpServer, { ref: string }>) =>
 
 /**
  * An installed hook path as a shell word. POSIX: single quotes, so `$`, backticks and spaces stay
- * literal. Windows: double quotes, so a `"` in the name cannot be quoted and is refused.
+ * literal. Windows: double quotes, which cannot hold a `"` and leave `$`, backticks (PowerShell)
+ * and `%` (cmd) live, so a name with any of them is refused.
  */
 function shellPath(os: ManagedInput["os"], file: string, what: string) {
   const path = installedPath(os, file);
   if (os !== "windows") return `'${path.replaceAll("'", "'\\''")}'`;
-  if (path.includes('"')) {
+  const name = posix.basename(file);
+  const bad = /["$`%]/.exec(name);
+  if (bad) {
     throw new AdapterInputError(
-      `hook ${what}: ${posix.basename(file)} has a " in its name, which a Windows command cannot quote`,
+      `hook ${what}: ${name} has ${bad[0]} in its name, which a Windows shell would expand or cannot quote`,
     );
   }
   return `"${path}"`;
@@ -386,7 +415,7 @@ export function compileManaged(input: ManagedInput): ManagedResult {
     const why = notRemote(server);
     if (why === undefined && "url" in server) {
       remote[name] = { type: server.transport ?? "http", url: server.url };
-      sources.add(`managedMcpServers.${name}`, path, lock.layer);
+      sources.seal(`managedMcpServers.${name}`, path, lock.layer);
       add(path, lock.layer, "enforced", REASON.remote);
     } else if (exclusive) {
       exclusiveServers[name] = mcpJsonServer(server);
@@ -491,7 +520,12 @@ export function compileManaged(input: ManagedInput): ManagedResult {
           "managed-secret",
         );
       } else {
-        const merged = overlay(policy, { [key]: managed[key] }, "");
+        const merged = overlay(
+          policy,
+          { [key]: managed[key] },
+          "",
+          sources.sealed,
+        );
         if (merged.conflict === undefined) {
           policy = merged.value as Settings;
           add(path, layer, "enforced", REASON.passthrough);

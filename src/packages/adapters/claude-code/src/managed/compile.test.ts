@@ -296,18 +296,29 @@ describe("compileManaged: hooks", () => {
     expect(command("org/hooks/it's.sh", "linux")).toBe(
       "'/etc/claude-code/zzpersona/hooks/stop-odd-it'\\''s.sh'",
     );
-    expect(command("org/hooks/a$b.sh", "windows")).toBe(
-      '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\stop-odd-a$b.sh"',
+    expect(command("org/hooks/a-b.sh", "windows")).toBe(
+      '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\stop-odd-a-b.sh"',
     );
-    const quote = 'org/hooks/a".sh';
-    expect(() =>
-      compileManaged(
-        input(tricky(quote), {
-          os: "windows",
-          scripts: { [quote]: encode("x") },
-        }),
-      ),
-    ).toThrow(AdapterInputError);
+    expect(command("org/hooks/a$b.sh", "linux")).toBe(
+      "'/etc/claude-code/zzpersona/hooks/stop-odd-a$b.sh'",
+    );
+  });
+
+  it("refuses a Windows hook name with a quote, $, backtick or %", () => {
+    for (const char of ['"', "$", "`", "%"]) {
+      const run = `org/hooks/a${char}b.sh`;
+      const compileFor = () =>
+        compileManaged(
+          input(
+            ir({
+              hooks: { stop: [{ id: "odd", run }] },
+              locks: [{ path: "hooks", layer: "org/acme" }],
+            }),
+            { os: "windows", scripts: { [run]: encode("x") } },
+          ),
+        );
+      expect(compileFor, char).toThrow(AdapterInputError);
+    }
   });
 
   it("throws AdapterInputError when a locked hook's script is missing", () => {
@@ -773,6 +784,45 @@ describe("compileManaged: policy and passthrough", () => {
       );
       expect(reason).toContain("permissions.disableBypassPermissionsMode");
       expect(reason).toContain("policy.bypassPermissions (org/acme)");
+    });
+
+    it("a key added inside a locked server", () => {
+      const reason = refusal(
+        collide(
+          {
+            mcp: { servers: { jira: { url: "https://jira.corp/mcp" } } },
+            locks: [{ path: "mcp.servers.jira", layer: "org/acme" }],
+          },
+          {
+            managedMcpServers: {
+              jira: { headers: { "X-Key": "issued-to-everyone" } },
+            },
+          },
+        ),
+        "managedMcpServers",
+      );
+      expect(reason).toContain("managedMcpServers.jira.headers");
+      expect(reason).toContain("mcp.servers.jira (org/acme)");
+    });
+
+    it("applies a new server name beside a locked one", () => {
+      const result = collide(
+        {
+          mcp: { servers: { jira: { url: "https://jira.corp/mcp" } } },
+          locks: [{ path: "mcp.servers.jira", layer: "org/acme" }],
+        },
+        {
+          managedMcpServers: {
+            wiki: { type: "http", url: "https://wiki.corp/mcp" },
+          },
+        },
+      );
+      expect(settings(result)).toEqual({
+        managedMcpServers: {
+          jira: { type: "http", url: "https://jira.corp/mcp" },
+          wiki: { type: "http", url: "https://wiki.corp/mcp" },
+        },
+      });
     });
 
     it("applies a key that collides with nothing, and an equal value", () => {
