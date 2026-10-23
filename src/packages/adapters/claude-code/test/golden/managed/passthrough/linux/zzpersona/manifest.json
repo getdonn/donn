@@ -1,0 +1,72 @@
+{
+  "files": {
+    "managed-settings.d/50-zzpersona.json": "91a675ac0649baf2d4d7f99e7de68250440c6b71ed7e8542514476e34997c0f4"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "minClaudeCode": "2.1.283",
+  "os": "linux",
+  "report": {
+    "entries": [
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "instructions[org-security]",
+        "reason": "delivered as claudeMd: guidance after the system prompt that users cannot exclude, not part of the system prompt"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "permissions.deny[Bash(rm -rf:*)]",
+        "reason": "lower scopes may add rules, never remove this one"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "policy.bypassPermissions",
+        "reason": "permissions.disableBypassPermissionsMode: the bypass mode cannot be entered"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.claudeMd",
+        "reason": "applied last, as written"
+      },
+      {
+        "layer": "area/fintech",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.deniedModels",
+        "reason": "applied last, as written"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.permissions",
+        "reason": "applied last, as written"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.strictKnownMarketplaces",
+        "reason": "applied last, as written"
+      }
+    ],
+    "warnings": []
+  },
+  "zzpersona": "0.12.0"
+}

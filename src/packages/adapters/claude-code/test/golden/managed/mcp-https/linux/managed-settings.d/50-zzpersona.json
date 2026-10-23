@@ -1,0 +1,12 @@
+{
+  "managedMcpServers": {
+    "events": {
+      "type": "sse",
+      "url": "https://events.corp/sse"
+    },
+    "jira": {
+      "type": "http",
+      "url": "https://jira.corp/mcp"
+    }
+  }
+}

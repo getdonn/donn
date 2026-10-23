@@ -1,0 +1,15 @@
+{
+  "claudeMd": "Org guidance replaces the fragments.",
+  "deniedModels": [
+    "claude-haiku-*"
+  ],
+  "permissions": {
+    "defaultMode": "default",
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "strictKnownMarketplaces": []
+}

@@ -1,0 +1,890 @@
+import { createHash } from "node:crypto";
+import {
+  AdapterInputError,
+  type ManagedInput,
+  type ManagedOs,
+  type ManagedResult,
+} from "@zzpersona/adapter-sdk";
+import { ResolvedPersona } from "@zzpersona/spec";
+import { describe, expect, it } from "vitest";
+import adapter, {
+  compileManaged,
+  MANAGED_ROOTS,
+  managedInputs,
+} from "../index.js";
+
+// The managed policy bundle, one case per row of docs/planning/21-managed-settings.md, section 2.
+// Each bundle is compared per file with test/golden/managed/<case>/<os>/; regenerate with
+// `vitest run -u` after an intended change.
+
+const OSES: ManagedOs[] = ["macos", "linux", "windows"];
+const encode = (text: string) => new TextEncoder().encode(text);
+const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
+const ir = (
+  fields: Partial<Omit<ResolvedPersona, "irVersion">> = {},
+): ResolvedPersona =>
+  ResolvedPersona.parse({
+    irVersion: 0,
+    layers: ["org/acme", "area/fintech", "team/payments"],
+    metadata: { name: "payments", labels: {} },
+    instructions: [],
+    skills: [],
+    mcp: { servers: {} },
+    permissions: { allow: [], deny: [], ask: [] },
+    hooks: {},
+    knowledge: [],
+    secrets: { providers: {} },
+    locks: [],
+    targets: {},
+    policy: {},
+    ...fields,
+  });
+
+const SCRIPTS: Record<string, Uint8Array> = {
+  "org/hooks/block-prod-db.sh": encode(
+    "#!/bin/sh\necho 'no prod db' >&2\nexit 2\n",
+  ),
+  "team/hooks/audit.sh": encode("#!/bin/sh\nexit 0\n"),
+  "project/hooks/format.sh": encode("#!/bin/sh\npnpm format\n"),
+};
+const TEXTS: Record<string, string> = {
+  "org/instructions/conduct.md":
+    "\n  Review code the way you would want yours reviewed.  \n\n",
+};
+
+const input = (
+  persona: ResolvedPersona,
+  overrides: Partial<ManagedInput> = {},
+): ManagedInput => ({
+  ir: persona,
+  layers: [
+    { ref: "org/acme", version: 3, digest: `sha256:${"a".repeat(64)}` },
+    { ref: "area/fintech", digest: `sha256:${"b".repeat(64)}` },
+    { ref: "team/payments", version: 1, digest: `sha256:${"c".repeat(64)}` },
+  ],
+  os: "macos",
+  zzpersona: "0.12.0",
+  texts: TEXTS,
+  scripts: SCRIPTS,
+  ...overrides,
+});
+
+const bundleOf = (result: ManagedResult) => {
+  if (!result.bundle) {
+    throw new Error(`refused: ${JSON.stringify(result.report.entries)}`);
+  }
+  return result.bundle;
+};
+
+const json = (result: ManagedResult, path: string): unknown => {
+  const bytes = bundleOf(result).files[path];
+  if (!bytes) throw new Error(`no file ${path}`);
+  return JSON.parse(decode(bytes));
+};
+
+const settings = (result: ManagedResult) =>
+  json(result, "managed-settings.d/50-zzpersona.json") as Record<
+    string,
+    unknown
+  >;
+
+/** Compiles `persona` for every OS and compares each file with its golden. */
+async function goldens(name: string, persona: ResolvedPersona, extra = {}) {
+  for (const os of OSES) {
+    const { files } = bundleOf(
+      compileManaged(input(persona, { os, ...extra })),
+    );
+    for (const path of Object.keys(files).sort()) {
+      await expect(decode(files[path]!)).toMatchFileSnapshot(
+        `../../test/golden/managed/${name}/${os}/${path}`,
+      );
+    }
+  }
+}
+
+describe("compileManaged: permissions", () => {
+  const persona = ir({
+    permissions: {
+      allow: ["Read(./**)"],
+      deny: ["Bash(rm -rf:*)", "Read(./.env)"],
+      ask: ["Bash(git push:*)"],
+    },
+    locks: [
+      { path: "permissions.deny", layer: "org/acme" },
+      { path: "permissions.ask", layer: "team/payments" },
+    ],
+  });
+
+  it("locked permission rules reach the policy", async () => {
+    const result = compileManaged(input(persona));
+    expect(settings(result)).toEqual({
+      permissions: {
+        ask: ["Bash(git push:*)"],
+        deny: ["Bash(rm -rf:*)", "Read(./.env)"],
+      },
+    });
+    expect(result.report.entries).toEqual([
+      expect.objectContaining({
+        path: "permissions.deny[Bash(rm -rf:*)]",
+        layer: "org/acme",
+        outcome: "enforced",
+      }),
+      expect.objectContaining({
+        path: "permissions.deny[Read(./.env)]",
+        layer: "org/acme",
+        outcome: "enforced",
+      }),
+      expect.objectContaining({
+        path: "permissions.ask[Bash(git push:*)]",
+        layer: "team/payments",
+        outcome: "enforced",
+      }),
+    ]);
+    await goldens("permission-lists", persona);
+  });
+
+  it("a section lock takes every entry", async () => {
+    const whole = ir({
+      instructions: [
+        { id: "org-conduct", file: "org/instructions/conduct.md" },
+        { id: "team-style", inline: "Prefer small PRs.\n" },
+      ],
+      permissions: {
+        allow: ["Read(./**)"],
+        deny: ["Bash(rm -rf:*)"],
+        ask: ["Bash(git push:*)"],
+      },
+      hooks: {
+        "pre-tool-use": [
+          {
+            id: "block-prod-db",
+            run: "org/hooks/block-prod-db.sh",
+            matcher: "Bash",
+          },
+        ],
+        stop: [{ id: "audit", run: "team/hooks/audit.sh" }],
+      },
+      locks: [
+        { path: "permissions", layer: "org/acme" },
+        { path: "hooks", layer: "org/acme" },
+        { path: "instructions", layer: "org/acme" },
+      ],
+    });
+    const result = compileManaged(input(whole));
+    const policy = settings(result);
+    expect(policy.permissions).toEqual({
+      allow: ["Read(./**)"],
+      ask: ["Bash(git push:*)"],
+      deny: ["Bash(rm -rf:*)"],
+    });
+    expect(Object.keys(policy.hooks as object)).toEqual(["PreToolUse", "Stop"]);
+    expect(policy.claudeMd).toBe(
+      "Review code the way you would want yours reviewed.\n\nPrefer small PRs.",
+    );
+    expect(result.report.entries.map((e) => e.path)).toEqual([
+      "instructions[org-conduct]",
+      "instructions[team-style]",
+      "permissions.allow[Read(./**)]",
+      "permissions.deny[Bash(rm -rf:*)]",
+      "permissions.ask[Bash(git push:*)]",
+      "hooks.pre-tool-use[block-prod-db]",
+      "hooks.stop[audit]",
+    ]);
+    await goldens("section-lock", whole);
+  });
+
+  it("an entry lock takes only that entry", async () => {
+    const one = ir({
+      ...persona,
+      locks: [
+        { path: "permissions.deny[Bash(rm -rf:*)]", layer: "area/fintech" },
+      ],
+    });
+    const result = compileManaged(input(one));
+    expect(settings(result)).toEqual({
+      permissions: { deny: ["Bash(rm -rf:*)"] },
+    });
+    expect(result.report.entries).toEqual([
+      expect.objectContaining({
+        path: "permissions.deny[Bash(rm -rf:*)]",
+        layer: "area/fintech",
+        outcome: "enforced",
+      }),
+    ]);
+    await goldens("entry-lock", one);
+  });
+});
+
+describe("compileManaged: hooks", () => {
+  const persona = ir({
+    hooks: {
+      "pre-tool-use": [
+        {
+          id: "block-prod-db",
+          run: "org/hooks/block-prod-db.sh",
+          matcher: "Bash",
+        },
+      ],
+      "post-tool-use": [
+        {
+          id: "format-on-write",
+          run: "project/hooks/format.sh",
+          matcher: "Edit|Write",
+        },
+      ],
+    },
+    locks: [{ path: "hooks.pre-tool-use[block-prod-db]", layer: "org/acme" }],
+  });
+  const script = "zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh";
+
+  it("locked hooks are copied and referenced by quoted absolute path", async () => {
+    const result = compileManaged(input(persona));
+    expect(settings(result)).toEqual({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Bash",
+            hooks: [
+              {
+                type: "command",
+                command:
+                  '"/Library/Application Support/ClaudeCode/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh"',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const { files } = bundleOf(result);
+    expect(files[script]).toEqual(SCRIPTS["org/hooks/block-prod-db.sh"]);
+    expect(Object.keys(files).filter((p) => p.includes("format"))).toEqual([]);
+
+    const command = (os: ManagedOs) =>
+      (
+        settings(compileManaged(input(persona, { os }))).hooks as {
+          PreToolUse: { hooks: { command: string }[] }[];
+        }
+      ).PreToolUse[0]!.hooks[0]!.command;
+    expect(command("linux")).toBe(
+      '"/etc/claude-code/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh"',
+    );
+    expect(command("windows")).toBe(
+      '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\pre-tool-use-block-prod-db-block-prod-db.sh"',
+    );
+    await goldens("hooks", persona);
+  });
+
+  it("throws AdapterInputError when a locked hook's script is missing", () => {
+    expect(() => compileManaged(input(persona, { scripts: {} }))).toThrow(
+      AdapterInputError,
+    );
+  });
+
+  it("throws AdapterInputError for a hook outside the personas root", () => {
+    const outside = ir({
+      hooks: { stop: [{ id: "escape", run: "../escape.sh" }] },
+      locks: [{ path: "hooks", layer: "org/acme" }],
+    });
+    expect(() =>
+      compileManaged(
+        input(outside, { scripts: { "../escape.sh": encode("x") } }),
+      ),
+    ).toThrow(AdapterInputError);
+  });
+});
+
+describe("compileManaged: MCP servers", () => {
+  const jira = { url: "https://jira.corp/mcp" };
+  const events = { url: "https://events.corp/sse", transport: "sse" as const };
+  const schema = {
+    command: "npx",
+    args: ["-y", "@corp/payments-schema-mcp"],
+    env: { SCHEMA_URL: "https://schema.corp" },
+  };
+
+  it("a locked https server goes to managedMcpServers", async () => {
+    const persona = ir({
+      mcp: {
+        servers: { jira, events, wiki: { url: "https://wiki.corp/mcp" } },
+      },
+      locks: [
+        { path: "mcp.servers.jira", layer: "org/acme" },
+        { path: "mcp.servers.events", layer: "team/payments" },
+      ],
+    });
+    const result = compileManaged(input(persona));
+    expect(settings(result)).toEqual({
+      managedMcpServers: {
+        events: { type: "sse", url: "https://events.corp/sse" },
+        jira: { type: "http", url: "https://jira.corp/mcp" },
+      },
+    });
+    expect(bundleOf(result).files["managed-mcp.json"]).toBeUndefined();
+    expect(result.report.entries).toEqual([
+      expect.objectContaining({
+        path: "mcp.servers.events",
+        layer: "team/payments",
+        outcome: "enforced",
+      }),
+      expect.objectContaining({
+        path: "mcp.servers.jira",
+        layer: "org/acme",
+        outcome: "enforced",
+      }),
+    ]);
+    await goldens("mcp-https", persona);
+  });
+
+  it("a locked stdio server needs exclusive mcp", () => {
+    for (const server of [
+      schema,
+      { url: "https://jira.corp/mcp", headers: { "X-Team": "payments" } },
+      { url: "http://localhost:3000/mcp" },
+    ]) {
+      const result = compileManaged(
+        input(
+          ir({
+            mcp: { servers: { local: server } },
+            locks: [{ path: "mcp.servers", layer: "org/acme" }],
+          }),
+        ),
+      );
+      expect(result.bundle).toBeUndefined();
+      expect(result.report.entries).toEqual([
+        expect.objectContaining({
+          path: "mcp.servers.local",
+          layer: "org/acme",
+          outcome: "refused",
+          code: "managed-mcp-needs-exclusive",
+        }),
+      ]);
+    }
+  });
+
+  it("with policy.mcp exclusive, other servers go to managed-mcp.json", async () => {
+    const persona = ir({
+      mcp: {
+        servers: {
+          jira,
+          schema,
+          records: {
+            url: "https://records.corp/mcp",
+            headers: { "X-Team": "payments" },
+          },
+        },
+      },
+      locks: [{ path: "mcp", layer: "org/acme" }],
+      policy: { mcp: "exclusive" },
+    });
+    const result = compileManaged(input(persona));
+    expect(json(result, "managed-mcp.json")).toEqual({
+      mcpServers: {
+        records: {
+          type: "http",
+          url: "https://records.corp/mcp",
+          headers: { "X-Team": "payments" },
+        },
+        schema: {
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@corp/payments-schema-mcp"],
+          env: { SCHEMA_URL: "https://schema.corp" },
+        },
+      },
+    });
+    expect(settings(result)).toEqual({
+      allowManagedMcpServersOnly: true,
+      managedMcpServers: {
+        jira: { type: "http", url: "https://jira.corp/mcp" },
+      },
+    });
+    await goldens("mcp-exclusive", persona);
+  });
+
+  it("exclusive mcp with no locked servers writes an empty managed-mcp.json", async () => {
+    const persona = ir({
+      mcp: { servers: { jira } },
+      policy: { mcp: "exclusive" },
+    });
+    const result = compileManaged(input(persona));
+    expect(json(result, "managed-mcp.json")).toEqual({ mcpServers: {} });
+    expect(decode(bundleOf(result).files["managed-mcp.json"]!)).toBe(
+      '{\n  "mcpServers": {}\n}\n',
+    );
+    await goldens("mcp-exclusive-empty", persona);
+  });
+
+  it("refuses secret references", () => {
+    const cases = {
+      env: { command: "npx", env: { TOKEN: "secret://vault/jira" } },
+      headers: {
+        url: "https://jira.corp/mcp",
+        headers: { Authorization: "Bearer secret://vault/jira" },
+      },
+      url: { url: "https://jira.corp/mcp?key=secret://vault/jira" },
+    };
+    for (const [name, server] of Object.entries(cases)) {
+      const result = compileManaged(
+        input(
+          ir({
+            mcp: { servers: { [name]: server } },
+            locks: [{ path: "mcp.servers", layer: "org/acme" }],
+            policy: { mcp: "exclusive" },
+          }),
+          { provenance: { "policy.mcp": "org/acme" } },
+        ),
+      );
+      expect(result.bundle, name).toBeUndefined();
+      expect(result.report.entries, name).toContainEqual(
+        expect.objectContaining({
+          path: `mcp.servers.${name}`,
+          outcome: "refused",
+          code: "managed-secret",
+        }),
+      );
+    }
+  });
+});
+
+describe("compileManaged: instructions", () => {
+  it("locked instructions become claudeMd", async () => {
+    const persona = ir({
+      instructions: [
+        { id: "org-conduct", file: "org/instructions/conduct.md" },
+        { id: "team-free", inline: "Pick any style you like.\n" },
+        {
+          id: "org-security",
+          inline: "\nNever paste credentials into prompts.\n",
+        },
+      ],
+      locks: [
+        { path: "instructions[org-security]", layer: "org/acme" },
+        { path: "instructions[org-conduct]", layer: "org/acme" },
+      ],
+    });
+    const result = compileManaged(input(persona));
+    expect(settings(result)).toEqual({
+      claudeMd:
+        "Review code the way you would want yours reviewed.\n\nNever paste credentials into prompts.",
+    });
+    expect(result.report.entries.map((e) => e.path)).toEqual([
+      "instructions[org-conduct]",
+      "instructions[org-security]",
+    ]);
+    expect(result.report.entries[0]!.reason).toMatch(/guidance/);
+    await goldens("instructions", persona);
+  });
+
+  it("throws AdapterInputError when a locked instruction file's text is missing", () => {
+    const persona = ir({
+      instructions: [
+        { id: "org-conduct", file: "org/instructions/conduct.md" },
+      ],
+      locks: [{ path: "instructions", layer: "org/acme" }],
+    });
+    expect(() => compileManaged(input(persona, { texts: {} }))).toThrow(
+      AdapterInputError,
+    );
+  });
+});
+
+describe("compileManaged: advisory", () => {
+  it("gateway, skills, knowledge and providers are advisory", async () => {
+    const persona = ir({
+      mcp: { gateway: "bifrost://corp", servers: {} },
+      skills: [{ name: "pr-review", source: "org/skills/pr-review" }],
+      knowledge: [{ id: "pci-handbook", source: "mcp://confluence?space=PCI" }],
+      secrets: { providers: { vault: { type: "hashicorp-vault" } } },
+      metadata: { name: "payments", labels: { org: "acme" } },
+      targets: { "claude-code": { model: "opus" } },
+      locks: [
+        { path: "mcp.gateway", layer: "org/acme" },
+        { path: "skills", layer: "org/acme" },
+        { path: "knowledge", layer: "area/fintech" },
+        { path: "secrets.providers", layer: "org/acme" },
+        { path: "metadata.labels.org", layer: "org/acme" },
+        { path: "targets.claude-code.model", layer: "team/payments" },
+        { path: "permissions.ask", layer: "team/payments" },
+      ],
+    });
+    const result = compileManaged(input(persona));
+    expect(settings(result)).toEqual({});
+    expect(
+      result.report.entries.map(({ path, layer, outcome }) => [
+        path,
+        layer,
+        outcome,
+      ]),
+    ).toEqual([
+      ["skills[pr-review]", "org/acme", "advisory"],
+      ["mcp.gateway", "org/acme", "advisory"],
+      ["knowledge[pci-handbook]", "area/fintech", "advisory"],
+      ["secrets.providers.vault", "org/acme", "advisory"],
+      ["metadata.labels.org", "org/acme", "advisory"],
+      ["targets.claude-code.model", "team/payments", "advisory"],
+      ["permissions.ask", "team/payments", "advisory"],
+    ]);
+    await goldens("advisory", persona);
+  });
+});
+
+describe("compileManaged: policy and passthrough", () => {
+  it("maps every policy key", async () => {
+    const persona = ir({
+      policy: {
+        permissions: "exclusive",
+        hooks: "exclusive",
+        mcp: "exclusive",
+        bypassPermissions: "disabled",
+      },
+    });
+    const provenance = {
+      "policy.permissions": "org/acme",
+      "policy.hooks": "org/acme",
+      "policy.mcp": "area/fintech",
+      "policy.bypassPermissions": "team/payments",
+    };
+    const result = compileManaged(input(persona, { provenance }));
+    expect(settings(result)).toEqual({
+      allowManagedHooksOnly: true,
+      allowManagedMcpServersOnly: true,
+      allowManagedPermissionRulesOnly: true,
+      permissions: { disableBypassPermissionsMode: "disable" },
+    });
+    expect(json(result, "managed-mcp.json")).toEqual({ mcpServers: {} });
+    expect(
+      result.report.entries.map(({ path, layer, outcome }) => [
+        path,
+        layer,
+        outcome,
+      ]),
+    ).toEqual([
+      ["policy.bypassPermissions", "team/payments", "enforced"],
+      ["policy.hooks", "org/acme", "enforced"],
+      ["policy.mcp", "area/fintech", "enforced"],
+      ["policy.permissions", "org/acme", "enforced"],
+    ]);
+    await goldens("policy", persona, { provenance });
+  });
+
+  it("names the chain's root layer for policy without provenance", () => {
+    const result = compileManaged(
+      input(ir({ policy: { hooks: "exclusive" } })),
+    );
+    expect(result.report.entries).toEqual([
+      expect.objectContaining({ path: "policy.hooks", layer: "org/acme" }),
+    ]);
+  });
+
+  it("passes known managed keys through last", async () => {
+    const persona = ir({
+      permissions: { allow: [], deny: ["Bash(rm -rf:*)"], ask: [] },
+      instructions: [{ id: "org-security", inline: "Be careful.\n" }],
+      locks: [
+        { path: "permissions.deny", layer: "org/acme" },
+        { path: "instructions", layer: "org/acme" },
+      ],
+      policy: { bypassPermissions: "disabled" },
+      targets: {
+        "claude-code": {
+          model: "opus",
+          managed: {
+            strictKnownMarketplaces: [],
+            deniedModels: ["claude-haiku-*"],
+            permissions: {
+              deny: ["Bash(sudo:*)", "Bash(rm -rf:*)"],
+              defaultMode: "default",
+            },
+            claudeMd: "Org guidance replaces the fragments.",
+          },
+        },
+      },
+    });
+    const provenance = {
+      "policy.bypassPermissions": "org/acme",
+      "targets.claude-code.managed.strictKnownMarketplaces": "org/acme",
+      "targets.claude-code.managed.deniedModels": "area/fintech",
+      "targets.claude-code.managed.permissions": "org/acme",
+      "targets.claude-code.managed.claudeMd": "org/acme",
+    };
+    const result = compileManaged(input(persona, { provenance }));
+    expect(settings(result)).toEqual({
+      claudeMd: "Org guidance replaces the fragments.",
+      deniedModels: ["claude-haiku-*"],
+      permissions: {
+        defaultMode: "default",
+        deny: ["Bash(rm -rf:*)", "Bash(sudo:*)"],
+        disableBypassPermissionsMode: "disable",
+      },
+      strictKnownMarketplaces: [],
+    });
+    expect(result.report.entries).toContainEqual(
+      expect.objectContaining({
+        path: "targets.claude-code.managed.deniedModels",
+        layer: "area/fintech",
+        outcome: "enforced",
+      }),
+    );
+    expect(result.report.entries.map((e) => e.path)).not.toContain(
+      "targets.claude-code.model",
+    );
+    await goldens("passthrough", persona, { provenance });
+  });
+
+  it("refuses unknown managed keys", () => {
+    const result = compileManaged(
+      input(
+        ir({
+          targets: {
+            "claude-code": {
+              managed: { deniedModels: [], allowEverything: true },
+            },
+          },
+        }),
+      ),
+    );
+    expect(result.bundle).toBeUndefined();
+    expect(result.report.entries).toEqual([
+      expect.objectContaining({
+        path: "targets.claude-code.managed.allowEverything",
+        outcome: "refused",
+        code: "managed-unknown-key",
+      }),
+      expect.objectContaining({
+        path: "targets.claude-code.managed.deniedModels",
+        outcome: "enforced",
+      }),
+    ]);
+  });
+
+  it("refuses secret references in managed keys", () => {
+    const result = compileManaged(
+      input(
+        ir({
+          targets: {
+            "claude-code": {
+              managed: { env: { JIRA_TOKEN: "secret://vault/jira" } },
+            },
+          },
+        }),
+      ),
+    );
+    expect(result.bundle).toBeUndefined();
+    expect(result.report.entries).toEqual([
+      expect.objectContaining({
+        path: "targets.claude-code.managed.env",
+        outcome: "refused",
+        code: "managed-secret",
+      }),
+    ]);
+  });
+});
+
+describe("compileManaged: report", () => {
+  const codes = (result: ManagedResult) =>
+    result.report.warnings.map((w) => w.code);
+
+  it("warns when the policy weakens zzpersona launches", () => {
+    expect(codes(compileManaged(input(ir())))).toEqual([]);
+    expect(
+      codes(
+        compileManaged(
+          input(
+            ir({
+              targets: {
+                "claude-code": { managed: { disableSideloadFlags: true } },
+              },
+            }),
+          ),
+        ),
+      ),
+    ).toEqual(["partial-mode"]);
+    expect(
+      codes(compileManaged(input(ir({ policy: { mcp: "exclusive" } })))),
+    ).toEqual(["partial-mode"]);
+    expect(
+      codes(compileManaged(input(ir({ policy: { hooks: "exclusive" } })))),
+    ).toEqual(["plugin-hooks-dropped"]);
+    expect(
+      codes(
+        compileManaged(
+          input(
+            ir({
+              hooks: { stop: [{ id: "audit", run: "team/hooks/audit.sh" }] },
+              locks: [{ path: "hooks.stop", layer: "team/payments" }],
+            }),
+          ),
+        ),
+      ),
+    ).toEqual(["console-hooks-approval"]);
+  });
+
+  it("minClaudeCode is the highest floor among used keys", () => {
+    const floor = (managed: Record<string, unknown>) =>
+      bundleOf(
+        compileManaged(input(ir({ targets: { "claude-code": { managed } } }))),
+      ).manifest.minClaudeCode;
+    const cases: [Record<string, unknown>, string | undefined][] = [
+      [{}, undefined],
+      [{ availableModels: ["opus"] }, undefined],
+      [{ disableSideloadFlags: true }, "2.1.193"],
+      [{ managedSourcesBehavior: "merge" }, "2.1.242"],
+      [{ managedMcpServers: {} }, "2.1.259"],
+      [{ claudeMd: "x" }, "2.1.260"],
+      [{ deniedModels: [] }, "2.1.283"],
+      [{ disableSideloadFlags: true, claudeMd: "x" }, "2.1.260"],
+      [
+        { deniedModels: [], managedMcpServers: {}, disableSideloadFlags: true },
+        "2.1.283",
+      ],
+    ];
+    for (const [managed, expected] of cases) {
+      expect(floor(managed), JSON.stringify(managed)).toBe(expected);
+    }
+    const servers = compileManaged(
+      input(
+        ir({
+          mcp: { servers: { jira: { url: "https://jira.corp/mcp" } } },
+          locks: [{ path: "mcp", layer: "org/acme" }],
+        }),
+      ),
+    );
+    expect(bundleOf(servers).manifest.minClaudeCode).toBe("2.1.259");
+  });
+
+  it("is deterministic", () => {
+    const persona = ir({
+      permissions: { allow: [], deny: ["Bash(rm -rf:*)"], ask: [] },
+      hooks: {
+        "pre-tool-use": [
+          {
+            id: "block-prod-db",
+            run: "org/hooks/block-prod-db.sh",
+            matcher: "Bash",
+          },
+        ],
+      },
+      mcp: { servers: { jira: { url: "https://jira.corp/mcp" } } },
+      locks: [
+        { path: "permissions", layer: "org/acme" },
+        { path: "hooks", layer: "org/acme" },
+        { path: "mcp", layer: "org/acme" },
+      ],
+      policy: { mcp: "exclusive", hooks: "exclusive" },
+    });
+    const first = bundleOf(compileManaged(input(persona)));
+    const second = bundleOf(compileManaged(input(persona)));
+    expect(Object.keys(second.files)).toEqual(Object.keys(first.files));
+    for (const [path, bytes] of Object.entries(first.files)) {
+      expect(
+        Buffer.from(second.files[path]!).equals(Buffer.from(bytes)),
+        path,
+      ).toBe(true);
+    }
+
+    const { manifest, files } = first;
+    expect(Object.keys(files).sort()).toEqual([
+      "managed-mcp.json",
+      "managed-settings.d/50-zzpersona.json",
+      "zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh",
+      "zzpersona/manifest.json",
+    ]);
+    expect(Object.keys(manifest.files).sort()).toEqual(
+      Object.keys(files)
+        .filter((path) => path !== "zzpersona/manifest.json")
+        .sort(),
+    );
+    for (const [path, hash] of Object.entries(manifest.files)) {
+      expect(hash).toBe(
+        createHash("sha256").update(files[path]!).digest("hex"),
+      );
+    }
+    expect(JSON.parse(decode(files["zzpersona/manifest.json"]!))).toEqual(
+      manifest,
+    );
+    expect(manifest).toMatchObject({
+      format: 1,
+      zzpersona: "0.12.0",
+      os: "macos",
+      layers: input(persona).layers,
+    });
+  });
+
+  it("writes sorted keys, two-space indent and a trailing newline", () => {
+    const result = compileManaged(
+      input(
+        ir({
+          targets: {
+            "claude-code": {
+              managed: {
+                strictKnownMarketplaces: [],
+                deniedModels: ["b", "a"],
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(
+      decode(bundleOf(result).files["managed-settings.d/50-zzpersona.json"]!),
+    ).toBe(
+      '{\n  "deniedModels": [\n    "b",\n    "a"\n  ],\n  "strictKnownMarketplaces": []\n}\n',
+    );
+  });
+
+  it("nothing locked builds an empty policy", () => {
+    const result = compileManaged(input(ir()));
+    expect(result.report).toEqual({ entries: [], warnings: [] });
+    expect(
+      decode(bundleOf(result).files["managed-settings.d/50-zzpersona.json"]!),
+    ).toBe("{}\n");
+  });
+});
+
+describe("managedInputs", () => {
+  it("managedInputs lists only locked instruction files and hook scripts", () => {
+    const persona = ir({
+      instructions: [
+        { id: "org-conduct", file: "org/instructions/conduct.md" },
+        { id: "project-notes", file: "project/instructions/notes.md" },
+        { id: "org-security", inline: "Never paste credentials.\n" },
+      ],
+      hooks: {
+        "pre-tool-use": [
+          { id: "block-prod-db", run: "org/hooks/block-prod-db.sh" },
+        ],
+        "post-tool-use": [{ id: "format", run: "project/hooks/format.sh" }],
+      },
+      locks: [
+        { path: "instructions[org-conduct]", layer: "org/acme" },
+        { path: "instructions[org-security]", layer: "org/acme" },
+        { path: "hooks.pre-tool-use", layer: "org/acme" },
+      ],
+    });
+    expect(managedInputs(persona)).toEqual({
+      texts: ["org/instructions/conduct.md"],
+      scripts: ["org/hooks/block-prod-db.sh"],
+    });
+  });
+});
+
+describe("the adapter", () => {
+  it("exposes the managed compiler and its roots", () => {
+    expect(MANAGED_ROOTS).toEqual({
+      macos: "/Library/Application Support/ClaudeCode",
+      linux: "/etc/claude-code",
+      windows: "C:\\Program Files\\ClaudeCode",
+    });
+    expect(adapter.managed?.roots).toBe(MANAGED_ROOTS);
+    expect(adapter.managed?.compile).toBe(compileManaged);
+    expect(adapter.managed?.inputs).toBe(managedInputs);
+  });
+
+  it("declares policy native in its capability matrix", () => {
+    expect(adapter.capabilities().fields.policy).toEqual({
+      support: "native",
+      note: "managed policy bundle",
+    });
+  });
+});

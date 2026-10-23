@@ -57,9 +57,18 @@ describe("zzpersona capabilities", () => {
       "permissions.deny",
       "permissions.ask",
       "hooks",
+      "policy",
       "targets",
     ]);
     expect(r.stdout).toContain("Codex has no per-launch skill root");
+  });
+
+  it("declares a policy row for every built-in adapter", () => {
+    for (const column of firstPartyColumns()) {
+      expect(column.matrix.fields.policy?.support, column.id).toBe(
+        column.id === "claude-code" ? "native" : "advisory",
+      );
+    }
   });
 
   it("collapses permissions when every column agrees", () => {

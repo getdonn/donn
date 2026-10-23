@@ -54,6 +54,8 @@ export function capabilities(detection?: Detection): CapabilityMatrix {
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, plugin]),
       ),
+      // Enforced by the managed policy bundle, which a launch's mode does not change.
+      policy: { ...native, note: "managed policy bundle" },
     },
   };
 }
