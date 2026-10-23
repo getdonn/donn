@@ -175,8 +175,8 @@ function secretIn(value: unknown, prefix: string): string | undefined {
 /**
  * `over` laid on `base` the way Claude Code merges drop-ins: objects per key, lists combined
  * without duplicates. A value `base` already holds is never replaced: an unequal one is a
- * conflict, named by its dotted path (with a leading dot). Below a `sealed` path nothing may be
- * added either: a locked server is taken whole.
+ * conflict, named by its dotted path (with a leading dot). At or below a `sealed` path nothing
+ * may be added either: a locked server is taken whole, even one compiled into managed-mcp.json.
  */
 function overlay(
   base: unknown,
@@ -184,8 +184,11 @@ function overlay(
   path: string,
   sealed: (path: string) => boolean,
 ): { value: unknown; conflict?: string } {
-  if (base === undefined || isDeepStrictEqual(base, over)) {
-    return { value: base === undefined ? over : base };
+  if (isDeepStrictEqual(base, over)) return { value: base };
+  if (base === undefined) {
+    if (sealed(path)) return { value: base, conflict: path };
+    // A new object may still reach a sealed path below it (a server only in managed-mcp.json).
+    return isObject(over) ? overlay({}, over, path, sealed) : { value: over };
   }
   if (sealed(path) && !(isObject(base) && isObject(over))) {
     return { value: base, conflict: path };
@@ -204,14 +207,10 @@ function overlay(
       ([key]) => !Object.hasOwn(over, key),
     );
     for (const [key, value] of Object.entries(over)) {
-      const childPath = `${path}.${key}`;
-      if (!Object.hasOwn(base, key) && sealed(childPath)) {
-        return { value: base, conflict: childPath };
-      }
       const child = overlay(
         Object.hasOwn(base, key) ? base[key] : undefined,
         value,
-        childPath,
+        `${path}.${key}`,
         sealed,
       );
       if (child.conflict !== undefined) return child;
@@ -229,16 +228,17 @@ class Sources {
 
   private readonly whole = new Set<string>();
 
-  /** Like add(), and nothing may be added below `setting` either. */
+  /** Like add(), and nothing may be added at or below `setting` either. */
   seal(setting: string, path: string, layer: Ref): void {
     this.whole.add(setting);
     this.add(setting, path, layer);
   }
 
-  /** Whether `setting` (a dotted path with a leading dot) is strictly below a sealed one. */
+  /** Whether `setting` (a dotted path with a leading dot) is at or below a sealed one. */
   readonly sealed = (setting: string): boolean => {
     for (const whole of this.whole) {
-      if (setting.startsWith(`.${whole}.`)) return true;
+      if (setting === `.${whole}` || setting.startsWith(`.${whole}.`))
+        return true;
     }
     return false;
   };
@@ -250,14 +250,23 @@ class Sources {
   }
 
   /** The sources of `setting` or of its nearest ancestor, as "path (layer)". */
+  /**
+   * The sources of `setting` or of its nearest ancestor, as "path (layer)"; for a container the
+   * compile filled below its own level, the sources of everything under it.
+   */
   describe(setting: string): string {
+    const format = (list: { path: string; layer: Ref }[]) =>
+      [...new Set(list.map((s) => `${s.path} (${s.layer})`))].join(", ");
     let prefix = setting;
     while (prefix !== "") {
       const list = this.map.get(prefix);
-      if (list) return list.map((s) => `${s.path} (${s.layer})`).join(", ");
+      if (list) return format(list);
       prefix = prefix.slice(0, Math.max(0, prefix.lastIndexOf(".")));
     }
-    return "the compiled policy";
+    const below = [...this.map]
+      .filter(([key]) => key.startsWith(`${setting}.`))
+      .flatMap(([, list]) => list);
+    return below.length > 0 ? format(below) : "the compiled policy";
   }
 }
 
@@ -419,6 +428,8 @@ export function compileManaged(input: ManagedInput): ManagedResult {
       add(path, lock.layer, "enforced", REASON.remote);
     } else if (exclusive) {
       exclusiveServers[name] = mcpJsonServer(server);
+      // Its name is taken in managedMcpServers too: the passthrough must not shadow it there.
+      sources.seal(`managedMcpServers.${name}`, path, lock.layer);
       add(path, lock.layer, "enforced", REASON.exclusive);
     } else {
       add(

@@ -805,6 +805,52 @@ describe("compileManaged: policy and passthrough", () => {
       expect(reason).toContain("mcp.servers.jira (org/acme)");
     });
 
+    it("an exclusive server compiled into managed-mcp.json", () => {
+      const result = collide(
+        {
+          mcp: { servers: { local: { command: "npx", args: ["x"] } } },
+          locks: [{ path: "mcp.servers.local", layer: "org/acme" }],
+          policy: { mcp: "exclusive" },
+        },
+        {
+          managedMcpServers: {
+            local: { type: "http", url: "https://evil.example/mcp" },
+          },
+        },
+      );
+      const reason = refusal(result, "managedMcpServers");
+      expect(reason).toContain("managedMcpServers.local");
+      expect(reason).toContain("mcp.servers.local (org/acme)");
+    });
+
+    it("names the compiled sources when a whole container is replaced", () => {
+      const permissions = refusal(
+        collide(
+          {
+            permissions: { allow: [], deny: ["Bash(rm -rf:*)"], ask: [] },
+            locks: [{ path: "permissions.deny", layer: "org/acme" }],
+          },
+          { permissions: "x" },
+        ),
+        "permissions",
+      );
+      expect(permissions).toContain(
+        "permissions.deny[Bash(rm -rf:*)] (org/acme)",
+      );
+      const servers = refusal(
+        collide(
+          {
+            mcp: { servers: { jira: { url: "https://jira.corp/mcp" } } },
+            locks: [{ path: "mcp.servers.jira", layer: "org/acme" }],
+          },
+          { managedMcpServers: [] },
+        ),
+        "managedMcpServers",
+      );
+      expect(servers).toContain("mcp.servers.jira (org/acme)");
+      expect(servers).not.toContain("the compiled policy");
+    });
+
     it("applies a new server name beside a locked one", () => {
       const result = collide(
         {
