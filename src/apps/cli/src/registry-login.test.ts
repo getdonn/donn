@@ -16,7 +16,7 @@ import { startMockRegistry } from "@zzpersona/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCli, type CliIo } from "./cli.js";
 import { clean, openerCommand } from "./commands/registry.js";
-import { installedProbe } from "./test/seed.js";
+import { installedProbe, NO_MANAGED_ROOT, safeManaged } from "./test/seed.js";
 
 const EXAMPLES = join(import.meta.dirname, "../../../../examples/personas");
 const noKeychain: Probe = { ...installedProbe, platform: "win32" };
@@ -85,6 +85,7 @@ async function run(
     stderr: { write: (s: string) => (live.stderr += s) },
     probe: installedProbe,
     secretProbe: noKeychain,
+    managed: safeManaged(),
     ...rest,
   });
   const code = await cli.run(argv);
@@ -565,6 +566,11 @@ describe("the sign-in link", () => {
       JSON.parse(r.stdout).checks as { id: string; message: string }[]
     ).find((c) => c.id === "registry-token")!;
     expect(check.message).toMatch(/session until \d{4}-\d\d-\d\d/);
+    // Never the real policy folder, profile or ~/.claude: the test seam's root.
+    const managed = (
+      JSON.parse(r.stdout).checks as { id: string; message: string }[]
+    ).find((c) => c.id === "managed")!;
+    expect(managed.message).toContain(NO_MANAGED_ROOT);
   });
 });
 

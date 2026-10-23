@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Probe } from "@zzpersona/adapter-sdk";
 import { createCli } from "../cli.js";
+import type { ManagedEnv } from "../managed/env.js";
 
 // Test-only: resolver fixture 002 laid out across the three mounts, plus the files it
 // references, and an in-process way to run the CLI against it.
@@ -76,6 +77,29 @@ export interface RunResult {
   stderr: string;
 }
 
+/** Where tests that do not exercise managed settings keep `managed install|check` pointed. */
+export const NO_MANAGED_ROOT = join(
+  tmpdir(),
+  "zzp-no-managed-root",
+  "ClaudeCode",
+);
+
+/**
+ * The `CliIo.managed` seam for tests: never the real system folder, MDM profile, registry or
+ * ~/.claude (`doctor` and `status` read them). The root does not exist, so nothing is installed.
+ * Every CliIo a test builds by hand must carry it.
+ */
+export function safeManaged(): Partial<ManagedEnv> {
+  return {
+    root: NO_MANAGED_ROOT,
+    isAdmin: () => false,
+    strict: () => false,
+    mdmPolicy: async () => undefined,
+    remoteSettingsFile: join(dirname(NO_MANAGED_ROOT), "remote.json"),
+    confirm: async () => undefined,
+  };
+}
+
 /** Run `zzpersona <argv>` in-process. */
 export async function zz(
   argv: string[],
@@ -84,6 +108,8 @@ export async function zz(
     home?: string;
     env?: NodeJS.ProcessEnv;
     probe?: Probe;
+    /** Managed-settings paths and readers; defaults point nowhere real (see below). */
+    managed?: Partial<ManagedEnv>;
   } & Partial<
     Pick<
       Parameters<typeof createCli>[0],
@@ -114,6 +140,7 @@ export async function zz(
     stdout: { write: (s: string) => (stdout += s) },
     stderr: { write: (s: string) => (stderr += s) },
     probe: options.probe ?? installedProbe,
+    managed: { ...safeManaged(), ...options.managed },
     ...(options.runPlan && { runPlan: options.runPlan }),
     ...(options.now && { now: options.now }),
     ...(options.spawnDaemon && { spawnDaemon: options.spawnDaemon }),
@@ -142,5 +169,6 @@ export function quietIo(options: {
     stdout: { write: () => true },
     stderr: { write: () => true },
     probe: installedProbe,
+    managed: safeManaged(),
   };
 }

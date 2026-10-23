@@ -16,14 +16,14 @@ import { CliError } from "../errors.js";
 
 export const MANIFEST_PATH = "zzpersona/manifest.json";
 
-const sha256 = (bytes: Uint8Array) =>
+export const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");
 
 /** A bundle-relative path that stays inside the folder, `/`-separated. */
-function checkedPath(path: string): string {
+export function checkedPath(path: string): string {
   const normal = posix.normalize(path);
   if (
     path.includes("\\") ||
