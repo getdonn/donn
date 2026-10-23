@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   AdapterInputError,
   isContainedPath,
@@ -47,6 +48,7 @@ const REASON = {
   exclusive:
     "loaded from managed-mcp.json, which only the policy's servers pass",
   gatewayRef: `gateway:// refs need gateway resolution, which is not available yet; ${ADVISORY}`,
+  gatewayRefExclusive: `gateway:// refs need gateway resolution, which is not available yet, and sessions will not load it while policy.mcp is exclusive; ${ADVISORY}`,
   secret:
     "is a secret reference, and managed files are readable by every user; pass secrets through each user's environment",
   unknownKey:
@@ -57,22 +59,31 @@ const REASON = {
 } as const;
 
 const POLICY: {
-  [K in keyof Policy]-?: { apply(settings: Settings): void; reason: string };
+  [K in keyof Policy]-?: {
+    /** The settings path the key compiles to. */
+    key: string;
+    apply(settings: Settings): void;
+    reason: string;
+  };
 } = {
   permissions: {
+    key: "allowManagedPermissionRulesOnly",
     apply: (s) => (s.allowManagedPermissionRulesOnly = true),
     reason: "allowManagedPermissionRulesOnly: only the policy's rules count",
   },
   hooks: {
+    key: "allowManagedHooksOnly",
     apply: (s) => (s.allowManagedHooksOnly = true),
     reason: "allowManagedHooksOnly: only the policy's hooks run",
   },
   mcp: {
+    key: "allowManagedMcpServersOnly",
     apply: (s) => (s.allowManagedMcpServersOnly = true),
     reason:
       "allowManagedMcpServersOnly and managed-mcp.json: only the policy's servers load",
   },
   bypassPermissions: {
+    key: "permissions.disableBypassPermissionsMode",
     apply: (s) => (permissionsOf(s).disableBypassPermissionsMode = "disable"),
     reason:
       "permissions.disableBypassPermissionsMode: the bypass mode cannot be entered",
@@ -134,7 +145,10 @@ export function managedInputs(ir: ResolvedPersona): {
   );
   const scripts = HOOK_EVENTS.flatMap((event) =>
     (ir.hooks[event] ?? []).flatMap((hook) =>
-      locks.covering(at(["hooks", event], hook.id)) ? [hook.run] : [],
+      // An uncontained run is never read; compile refuses it.
+      isContainedPath(hook.run) && locks.covering(at(["hooks", event], hook.id))
+        ? [hook.run]
+        : [],
     ),
   );
   return { texts: [...new Set(texts)], scripts: [...new Set(scripts)] };
@@ -158,23 +172,67 @@ function secretIn(value: unknown, prefix: string): string | undefined {
   return undefined;
 }
 
-/** Objects merge per key, lists combine without duplicates, anything else is replaced. */
-function mergeLast(base: unknown, over: unknown): unknown {
+/**
+ * `over` laid on `base` the way Claude Code merges drop-ins: objects per key, lists combined
+ * without duplicates. A value `base` already holds is never replaced: an unequal one is a
+ * conflict, named by its dotted path.
+ */
+function overlay(
+  base: unknown,
+  over: unknown,
+  path: string,
+): { value: unknown; conflict?: string } {
+  if (base === undefined || isDeepStrictEqual(base, over)) {
+    return { value: base === undefined ? over : base };
+  }
   if (Array.isArray(base) && Array.isArray(over)) {
     const seen = new Set(base.map((item) => JSON.stringify(item)));
-    return [...base, ...over.filter((item) => !seen.has(JSON.stringify(item)))];
+    return {
+      value: [
+        ...base,
+        ...over.filter((item) => !seen.has(JSON.stringify(item))),
+      ],
+    };
   }
   if (isObject(base) && isObject(over)) {
+    const merged: [string, unknown][] = Object.entries(base).filter(
+      ([key]) => !Object.hasOwn(over, key),
+    );
+    for (const [key, value] of Object.entries(over)) {
+      const child = overlay(
+        Object.hasOwn(base, key) ? base[key] : undefined,
+        value,
+        `${path}.${key}`,
+      );
+      if (child.conflict !== undefined) return child;
+      merged.push([key, child.value]);
+    }
     // fromEntries defines own properties, so a "__proto__" key stays a key.
-    return Object.fromEntries([
-      ...Object.entries(base).filter(([key]) => !Object.hasOwn(over, key)),
-      ...Object.entries(over).map(([key, value]) => [
-        key,
-        Object.hasOwn(base, key) ? mergeLast(base[key], value) : value,
-      ]),
-    ]);
+    return { value: Object.fromEntries(merged) };
   }
-  return over;
+  return { value: base, conflict: path };
+}
+
+/** The settings paths the compile wrote, with the IR values each came from. */
+class Sources {
+  private readonly map = new Map<string, { path: string; layer: Ref }[]>();
+
+  add(setting: string, path: string, layer: Ref): void {
+    const list = this.map.get(setting) ?? [];
+    list.push({ path, layer });
+    this.map.set(setting, list);
+  }
+
+  /** The sources of `setting` or of its nearest ancestor, as "path (layer)". */
+  describe(setting: string): string {
+    let prefix = setting;
+    while (prefix !== "") {
+      const list = this.map.get(prefix);
+      if (list) return list.map((s) => `${s.path} (${s.layer})`).join(", ");
+      prefix = prefix.slice(0, Math.max(0, prefix.lastIndexOf(".")));
+    }
+    return "the compiled policy";
+  }
 }
 
 const sortKeys = (value: unknown): unknown =>
@@ -234,12 +292,28 @@ const mcpJsonServer = (server: Exclude<McpServer, { ref: string }>) =>
         ...(server.headers && { headers: server.headers }),
       };
 
+/**
+ * An installed hook path as a shell word. POSIX: single quotes, so `$`, backticks and spaces stay
+ * literal. Windows: double quotes, so a `"` in the name cannot be quoted and is refused.
+ */
+function shellPath(os: ManagedInput["os"], file: string, what: string) {
+  const path = installedPath(os, file);
+  if (os !== "windows") return `'${path.replaceAll("'", "'\\''")}'`;
+  if (path.includes('"')) {
+    throw new AdapterInputError(
+      `hook ${what}: ${posix.basename(file)} has a " in its name, which a Windows command cannot quote`,
+    );
+  }
+  return `"${path}"`;
+}
+
 export function compileManaged(input: ManagedInput): ManagedResult {
   const { ir, os } = input;
   if (ir.irVersion !== IR_VERSION) {
     throw new UnsupportedIrVersionError("claude-code", ir.irVersion);
   }
   const locks = new Locks(ir);
+  const sources = new Sources();
   const entries: ManagedEntry[] = [];
   const settings: Settings = {};
   const files: Record<string, Uint8Array> = {};
@@ -263,6 +337,7 @@ export function compileManaged(input: ManagedInput): ManagedResult {
     if (!lock) continue;
     const text = textOf(fragment, input.texts);
     if (text.trim() !== "") fragments.push(text.trim());
+    sources.add("claudeMd", `instructions[${fragment.id}]`, lock.layer);
     add(
       `instructions[${fragment.id}]`,
       lock.layer,
@@ -289,7 +364,12 @@ export function compileManaged(input: ManagedInput): ManagedResult {
     if (!lock) continue;
     const server = ir.mcp.servers[name]!;
     if ("ref" in server) {
-      add(path, lock.layer, "advisory", REASON.gatewayRef);
+      add(
+        path,
+        lock.layer,
+        "advisory",
+        exclusive ? REASON.gatewayRefExclusive : REASON.gatewayRef,
+      );
       continue;
     }
     const secret = secretIn(server, path);
@@ -306,6 +386,7 @@ export function compileManaged(input: ManagedInput): ManagedResult {
     const why = notRemote(server);
     if (why === undefined && "url" in server) {
       remote[name] = { type: server.transport ?? "http", url: server.url };
+      sources.add(`managedMcpServers.${name}`, path, lock.layer);
       add(path, lock.layer, "enforced", REASON.remote);
     } else if (exclusive) {
       exclusiveServers[name] = mcpJsonServer(server);
@@ -325,13 +406,11 @@ export function compileManaged(input: ManagedInput): ManagedResult {
   for (const list of ["allow", "deny", "ask"] as const) {
     const rules = ir.permissions[list].filter((rule) => {
       const lock = locks.covering(at(["permissions", list], rule));
-      if (lock)
-        add(
-          `permissions.${list}[${rule}]`,
-          lock.layer,
-          "enforced",
-          REASON.permission,
-        );
+      if (lock) {
+        const path = `permissions.${list}[${rule}]`;
+        sources.add(`permissions.${list}`, path, lock.layer);
+        add(path, lock.layer, "enforced", REASON.permission);
+      }
       return lock !== undefined;
     });
     if (rules.length > 0) permissionsOf(settings)[list] = rules;
@@ -354,13 +433,14 @@ export function compileManaged(input: ManagedInput): ManagedResult {
         );
       }
       const file = hookFile(event, hook.id, hook.run);
+      const path = `hooks.${event}[${hook.id}]`;
       files[file] = script;
       (hooks[NATIVE_EVENTS[event]] ??= []).push({
         ...(hook.matcher !== undefined && { matcher: hook.matcher }),
-        // Quoted: the macOS and Windows roots contain a space.
-        hooks: [{ type: "command", command: `"${installedPath(os, file)}"` }],
+        hooks: [{ type: "command", command: shellPath(os, file, path) }],
       });
-      add(`hooks.${event}[${hook.id}]`, lock.layer, "enforced", REASON.hook);
+      sources.add(`hooks.${NATIVE_EVENTS[event]}`, path, lock.layer);
+      add(path, lock.layer, "enforced", REASON.hook);
     }
   }
   if (Object.keys(hooks).length > 0) settings.hooks = hooks;
@@ -381,10 +461,12 @@ export function compileManaged(input: ManagedInput): ManagedResult {
     if (ir.policy[key] === undefined) continue;
     const path = `policy.${key}`;
     POLICY[key].apply(settings);
+    sources.add(POLICY[key].key, path, setBy(path));
     add(path, setBy(path), "enforced", POLICY[key].reason);
   }
 
-  // targets.claude-code.managed: known keys applied last, as written.
+  // targets.claude-code.managed: known keys applied last. They add to the compiled policy and
+  // never replace any of it: a layer below the lock's must not undo it from here.
   const managed = ir.targets["claude-code"]?.managed;
   let policy: Settings = settings;
   if (isObject(managed)) {
@@ -409,8 +491,20 @@ export function compileManaged(input: ManagedInput): ManagedResult {
           "managed-secret",
         );
       } else {
-        policy = mergeLast(policy, { [key]: managed[key] }) as Settings;
-        add(path, layer, "enforced", REASON.passthrough);
+        const merged = overlay(policy, { [key]: managed[key] }, "");
+        if (merged.conflict === undefined) {
+          policy = merged.value as Settings;
+          add(path, layer, "enforced", REASON.passthrough);
+        } else {
+          const setting = merged.conflict.slice(1);
+          add(
+            path,
+            layer,
+            "refused",
+            `would replace ${setting}, compiled from ${sources.describe(setting)}; this key is set by ${layer}`,
+            "managed-passthrough-conflict",
+          );
+        }
       }
     }
   }

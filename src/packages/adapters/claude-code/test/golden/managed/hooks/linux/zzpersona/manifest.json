@@ -1,6 +1,6 @@
 {
   "files": {
-    "managed-settings.d/50-zzpersona.json": "3c9fe35d1857cad50cef89800f8db1c81a5471b538dd6ef461a905410b26ee7e",
+    "managed-settings.d/50-zzpersona.json": "c487d4605f6cc11b19c3a3e1548b70483fc451181394e4eeba176aa2870fc28a",
     "zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh": "d506257a28fccb0f79fd2310a40b011fb5734d3bd3030465b2cc53476a75b194"
   },
   "format": 1,

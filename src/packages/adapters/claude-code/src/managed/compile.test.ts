@@ -12,6 +12,7 @@ import adapter, {
   MANAGED_ROOTS,
   managedInputs,
 } from "../index.js";
+import { compareVersions, minClaudeCode } from "./keys.js";
 
 // The managed policy bundle, one case per row of docs/planning/21-managed-settings.md, section 2.
 // Each bundle is compared per file with test/golden/managed/<case>/<os>/; regenerate with
@@ -249,7 +250,7 @@ describe("compileManaged: hooks", () => {
               {
                 type: "command",
                 command:
-                  '"/Library/Application Support/ClaudeCode/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh"',
+                  "'/Library/Application Support/ClaudeCode/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
               },
             ],
           },
@@ -267,12 +268,46 @@ describe("compileManaged: hooks", () => {
         }
       ).PreToolUse[0]!.hooks[0]!.command;
     expect(command("linux")).toBe(
-      '"/etc/claude-code/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh"',
+      "'/etc/claude-code/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
     );
     expect(command("windows")).toBe(
       '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\pre-tool-use-block-prod-db-block-prod-db.sh"',
     );
     await goldens("hooks", persona);
+  });
+
+  it("quotes hook paths so the shell expands nothing in them", () => {
+    const tricky = (run: string) =>
+      ir({
+        hooks: { stop: [{ id: "odd", run }] },
+        locks: [{ path: "hooks", layer: "org/acme" }],
+      });
+    const command = (run: string, os: ManagedOs) =>
+      (
+        settings(
+          compileManaged(
+            input(tricky(run), { os, scripts: { [run]: encode("x") } }),
+          ),
+        ).hooks as { Stop: { hooks: { command: string }[] }[] }
+      ).Stop[0]!.hooks[0]!.command;
+    expect(command("org/hooks/a$(id)`id`.sh", "macos")).toBe(
+      "'/Library/Application Support/ClaudeCode/zzpersona/hooks/stop-odd-a$(id)`id`.sh'",
+    );
+    expect(command("org/hooks/it's.sh", "linux")).toBe(
+      "'/etc/claude-code/zzpersona/hooks/stop-odd-it'\\''s.sh'",
+    );
+    expect(command("org/hooks/a$b.sh", "windows")).toBe(
+      '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\stop-odd-a$b.sh"',
+    );
+    const quote = 'org/hooks/a".sh';
+    expect(() =>
+      compileManaged(
+        input(tricky(quote), {
+          os: "windows",
+          scripts: { [quote]: encode("x") },
+        }),
+      ),
+    ).toThrow(AdapterInputError);
   });
 
   it("throws AdapterInputError when a locked hook's script is missing", () => {
@@ -413,6 +448,28 @@ describe("compileManaged: MCP servers", () => {
       '{\n  "mcpServers": {}\n}\n',
     );
     await goldens("mcp-exclusive-empty", persona);
+  });
+
+  it("says a locked gateway ref will not load while MCP is exclusive", () => {
+    const servers = { jira: { ref: "gateway://jira" } };
+    const reason = (policy: Partial<ResolvedPersona["policy"]>) =>
+      compileManaged(
+        input(
+          ir({
+            mcp: { servers },
+            locks: [{ path: "mcp.servers.jira", layer: "org/acme" }],
+            policy,
+          }),
+        ),
+      ).report.entries.find((e) => e.path === "mcp.servers.jira")!;
+    expect(reason({}).outcome).toBe("advisory");
+    expect(reason({}).reason).not.toMatch(/exclusive/);
+    expect(reason({ mcp: "exclusive" })).toMatchObject({
+      outcome: "advisory",
+      reason: expect.stringMatching(
+        /sessions will not load it while policy\.mcp is exclusive/,
+      ),
+    });
   });
 
   it("refuses secret references", () => {
@@ -596,7 +653,6 @@ describe("compileManaged: policy and passthrough", () => {
               deny: ["Bash(sudo:*)", "Bash(rm -rf:*)"],
               defaultMode: "default",
             },
-            claudeMd: "Org guidance replaces the fragments.",
           },
         },
       },
@@ -606,11 +662,10 @@ describe("compileManaged: policy and passthrough", () => {
       "targets.claude-code.managed.strictKnownMarketplaces": "org/acme",
       "targets.claude-code.managed.deniedModels": "area/fintech",
       "targets.claude-code.managed.permissions": "org/acme",
-      "targets.claude-code.managed.claudeMd": "org/acme",
     };
     const result = compileManaged(input(persona, { provenance }));
     expect(settings(result)).toEqual({
-      claudeMd: "Org guidance replaces the fragments.",
+      claudeMd: "Be careful.",
       deniedModels: ["claude-haiku-*"],
       permissions: {
         defaultMode: "default",
@@ -630,6 +685,125 @@ describe("compileManaged: policy and passthrough", () => {
       "targets.claude-code.model",
     );
     await goldens("passthrough", persona, { provenance });
+  });
+
+  describe("a passthrough key never replaces a compiled value", () => {
+    const collide = (
+      fields: Partial<Omit<ResolvedPersona, "irVersion">>,
+      managed: Record<string, unknown>,
+    ) => {
+      const key = Object.keys(managed)[0]!;
+      return compileManaged(
+        input(ir({ ...fields, targets: { "claude-code": { managed } } }), {
+          provenance: {
+            "policy.hooks": "org/acme",
+            "policy.bypassPermissions": "org/acme",
+            [`targets.claude-code.managed.${key}`]: "team/payments",
+          },
+        }),
+      );
+    };
+    const refusal = (result: ManagedResult, key: string) => {
+      expect(result.bundle).toBeUndefined();
+      const entry = result.report.entries.find(
+        (e) => e.path === `targets.claude-code.managed.${key}`,
+      );
+      expect(entry).toMatchObject({
+        layer: "team/payments",
+        outcome: "refused",
+        code: "managed-passthrough-conflict",
+      });
+      return entry!.reason;
+    };
+
+    it("an org-locked server's URL", () => {
+      const reason = refusal(
+        collide(
+          {
+            mcp: { servers: { jira: { url: "https://jira.corp/mcp" } } },
+            locks: [{ path: "mcp.servers.jira", layer: "org/acme" }],
+          },
+          {
+            managedMcpServers: {
+              jira: { type: "http", url: "https://evil.example/mcp" },
+            },
+          },
+        ),
+        "managedMcpServers",
+      );
+      expect(reason).toContain("managedMcpServers.jira.url");
+      expect(reason).toContain("mcp.servers.jira (org/acme)");
+      expect(reason).toContain("team/payments");
+    });
+
+    it("claudeMd from locked instructions", () => {
+      const reason = refusal(
+        collide(
+          {
+            instructions: [{ id: "sec", inline: "Never X.\n" }],
+            locks: [{ path: "instructions", layer: "org/acme" }],
+          },
+          { claudeMd: "" },
+        ),
+        "claudeMd",
+      );
+      expect(reason).toContain("instructions[sec] (org/acme)");
+    });
+
+    it("allowManagedHooksOnly from policy.hooks", () => {
+      const reason = refusal(
+        collide(
+          { policy: { hooks: "exclusive" } },
+          {
+            allowManagedHooksOnly: false,
+          },
+        ),
+        "allowManagedHooksOnly",
+      );
+      expect(reason).toContain("policy.hooks (org/acme)");
+    });
+
+    it("disableBypassPermissionsMode from policy.bypassPermissions", () => {
+      const reason = refusal(
+        collide(
+          { policy: { bypassPermissions: "disabled" } },
+          { permissions: { disableBypassPermissionsMode: "allow" } },
+        ),
+        "permissions",
+      );
+      expect(reason).toContain("permissions.disableBypassPermissionsMode");
+      expect(reason).toContain("policy.bypassPermissions (org/acme)");
+    });
+
+    it("applies a key that collides with nothing, and an equal value", () => {
+      const result = collide(
+        {
+          permissions: { allow: [], deny: ["Bash(rm -rf:*)"], ask: [] },
+          locks: [{ path: "permissions.deny", layer: "org/acme" }],
+          policy: { bypassPermissions: "disabled" },
+        },
+        {
+          permissions: {
+            defaultMode: "default",
+            deny: ["Bash(sudo:*)"],
+            disableBypassPermissionsMode: "disable",
+          },
+        },
+      );
+      expect(settings(result)).toEqual({
+        permissions: {
+          defaultMode: "default",
+          deny: ["Bash(rm -rf:*)", "Bash(sudo:*)"],
+          disableBypassPermissionsMode: "disable",
+        },
+      });
+      expect(result.report.entries).toContainEqual(
+        expect.objectContaining({
+          path: "targets.claude-code.managed.permissions",
+          outcome: "enforced",
+        }),
+      );
+    });
   });
 
   it("refuses unknown managed keys", () => {
@@ -866,6 +1040,31 @@ describe("managedInputs", () => {
       texts: ["org/instructions/conduct.md"],
       scripts: ["org/hooks/block-prod-db.sh"],
     });
+  });
+});
+
+describe("managedInputs, contained", () => {
+  it("never lists a hook run outside the personas root", () => {
+    const persona = ir({
+      hooks: {
+        stop: [
+          { id: "escape", run: "../escape.sh" },
+          { id: "absolute", run: "/etc/passwd" },
+          { id: "audit", run: "team/hooks/audit.sh" },
+        ],
+      },
+      locks: [{ path: "hooks", layer: "org/acme" }],
+    });
+    expect(managedInputs(persona).scripts).toEqual(["team/hooks/audit.sh"]);
+  });
+});
+
+describe("compareVersions", () => {
+  it("compares numerically, segment by segment", () => {
+    expect(compareVersions("2.1.99", "2.1.100")).toBeLessThan(0);
+    expect(compareVersions("2.1.100", "2.1.99")).toBeGreaterThan(0);
+    expect(compareVersions("2.1.259", "2.1.259")).toBe(0);
+    expect(minClaudeCode(["claudeMd", "managedMcpServers"])).toBe("2.1.260");
   });
 });
 

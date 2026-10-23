@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "\"/Library/Application Support/ClaudeCode/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh\"",
+            "command": "'/Library/Application Support/ClaudeCode/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
             "type": "command"
           }
         ],

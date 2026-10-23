@@ -1,5 +1,5 @@
 {
-  "claudeMd": "Org guidance replaces the fragments.",
+  "claudeMd": "Be careful.",
   "deniedModels": [
     "claude-haiku-*"
   ],

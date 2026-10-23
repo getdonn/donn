@@ -1,6 +1,6 @@
 {
   "files": {
-    "managed-settings.d/50-zzpersona.json": "91a675ac0649baf2d4d7f99e7de68250440c6b71ed7e8542514476e34997c0f4"
+    "managed-settings.d/50-zzpersona.json": "b678896f0235a8101e0fb1f8344db572f1f44a97b8bd1bb3c29ba473b7c714ca"
   },
   "format": 1,
   "layers": [
@@ -40,12 +40,6 @@
         "outcome": "enforced",
         "path": "policy.bypassPermissions",
         "reason": "permissions.disableBypassPermissionsMode: the bypass mode cannot be entered"
-      },
-      {
-        "layer": "org/acme",
-        "outcome": "enforced",
-        "path": "targets.claude-code.managed.claudeMd",
-        "reason": "applied last, as written"
       },
       {
         "layer": "area/fintech",

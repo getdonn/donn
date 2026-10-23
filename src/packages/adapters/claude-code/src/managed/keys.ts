@@ -51,7 +51,8 @@ export const MIN_CLAUDE_CODE: Readonly<Record<string, string>> = {
 
 const parts = (version: string) => version.split(".").map(Number);
 
-function compareVersions(a: string, b: string): number {
+/** Negative when `a` is older than `b`; numeric per dotted segment, so 2.1.99 < 2.1.100. */
+export function compareVersions(a: string, b: string): number {
   const [x, y] = [parts(a), parts(b)];
   for (let i = 0; i < Math.max(x.length, y.length); i++) {
     const diff = (x[i] ?? 0) - (y[i] ?? 0);

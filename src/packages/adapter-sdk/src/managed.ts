@@ -34,7 +34,11 @@ export interface ManagedInput {
 }
 
 export type ManagedCode =
-  "managed-secret" | "managed-mcp-needs-exclusive" | "managed-unknown-key";
+  | "managed-secret"
+  | "managed-mcp-needs-exclusive"
+  | "managed-unknown-key"
+  /** A `targets.<harness>.managed` key would replace a value the compile produced. */
+  | "managed-passthrough-conflict";
 
 export interface ManagedEntry {
   /** IR path grammar from @zzpersona/spec. */

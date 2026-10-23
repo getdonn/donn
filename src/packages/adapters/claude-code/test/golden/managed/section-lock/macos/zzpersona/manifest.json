@@ -1,6 +1,6 @@
 {
   "files": {
-    "managed-settings.d/50-zzpersona.json": "971f8c1d6001a94b9ba301160b8a40d48a8699b1e0285c39395c0513a8a85eb3",
+    "managed-settings.d/50-zzpersona.json": "ba8052e219f87cf628b09913e1c415d7e834fbaf0f81c249ce2f5731de599f4e",
     "zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh": "d506257a28fccb0f79fd2310a40b011fb5734d3bd3030465b2cc53476a75b194",
     "zzpersona/hooks/stop-audit-audit.sh": "306c6ca7407560340797866e077e053627ad409277d1b9da58106fce4cf717cb"
   },
