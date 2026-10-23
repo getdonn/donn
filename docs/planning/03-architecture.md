@@ -4,6 +4,8 @@
 > it into phases. Working name Hatrack; `@hatrack/*` package names are placeholders.
 > Amended 2026-10-20: Hatrack is taken. Every `hatrack` identifier below maps to the code
 > placeholder `zzpersona` (`@zzpersona/*`, `zzpersonad`, …); see `00-handoff.md` → "Naming".
+> Amended 2026-10-23: the name is **donn**; the placeholder becomes `@getdonn/*`, `donn` and
+> `donnd` at the rename (`00-handoff.md` → "Naming").
 
 ## Principles
 

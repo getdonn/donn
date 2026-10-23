@@ -1,8 +1,9 @@
-# persona-ai (name TBD)
+# persona-ai (donn)
 
-> Hatrack is taken; no name is chosen yet. Code uses the placeholder `zzpersona`
-> (`@zzpersona/*`, `~/.zzpersona/`, etc.); docs still say `hatrack`, read it as the same
-> placeholder. See `docs/planning/00-handoff.md` → "Naming".
+> The name is **donn** (chosen 2026-10-23): npm org `@getdonn` (CLI package `@getdonn/cli`,
+> command `donn`), GitHub org `getdonn`, domain `getdonn.dev`. The rename has not happened yet:
+> code still uses the placeholder `zzpersona` (`@zzpersona/*`, `~/.zzpersona/`, etc.), and docs
+> still say `hatrack`; read both as donn. See `docs/planning/00-handoff.md` → "Naming".
 
 A persona compiler and control plane for AI coding harnesses. A **persona** is a declarative,
 composable bundle (instructions, skills, MCP servers, permissions, hooks, knowledge pointers,
@@ -65,8 +66,8 @@ its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec)
 path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
 built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-local`,
 `secrets`, `executor` and `zzpersona resolve|compile|claude` (opt-in `ZZP_E2E=1` runs the built
-binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`), spec 12 (the Codex adapter, `zzpersona codex`), spec 13 (the capability matrix: `zzpersona capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `zzpersona daemon`, `zzpersona status`, live sessions refreshed on persona edits), spec 15 (mod transport: `/persona` through the daemon) and spec 16 (the daemon service: `zzpersona daemon install|uninstall`, auto-start in `claude`/`codex`, the race-safe lock) and spec 17 (`switch` reports per harness) are built; Phase 2's roadmap items are done; Phase 3 has started with spec 18 (registry contract and client, built ahead of a design partner); spec 21 (managed settings: `policy`, `zzpersona managed build|install|uninstall|check`, the registry's `/v1/managed/bundle`, a real Claude Code e2e) is built, E's open-source half, and the control plane's spec 04 is next; also open: the hardening pass on spec 16's deferred minors, or the rest of Phase 3 (spec 18 built the registry contract and client; spec 19 the shared publish engine; B is built as the private control plane, `~/Repos/persona-ai-control-plane`, v0.1.0; C, identity, has its open-source half in spec 20, and the server half follows). Picking the name runs
-in parallel and only blocks the first `npm publish`.
+binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`), spec 12 (the Codex adapter, `zzpersona codex`), spec 13 (the capability matrix: `zzpersona capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `zzpersona daemon`, `zzpersona status`, live sessions refreshed on persona edits), spec 15 (mod transport: `/persona` through the daemon) and spec 16 (the daemon service: `zzpersona daemon install|uninstall`, auto-start in `claude`/`codex`, the race-safe lock) and spec 17 (`switch` reports per harness) are built; Phase 2's roadmap items are done; Phase 3 has started with spec 18 (registry contract and client, built ahead of a design partner); spec 21 (managed settings: `policy`, `zzpersona managed build|install|uninstall|check`, the registry's `/v1/managed/bundle`, a real Claude Code e2e) is built, E's open-source half, and the control plane's spec 04 is next; also open: the hardening pass on spec 16's deferred minors, or the rest of Phase 3 (spec 18 built the registry contract and client; spec 19 the shared publish engine; B is built as the private control plane, `~/Repos/persona-ai-control-plane`, v0.1.0; C, identity, has its open-source half in spec 20, and the server half follows). The name is chosen
+(donn); the `zzpersona` → donn rename runs in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
 
@@ -74,7 +75,7 @@ in parallel and only blocks the first `npm publish`.
 - Node: develop on 26 (pnpm downloads it via `devEngines.runtime`; system Node is irrelevant);
   `engines` floor is >=24, and `@types/node` tracks the floor, not the dev version.
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
-  never at the repo root. All packages `"private": true` until the name is chosen.
+  never at the repo root. All packages `"private": true` until the rename to donn lands.
 - Every CLI command supports `--json`.
 - Formatting: Prettier at width 80 (`.prettierrc.json`). `pnpm format` before committing;
   `pnpm format:check` must pass. `.prettierignore` excludes generated files, test fixtures and
