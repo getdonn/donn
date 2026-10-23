@@ -3,6 +3,8 @@
 > Working name: **Hatrack** (unverified — check npm, GitHub org, domain before committing).
 > Amended 2026-10-20: Hatrack is taken. Placeholder is `zzpersona` until a name is chosen; see
 > `00-handoff.md` → "Naming".
+> Amended 2026-10-23: the name is **donn** (npm `@getdonn/*`, CLI `donn`, `getdonn.dev`); see
+> `00-handoff.md` → "Naming".
 > Status: brainstorm, 2026-10-20. Nothing here is decided.
 
 ## Problem and mission
@@ -171,7 +173,8 @@ The question is not "does it work." It is:
 ## Open questions
 
 - Name. (~~Hatrack~~ taken / Mantle / Guise / Dramatis / Roleset / Manyhats — rest unverified.)
-  Not blocking until first publish; see `00-handoff.md` → "Naming".
+  Not blocking until first publish; see `00-handoff.md` → "Naming". **Decided 2026-10-23:**
+  donn.
 - License for OSS core: Apache-2.0 vs. MIT. Lean Apache-2.0 (patent grant matters for enterprise).
 - ~~Does the enterprise server need to be a separate repo from day one, or a private package in
   the turborepo that is excluded from the OSS mirror?~~ **Decided 2026-10-20:** separate private
