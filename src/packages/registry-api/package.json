@@ -30,6 +30,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@zzpersona/adapter-sdk": "workspace:*",
     "@zzpersona/resolver": "workspace:*",
     "@zzpersona/spec": "workspace:*",
     "yaml": "^2.9.1",
