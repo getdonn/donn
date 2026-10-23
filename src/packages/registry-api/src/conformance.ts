@@ -843,6 +843,9 @@ export function registryConformance(
           local.bundle!.manifest.files,
         );
         expect(answer.body.manifest.layers).toEqual(layers);
+        expect(Object.keys(answer.body.files).sort()).toEqual(
+          Object.keys(local.bundle!.files).sort(),
+        );
         for (const [path, bytes] of Object.entries(local.bundle!.files)) {
           expect(answer.body.files[path]).toBe(
             Buffer.from(bytes).toString("base64"),

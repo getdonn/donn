@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { realpath, readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import type { LocalStore } from "@zzpersona/store-local";
@@ -20,12 +21,18 @@ import {
   RegistryError,
   type RegistryStore,
 } from "@zzpersona/store-remote";
+import { fail as registryFailure } from "../commands/registry.js";
 import { cliVersion } from "../commands/daemon.js";
 import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
 import { clientFor } from "../registry.js";
-import { checkedPath, MANIFEST_PATH, sha256 } from "./bundle-io.js";
+import {
+  checkedPath,
+  checkNoCaseDuplicates,
+  MANIFEST_PATH,
+  sha256,
+} from "./bundle-io.js";
 
 // Compile the locks of an org, area or team chain to a managed policy bundle.
 // See docs/planning/21-managed-settings.md, sections 2 and 3.
@@ -184,7 +191,12 @@ async function downloadBundle(
     answer = await client.managedBundle({ layer, os: options.os });
   } catch (error) {
     if (!(error instanceof RegistryError)) throw error;
-    if (error.code === "format-unsupported") {
+    // A registry without the route answers a bare 404; the mock and real servers name the layer
+    // (`ref`) when it is the layer that is missing.
+    const noRoute =
+      error.code === "not-found" &&
+      !(error.problems ?? []).some((p) => p.ref !== undefined);
+    if (error.code === "format-unsupported" || noRoute) {
       throw new CliError(
         "not-supported",
         "not supported by this registry: --from-registry",
@@ -208,10 +220,11 @@ async function downloadBundle(
       });
       return { report: { entries, warnings: [] } };
     }
-    throw error;
+    return registryFailure(error);
   }
   const { manifest, files } = answer;
   for (const path of Object.keys(files)) checkedPath(path);
+  checkNoCaseDuplicates(Object.keys(files));
   const listed = new Set(Object.keys(manifest.files));
   for (const [path, expected] of Object.entries(manifest.files)) {
     checkedPath(path);
@@ -233,10 +246,25 @@ async function downloadBundle(
       );
     }
   }
-  if (files[MANIFEST_PATH] === undefined) {
+  const manifestBytes = files[MANIFEST_PATH];
+  if (manifestBytes === undefined) {
     throw new CliError(
       "managed-bundle-mismatch",
       `${MANIFEST_PATH} is missing from the bundle the registry sent`,
+    );
+  }
+  // The bytes install will read must be the manifest the digests were checked against.
+  let written: unknown;
+  try {
+    written = JSON.parse(new TextDecoder().decode(manifestBytes));
+  } catch {
+    written = undefined;
+  }
+  if (!isDeepStrictEqual(written, manifest)) {
+    throw new CliError(
+      "managed-bundle-mismatch",
+      `${MANIFEST_PATH} does not match the manifest the registry sent`,
+      { path: MANIFEST_PATH },
     );
   }
   return {

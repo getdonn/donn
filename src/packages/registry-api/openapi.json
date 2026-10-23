@@ -30,16 +30,6 @@
               }
             }
           },
-          "400": {
-            "description": "A query parameter is missing or invalid (invalid-request)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -112,16 +102,6 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -155,16 +135,6 @@
               }
             }
           },
-          "400": {
-            "description": "A query parameter is missing or invalid (invalid-request)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -237,16 +207,6 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -298,16 +258,6 @@
               }
             }
           },
-          "400": {
-            "description": "A query parameter is missing or invalid (invalid-request)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -380,16 +330,6 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -451,16 +391,6 @@
               }
             }
           },
-          "400": {
-            "description": "A query parameter is missing or invalid (invalid-request)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -533,16 +463,6 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -749,16 +669,6 @@
               }
             }
           },
-          "400": {
-            "description": "A query parameter is missing or invalid (invalid-request)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -831,16 +741,6 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -888,16 +788,6 @@
               }
             }
           },
-          "400": {
-            "description": "A query parameter is missing or invalid (invalid-request)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -970,16 +860,6 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {

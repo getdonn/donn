@@ -42,6 +42,23 @@ export function checkedPath(path: string): string {
   return path;
 }
 
+/** Refuse two paths that differ only in case: on a case-insensitive disk they are one file. */
+export function checkNoCaseDuplicates(paths: Iterable<string>): void {
+  const seen = new Map<string, string>();
+  for (const path of paths) {
+    const key = path.toLowerCase();
+    const other = seen.get(key);
+    if (other !== undefined && other !== path) {
+      throw new CliError(
+        "managed-bad-path",
+        `${JSON.stringify(other)} and ${JSON.stringify(path)} differ only in case`,
+        { path },
+      );
+    }
+    seen.set(key, path);
+  }
+}
+
 /** True when `dir` holds a zzpersona bundle (its manifest file exists). */
 async function isBundle(dir: string): Promise<boolean> {
   try {
@@ -76,6 +93,7 @@ export async function writeBundle(
       { out: dir },
     );
   }
+  checkNoCaseDuplicates(Object.keys(files));
   const parent = dirname(dir);
   const staging = join(
     parent,
@@ -141,6 +159,7 @@ export async function readBundle(dir: string): Promise<{
       { dir },
     );
   }
+  checkNoCaseDuplicates(Object.keys(manifest.files));
   const files: Record<string, Uint8Array> = {
     [MANIFEST_PATH]: new Uint8Array(manifestBytes),
   };

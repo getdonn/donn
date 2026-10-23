@@ -241,7 +241,8 @@ these say otherwise.
 11. **Capability matrix.** The `policy` row: native for Claude Code through the managed bundle,
     advisory for the other built-in adapters. `FIXED_CAPABILITY_FIELDS` gained `policy`, so a
     third-party adapter must declare that row.
-12. **Registry route (§4), as built.** The client schemas are tolerant and the conformance kit holds
+12. **Registry route (§4), as built.** (`invalid` means a 422 bad bundle; `invalid-request` a 400 bad
+    query.) The client schemas are tolerant and the conformance kit holds
     servers to strict copies. New problem codes: `invalid-request` (400), `managed-refused` (422;
     one problem per refused entry, `path` and `ref` set, message `<path>: <code>: <reason>`),
     `managed-needs-files` and `format-unsupported` (501). Checks run in this order: token (401),
@@ -260,3 +261,9 @@ these say otherwise.
     (shows the locked server) and `claude doctor` (no installation issues; it needs neither a TTY
     nor a login). `claude doctor` does not itself list managed settings, so the files, `check` and
     `mcp list` carry the assertion.
+14. **Older registries and manifest bytes (fix round 1).** A bare 404 (no `ref` on the problem) from
+    `--from-registry` is read as a registry without the route and reports `not supported by this
+    registry`; a 404 that names a `ref` is a missing layer. The bytes sent for
+    `zzpersona/manifest.json` must parse to exactly the manifest object the digests were checked
+    against, and file keys that differ only in case are refused (also by `writeBundle` and
+    `readBundle`).

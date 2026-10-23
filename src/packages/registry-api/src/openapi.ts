@@ -39,7 +39,6 @@ const json = (schema: z.ZodType): Record<string, unknown> => {
 };
 
 const ERRORS: Record<number, string> = {
-  400: "A query parameter is missing or invalid (invalid-request)",
   401: "Missing or refused token",
   403: "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
   404: "Unknown ref or version",
@@ -48,7 +47,16 @@ const ERRORS: Record<number, string> = {
   422: "The bundle or its place in the layer graph is refused",
   428: "The sign-in is not finished yet (authorization-pending)",
   429: "Polled faster than the login's interval (slow-down)",
-  501: "The server does not build the requested managed format (format-unsupported)",
+};
+
+/** Answers only some routes can give. */
+const EXTRA_ERRORS: Partial<
+  Record<keyof typeof ROUTES, Record<number, string>>
+> = {
+  managedBundle: {
+    400: "A query parameter is missing or invalid (invalid-request)",
+    501: "The server does not build the requested managed format (format-unsupported)",
+  },
 };
 
 const PARAMS: Record<string, Record<string, unknown>> = {
@@ -149,7 +157,10 @@ export function buildOpenApi(): Record<string, unknown> {
     };
     const responses: Record<string, unknown> = {};
     for (const status of route.statuses) responses[String(status)] = ok;
-    for (const [status, description] of Object.entries(ERRORS)) {
+    for (const [status, description] of Object.entries({
+      ...ERRORS,
+      ...EXTRA_ERRORS[name],
+    })) {
       responses[status] = {
         description,
         content: {

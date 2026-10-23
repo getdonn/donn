@@ -59,7 +59,10 @@ function showCode(code: string): string {
 }
 
 /** A registry failure as a CliError: each problem as `<code>: <message>`, with its hint. */
-function fail(error: unknown, options: { grantHint?: boolean } = {}): never {
+export function fail(
+  error: unknown,
+  options: { grantHint?: boolean } = {},
+): never {
   if (!(error instanceof RegistryError)) throw error;
   const problems =
     error.problems !== undefined && error.problems.length > 0

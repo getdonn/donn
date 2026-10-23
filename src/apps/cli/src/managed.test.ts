@@ -487,9 +487,12 @@ targets:
     });
 
     /** A registry that answers `body` for the bundle route and nothing else. */
-    async function liar(body: unknown) {
+    async function liar(body: unknown, status = 200) {
       const server = createServer((_req, res) => {
-        res.writeHead(200, { "content-type": "application/json" });
+        res.writeHead(status, {
+          "content-type":
+            status === 200 ? "application/json" : "application/problem+json",
+        });
         res.end(JSON.stringify(body));
       });
       await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -555,6 +558,94 @@ targets:
         );
         expect(r.code).toBe(1);
         expect(r.stderr).toContain(path);
+        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+      } finally {
+        await bad.stop();
+      }
+    });
+
+    const fromRegistry = [
+      "--layer",
+      "org/acme",
+      "--os",
+      "linux",
+      "--from-registry",
+    ];
+    const problem = (ref?: string) => ({
+      type: "about:blank",
+      title: "Not found",
+      status: 404,
+      detail: "nothing here",
+      problems: [
+        { code: "not-found", message: "nothing here", ...(ref && { ref }) },
+      ],
+    });
+
+    it("reads a 404 without a ref as a registry that lacks the route", async () => {
+      const old = await liar(problem(), 404);
+      try {
+        const m = machine({}, old.url);
+        const r = await run(m, fromRegistry, env);
+        expect(r.code).toBe(1);
+        expect(r.stderr).toContain("not supported by this registry");
+      } finally {
+        await old.stop();
+      }
+    });
+
+    it("keeps the layer-not-found message when the 404 names a ref", async () => {
+      const reg = await liar(problem("org/acme"), 404);
+      try {
+        const m = machine({}, reg.url);
+        const r = await run(m, fromRegistry, env);
+        expect(r.code).toBe(1);
+        expect(r.stderr).not.toContain("not supported");
+        expect(r.stderr).toContain("nothing here");
+      } finally {
+        await reg.stop();
+      }
+    });
+
+    it("refuses manifest.json bytes that differ from the manifest it sent", async () => {
+      const path = "managed-settings.d/50-zzpersona.json";
+      const manifest = manifestFor({ [path]: hash("one") });
+      const bad = await liar({
+        manifest,
+        files: {
+          [path]: b64("one"),
+          "zzpersona/manifest.json": b64(
+            JSON.stringify({ ...manifest, files: {} }),
+          ),
+        },
+      });
+      try {
+        const m = machine({}, bad.url);
+        const r = await run(m, fromRegistry, env);
+        expect(r.code).toBe(1);
+        expect(r.stderr).toContain("manifest.json");
+        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+      } finally {
+        await bad.stop();
+      }
+    });
+
+    it("refuses file keys that differ only in case", async () => {
+      const a = "managed-settings.d/50-zzpersona.json";
+      const b = "managed-settings.d/50-ZZPERSONA.json";
+      const manifest = manifestFor({ [a]: hash("x"), [b]: hash("x") });
+      const bad = await liar({
+        manifest,
+        files: {
+          [a]: b64("x"),
+          [b]: b64("x"),
+          "zzpersona/manifest.json": b64(JSON.stringify(manifest)),
+        },
+      });
+      try {
+        const m = machine({}, bad.url);
+        const r = await run(m, fromRegistry, env);
+        expect(r.code).toBe(1);
+        expect(r.stderr).toContain("differ only in case");
         expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
       } finally {
         await bad.stop();

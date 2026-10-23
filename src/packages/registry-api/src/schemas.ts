@@ -135,6 +135,7 @@ export const PROBLEM_CODES = [
   "authorization-pending",
   "slow-down",
   "login-expired",
+  // `invalid` is a 422 bad bundle; `invalid-request` a 400 bad query.
   "invalid-request",
   "managed-refused",
   "managed-needs-files",
