@@ -454,6 +454,9 @@ importers:
 
   src/packages/registry-api:
     dependencies:
+      '@zzpersona/adapter-sdk':
+        specifier: workspace:*
+        version: link:../adapter-sdk
       '@zzpersona/resolver':
         specifier: workspace:*
         version: link:../resolver

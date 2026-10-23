@@ -20,6 +20,7 @@ import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { listCommand } from "./commands/list.js";
 import { writeCommand } from "./commands/write.js";
+import { managedBuildCommand } from "./commands/managed.js";
 import { liveCommand } from "./commands/live.js";
 import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
@@ -405,6 +406,26 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print the registry's answer as JSON")
         .action((ref: string, options) =>
           handle(options.json, () => publishCommand(io, ref, options)),
+        );
+
+      const managed = program
+        .command("managed")
+        .description(
+          "Compile org locks to Claude Code managed settings (spec 21)",
+        );
+      managed
+        .command("build")
+        .description("Compile a layer chain's locks to a managed policy bundle")
+        .option(
+          "--layer <ref>",
+          "an org, area or team layer (default: the org)",
+        )
+        .option("--os <os>", "macos, linux or windows (default: this OS)")
+        .option("--out <dir>", "where to write the bundle", "zzpersona-managed")
+        .option("--from-registry", "download the bundle from the registry")
+        .option("--json", "print { out, report } as JSON")
+        .action((options) =>
+          handle(options.json, () => managedBuildCommand(io, options)),
         );
 
       const daemon = program
