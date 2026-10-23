@@ -27,6 +27,7 @@ function checkedPath(path: string): string {
   const normal = posix.normalize(path);
   if (
     path.includes("\\") ||
+    /^[A-Za-z]:/.test(path) ||
     posix.isAbsolute(normal) ||
     normal === ".." ||
     normal.startsWith("../") ||
@@ -97,7 +98,8 @@ export async function writeBundle(
 
 /**
  * Read a bundle folder and check it: every file the manifest lists must exist with the listed
- * sha256. Throws naming the first mismatch. Files the manifest does not list are ignored.
+ * sha256. Throws naming the first mismatch. Files the manifest does not list are ignored, so
+ * callers (`install`) must install only the returned `files`, never the folder's contents.
  */
 export async function readBundle(dir: string): Promise<{
   files: Record<string, Uint8Array>;

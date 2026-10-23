@@ -1,5 +1,6 @@
 import { realpath, readFile } from "node:fs/promises";
-import { sep } from "node:path";
+import { join, sep } from "node:path";
+import type { LocalStore } from "@zzpersona/store-local";
 import claudeCode from "@zzpersona/adapter-claude-code";
 import type {
   ManagedLayer,
@@ -10,6 +11,7 @@ import { bundleDigest, compileFromSource } from "@zzpersona/registry-api";
 import { resolve } from "@zzpersona/resolver";
 import type { Ref } from "@zzpersona/spec";
 import {
+  cacheFolder,
   readIndex,
   bundleLayer,
   RegistryError,
@@ -59,6 +61,33 @@ async function pickLayer(context: Context, layer?: string): Promise<Ref> {
   );
 }
 
+/** The cached files that get compiled must still hash to the digest the index records. */
+async function verifyCached(
+  home: string,
+  ref: Ref,
+  version: number,
+  digest: string,
+): Promise<void> {
+  const folder = cacheFolder(home, ref, version, digest);
+  const asStore = {
+    locate: () => ({ path: join(folder, "layer.yaml"), root: folder }),
+  } as unknown as LocalStore;
+  let actual: string | undefined;
+  try {
+    const { source, files } = await bundleLayer(asStore, ref);
+    actual = bundleDigest(source, files);
+  } catch {
+    // Unreadable or incomplete counts as a mismatch.
+  }
+  if (actual !== digest) {
+    throw new CliError(
+      "managed-cache-mismatch",
+      `the cached copy of ${ref} @${version} does not match the registry's digest; run \`zzpersona pull\` to refresh it`,
+      { ref, version },
+    );
+  }
+}
+
 /** Version and digest of each layer: the published ones from the cache, the rest hashed locally. */
 async function describeLayers(
   context: Context,
@@ -74,6 +103,7 @@ async function describeLayers(
         : undefined;
     const cached = version !== undefined ? index?.layers[ref] : undefined;
     if (version !== undefined && cached !== undefined) {
+      await verifyCached(context.home, ref, version, cached.digest);
       out.push({ ref, version, digest: cached.digest });
       continue;
     }

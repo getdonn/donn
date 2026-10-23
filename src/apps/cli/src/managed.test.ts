@@ -184,6 +184,18 @@ permissions:
     const out = join(m.cwd, "zzpersona-managed");
     expect(settingsOf(out)).toEqual({});
     expect(existsSync(join(out, "managed-mcp.json"))).toBe(false);
+    const notice =
+      "nothing in org/acme and its ancestors is locked; the bundle enforces nothing";
+    expect(r.stdout).toContain(`${notice}\n`);
+    const json = JSON.parse((await run(m, ["--json"])).stdout);
+    expect(json.notice).toBe(notice);
+  });
+
+  it("prints no empty-policy notice when something is enforced", async () => {
+    const m = machine();
+    const r = await run(m, ["--json"]);
+    expect(JSON.parse(r.stdout).notice).toBeUndefined();
+    expect((await run(m, [])).stdout).not.toContain("enforces nothing");
   });
 
   it("refusals exit 1 and name the layer and path", async () => {
@@ -196,9 +208,11 @@ permissions:
     });
     const r = await run(m, ["--layer", "team/payments"]);
     expect(r.code).toBe(1);
-    expect(r.stderr).toContain("managed-unknown-key");
-    expect(r.stderr).toContain("notARealKey");
-    expect(r.stderr).toContain("team/payments");
+    const line = r.stderr.split("\n").find((l) => l.startsWith("refused:"))!;
+    expect(line).toMatch(
+      /^refused: targets\.claude-code\.managed\.notARealKey \(team\/payments\) managed-unknown-key: .+$/,
+    );
+    expect(line).toContain("notARealKey");
     expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
     const json = await run(m, ["--layer", "team/payments", "--json"]);
     expect(json.code).toBe(1);
@@ -321,6 +335,28 @@ targets:
     }
   });
 
+  it("refuses a cached layer whose files no longer match the index", async () => {
+    const registry = await startMockRegistry({ token: "t" });
+    try {
+      const m = machine({}, registry.url);
+      const env = { ZZPERSONA_REGISTRY_TOKEN: "t" };
+      const opts = { cwd: m.cwd, home: m.home, env };
+      await zz(["publish", "org/acme"], opts);
+      await zz(["pull"], opts);
+      expect((await run(m, [], env)).code).toBe(0);
+      const cacheRoot = join(m.home, "cache/registry/org/acme");
+      const folder = join(cacheRoot, readdirSync(cacheRoot)[0]!);
+      writeFileSync(join(folder, "instructions/conduct.md"), "tampered");
+      const r = await run(m, ["--out", "second"], env);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toContain("org/acme");
+      expect(r.stderr).toContain("zzpersona pull");
+      expect(existsSync(join(m.cwd, "second"))).toBe(false);
+    } finally {
+      await registry.stop();
+    }
+  });
+
   // Task 5 adds the registry route and replaces this with: the downloaded files equal a local build.
   it.skip("--from-registry downloads the bundle", () => {});
 
@@ -363,6 +399,16 @@ describe("bundle io", () => {
     rmSync(join(dir, "managed-settings.d/50-zzpersona.json"));
     await expect(readBundle(dir)).rejects.toThrow("50-zzpersona.json");
     await expect(readBundle(m.cwd)).rejects.toThrow("not a zzpersona bundle");
+  });
+
+  it("refuses Windows drive paths", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zzp-bundle-"));
+    roots.push(root);
+    for (const path of ["C:/evil", "c:evil", "z:\\x"]) {
+      await expect(
+        writeBundle(join(root, "b"), { [path]: enc("x") }),
+      ).rejects.toThrow("not a path inside the bundle");
+    }
   });
 
   it("refuses paths that leave the folder", async () => {

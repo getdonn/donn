@@ -47,10 +47,17 @@ export async function managedBuildCommand(
     }
     return 1;
   }
+  const deepest = bundle.manifest.layers.at(-1)?.ref;
+  const notice =
+    report.entries.some((e) => e.outcome === "enforced") || !deepest
+      ? undefined
+      : `nothing in ${deepest} and its ancestors is locked; the bundle enforces nothing`;
   const out = resolve(io.cwd, options.out ?? "zzpersona-managed");
   await writeBundle(out, bundle.files);
   if (options.json) {
-    io.stdout.write(`${JSON.stringify({ out, report }, null, 2)}\n`);
+    io.stdout.write(
+      `${JSON.stringify({ out, report, ...(notice && { notice }) }, null, 2)}\n`,
+    );
     return 0;
   }
   for (const e of report.entries) {
@@ -59,6 +66,7 @@ export async function managedBuildCommand(
   for (const w of report.warnings) {
     io.stderr.write(`warning: ${w.code}: ${w.message}\n`);
   }
+  if (notice) io.stdout.write(`${notice}\n`);
   io.stdout.write(`bundle: ${out}\n`);
   return 0;
 }
