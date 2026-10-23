@@ -80,6 +80,7 @@ function rows(columns: Column[]): Row[] {
       HOOK_EVENTS.map((event): CapabilityField => `hooks.${event}`),
       columns,
     ),
+    single("policy"),
     { label: "targets", field: (column) => `targets.${column.id}` },
   ];
 }

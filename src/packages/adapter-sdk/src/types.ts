@@ -1,4 +1,5 @@
 import type { HookEvent, Ref, ResolvedPersona } from "@zzpersona/spec";
+import type { ManagedCompiler } from "./managed.js";
 
 // The harness adapter contract. See docs/planning/05-adapter-sdk.md, sections 1–2.
 // Adapters are pure: compile() and activate() return data, and the CLI carries out the side
@@ -15,6 +16,8 @@ export interface HarnessAdapter {
   detect(probe: Probe): Promise<Detection>;
   compile(input: CompileInput): CompileOutput;
   activate(input: ActivateInput): ActivationPlan;
+  /** Compiles locks to the harness's machine-wide policy (docs/planning/21-managed-settings.md). */
+  managed?: ManagedCompiler;
 }
 
 /** process.platform's values, without depending on @types/node. */
@@ -130,6 +133,7 @@ export const FIXED_CAPABILITY_FIELDS = [
   "permissions.allow",
   "permissions.deny",
   "permissions.ask",
+  "policy",
 ] as const;
 
 export type CapabilityField =

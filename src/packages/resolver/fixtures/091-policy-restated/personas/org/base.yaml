@@ -1,0 +1,6 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: base
+policy:
+  mcp: exclusive

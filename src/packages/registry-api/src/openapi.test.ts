@@ -37,9 +37,22 @@ describe("buildOpenApi", () => {
     expect(Problem.properties.problems.items.properties.code.enum).toEqual([
       ...PROBLEM_CODES,
     ]);
-    expect(PROBLEM_CODES).toHaveLength(15);
+    expect(PROBLEM_CODES).toHaveLength(19);
     expect(Problem.properties.problems.items.additionalProperties).toBe(false);
     expect(Whoami.additionalProperties).toBe(false);
     expect(Change.additionalProperties).toBe(false);
+  });
+
+  it("400 invalid-request and 501 format-unsupported are documented on the managed route only", () => {
+    const doc = buildOpenApi() as {
+      paths: Record<string, Record<string, { responses: object }>>;
+    };
+    for (const route of Object.values(ROUTES)) {
+      const responses = doc.paths[route.path]![route.method.toLowerCase()]!
+        .responses as Record<string, unknown>;
+      const managed = route.path === "/v1/managed/bundle";
+      expect("400" in responses).toBe(managed);
+      expect("501" in responses).toBe(managed);
+    }
   });
 });

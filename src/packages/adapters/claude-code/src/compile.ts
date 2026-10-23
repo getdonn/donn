@@ -19,7 +19,7 @@ import { capabilities } from "./capabilities.js";
 // settings fragment (permissions, targets), an MCP config, and a system prompt. See
 // docs/planning/05-adapter-sdk.md, section 5, and spikes/claude-code/FINDINGS.md.
 
-const NATIVE_EVENTS: Record<HookEvent, string> = {
+export const NATIVE_EVENTS: Record<HookEvent, string> = {
   "session-start": "SessionStart",
   "session-end": "SessionEnd",
   "user-prompt-submit": "UserPromptSubmit",
@@ -31,8 +31,11 @@ const NATIVE_EVENTS: Record<HookEvent, string> = {
   notification: "Notification",
 };
 
-/** Keys in targets.claude-code the adapter consumes instead of writing to settings. */
-const ADAPTER_KEYS = new Set(["strictMcp"]);
+/**
+ * Keys in targets.claude-code the adapter consumes instead of writing to settings. `managed` is
+ * the managed policy bundle's (managed/compile.ts), never a session's.
+ */
+const ADAPTER_KEYS = new Set(["strictMcp", "managed"]);
 
 const asJson = (value: unknown): FileEntry => ({
   content: `${JSON.stringify(value, null, 2)}\n`,

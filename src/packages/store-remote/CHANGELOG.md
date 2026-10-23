@@ -1,5 +1,23 @@
 # @zzpersona/store-remote
 
+## 0.4.0
+
+### Minor Changes
+
+- d221b8b: `RegistryClient.managedBundle({ layer, os })` downloads a managed policy bundle: the manifest and the
+  files as bytes, and `rawManifest`, the manifest as sent (before tolerant parsing drops fields this
+  client does not know). File paths are the registry's word; callers check them before writing.
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+  - @zzpersona/registry-api@0.5.0
+  - @zzpersona/resolver@0.4.0
+  - @zzpersona/spec@0.2.0
+  - @zzpersona/store-local@0.1.2
+
 ## 0.3.0
 
 ### Minor Changes

@@ -8,6 +8,7 @@ import {
   KnowledgePointer,
   Labels,
   McpServer,
+  Policy,
   Ref,
   SecretProvider,
   ServerName,
@@ -49,6 +50,8 @@ export const ResolvedPersona = z.strictObject({
   /** Declaration order. */
   locks: z.array(z.strictObject({ path: z.string().min(1), layer: Ref })),
   targets: Targets,
+  /** Added after IR 1 as an optional field with a default, so IR_VERSION is unchanged. */
+  policy: Policy.default({}),
 });
 export type ResolvedPersona = z.infer<typeof ResolvedPersona>;
 
@@ -83,6 +86,7 @@ export const ERROR_CODES = [
   "lock-violation",
   "invalid-lock-path",
   "user-layer-lock",
+  "policy-in-lower-layer",
   "invalid-persona",
 ] as const;
 export const ErrorCode = z.enum(ERROR_CODES);

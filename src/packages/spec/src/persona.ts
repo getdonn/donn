@@ -9,6 +9,7 @@ import {
   KnowledgePointer,
   Labels,
   McpServer,
+  Policy,
   Ref,
   SecretProvider,
   ServerName,
@@ -102,6 +103,8 @@ export const Persona = z.strictObject({
   }),
   extends: z.array(Ref).optional(),
   locks: z.array(z.string().min(1)).optional(),
+  /** Persona files only: the overlay cannot carry it. */
+  policy: Policy.optional(),
   ...LayerBody,
 });
 export type Persona = z.infer<typeof Persona>;

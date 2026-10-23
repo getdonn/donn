@@ -77,6 +77,7 @@ const ir: ResolvedPersona = {
   secrets: { providers: {} },
   locks: [],
   targets: {},
+  policy: {},
 };
 
 const PROMPT = `Configuration test. Report:

@@ -145,5 +145,6 @@
       "model": "opus",
       "outputStyle": "concise"
     }
-  }
+  },
+  "policy": {}
 }

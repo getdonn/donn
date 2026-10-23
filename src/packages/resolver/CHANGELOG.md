@@ -1,5 +1,17 @@
 # @zzpersona/resolver
 
+## 0.4.0
+
+### Minor Changes
+
+- d221b8b: Resolves the `policy` block (only org, area and team layers may set it; an equal re-set is a no-op)
+  and records the layer that set each `policy` and `targets.<harness>.managed` key in `provenance`.
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+  - @zzpersona/spec@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes

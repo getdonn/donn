@@ -1,0 +1,6 @@
+description: A persona that sets no policy resolves with an empty policy object.
+resolve: team/t
+expect:
+  resolved:
+    policy: {}
+  warnings: []

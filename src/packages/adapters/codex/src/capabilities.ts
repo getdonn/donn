@@ -14,6 +14,11 @@ const hooks = {
   note: "untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust",
 } as const;
 
+const POLICY = {
+  support: "none",
+  note: "not rendered; enforced only by managed bundles for Claude Code",
+} as const;
+
 export function capabilities(): CapabilityMatrix {
   return {
     fields: {
@@ -39,6 +44,7 @@ export function capabilities(): CapabilityMatrix {
         ...native,
         caveat: "only sandbox, approval and model are read",
       },
+      policy: POLICY,
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, hooks]),
       ),

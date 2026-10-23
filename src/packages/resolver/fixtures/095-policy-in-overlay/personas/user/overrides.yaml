@@ -1,0 +1,6 @@
+apiVersion: zzpersona/v0
+kind: PersonaOverlay
+targets:
+  claude-code:
+    managed:
+      deniedModels: []

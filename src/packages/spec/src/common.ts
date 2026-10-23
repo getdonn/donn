@@ -87,4 +87,16 @@ export const Targets = z.record(
 );
 export type Targets = z.infer<typeof Targets>;
 
+/**
+ * Harness-neutral enforcement, set only by org/area/team layers. Each key takes exactly one value;
+ * absent means "not enforced". See docs/planning/21-managed-settings.md.
+ */
+export const Policy = z.strictObject({
+  permissions: z.literal("exclusive").optional(),
+  hooks: z.literal("exclusive").optional(),
+  mcp: z.literal("exclusive").optional(),
+  bypassPermissions: z.literal("disabled").optional(),
+});
+export type Policy = z.infer<typeof Policy>;
+
 export const Labels = z.record(z.string(), z.string());

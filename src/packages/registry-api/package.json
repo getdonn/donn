@@ -1,6 +1,6 @@
 {
   "name": "@zzpersona/registry-api",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "The registry contract: schemas, routes, OpenAPI, a mock server and a conformance kit",
   "license": "Apache-2.0",
@@ -30,6 +30,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@zzpersona/adapter-sdk": "workspace:*",
     "@zzpersona/resolver": "workspace:*",
     "@zzpersona/spec": "workspace:*",
     "yaml": "^2.9.1",

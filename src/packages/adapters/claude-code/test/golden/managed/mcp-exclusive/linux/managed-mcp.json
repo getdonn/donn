@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "records": {
+      "headers": {
+        "X-Team": "payments"
+      },
+      "type": "http",
+      "url": "https://records.corp/mcp"
+    },
+    "schema": {
+      "args": [
+        "-y",
+        "@corp/payments-schema-mcp"
+      ],
+      "command": "npx",
+      "env": {
+        "SCHEMA_URL": "https://schema.corp"
+      },
+      "type": "stdio"
+    }
+  }
+}

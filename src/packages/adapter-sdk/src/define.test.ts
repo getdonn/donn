@@ -61,6 +61,16 @@ describe("defineAdapter", () => {
     expect(results.filter((r) => !r.passed)).toEqual([]);
   });
 
+  it("keeps an optional managed compiler, and adds none", () => {
+    const managed = {
+      inputs: () => ({ texts: [], scripts: [] }),
+      compile: () => ({ report: { entries: [], warnings: [] } }),
+      roots: { macos: "/m", linux: "/l", windows: "C:\\w" },
+    };
+    expect(defineAdapter(declaration({ managed })).managed).toBe(managed);
+    expect("managed" in defineAdapter(declaration())).toBe(false);
+  });
+
   it("stamps the contract version", () => {
     const adapter = defineAdapter(declaration());
     expect(adapter.apiVersion).toBe(1);

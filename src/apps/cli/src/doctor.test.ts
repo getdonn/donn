@@ -85,13 +85,17 @@ const IDS = [
   "mod",
   "secrets",
   "build",
+  "managed",
 ];
 
 describe("zzpersona doctor", () => {
   it("is all ok for a healthy setup", async () => {
     const { r, checks } = await doctor([], { env: healthy() });
     expect(checks.map((c) => c.id)).toEqual(IDS);
-    expect(checks.filter((c) => c.status !== "ok")).toEqual([]);
+    // No managed policy installed is not a problem: skipped (spec 21).
+    expect(checks.filter((c) => c.status !== "ok")).toMatchObject([
+      { id: "managed", status: "skipped" },
+    ]);
     expect(r.code).toBe(0);
   });
 
@@ -124,6 +128,7 @@ describe("zzpersona doctor", () => {
       mod: "warn",
       secrets: "skipped",
       build: "ok",
+      managed: "skipped",
     });
     expect(r.code).toBe(0);
   });
