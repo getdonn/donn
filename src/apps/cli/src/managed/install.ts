@@ -15,6 +15,7 @@ import { basename, dirname, join } from "node:path";
 import type { ManagedManifest } from "@zzpersona/adapter-sdk";
 import { CliError } from "../errors.js";
 import { checkedPath, MANIFEST_PATH, readBundle } from "./bundle-io.js";
+import { asObject, earlierReplaced, SETTINGS_PATH } from "./drop-ins.js";
 import type { ManagedEnv } from "./env.js";
 
 // Put a bundle into the policy folder, or take it out again. Only files zzpersona owns (listed
@@ -22,7 +23,6 @@ import type { ManagedEnv } from "./env.js";
 // or removed; anything else that is in the way is refused, by name, before the first write.
 // See docs/planning/21-managed-settings.md, section 3.
 
-export const SETTINGS_PATH = "managed-settings.d/50-zzpersona.json";
 const HOOKS_DIR = "zzpersona/hooks";
 /** Written before an install's first write, removed after its manifest: what it may have written. */
 export const PENDING_PATH = "zzpersona/pending.json";
@@ -230,6 +230,8 @@ export interface InstallPlan {
   pending: string[];
   /** An earlier install was interrupted; its pending.json goes once this one finishes. */
   hadPending: boolean;
+  /** Single values in policy files read before ours that ours will replace. */
+  replaces: { key: string; file: string }[];
 }
 
 export interface PlannedInstall {
@@ -267,7 +269,19 @@ export async function planInstall(
     unchanged: [],
     pending: [...new Set([...owned, ...Object.keys(files)])].sort(),
     hadPending: pending !== undefined,
+    replaces: [],
   };
+  const settings = files[SETTINGS_PATH];
+  if (settings !== undefined) {
+    let ours: Record<string, unknown> | undefined;
+    try {
+      ours = asObject(JSON.parse(new TextDecoder().decode(settings)));
+    } catch {
+      ours = undefined;
+    }
+    if (ours !== undefined)
+      plan.replaces = await earlierReplaced(env.root, ours);
+  }
   const refused: string[] = [];
   const order = [
     ...Object.keys(files).filter((p) => p !== MANIFEST_PATH),
@@ -405,10 +419,11 @@ async function remove(root: string, path: string): Promise<void> {
   await syncDir(dirname(file));
 }
 
-/** Remove our own folders once they are empty; anyone else's file keeps them. */
+/** Remove folders once they are empty (never recursively); anyone else's file keeps them. */
 async function prune(root: string, dirs: string[]): Promise<void> {
   for (const dir of dirs) {
-    await rmdir(under(root, dir)).catch(() => undefined);
+    // ENOTEMPTY (someone else's file) or ENOENT: leave it as it is.
+    await rmdir(dir === "." ? root : under(root, dir)).catch(() => undefined);
   }
 }
 
@@ -483,5 +498,6 @@ export async function applyUninstall(
     if (!bookkeeping.includes(path)) await remove(root, path);
   }
   for (const path of bookkeeping) await remove(root, path);
-  await prune(root, [HOOKS_DIR, "zzpersona"]);
+  // Back to how the machine was before: empty folders go, the root too; others' files keep them.
+  await prune(root, [HOOKS_DIR, "zzpersona", "managed-settings.d", "."]);
 }

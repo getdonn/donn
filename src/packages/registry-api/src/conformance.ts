@@ -1,6 +1,8 @@
+import type { ManagedCompiler, ManagedLayer } from "@zzpersona/adapter-sdk";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MAX_BUNDLE_BYTES, bundleDigest } from "./bundle.js";
+import { compileFromSource, publishedSource } from "./managed.js";
 import { ROUTES, routePath } from "./routes.js";
 import {
   ConformanceSchemas,
@@ -35,6 +37,12 @@ export interface RegistryUnderTest {
   ): Promise<void>;
   /** Refuse the login at `verifyUrl`; without it the refused-login case is skipped. */
   refuseLogin?(verifyUrl: string, reason: string): Promise<void>;
+  /**
+   * The compiler the registry builds `format=bundle` with (the Claude Code adapter's `managed`).
+   * The kit compiles the same layers with it and compares; without it the managed cases are
+   * skipped.
+   */
+  managed?: ManagedCompiler;
   /** true: `start` honours `loginInterval` and `loginExpiresIn`; else those cases are skipped. */
   supportsLoginTiming?: boolean;
 }
@@ -49,6 +57,7 @@ const STRICT_RESPONSES = {
   publish: ConformanceSchemas.PublishResult,
   startLogin: ConformanceSchemas.LoginStart,
   pollLogin: ConformanceSchemas.LoginToken,
+  managedBundle: ConformanceSchemas.ManagedBundleResponse,
 } as const satisfies Record<RouteName, z.ZodType>;
 
 interface Answer {
@@ -95,10 +104,12 @@ export function registryConformance(
       params: Record<string, string> = {},
       body?: unknown,
       token: string | null = registry.token,
+      query: Record<string, string> = {},
     ): Promise<Answer> {
       const route = ROUTES[name];
+      const search = new URLSearchParams(query).toString();
       const response = await fetch(
-        registry.url + routePath(route.path, params),
+        registry.url + routePath(route.path, params) + (search && `?${search}`),
         {
           method: route.method,
           headers: {
@@ -750,6 +761,99 @@ export function registryConformance(
         );
         expect(dry.status).toBe(200);
         expect(dry.body.dryRun).toBe(true);
+      });
+    });
+
+    describe("managed bundle", () => {
+      const managedLayer = (name: string, extra = "") => layer(name, extra);
+      const bundle = (query: Record<string, string>) =>
+        call("managedBundle", {}, undefined, registry.token, query);
+
+      async function seed() {
+        await publish(
+          "org/base",
+          managedLayer(
+            "base",
+            "instructions:\n  - id: conduct\n    file: ./conduct.md\npermissions:\n  deny: ['Bash(rm -rf:*)']\nlocks:\n  - instructions[conduct]\n  - permissions.deny\n",
+          ),
+          [file("conduct.md", "Review kindly.")],
+        );
+        await publish("team/web", managedLayer("web", "extends: [org/base]\n"));
+      }
+
+      it("rejects a bad os, format, include or layer with 400 invalid-request", async () => {
+        await seed();
+        const bad: Record<string, string>[] = [
+          { layer: "team/web", os: "beos" },
+          { layer: "team/web" },
+          { os: "linux" },
+          { layer: "team/web", os: "linux", format: "zip" },
+          { layer: "team/web", os: "linux", include: "some" },
+        ];
+        for (const query of bad) {
+          expectProblem(await bundle(query), 400, "invalid-request");
+        }
+      });
+
+      it("answers 404 not-found for an unpublished layer, naming it", async () => {
+        const answer = await bundle({ layer: "team/nope", os: "linux" });
+        expectProblem(answer, 404, "not-found");
+        // The ref tells a missing layer from a registry without the route (spec 21, amendment 14).
+        expect(
+          (answer.body.problems ?? []).find(
+            (p: { code: string }) => p.code === "not-found",
+          ),
+        ).toMatchObject({ ref: "team/nope" });
+      });
+
+      it("a managed bundle matches a local compile of the same layers", async (context) => {
+        const managed = registry.managed;
+        if (managed === undefined) return context.skip();
+        await seed();
+        const answer = await bundle({ layer: "team/web", os: "linux" });
+        expect(answer.status).toBe(200);
+        const layerOf = async (ref: string) => {
+          const got = await call("getVersion", { ref, version: "latest" });
+          return got.body as {
+            version: number;
+            digest: string;
+            source: string;
+            files: BundleFile[];
+          };
+        };
+        const versions = new Map<string, Awaited<ReturnType<typeof layerOf>>>();
+        for (const ref of ["org/base", "team/web"]) {
+          versions.set(ref, await layerOf(ref));
+        }
+        const { source, readFile } = publishedSource((ref) =>
+          Promise.resolve(versions.get(ref)),
+        );
+        const layers: ManagedLayer[] = [...versions].map(([ref, v]) => ({
+          ref,
+          version: v.version,
+          digest: v.digest,
+        }));
+        const local = await compileFromSource(managed, {
+          source,
+          ref: "team/web",
+          os: "linux",
+          layers,
+          zzpersona: answer.body.manifest.zzpersona,
+          readFile,
+        });
+        expect(local.bundle).toBeDefined();
+        expect(answer.body.manifest.files).toEqual(
+          local.bundle!.manifest.files,
+        );
+        expect(answer.body.manifest.layers).toEqual(layers);
+        expect(Object.keys(answer.body.files).sort()).toEqual(
+          Object.keys(local.bundle!.files).sort(),
+        );
+        for (const [path, bytes] of Object.entries(local.bundle!.files)) {
+          expect(answer.body.files[path]).toBe(
+            Buffer.from(bytes).toString("base64"),
+          );
+        }
       });
     });
 

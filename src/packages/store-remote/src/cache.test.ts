@@ -39,6 +39,7 @@ beforeEach(async () => {
       return real.getVersion(ref, version);
     },
     publish: (ref, body) => real.publish(ref, body),
+    managedBundle: (query) => real.managedBundle(query),
   };
   client = counting;
 });

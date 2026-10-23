@@ -78,6 +78,7 @@ export type PublishOutcome =
 type ProblemItem = NonNullable<Problem["problems"]>[number];
 
 const TITLES: Record<number, string> = {
+  400: "Invalid request",
   401: "Unauthorized",
   403: "Forbidden",
   404: "Not found",
@@ -87,6 +88,7 @@ const TITLES: Record<number, string> = {
   422: "Unprocessable bundle",
   428: "Precondition required",
   429: "Too many requests",
+  501: "Not implemented",
 };
 
 /** An `application/problem+json` body for these problems. */

@@ -1,10 +1,17 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { ManagedCompiler, ManagedLayer } from "@zzpersona/adapter-sdk";
+import { resolve } from "@zzpersona/resolver";
 import { parse } from "yaml";
 import { memoryStore, problemOf, publishLayer } from "./engine.js";
+import { compileFromSource, publishedSource } from "./managed.js";
 import {
+  LayerRef,
   LoginPoll,
+  MANAGED_FORMATS,
+  MANAGED_INCLUDES,
+  MANAGED_OSES,
   PublishRequest,
   grantCovers,
   type LayerSummary,
@@ -99,6 +106,11 @@ export interface MockRegistryOptions {
   loginExpiresIn?: number;
   /** false: the registry has no identity provider and answers 404 on the sign-in routes. */
   signIn?: boolean;
+  /**
+   * Builds the `bundle` format of `GET /v1/managed/bundle` (pass the Claude Code adapter's
+   * `managed`; this package depends on no adapter). Without it the route answers 501.
+   */
+  managed?: ManagedCompiler;
 }
 
 export interface MockRegistry {
@@ -295,10 +307,89 @@ export async function startMockRegistry(
     throw new Error(`no login at ${verifyUrl}`);
   }
 
+  const published = publishedSource((ref) => store.latest(ref));
+
+  async function managedBundle(url: URL): Promise<Reply> {
+    const query = (name: string) => url.searchParams.get(name);
+    const invalid = (message: string) =>
+      refuse(400, "invalid-request", message);
+    const layer = query("layer");
+    if (layer === null || !LayerRef.safeParse(layer).success) {
+      throw invalid("layer must be an org/, area/ or team/ ref");
+    }
+    const os = query("os");
+    if (os === null || !(MANAGED_OSES as readonly string[]).includes(os)) {
+      throw invalid(`os must be one of ${MANAGED_OSES.join(", ")}`);
+    }
+    const format = query("format") ?? "bundle";
+    if (!(MANAGED_FORMATS as readonly string[]).includes(format)) {
+      throw invalid(`format must be one of ${MANAGED_FORMATS.join(", ")}`);
+    }
+    const include = query("include") ?? "all";
+    if (!(MANAGED_INCLUDES as readonly string[]).includes(include)) {
+      throw invalid(`include must be one of ${MANAGED_INCLUDES.join(", ")}`);
+    }
+    if (!/^(org|area|team)\//.test(layer)) {
+      throw invalid("a managed bundle takes an org, area or team layer");
+    }
+    if ((await store.latest(layer)) === undefined) {
+      throw refuse(404, "not-found", `${layer} is not published`, {
+        ref: layer,
+      });
+    }
+    if (format !== "bundle" || options.managed === undefined) {
+      throw refuse(
+        501,
+        "format-unsupported",
+        `this registry does not build the ${format} format`,
+      );
+    }
+    const { ir } = await resolve(layer, { source: published.source });
+    const layers: ManagedLayer[] = [];
+    for (const ref of ir.layers) {
+      const latest = (await store.latest(ref))!;
+      layers.push({ ref, version: latest.version, digest: latest.digest });
+    }
+    const result = await compileFromSource(options.managed, {
+      source: published.source,
+      ref: layer,
+      os: os as (typeof MANAGED_OSES)[number],
+      layers,
+      zzpersona: "registry-mock",
+      readFile: published.readFile,
+    });
+    if (result.bundle === undefined) {
+      throw new Failure(
+        422,
+        result.report.entries
+          .filter((e) => e.outcome === "refused")
+          .map((e) => ({
+            code: "managed-refused" as const,
+            ref: e.layer,
+            path: e.path,
+            message: `${e.path}: ${e.code ?? "refused"}: ${e.reason}`,
+          })),
+      );
+    }
+    return {
+      status: 200,
+      body: {
+        manifest: result.bundle.manifest,
+        files: Object.fromEntries(
+          Object.entries(result.bundle.files).map(([path, bytes]) => [
+            path,
+            Buffer.from(bytes).toString("base64"),
+          ]),
+        ),
+      },
+    };
+  }
+
   async function route(
     request: IncomingMessage,
     method: string,
     path: string,
+    url: URL,
   ): Promise<Reply> {
     if (method === "POST" && path === "/v1/auth/logins") {
       if (!signIn)
@@ -340,6 +431,9 @@ export async function startMockRegistry(
     if (method === "GET" && path === "/v1/layers") {
       return { status: 200, body: summaries() };
     }
+    if (method === "GET" && path === "/v1/managed/bundle") {
+      return managedBundle(url);
+    }
     const match = /^\/v1\/layers\/([^/]+)\/versions(?:\/([^/]+))?$/.exec(path);
     if (match) {
       let ref: string;
@@ -372,7 +466,7 @@ export async function startMockRegistry(
 
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
-    route(request, request.method ?? "GET", url.pathname)
+    route(request, request.method ?? "GET", url.pathname, url)
       .catch((error: unknown) => {
         if (error instanceof Failure) return error;
         throw error;

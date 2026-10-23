@@ -3,7 +3,12 @@ import type { ManagedOs } from "@zzpersona/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";
 import { CliError, errorText } from "../errors.js";
-import { MANIFEST_PATH, writeBundle } from "../managed/bundle-io.js";
+import { MANAGED_ROOTS } from "@zzpersona/adapter-claude-code";
+import {
+  MANIFEST_PATH,
+  refuseManagedRoot,
+  writeBundle,
+} from "../managed/bundle-io.js";
 import { buildBundle, defaultOs, MANAGED_OSES } from "../managed/build.js";
 import {
   checkManaged,
@@ -39,12 +44,21 @@ export async function managedBuildCommand(
       { os: options.os },
     );
   }
+  const out = resolve(io.cwd, options.out ?? "zzpersona-managed");
+  await refuseManagedRoot(out, [
+    managedEnv(io).root,
+    ...Object.values(MANAGED_ROOTS),
+  ]);
   const ctx = await createContext(io);
-  const result = await buildBundle(ctx, {
-    ...(options.layer !== undefined && { layer: options.layer }),
-    os,
-    fromRegistry: options.fromRegistry === true,
-  });
+  const result = await buildBundle(
+    ctx,
+    {
+      ...(options.layer !== undefined && { layer: options.layer }),
+      os,
+      fromRegistry: options.fromRegistry === true,
+    },
+    io,
+  );
   const { report, bundle } = result;
   const refused = report.entries.filter((e) => e.outcome === "refused");
   if (bundle === undefined) {
@@ -64,8 +78,9 @@ export async function managedBuildCommand(
   const notice =
     report.entries.some((e) => e.outcome === "enforced") || !deepest
       ? undefined
-      : `nothing in ${deepest} and its ancestors is locked; the bundle enforces nothing`;
-  const out = resolve(io.cwd, options.out ?? "zzpersona-managed");
+      : report.entries.length === 0
+        ? `nothing in ${deepest} and its ancestors is locked; the bundle enforces nothing`
+        : `nothing in ${deepest} and its ancestors is enforced by Claude Code; the bundle enforces nothing`;
   await writeBundle(out, bundle.files);
   if (options.json) {
     io.stdout.write(
@@ -154,24 +169,30 @@ export async function managedInstallCommand(
     written: plan.written,
     replaced: plan.replaced,
     removed: plan.removed,
+    replaces: plan.replaces,
   };
   if (planIsEmpty(plan)) {
     // Only an interrupted install's pending.json, if any, to tidy away.
     await applyInstall(env, planned);
+    const check = await checkHere(io);
     io.stdout.write(
       options.json
-        ? `${JSON.stringify(result, null, 2)}\n`
-        : `${plan.root} already holds this bundle; nothing to change\n`,
+        ? `${JSON.stringify({ ...result, check }, null, 2)}\n`
+        : `${plan.root} already holds this bundle; nothing to change\n${notCurrent(check)}`,
     );
     return 0;
   }
   const out = options.json ? io.stderr : io.stdout;
   out.write(`install into ${plan.root}:\n`);
-  for (const line of planLines([
-    ["write", plan.written],
-    ["replace", plan.replaced],
-    ["remove", plan.removed],
-  ]))
+  for (const line of [
+    ...planLines([
+      ["write", plan.written],
+      ["replace", plan.replaced],
+      ["remove", plan.removed],
+    ]),
+    // Not a refusal: Claude Code reads ours after these, so ours wins.
+    ...plan.replaces.map((r) => `  replaces ${r.key} from ${r.file}\n`),
+  ])
     out.write(line);
   let final = planned;
   if (!options.yes) {
@@ -193,13 +214,27 @@ export async function managedInstallCommand(
     }
   }
   await applyInstall(env, final);
+  // Installed is not yet in effect: a higher source or a later drop-in can still win.
+  const check = await checkHere(io);
   io.stdout.write(
     options.json
-      ? `${JSON.stringify(result, null, 2)}\n`
-      : `installed into ${plan.root}: ${plan.written.length} written, ${plan.replaced.length} replaced, ${plan.removed.length} removed\n`,
+      ? `${JSON.stringify({ ...result, check }, null, 2)}\n`
+      : `installed into ${plan.root}: ${plan.written.length} written, ${plan.replaced.length} replaced, ${plan.removed.length} removed\n${notCurrent(check)}`,
   );
   return 0;
 }
+
+/** The check's state and findings when it is not `current`; nothing when it is. */
+const notCurrent = (check: CheckResult) =>
+  check.state === "current"
+    ? ""
+    : `managed: ${check.state}\n${checkLines(check)}`;
+
+/** One line per finding; findings that leave the state `current` are notes. */
+const checkLines = (check: CheckResult) =>
+  check.findings
+    .map((f) => `${f.state === "current" ? "note" : f.state}: ${f.detail}\n`)
+    .join("");
 
 export async function managedUninstallCommand(
   io: CliIo,
@@ -252,13 +287,10 @@ export async function managedCheckCommand(
   const result = await checkHere(io);
   if (options.json) {
     io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  } else if (result.state === "current") {
-    io.stdout.write(`managed: current (${env.root})\n`);
   } else {
-    io.stdout.write(`managed: ${result.state}\n`);
-    for (const f of result.findings) {
-      io.stdout.write(`${f.state}: ${f.detail}\n`);
-    }
+    io.stdout.write(
+      `managed: ${result.state}${result.state === "current" ? ` (${env.root})` : ""}\n${checkLines(result)}`,
+    );
   }
   return result.state === "current" ? 0 : 1;
 }

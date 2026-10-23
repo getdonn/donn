@@ -182,6 +182,64 @@ A registry with sign-in needs `@zzpersona/cli` 0.9.0 or later, which is this rel
 0.11.0): older CLIs reject the new fields in its answers. A 401 on `POST /v1/auth/logins` is read as no
 sign-in (registries before control plane 0.2), so the CLI points you to `--token-stdin`.
 
+## Managed policy
+
+Locks in an `org/`, `area/` or `team/` layer can be enforced machine-wide by Claude Code, so a
+developer cannot undo them from their own settings. `zzpersona` compiles the locks of a layer and
+its ancestors to the files Claude Code reads from its administrator-owned policy folder
+(`/Library/Application Support/ClaudeCode/` on macOS, `/etc/claude-code/` on Linux,
+`C:\Program Files\ClaudeCode\` on Windows).
+
+```sh
+zzpersona managed build --layer org/acme --os linux   # ./zzpersona-managed/ and a report
+sudo zzpersona managed install ./zzpersona-managed    # shows the plan, asks (or --yes)
+zzpersona managed check                               # current, stale, edited, missing, ...
+sudo zzpersona managed uninstall                      # removes exactly the files it installed
+```
+
+`build` compiles from the local store (published layers from the pull cache); `--from-registry`
+downloads the bundle from a registry that builds them (`GET /v1/managed/bundle`), checking every
+path and digest before it writes. `--os` defaults to this machine's, so an admin can build for
+another. `install` verifies the bundle, refuses an unsafe folder (a symlink, or when root a folder
+others can write), writes atomically and never touches `managed-settings.json`, other drop-ins or
+a `managed-mcp.json` it did not install. `uninstall` removes the files the installed manifest
+lists, plus any at zzpersona's own paths that an interrupted install or an adoption counted as
+owned.
+
+**Enforced:** locked permission rules, hooks (the script is copied into the bundle), `http`/`sse`
+MCP servers on `https://` (or any locked server with `policy.mcp: exclusive`), locked instruction
+text (as `claudeMd`, guidance rather than system prompt), the `policy` block, and an allow-listed
+set of `targets.claude-code.managed` keys. **Advisory only:** `mcp.gateway`, `skills`,
+`knowledge`, `secrets.providers`, and a locked `gateway://` server (a server `policy.mcp:
+exclusive` would stop sessions loading); they are enforced at publish and resolve, and the report
+says so.
+
+**Refused** (the build fails and writes nothing): a locked value that holds a `secret://`
+reference (`managed-secret`; managed files are readable by every user), a locked stdio server or
+one with `env` or headers without `policy.mcp: exclusive` (`managed-mcp-needs-exclusive`), an
+unknown `targets.claude-code.managed` key (`managed-unknown-key`), and a passthrough key that
+would replace a compiled value, sit under a compiled `managedMcpServers.<name>`, or widen a lock
+or `policy` key set by a layer above it, such as a team adding `permissions.allow` rules under an
+org's allow lock (`managed-passthrough-conflict`). Adding `deny` and `ask` rules is always allowed.
+
+`managed build --out` refuses a policy folder, or a folder holding anything but a bundle. Our
+drop-in is read after `managed-settings.json` and earlier drop-ins, so its single values replace
+theirs; `install` lists each as `replaces <key> from <file>` and `check` notes it. After
+installing, `install` runs `check` and says so when the policy is not in effect (`ignored`,
+`overridden`). Under `policy.bypassPermissions: disabled`, `claude --dangerously-skip-permissions`
+is dropped, not refused: interactive sessions say "Bypass permissions mode was disabled by
+settings".
+
+Claude Code uses only the highest-ranked managed source. If your organisation also delivers
+settings through MDM or the claude.ai console, set `managedSourcesBehavior: "merge"` there, or the
+files are ignored; `check` reports `ignored` when it sees a higher source without it. The manifest
+records `minClaudeCode`, the oldest Claude Code that understands every key in the bundle.
+`check` never goes to the network: with a registry configured, `stale` compares with the layers
+last pulled (run `zzpersona pull` first for the latest).
+`check` run under `sudo`, or by an MDM, reads root's `~/.claude/remote-settings.json`, not the
+developer's. `doctor` and `status` show the result. The design is
+`docs/planning/21-managed-settings.md`.
+
 ## What each harness can carry
 
 `zzpersona capabilities` shows, per harness, which persona fields are carried natively,

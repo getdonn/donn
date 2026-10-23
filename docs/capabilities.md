@@ -23,7 +23,7 @@ Harnesses without an adapter yet: Copilot CLI, Cursor, Gemini CLI, Antigravity.
 | permissions.deny | ● | ◐ 12 | ◐ 13 |
 | permissions.ask | ● | ◐ 12 | ◐ 13 |
 | hooks | ● | ✕ 15 | ✕ 16 |
-| policy | ● 17 | ○ 18 | ○ 18 |
+| policy | ● 17 | ✕ 18 | ✕ 18 |
 | targets | ●\* 19 | ✕ 20 | ●\* 21 |
 
 Notes:
@@ -45,7 +45,7 @@ Notes:
 15. AGENTS.md is plain text; use a harness adapter for hooks
 16. untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust
 17. managed policy bundle
-18. advisory only; zzpersona compiles managed policy for Claude Code
+18. not rendered; enforced only by managed bundles for Claude Code
 19. secret refs and permission lists in targets are dropped
 20. AGENTS.md is plain text; use a harness adapter for harness settings
 21. only sandbox, approval and model are read

@@ -5,6 +5,7 @@ import {
   LoginStart,
   LoginToken,
   LayerVersion,
+  ManagedBundleResponse,
   PublishRequest,
   PublishResult,
   Whoami,
@@ -18,6 +19,8 @@ interface Route {
   response: z.ZodType;
   /** Success statuses the route can answer. */
   statuses: readonly number[];
+  /** Query parameters the route reads (documented in OpenAPI; the client sends them). */
+  query?: readonly string[];
   /** `false` when no bearer token is required (the sign-in routes). */
   auth?: false;
 }
@@ -47,6 +50,13 @@ export const ROUTES = {
     request: PublishRequest,
     response: PublishResult,
     statuses: [200, 201],
+  },
+  managedBundle: {
+    method: "GET",
+    path: "/v1/managed/bundle",
+    query: ["layer", "os", "format", "include"],
+    response: ManagedBundleResponse,
+    statuses: [200],
   },
   startLogin: {
     method: "POST",
