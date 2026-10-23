@@ -3,11 +3,19 @@ import {
   mkdir,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join, posix } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  posix,
+  relative,
+} from "node:path";
 import type { ManagedManifest } from "@zzpersona/adapter-sdk";
 import { CliError } from "../errors.js";
 
@@ -59,20 +67,86 @@ export function checkNoCaseDuplicates(paths: Iterable<string>): void {
   }
 }
 
-/** True when `dir` holds a zzpersona bundle (its manifest file exists). */
-async function isBundle(dir: string): Promise<boolean> {
+/** `path` with its nearest existing ancestor resolved through symbolic links. */
+async function realish(path: string): Promise<string> {
   try {
-    await readFile(join(dir, ...MANIFEST_PATH.split("/")));
-    return true;
+    return await realpath(path);
   } catch (error) {
-    if (isMissing(error)) return false;
-    throw error;
+    const parent = dirname(path);
+    if (!isMissing(error) || parent === path) return path;
+    return join(await realish(parent), basename(path));
   }
 }
 
 /**
- * Write `files` to `dir`. A missing or empty folder is filled; a folder holding a bundle is
- * replaced; any other folder is refused. The new bundle is written beside `dir` first and
+ * Refuse an `--out` that is, or lies inside, a policy folder Claude Code reads: replacing it
+ * would delete the organisation's policy. Installing is `managed install`'s job.
+ */
+export async function refuseManagedRoot(
+  out: string,
+  roots: Iterable<string>,
+): Promise<void> {
+  const real = await realish(out);
+  // Another OS's root (C:\ on POSIX) is not a path here.
+  for (const root of new Set([...roots].filter((r) => isAbsolute(r)))) {
+    for (const at of new Set([root, await realish(root)])) {
+      const rel = relative(at, real);
+      if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
+        throw new CliError(
+          "managed-out-is-policy",
+          `${out} is inside the managed policy folder ${root}; build elsewhere and use zzpersona managed install`,
+          { out, root },
+        );
+      }
+    }
+  }
+}
+
+/** Every file below `dir`, `/`-separated (anything that is not a folder counts). */
+async function listFiles(dir: string, prefix = ""): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory())
+      out.push(...(await listFiles(join(dir, entry.name), path)));
+    else out.push(path);
+  }
+  return out;
+}
+
+/**
+ * True when `dir` holds a zzpersona bundle and nothing else: a format 1 manifest and exactly the
+ * files it lists. A policy folder (with the org's own files beside ours) never qualifies.
+ */
+async function isBundle(dir: string): Promise<boolean> {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(
+      await readFile(join(dir, ...MANIFEST_PATH.split("/")), "utf8"),
+    );
+  } catch (error) {
+    if (isMissing(error) || error instanceof SyntaxError) return false;
+    throw error;
+  }
+  const files = (manifest as { files?: unknown } | null)?.files;
+  if (
+    (manifest as { format?: unknown } | null)?.format !== 1 ||
+    files === null ||
+    typeof files !== "object" ||
+    Array.isArray(files)
+  ) {
+    return false;
+  }
+  const want = [...Object.keys(files), MANIFEST_PATH].sort();
+  const have = (await listFiles(dir)).sort();
+  return (
+    want.length === have.length && want.every((path, i) => path === have[i])
+  );
+}
+
+/**
+ * Write `files` to `dir`. A missing or empty folder is filled; a folder holding exactly a bundle
+ * is replaced; any other folder is refused. The new bundle is written beside `dir` first and
  * swapped in, so a failure never leaves half a bundle.
  */
 export async function writeBundle(

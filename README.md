@@ -218,13 +218,24 @@ says so.
 reference (`managed-secret`; managed files are readable by every user), a locked stdio server or
 one with `env` or headers without `policy.mcp: exclusive` (`managed-mcp-needs-exclusive`), an
 unknown `targets.claude-code.managed` key (`managed-unknown-key`), and a passthrough key that
-would replace a compiled value or sit under a compiled `managedMcpServers.<name>`
-(`managed-passthrough-conflict`).
+would replace a compiled value, sit under a compiled `managedMcpServers.<name>`, or widen a lock
+or `policy` key set by a layer above it, such as a team adding `permissions.allow` rules under an
+org's allow lock (`managed-passthrough-conflict`). Adding `deny` and `ask` rules is always allowed.
+
+`managed build --out` refuses a policy folder, or a folder holding anything but a bundle. Our
+drop-in is read after `managed-settings.json` and earlier drop-ins, so its single values replace
+theirs; `install` lists each as `replaces <key> from <file>` and `check` notes it. After
+installing, `install` runs `check` and says so when the policy is not in effect (`ignored`,
+`overridden`). Under `policy.bypassPermissions: disabled`, `claude --dangerously-skip-permissions`
+is dropped, not refused: interactive sessions say "Bypass permissions mode was disabled by
+settings".
 
 Claude Code uses only the highest-ranked managed source. If your organisation also delivers
 settings through MDM or the claude.ai console, set `managedSourcesBehavior: "merge"` there, or the
 files are ignored; `check` reports `ignored` when it sees a higher source without it. The manifest
 records `minClaudeCode`, the oldest Claude Code that understands every key in the bundle.
+`check` never goes to the network: with a registry configured, `stale` compares with the layers
+last pulled (run `zzpersona pull` first for the latest).
 `check` run under `sudo`, or by an MDM, reads root's `~/.claude/remote-settings.json`, not the
 developer's. `doctor` and `status` show the result. The design is
 `docs/planning/21-managed-settings.md`.

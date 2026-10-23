@@ -267,3 +267,49 @@ these say otherwise.
     `zzpersona/manifest.json` must parse to exactly the manifest object the digests were checked
     against, and file keys that differ only in case are refused (also by `writeBundle` and
     `readBundle`).
+
+## Amendments from the final review (2026-10-23)
+
+15. **A lower layer's passthrough never widens a higher layer's lock.** A
+    `targets.claude-code.managed` key set by a layer below a declared lock (or a `policy` key) that
+    covers the matching section is refused with `managed-passthrough-conflict`, the reason naming
+    the lock (or `policy.<key>: <value>`) and its layer. "Below" is the key's provenance layer
+    coming after the lock's in `ir.layers`; the same layer or one above may set it. The mapping:
+    `permissions.allow` → a lock on `permissions.allow` or `permissions`, or `policy.permissions`
+    (`deny` and `ask` may always grow: they only tighten); `managedMcpServers`, `allowedMcpServers`,
+    `deniedMcpServers`, `allowManagedMcpServersOnly` → a lock on `mcp.servers` or `mcp`, or
+    `policy.mcp`, and a `deniedMcpServers` entry naming a server locked above (by `serverName`, a
+    `serverUrl` pattern matching its URL, or its `serverCommand`); `hooks` (not a known key today)
+    → any `hooks` lock or `policy.hooks`; `claudeMd`, `claudeMdExcludes` → a lock on
+    `instructions`; any key → a lock on `targets`, `targets.claude-code`,
+    `targets.claude-code.managed` or the key itself. A replacement (amendment 4) is reported first.
+    `managedSourcesBehavior` in the passthrough is still written but reported `advisory`: Claude
+    Code reads it from the highest managed source, so the policy files cannot make a console or MDM
+    policy merge with them.
+16. **Earlier values our drop-in replaces.** `managed-settings.json` and drop-ins named before
+    `50-zzpersona.json` are read first, so our single values replace theirs. Not a refusal:
+    `install`'s plan lists `replaces <key> from <file>` (and `--json` a `replaces` array), and
+    `check` adds a note finding per value (state unaffected). After applying, `install` runs `check`
+    and prints its state and findings when they are not `current` (exit stays 0); `--json` carries
+    `check`. `check`'s human output prints notes (`note: …`) even when `current`.
+17. **`stale` compares with the pulled layers.** §3's "from the registry when configured" is not
+    built: `check`, `doctor` and `status` never go to the network. With a registry configured, the
+    `stale` detail ends `; compared with the layers pulled locally; run zzpersona pull for the
+    latest`, and a `current` result carries that sentence as a note.
+18. **What counts as a higher source delivering a policy.** In `remote-settings.json` and the MDM
+    policy, only recognised settings keys count (the adapter's known managed keys plus ordinary
+    settings such as `hooks` and `model`; never `managedSourcesBehavior` or
+    `wslInheritsWindowsSettings` alone). `remote-settings.json` may be a bare settings object or a
+    `{ "settings": { … } }` wrapper; wrapper metadata (`checksum`, timestamps) never counts.
+19. **Other review fixes.** `managed build --out` refuses a path in or under any policy folder
+    (resolved through symbolic links) and replaces an existing folder only when it holds exactly
+    its manifest and the files that manifest lists. `uninstall` removes `managed-settings.d` and the
+    policy folder itself when they are left empty. `--from-registry` refuses a bundle whose
+    `manifest.os` differs from `--os` or whose deepest layer differs from `--layer`, and compares
+    `zzpersona/manifest.json` with the manifest as the registry sent it (before tolerant parsing),
+    so a newer server's extra manifest field is not tampering. The conformance kit's unknown-layer
+    case requires `ref` on the problem. When locks exist but Claude Code enforces none of them,
+    `build` says `nothing in <ref> and its ancestors is enforced by Claude Code; the bundle enforces
+    nothing`. The capability matrix's `policy` row for Codex and `agents-md` is `none` ("not
+    rendered; enforced only by managed bundles for Claude Code"), replacing amendment 11's
+    "advisory".

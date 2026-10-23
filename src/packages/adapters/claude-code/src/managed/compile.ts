@@ -54,6 +54,8 @@ const REASON = {
   unknownKey:
     "is not a managed setting zzpersona knows; check the spelling against the Claude Code settings reference",
   passthrough: "applied last, as written",
+  sourcesBehavior:
+    "written, but Claude Code reads it from the highest managed source, so from the policy files it cannot make a console or MDM policy merge with them; set it there",
   lockOnly: ADVISORY,
   coversNothing: `covers nothing this chain sets; ${ADVISORY}`,
 } as const;
@@ -105,12 +107,33 @@ const at = (keys: string[], entry?: string): PersonaPath =>
 class Locks {
   private readonly locks: { path: string; layer: Ref; parsed?: PersonaPath }[];
   private readonly touched = new Set<string>();
+  private readonly layers: Ref[];
 
   constructor(ir: ResolvedPersona) {
+    this.layers = ir.layers;
     this.locks = ir.locks.map((lock) => ({
       ...lock,
       parsed: parsePath(lock.path),
     }));
+  }
+
+  /** Whether `upper` comes before `lower` in the chain (root first). */
+  above(upper: Ref, lower: Ref): boolean {
+    const [u, l] = [this.layers.indexOf(upper), this.layers.indexOf(lower)];
+    return u !== -1 && l !== -1 && u < l;
+  }
+
+  /** The first lock a layer above `layer` declared that `match` accepts; touches nothing. */
+  declaredAbove(
+    layer: Ref,
+    match: (lock: PersonaPath) => boolean,
+  ): { path: string; layer: Ref } | undefined {
+    return this.locks.find(
+      (lock) =>
+        lock.parsed !== undefined &&
+        this.above(lock.layer, layer) &&
+        match(lock.parsed),
+    );
   }
 
   /** The first declared lock covering `path` (root first, as declared). */
@@ -220,6 +243,108 @@ function overlay(
     return { value: Object.fromEntries(merged) };
   }
   return { value: base, conflict: path };
+}
+
+/** What a passthrough key reaches past the compile: IR sections and the policy key over them. */
+interface Guard {
+  /** A lock at or above one of these binds the key; with `inside`, a lock within one too. */
+  sections: string[][];
+  inside?: boolean;
+  policy?: keyof Policy;
+}
+
+const MCP_GUARD: Guard = { sections: [["mcp", "servers"]], policy: "mcp" };
+const INSTRUCTIONS_GUARD: Guard = { sections: [["instructions"]] };
+
+/**
+ * The passthrough keys that could widen what a higher layer locked (spec 21, amendment 15).
+ * `permissions` widens only through `allow`: deny and ask rules only tighten.
+ */
+const GUARDS: Record<string, (value: unknown) => Guard | undefined> = {
+  permissions: (value) =>
+    isObject(value) && Object.hasOwn(value, "allow")
+      ? { sections: [["permissions", "allow"]], policy: "permissions" }
+      : undefined,
+  managedMcpServers: () => MCP_GUARD,
+  allowedMcpServers: () => MCP_GUARD,
+  deniedMcpServers: () => MCP_GUARD,
+  allowManagedMcpServersOnly: () => MCP_GUARD,
+  hooks: () => ({ sections: [["hooks"]], inside: true, policy: "hooks" }),
+  claudeMd: () => INSTRUCTIONS_GUARD,
+  claudeMdExcludes: () => INSTRUCTIONS_GUARD,
+};
+
+/** A Claude Code allowlist/denylist URL pattern (`*` matches anything) as a test. */
+const urlPattern = (pattern: string) => {
+  const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${pattern.split("*").map(escape).join(".*")}$`);
+};
+
+/** Whether a deniedMcpServers entry names `name` (or matches its URL or command). */
+function deniesServer(entry: unknown, name: string, server?: McpServer) {
+  if (!isObject(entry)) return false;
+  if (entry.serverName === name) return true;
+  if (server === undefined) return false;
+  if ("url" in server && typeof entry.serverUrl === "string")
+    return urlPattern(entry.serverUrl).test(server.url);
+  if ("command" in server && Array.isArray(entry.serverCommand))
+    return isDeepStrictEqual(entry.serverCommand, [
+      server.command,
+      ...(server.args ?? []),
+    ]);
+  return false;
+}
+
+/**
+ * Why passthrough `key`, set by `layer`, would widen a lock or policy key that a layer above
+ * declared; undefined when it does not. The same layer, or a layer above, may set it freely.
+ */
+function widens(
+  key: string,
+  value: unknown,
+  layer: Ref,
+  ir: ResolvedPersona,
+  locks: Locks,
+  setBy: (path: string) => Ref,
+): string | undefined {
+  const reason = (what: string, lock: string, at: Ref) =>
+    `would widen ${what}, locked by ${lock} (${at}); this key is set by ${layer}, a layer below`;
+  const own = [...MANAGED, key];
+  const harness = locks.declaredAbove(layer, (lock) =>
+    lockCovers(lock, { keys: own }),
+  );
+  if (harness) return reason(own.join("."), harness.path, harness.layer);
+  const guard = Object.hasOwn(GUARDS, key) ? GUARDS[key]!(value) : undefined;
+  if (guard === undefined) return undefined;
+  const what = guard.sections.map((section) => section.join(".")).join(", ");
+  const policy = guard.policy && ir.policy[guard.policy];
+  if (guard.policy && policy !== undefined) {
+    const at = setBy(`policy.${guard.policy}`);
+    if (locks.above(at, layer))
+      return reason(what, `policy.${guard.policy}: ${policy}`, at);
+  }
+  const section = locks.declaredAbove(layer, (lock) =>
+    guard.sections.some(
+      (keys) =>
+        lockCovers(lock, { keys }) ||
+        (guard.inside === true && lockCovers({ keys }, lock)),
+    ),
+  );
+  if (section) return reason(what, section.path, section.layer);
+  if (key === "deniedMcpServers" && Array.isArray(value)) {
+    const server = locks.declaredAbove(layer, (lock) => {
+      const [mcp, servers, name] = lock.keys;
+      if (mcp !== "mcp" || servers !== "servers" || name === undefined)
+        return false;
+      const known = Object.hasOwn(ir.mcp.servers, name)
+        ? ir.mcp.servers[name]
+        : undefined;
+      return value.some((entry) => deniesServer(entry, name, known));
+    });
+    if (server)
+      return `would deny ${server.path}, locked by ${server.path} (${server.layer}); this key is set by ${layer}, a layer below`;
+  }
+  return undefined;
 }
 
 /** The settings paths the compile wrote, with the IR values each came from. */
@@ -537,10 +662,12 @@ export function compileManaged(input: ManagedInput): ManagedResult {
           "",
           sources.sealed,
         );
-        if (merged.conflict === undefined) {
-          policy = merged.value as Settings;
-          add(path, layer, "enforced", REASON.passthrough);
-        } else {
+        // A replacement is named first; then a lower layer reaching past a higher one's lock.
+        const widened =
+          merged.conflict === undefined
+            ? widens(key, managed[key], layer, ir, locks, setBy)
+            : undefined;
+        if (merged.conflict !== undefined) {
           const setting = merged.conflict.slice(1);
           add(
             path,
@@ -549,6 +676,13 @@ export function compileManaged(input: ManagedInput): ManagedResult {
             `would replace ${setting}, compiled from ${sources.describe(setting)}; this key is set by ${layer}`,
             "managed-passthrough-conflict",
           );
+        } else if (widened !== undefined) {
+          add(path, layer, "refused", widened, "managed-passthrough-conflict");
+        } else {
+          policy = merged.value as Settings;
+          if (key === "managedSourcesBehavior")
+            add(path, layer, "advisory", REASON.sourcesBehavior);
+          else add(path, layer, "enforced", REASON.passthrough);
         }
       }
     }

@@ -5,6 +5,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
@@ -104,6 +105,22 @@ function machine(extra: Record<string, string> = {}, registry?: string) {
   return m;
 }
 
+/** Every file under `dir` with its text, `/`-separated. */
+function filesIn(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile()) continue;
+    const path = join(e.parentPath, e.name);
+    out[
+      path
+        .slice(dir.length + 1)
+        .split("\\")
+        .join("/")
+    ] = readFileSync(path, "utf8");
+  }
+  return out;
+}
+
 const run = (m: Machine, argv: string[], env: NodeJS.ProcessEnv = {}) =>
   zz(["managed", "build", ...argv], { cwd: m.cwd, home: m.home, env });
 
@@ -193,6 +210,24 @@ permissions:
     expect(r.stdout).toContain(`${notice}\n`);
     const json = JSON.parse((await run(m, ["--json"])).stdout);
     expect(json.notice).toBe(notice);
+  });
+
+  it("says so when locks exist but Claude Code enforces none of them", async () => {
+    const m = machine({
+      "org/acme.yaml": `apiVersion: zzpersona/v0
+kind: Persona
+metadata: { name: acme }
+locks:
+  - knowledge
+  - targets.codex
+`,
+    });
+    const notice =
+      "nothing in org/acme and its ancestors is enforced by Claude Code; the bundle enforces nothing";
+    const r = await run(m, []);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain(`${notice}\n`);
+    expect(JSON.parse((await run(m, ["--json"])).stdout).notice).toBe(notice);
   });
 
   it("prints no empty-policy notice when something is enforced", async () => {
@@ -306,6 +341,46 @@ targets:
     expect((await run(m, [])).code).toBe(0);
     expect(settingsOf(out).claudeMd).toContain("Changed.");
     expect(readdirSync(m.cwd).filter((f) => f.startsWith("."))).toEqual([]);
+  });
+
+  it("refuses a policy folder that holds more than its manifest lists, touching nothing", async () => {
+    const m = machine();
+    expect((await run(m, ["--os", "linux", "--out", "policy"])).code).toBe(0);
+    const out = join(m.cwd, "policy");
+    put(join(out, "managed-settings.json"), '{"claudeMd":"org"}');
+    put(join(out, "managed-settings.d/10-org.json"), '{"deniedModels":[]}');
+    const before = filesIn(out);
+    const r = await run(m, ["--os", "linux", "--out", "policy"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("not a zzpersona bundle");
+    expect(filesIn(out)).toEqual(before);
+    // A manifest that cannot be read is not a bundle either.
+    rmSync(join(out, "managed-settings.json"));
+    rmSync(join(out, "managed-settings.d/10-org.json"));
+    writeFileSync(join(out, "zzpersona/manifest.json"), "{");
+    expect((await run(m, ["--os", "linux", "--out", "policy"])).code).toBe(1);
+    expect(readFileSync(join(out, "zzpersona/manifest.json"), "utf8")).toBe(
+      "{",
+    );
+  });
+
+  it("refuses an --out in or under a managed policy folder", async () => {
+    const m = machine();
+    const system = join(m.root, "system", "ClaudeCode");
+    mkdirSync(system, { recursive: true });
+    const link = join(m.root, "link");
+    symlinkSync(system, link);
+    for (const out of [system, join(system, "sub"), link, join(link, "x")]) {
+      const r = await zz(["managed", "build", "--out", out], {
+        cwd: m.cwd,
+        home: m.home,
+        managed: { root: system },
+      });
+      expect(r.code, out).toBe(1);
+      expect(r.stderr).toContain(system);
+      expect(r.stderr).toContain("zzpersona managed install");
+    }
+    expect(readdirSync(system)).toEqual([]);
   });
 
   it("layer digests use bundleDigest for local layers", async () => {
@@ -626,6 +701,59 @@ targets:
         expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
       } finally {
         await bad.stop();
+      }
+    });
+
+    /** A well-formed bundle answer whose manifest is `manifest` plus `extra`. */
+    const answer = (extra: Record<string, unknown> = {}) => {
+      const path = "managed-settings.d/50-zzpersona.json";
+      const manifest = { ...manifestFor({ [path]: hash("{}\n") }), ...extra };
+      return {
+        manifest,
+        files: {
+          [path]: b64("{}\n"),
+          "zzpersona/manifest.json": b64(JSON.stringify(manifest)),
+        },
+      };
+    };
+
+    it("refuses a bundle for another OS or another layer than asked", async () => {
+      const reg = await liar(answer());
+      try {
+        const m = machine({}, reg.url);
+        const os = await run(
+          m,
+          ["--layer", "org/acme", "--os", "macos", "--from-registry"],
+          env,
+        );
+        expect(os.code).toBe(1);
+        expect(os.stderr).toContain("linux");
+        expect(os.stderr).toContain("macos");
+        const layer = await run(
+          m,
+          ["--layer", "area/fintech", "--os", "linux", "--from-registry"],
+          env,
+        );
+        expect(layer.code).toBe(1);
+        expect(layer.stderr).toContain("org/acme");
+        expect(layer.stderr).toContain("area/fintech");
+        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+      } finally {
+        await reg.stop();
+      }
+    });
+
+    it("accepts a manifest field this client does not know, byte for byte", async () => {
+      const reg = await liar(answer({ signedBy: { key: "k1" } }));
+      try {
+        const m = machine({}, reg.url);
+        const r = await run(m, fromRegistry, env);
+        expect(r.code, r.stderr).toBe(0);
+        expect(
+          manifestOf(join(m.cwd, "zzpersona-managed")) as unknown,
+        ).toMatchObject({ signedBy: { key: "k1" } });
+      } finally {
+        await reg.stop();
       }
     });
 

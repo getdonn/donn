@@ -38,6 +38,8 @@ export interface RegistryClient {
     os: "macos" | "linux" | "windows";
   }): Promise<{
     manifest: ManagedBundleResponse["manifest"];
+    /** The manifest as the registry sent it, with any fields this client does not know. */
+    rawManifest: unknown;
     files: Record<string, Uint8Array>;
   }>;
 }
@@ -59,7 +61,17 @@ type Call = (
   query?: Record<string, string>,
 ) => Promise<unknown>;
 
+/** Like Call, with the response body as sent (before the tolerant schema drops anything). */
+type Exchange = (
+  ...args: Parameters<Call>
+) => Promise<{ data: unknown; json: unknown }>;
+
 function makeCall(options: ClientOptions): Call {
+  const exchange = makeExchange(options);
+  return async (...args) => (await exchange(...args)).data;
+}
+
+function makeExchange(options: ClientOptions): Exchange {
   const base = normaliseUrl(options.url);
   const { token, timeoutMs = 10_000 } = options;
 
@@ -67,7 +79,7 @@ function makeCall(options: ClientOptions): Call {
   const scrub = (text: string) =>
     token === "" ? text : text.split(token).join("***");
 
-  return async function call(name, params, body, query) {
+  return async function exchange(name, params, body, query) {
     const route = ROUTES[name];
     const label = `${route.method} ${route.path}`;
     const timeout = AbortSignal.timeout(timeoutMs);
@@ -154,7 +166,7 @@ function makeCall(options: ClientOptions): Call {
         `${label}: the response does not match the registry contract`,
       );
     }
-    return parsed.data;
+    return { data: parsed.data, json };
   };
 }
 
@@ -189,6 +201,7 @@ export function pollLogin(
 
 export function createClient(options: ClientOptions): RegistryClient {
   const call = makeCall(options);
+  const exchange = makeExchange(options);
   return {
     whoami: () => call("whoami", {}) as Promise<Whoami>,
     listLayers: () => call("listLayers", {}) as Promise<LayerSummary[]>,
@@ -200,13 +213,15 @@ export function createClient(options: ClientOptions): RegistryClient {
     publish: (ref, body) =>
       call("publish", { ref }, body) as Promise<PublishResult>,
     managedBundle: async ({ layer, os }) => {
-      const answer = (await call("managedBundle", {}, undefined, {
+      const { data, json } = await exchange("managedBundle", {}, undefined, {
         layer,
         os,
         format: "bundle",
-      })) as ManagedBundleResponse;
+      });
+      const answer = data as ManagedBundleResponse;
       return {
         manifest: answer.manifest,
+        rawManifest: (json as { manifest: unknown }).manifest,
         files: Object.fromEntries(
           Object.entries(answer.files).map(([path, base64]) => [
             path,

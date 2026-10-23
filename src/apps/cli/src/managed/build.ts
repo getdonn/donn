@@ -222,7 +222,18 @@ async function downloadBundle(
     }
     return registryFailure(error);
   }
-  const { manifest, files } = answer;
+  const { manifest, files, rawManifest } = answer;
+  // The bundle must be the one asked for: install trusts its os, check its deepest layer.
+  const deepest = manifest.layers.at(-1)?.ref;
+  if (manifest.os !== options.os || deepest !== layer) {
+    throw new CliError(
+      "managed-bundle-mismatch",
+      manifest.os !== options.os
+        ? `the registry sent a bundle for ${manifest.os}; --os asked for ${options.os}`
+        : `the registry sent a bundle for ${deepest ?? "no layer"}; --layer asked for ${layer}`,
+      { os: manifest.os, layer: deepest },
+    );
+  }
   for (const path of Object.keys(files)) checkedPath(path);
   checkNoCaseDuplicates(Object.keys(files));
   const listed = new Set(Object.keys(manifest.files));
@@ -253,14 +264,15 @@ async function downloadBundle(
       `${MANIFEST_PATH} is missing from the bundle the registry sent`,
     );
   }
-  // The bytes install will read must be the manifest the digests were checked against.
+  // The bytes install will read must be the manifest the digests were checked against, as the
+  // registry sent it: a newer server's extra manifest field is not tampering.
   let written: unknown;
   try {
     written = JSON.parse(new TextDecoder().decode(manifestBytes));
   } catch {
     written = undefined;
   }
-  if (!isDeepStrictEqual(written, manifest)) {
+  if (!isDeepStrictEqual(written, rawManifest)) {
     throw new CliError(
       "managed-bundle-mismatch",
       `${MANIFEST_PATH} does not match the manifest the registry sent`,

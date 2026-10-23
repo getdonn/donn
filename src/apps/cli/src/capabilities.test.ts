@@ -65,8 +65,13 @@ describe("zzpersona capabilities", () => {
 
   it("declares a policy row for every built-in adapter", () => {
     for (const column of firstPartyColumns()) {
-      expect(column.matrix.fields.policy?.support, column.id).toBe(
-        column.id === "claude-code" ? "native" : "advisory",
+      expect(column.matrix.fields.policy, column.id).toEqual(
+        column.id === "claude-code"
+          ? { support: "native", note: "managed policy bundle" }
+          : {
+              support: "none",
+              note: "not rendered; enforced only by managed bundles for Claude Code",
+            },
       );
     }
   });

@@ -795,12 +795,15 @@ export function registryConformance(
         }
       });
 
-      it("answers 404 not-found for an unpublished layer", async () => {
-        expectProblem(
-          await bundle({ layer: "team/nope", os: "linux" }),
-          404,
-          "not-found",
-        );
+      it("answers 404 not-found for an unpublished layer, naming it", async () => {
+        const answer = await bundle({ layer: "team/nope", os: "linux" });
+        expectProblem(answer, 404, "not-found");
+        // The ref tells a missing layer from a registry without the route (spec 21, amendment 14).
+        expect(
+          (answer.body.problems ?? []).find(
+            (p: { code: string }) => p.code === "not-found",
+          ),
+        ).toMatchObject({ ref: "team/nope" });
       });
 
       it("a managed bundle matches a local compile of the same layers", async (context) => {

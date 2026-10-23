@@ -1,12 +1,20 @@
-import { readdir, readFile } from "node:fs/promises";
-import { isDeepStrictEqual } from "node:util";
+import { readFile } from "node:fs/promises";
+import { KNOWN_MANAGED_KEYS } from "@zzpersona/adapter-claude-code";
 import type { ManagedManifest } from "@zzpersona/adapter-sdk";
 import type { Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { buildBundle } from "./build.js";
 import { MANIFEST_PATH, sha256 } from "./bundle-io.js";
+import {
+  asObject,
+  differing,
+  earlierReplaced,
+  policyFiles,
+  readJson,
+  SETTINGS_PATH,
+} from "./drop-ins.js";
 import { MACOS_PROFILE, WINDOWS_KEY, type ManagedEnv } from "./env.js";
-import { readInstalled, readPending, SETTINGS_PATH, under } from "./install.js";
+import { readInstalled, readPending, under } from "./install.js";
 
 // zzpersona managed check: is what the policy folder holds what zzpersona installed, is it what
 // the layers compile to today, and does Claude Code read it? See
@@ -43,20 +51,29 @@ const CONTROL_KEYS = new Set([
   "wslInheritsWindowsSettings",
 ]);
 
-const asObject = (value: unknown): Record<string, unknown> | undefined =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
-async function readJson(
-  path: string,
-): Promise<Record<string, unknown> | undefined> {
-  try {
-    return asObject(JSON.parse(await readFile(path, "utf8")));
-  } catch {
-    return undefined;
-  }
-}
+/**
+ * Settings keys that make a managed source deliver a policy: the managed keys the adapter knows
+ * and the ordinary settings an organisation sets (code.claude.com/docs/en/settings). Anything
+ * else (a cache's checksum or timestamps, a key from a newer Claude Code) is not counted.
+ */
+const SETTINGS_KEYS: ReadonlySet<string> = new Set([
+  ...KNOWN_MANAGED_KEYS,
+  "hooks",
+  "disableAllHooks",
+  "model",
+  "statusLine",
+  "outputStyle",
+  "companyAnnouncements",
+  "includeCoAuthoredBy",
+  "enableAllProjectMcpServers",
+  "enabledMcpjsonServers",
+  "disabledMcpjsonServers",
+  "awsAuthRefresh",
+  "awsCredentialExport",
+  "otelHeadersHelper",
+  "alwaysThinkingEnabled",
+  "spinnerTipsEnabled",
+]);
 
 /**
  * `ignored`: a higher-ranked managed source (remote, then MDM) delivers a policy, and the
@@ -66,7 +83,15 @@ async function readJson(
 const delivers = (p: Record<string, unknown> | undefined | null) =>
   p !== undefined &&
   p !== null &&
-  Object.keys(p).some((k) => !CONTROL_KEYS.has(k));
+  Object.keys(p).some((k) => SETTINGS_KEYS.has(k) && !CONTROL_KEYS.has(k));
+
+/** The settings in a remote-settings cache: a bare settings object or `{ settings: {…}, … }`. */
+async function readRemote(
+  path: string,
+): Promise<Record<string, unknown> | undefined> {
+  const file = await readJson(path);
+  return asObject(file?.settings) ?? file;
+}
 
 async function ignoredBy(env: ManagedEnv): Promise<Finding | undefined> {
   const mdmName =
@@ -76,7 +101,7 @@ async function ignoredBy(env: ManagedEnv): Promise<Finding | undefined> {
   const sources = [
     {
       name: `the server-managed settings cache (${env.remoteSettingsFile})`,
-      policy: await readJson(env.remoteSettingsFile),
+      policy: await readRemote(env.remoteSettingsFile),
     },
     { name: mdmName, policy: await env.mdmPolicy().catch(() => null) },
   ];
@@ -128,60 +153,21 @@ async function editedFiles(
   return findings;
 }
 
-/** Every single (non-list) value in `value`, as [dotted path, value]. */
-function singleValues(
-  value: Record<string, unknown>,
-  prefix: string[] = [],
-): [string[], unknown][] {
-  return Object.entries(value).flatMap(([key, v]): [string[], unknown][] => {
-    const path = [...prefix, key];
-    if (Array.isArray(v)) return []; // lists combine across files
-    const nested = asObject(v);
-    return nested ? singleValues(nested, path) : [[path, v]];
-  });
-}
-
-/** What `later` does to the value at `path`: undefined when it leaves it alone. */
-function replaces(
-  later: Record<string, unknown>,
-  path: string[],
-  ours: unknown,
-) {
-  let at: unknown = later;
-  for (const key of path) {
-    const object = asObject(at);
-    if (object === undefined) return true; // a single value replaced our whole block
-    if (!(key in object)) return false;
-    at = object[key];
-  }
-  return !isDeepStrictEqual(at, ours);
-}
-
 /** `overridden`: a drop-in read after ours sets one of our single values to something else. */
-async function overriddenBy(root: string): Promise<Finding[]> {
-  const ours = await readJson(under(root, SETTINGS_PATH));
-  if (ours === undefined) return [];
-  const dir = under(root, "managed-settings.d");
-  const ourName = SETTINGS_PATH.split("/")[1]!;
-  const names = (await readdir(dir).catch(() => [] as string[]))
-    .filter((n) => n.endsWith(".json") && !n.startsWith(".") && n > ourName)
-    .sort();
-  const values = singleValues(ours);
-  const findings: Finding[] = [];
-  for (const name of names) {
-    const later = await readJson(under(dir, name));
-    if (later === undefined) continue;
-    for (const [path, value] of values) {
-      if (replaces(later, path, value)) {
-        findings.push({
-          state: "overridden",
-          detail: `managed-settings.d/${name} replaces ${path.join(".")}`,
-        });
-      }
-    }
-  }
-  return findings;
+async function overriddenBy(
+  root: string,
+  ours: Record<string, unknown>,
+): Promise<Finding[]> {
+  return (await differing(root, await policyFiles(root, "after"), ours)).map(
+    ({ file, key }) => ({
+      state: "overridden",
+      detail: `${file} replaces ${key}`,
+    }),
+  );
 }
+
+const PULLED_NOTE =
+  "compared with the layers pulled locally; run zzpersona pull for the latest";
 
 /** `stale`: the installed files differ from a fresh compile of the manifest's deepest layer. */
 async function staleness(
@@ -196,8 +182,10 @@ async function staleness(
     };
   }
   let fresh: Record<string, string>;
+  let pulled = false;
   try {
     const ctx = await context();
+    pulled = ctx.config.registry !== undefined;
     // Built elsewhere (say, by an admin for many machines): nothing here to compare with.
     if (!(await ctx.store.list()).includes(ref)) {
       return {
@@ -231,10 +219,12 @@ async function staleness(
   ]
     .filter((p) => fresh[p] !== installed.files[p])
     .sort();
-  if (paths.length === 0) return undefined;
+  // No network in check: with a registry, "fresh" means the layers last pulled.
+  const local = pulled ? PULLED_NOTE : undefined;
+  if (paths.length === 0) return local && { state: "current", detail: local };
   return {
     state: "stale",
-    detail: `a fresh compile of ${ref} differs in ${paths.join(", ")}`,
+    detail: `a fresh compile of ${ref} differs in ${paths.join(", ")}${local ? `; ${local}` : ""}`,
   };
 }
 
@@ -293,7 +283,17 @@ export async function checkManaged(
   const ignored = await ignoredBy(env);
   if (ignored) findings.push(ignored);
   findings.push(...(await editedFiles(env.root, installed.files)));
-  findings.push(...(await overriddenBy(env.root)));
+  const ours = await readJson(under(env.root, SETTINGS_PATH));
+  if (ours !== undefined) {
+    findings.push(...(await overriddenBy(env.root, ours)));
+    // Claude Code reads ours later, so ours wins; a note, not a state.
+    for (const { key, file } of await earlierReplaced(env.root, ours)) {
+      findings.push({
+        state: "current",
+        detail: `${SETTINGS_PATH} replaces ${key} from ${file}`,
+      });
+    }
+  }
   const stale = await staleness(lazy, installed);
   if (stale) findings.push(stale);
   // Stable sort: most severe first, each state's findings in the order found.

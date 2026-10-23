@@ -176,5 +176,13 @@ describe.skipIf(!ENABLED)("managed policy in a real Claude Code", () => {
     console.log(`claude doctor (exit ${doctor.status}):\n${doctor.stdout}`);
     expect(doctor.stdout).toContain("No installation issues found");
     expect(doctor.stdout).not.toMatch(/invalid.*managed|managed.*invalid/i);
+
+    // Uninstall returns the machine to how it was: no files and no empty folders left behind.
+    const uninstall = inside(`node ${BIN} managed uninstall --yes`);
+    expect(uninstall.status, show(uninstall)).toBe(0);
+    const gone = inside(
+      "test -e /etc/claude-code && echo present || echo absent",
+    );
+    expect(gone.stdout.trim(), show(gone)).toBe("absent");
   }, 600_000);
 });

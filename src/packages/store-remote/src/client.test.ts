@@ -271,6 +271,8 @@ describe("managedBundle", () => {
       os: "linux",
     });
     expect(bundle.manifest.os).toBe("linux");
+    // The manifest as sent, before tolerant parsing drops fields this client does not know.
+    expect(bundle.rawManifest).toEqual(manifestOf("linux"));
     expect(new TextDecoder().decode(bundle.files["a/b.txt"])).toBe("hello");
     expect(Object.keys(bundle.files)).toContain("zzpersona/manifest.json");
   });

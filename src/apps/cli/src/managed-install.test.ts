@@ -357,6 +357,8 @@ describe("zzpersona managed install", () => {
       written: [],
       replaced: [],
       removed: [],
+      replaces: [],
+      check: { state: "current", findings: [] },
     });
     const { r, out } = await check(m);
     expect(out.state).toBe("current");
@@ -386,6 +388,8 @@ describe("zzpersona managed install", () => {
       written: [],
       replaced: [SETTINGS, MANIFEST],
       removed: [hook],
+      replaces: [],
+      check: { state: "current", findings: [] },
     });
     expect(tree(m.system)).toEqual([
       "managed-settings.d/10-org.json",
@@ -536,6 +540,80 @@ describe("zzpersona managed install", () => {
   });
 });
 
+describe("install: earlier values and the follow-up check", () => {
+  it("lists the earlier single values our drop-in replaces, and installs anyway", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    put(
+      join(m.system, "managed-settings.json"),
+      JSON.stringify({ claudeMd: "org text", model: "opus" }),
+    );
+    put(
+      join(m.system, "managed-settings.d/10-org.json"),
+      JSON.stringify({
+        claudeMd: "earlier",
+        permissions: { deny: ["Read(.env)"] },
+      }),
+    );
+    put(
+      join(m.system, "managed-settings.d/90-org.json"),
+      JSON.stringify({ deniedModels: [] }),
+    );
+    const r = await cli(m, ["managed", "install", bundle, "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "  replaces claudeMd from managed-settings.json\n",
+    );
+    expect(r.stdout).toContain(
+      "  replaces claudeMd from managed-settings.d/10-org.json\n",
+    );
+    expect(r.stdout).not.toContain("replaces permissions");
+    expect(r.stdout).not.toContain("from managed-settings.d/90-org.json");
+    const again = await cli(m, ["managed", "install", bundle, "--json"]);
+    expect(JSON.parse(again.stdout).replaces).toEqual([
+      { key: "claudeMd", file: "managed-settings.json" },
+      { key: "claudeMd", file: "managed-settings.d/10-org.json" },
+    ]);
+  });
+
+  it("says when the installed policy is not current, and still exits 0", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    put(
+      join(m.system, "managed-settings.d/90-org.json"),
+      JSON.stringify({ claudeMd: "theirs" }),
+    );
+    const r = await cli(m, ["managed", "install", bundle, "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      "managed: overridden\noverridden: managed-settings.d/90-org.json replaces claudeMd\n",
+    );
+    const json = await cli(m, ["managed", "install", bundle, "--json"], {
+      remoteSettingsFile: m.remote,
+    });
+    expect(JSON.parse(json.stdout).check.state).toBe("overridden");
+
+    const ignored = machine();
+    put(ignored.remote, JSON.stringify({ permissions: { deny: ["Read"] } }));
+    const i = await cli(ignored, [
+      "managed",
+      "install",
+      await build(ignored),
+      "--yes",
+    ]);
+    expect(i.code, i.stderr).toBe(0);
+    expect(i.stdout).toContain("managed: ignored\nignored: ");
+    expect(i.stdout).toContain(ignored.remote);
+  });
+
+  it("prints nothing more when the installed policy is current", async () => {
+    const m = machine();
+    const r = await cli(m, ["managed", "install", await build(m), "--yes"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).not.toContain("managed:");
+  });
+});
+
 describe("unsafe policy folders", () => {
   async function installed() {
     const m = machine();
@@ -637,6 +715,18 @@ describe("zzpersona managed uninstall", () => {
     // Our own folders go when empty; managed-settings.d is shared and stays.
     expect(existsSync(join(m.system, "zzpersona"))).toBe(false);
     expect(existsSync(join(m.system, "managed-settings.d"))).toBe(true);
+  });
+
+  it("removes the folders it emptied, the root included", async () => {
+    const m = machine();
+    const bundle = await build(m);
+    expect(existsSync(m.system)).toBe(false);
+    expect((await cli(m, ["managed", "install", bundle, "--yes"])).code).toBe(
+      0,
+    );
+    expect((await cli(m, ["managed", "uninstall", "--yes"])).code).toBe(0);
+    expect(existsSync(m.system)).toBe(false);
+    expect(existsSync(dirname(m.system))).toBe(true);
   });
 
   it("asks unless --yes, and says when nothing is installed", async () => {
@@ -840,6 +930,10 @@ describe("zzpersona managed check", () => {
         state: "overridden",
         detail: "managed-settings.d/90-org.json replaces claudeMd",
       },
+      {
+        state: "current",
+        detail: `${SETTINGS} replaces claudeMd from managed-settings.d/10-org.json`,
+      },
     ]);
   });
 
@@ -851,13 +945,99 @@ describe("zzpersona managed check", () => {
     );
     const hook = tree(join(m.system, "zzpersona/hooks"))[0]!;
     writeFileSync(join(m.system, "zzpersona/hooks", hook), "#!/bin/sh\n");
-    const { out } = await check(m, { mdmPolicy: async () => ({ a: 1 }) });
+    const { out } = await check(m, {
+      mdmPolicy: async () => ({ model: "y" }),
+    });
     expect(out.state).toBe("ignored");
     expect(out.findings.map((f) => f.state)).toEqual([
       "ignored",
       "edited",
       "overridden",
     ]);
+  });
+
+  it("notes each earlier value our drop-in replaces; the state stays current", async () => {
+    const m = await installed();
+    put(
+      join(m.system, "managed-settings.json"),
+      JSON.stringify({ claudeMd: "org text", model: "opus" }),
+    );
+    const { r, out } = await check(m);
+    expect(out).toEqual({
+      state: "current",
+      findings: [
+        {
+          state: "current",
+          detail: `${SETTINGS} replaces claudeMd from managed-settings.json`,
+        },
+      ],
+    });
+    expect(r.code).toBe(0);
+  });
+
+  it("with a registry configured, says the comparison used the pulled layers", async () => {
+    const m = await installed();
+    put(
+      join(m.home, "config.yaml"),
+      `personas: ${m.personas}\nregistry:\n  url: http://127.0.0.1:9\n`,
+    );
+    const note =
+      "compared with the layers pulled locally; run zzpersona pull for the latest";
+    const current = await check(m);
+    expect(current.out).toEqual({
+      state: "current",
+      findings: [{ state: "current", detail: note }],
+    });
+    put(
+      join(m.personas, "org/acme.yaml"),
+      ORG.replace("Bash(rm -rf:*)", "Bash(sudo:*)"),
+    );
+    const stale = await check(m);
+    expect(stale.out.state).toBe("stale");
+    expect(stale.out.findings[0]!.detail).toContain(`; ${note}`);
+  });
+
+  it("prints notes when current, too", async () => {
+    const m = await installed();
+    rmSync(join(m.personas, "org/acme.yaml"));
+    const r = await cli(m, ["managed", "check"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe(
+      `managed: current (${m.system})\nnote: cannot check for newer layers: org/acme is not in the store\n`,
+    );
+  });
+
+  describe("remote-settings.json counts only recognised settings", () => {
+    const remote = async (body: unknown) => {
+      const m = await installed();
+      put(m.remote, JSON.stringify(body));
+      return (await check(m)).out.state;
+    };
+
+    it("a top-level settings object", async () => {
+      expect(await remote({ permissions: { deny: ["Read"] } })).toBe("ignored");
+      expect(await remote({ somethingNew: 1, fetchedAt: "x" })).toBe("current");
+    });
+
+    it("a settings wrapper", async () => {
+      expect(
+        await remote({
+          checksum: "abc",
+          settings: { permissions: { deny: ["Read"] } },
+        }),
+      ).toBe("ignored");
+      expect(
+        await remote({
+          checksum: "abc",
+          settings: { model: "x", managedSourcesBehavior: "merge" },
+        }),
+      ).toBe("current");
+    });
+
+    it("a wrapper with metadata only is not a policy", async () => {
+      expect(await remote({ checksum: "abc", settings: {} })).toBe("current");
+      expect(await remote({ checksum: "abc" })).toBe("current");
+    });
   });
 
   it("prints one line per finding", async () => {
