@@ -1,0 +1,9 @@
+{
+  "allowManagedMcpServersOnly": true,
+  "managedMcpServers": {
+    "jira": {
+      "type": "http",
+      "url": "https://jira.corp/mcp"
+    }
+  }
+}

@@ -63,6 +63,8 @@ function withApiVersion(
     detect: declaration.detect.bind(declaration),
     compile: declaration.compile.bind(declaration),
     activate: declaration.activate.bind(declaration),
+    // A plain data object: its methods take no `this`.
+    ...(declaration.managed && { managed: declaration.managed }),
   };
 }
 

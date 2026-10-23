@@ -1,0 +1,41 @@
+{
+  "files": {
+    "managed-mcp.json": "d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02",
+    "managed-settings.d/50-zzpersona.json": "d34815a177a8c78f6e85ed238206768c49d70fb69b8a143d7a28eef8c08d028c"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "os": "linux",
+  "report": {
+    "entries": [
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "policy.mcp",
+        "reason": "allowManagedMcpServersOnly and managed-mcp.json: only the policy's servers load"
+      }
+    ],
+    "warnings": [
+      {
+        "code": "partial-mode",
+        "message": "managed-mcp.json makes --mcp-config exit: zzpersona claude launches without the persona's MCP servers"
+      }
+    ]
+  },
+  "zzpersona": "0.12.0"
+}

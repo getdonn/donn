@@ -15,6 +15,11 @@ const guidance = {
   note: "rendered as guidance; not enforced",
 } as const;
 
+const ADVISORY_POLICY = {
+  support: "advisory",
+  note: "advisory only; zzpersona compiles managed policy for Claude Code",
+} as const;
+
 export function capabilities(): CapabilityMatrix {
   return {
     fields: {
@@ -33,6 +38,7 @@ export function capabilities(): CapabilityMatrix {
       "mcp.servers": none("MCP servers"),
       secrets: none("secrets"),
       "targets.agents-md": none("harness settings"),
+      policy: ADVISORY_POLICY,
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, none("hooks")]),
       ),

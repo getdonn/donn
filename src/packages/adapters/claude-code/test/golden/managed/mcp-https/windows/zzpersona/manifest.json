@@ -1,0 +1,42 @@
+{
+  "files": {
+    "managed-settings.d/50-zzpersona.json": "f9e68c098b696f5db0e9cf8d75ff082ef96359f9d0aa4d2c9e0d0ae0ac4d2897"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "minClaudeCode": "2.1.259",
+  "os": "windows",
+  "report": {
+    "entries": [
+      {
+        "layer": "team/payments",
+        "outcome": "enforced",
+        "path": "mcp.servers.events",
+        "reason": "provided to every user through managedMcpServers"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "mcp.servers.jira",
+        "reason": "provided to every user through managedMcpServers"
+      }
+    ],
+    "warnings": []
+  },
+  "zzpersona": "0.12.0"
+}

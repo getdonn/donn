@@ -203,6 +203,30 @@ describe("compile (relaunch)", () => {
     });
   });
 
+  it("targets.claude-code.managed never reaches settings.json", () => {
+    const { ir } = entry("minimal");
+    const output = adapter.compile(
+      input("minimal", {
+        ir: {
+          ...ir,
+          targets: {
+            "claude-code": {
+              model: "opus",
+              managed: { deniedModels: ["claude-haiku-*"] },
+            },
+          },
+        },
+      }),
+    );
+    expect(json(output, "settings.json")).toEqual({
+      permissions: ir.permissions,
+      model: "opus",
+    });
+    expect(output.report.entries.map((e) => e.path)).not.toContainEqual(
+      expect.stringContaining("managed"),
+    );
+  });
+
   it("reports knowledge as advisory", () => {
     expect(full.report.entries).toContainEqual({
       path: "knowledge[pci-handbook]",
