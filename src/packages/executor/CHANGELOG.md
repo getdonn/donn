@@ -1,5 +1,15 @@
 # @zzpersona/executor
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+  - @zzpersona/adapter-sdk@0.3.0
+  - @zzpersona/spec@0.2.0
+  - @zzpersona/store-local@0.1.2
+
 ## 0.2.1
 
 ### Patch Changes

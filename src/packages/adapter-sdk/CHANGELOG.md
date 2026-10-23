@@ -1,5 +1,18 @@
 # @zzpersona/adapter-sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- d221b8b: Optional `managed?: ManagedCompiler` on the adapter contract, with `ManagedInput`, `ManagedResult`,
+  `ManagedManifest` and the report types. `FIXED_CAPABILITY_FIELDS` gained `policy`, so a third-party
+  adapter's conformance-kit `complete-matrix` check fails until it declares a `policy` row.
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+  - @zzpersona/spec@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,25 @@
 # @zzpersona/registry-api
 
+## 0.5.0
+
+### Minor Changes
+
+- d221b8b: `GET /v1/managed/bundle` (`ROUTES.managedBundle`, `ManagedBundleResponse`): the managed policy
+  bundle for a layer and OS. New problem codes `invalid-request`, `managed-refused`,
+  `managed-needs-files` and `format-unsupported`. The mock takes `managed?: ManagedCompiler` and
+  answers `format=bundle` (501 `format-unsupported` for other formats or without a compiler); the
+  conformance kit checks that the bundle matches a local compile when given the same compiler.
+  `compileFromSource` and `publishedSource` are exported for servers.
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+  - @zzpersona/adapter-sdk@0.3.0
+  - @zzpersona/resolver@0.4.0
+  - @zzpersona/spec@0.2.0
+
 ## 0.4.0
 
 ### Minor Changes
