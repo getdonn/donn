@@ -73,6 +73,7 @@ expect:
       claude-code:
         model: opus
         outputStyle: concise
+    policy: {}
   provenance:
     "metadata.version": project/checkout-api
     "metadata.labels.org": org/base

@@ -15,6 +15,7 @@ import {
   type Persona,
   type PersonaOverlay,
   type PersonaPath,
+  type Policy,
   type Ref,
   type ResolveResult,
   type ResolveWarning,
@@ -82,6 +83,7 @@ export class Merge {
   private readonly knowledge: KnowledgePointer[] = [];
   private readonly providers = new Map<string, SecretProvider>();
   private readonly targets: Record<string, unknown> = {};
+  private readonly policy: Policy = {};
 
   apply(layer: Ref, doc: Persona | PersonaOverlay, dir?: string): void {
     this.layer = layer;
@@ -119,6 +121,8 @@ export class Merge {
         name,
       );
     }
+    const managed = this.takeManaged(doc.targets);
+    this.mergePolicy(doc.kind === "Persona" ? doc.policy : undefined, managed);
     this.mergeTargets(doc.targets ?? {}, ["targets"]);
 
     // A lock applies to every layer after the one that declared it.
@@ -173,6 +177,7 @@ export class Merge {
       secrets: { providers: Object.fromEntries(this.providers) },
       locks: this.locks.map(({ path, layer }) => ({ path, layer })),
       targets: this.targets,
+      policy: this.policy,
     });
     return {
       ir,
@@ -323,6 +328,61 @@ export class Merge {
       this.forget(formatPath(path));
       this.warn("security-removal", path);
     }
+  }
+
+  /** Pulls `targets.claude-code.managed` out of the targets to merge, leaving the rest. */
+  private takeManaged(
+    targets: Persona["targets"],
+  ): Record<string, unknown> | undefined {
+    const claude = targets?.["claude-code"];
+    if (claude === undefined || !("managed" in claude)) return undefined;
+    const { managed, ...rest } = claude;
+    targets!["claude-code"] = rest;
+    return isPlainObject(managed) ? managed : {};
+  }
+
+  /**
+   * `policy` and `targets.claude-code.managed` belong to org, area and team layers. Each key is
+   * implicitly locked by the layer that first sets it: no later layer may set it again.
+   */
+  private mergePolicy(
+    policy: Policy | undefined,
+    managed: Record<string, unknown> | undefined,
+  ): void {
+    if (policy === undefined && managed === undefined) return;
+    if (!["org", "area", "team"].includes(this.layer.split("/")[0]!)) {
+      throw new ResolveError("policy-in-lower-layer", { layer: this.layer });
+    }
+    for (const [key, value] of Object.entries(policy ?? {})) {
+      this.setOnce(`policy.${key}`, () => {
+        (this.policy as Record<string, unknown>)[key] = value;
+      });
+    }
+    if (managed === undefined) return;
+    const claude = (this.targets["claude-code"] ??= {}) as Record<
+      string,
+      unknown
+    >;
+    const store = (claude["managed"] ??= {}) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(managed)) {
+      this.setOnce(`targets.claude-code.managed.${key}`, () => {
+        store[key] = value;
+      });
+    }
+  }
+
+  private setOnce(path: string, set: () => void): void {
+    const lockedBy = this.provenance.get(path);
+    if (lockedBy !== undefined) {
+      throw new ResolveError("lock-violation", {
+        path,
+        lock: path,
+        lockedBy,
+        layer: this.layer,
+      });
+    }
+    set();
+    this.record(path);
   }
 
   /** Deep merge; arrays and scalars are leaves, replaced whole. */

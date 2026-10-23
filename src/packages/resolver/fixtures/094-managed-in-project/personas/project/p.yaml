@@ -1,0 +1,8 @@
+apiVersion: zzpersona/v0
+kind: Persona
+metadata:
+  name: p
+targets:
+  claude-code:
+    managed:
+      deniedModels: []

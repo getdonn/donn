@@ -1,0 +1,9 @@
+description: >-
+  The user overlay cannot carry targets.claude-code.managed (the schema already keeps policy out
+  of it). Unlike a lock violation this fails resolution instead of being dropped with a warning.
+resolve: team/t
+overlay: user/overrides
+expect:
+  error:
+    code: policy-in-lower-layer
+    layer: user/overrides
