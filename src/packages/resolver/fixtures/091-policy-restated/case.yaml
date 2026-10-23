@@ -1,0 +1,11 @@
+description: >-
+  A team that restates the org's policy.mcp with the same value changes nothing, so it resolves
+  cleanly and provenance still points at the org. Each policy key has one legal value, so a policy
+  key can never be changed by a lower layer; the differing case is covered by managed keys (092).
+resolve: team/t
+expect:
+  resolved:
+    policy: { mcp: exclusive }
+  provenance:
+    policy.mcp: org/base
+  warnings: []

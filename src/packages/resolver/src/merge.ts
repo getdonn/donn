@@ -121,9 +121,9 @@ export class Merge {
         name,
       );
     }
-    const managed = this.takeManaged(doc.targets);
+    const { managed, rest } = this.takeManaged(doc.targets);
     this.mergePolicy(doc.kind === "Persona" ? doc.policy : undefined, managed);
-    this.mergeTargets(doc.targets ?? {}, ["targets"]);
+    this.mergeTargets(rest ?? {}, ["targets"]);
 
     // A lock applies to every layer after the one that declared it.
     for (const path of declared)
@@ -330,15 +330,23 @@ export class Merge {
     }
   }
 
-  /** Pulls `targets.claude-code.managed` out of the targets to merge, leaving the rest. */
-  private takeManaged(
-    targets: Persona["targets"],
-  ): Record<string, unknown> | undefined {
+  /** Splits `targets.claude-code.managed` from the targets, without touching the input. */
+  private takeManaged(targets: Persona["targets"]): {
+    managed: Record<string, unknown> | undefined;
+    rest: Persona["targets"];
+  } {
     const claude = targets?.["claude-code"];
-    if (claude === undefined || !("managed" in claude)) return undefined;
-    const { managed, ...rest } = claude;
-    targets!["claude-code"] = rest;
-    return isPlainObject(managed) ? managed : {};
+    if (targets === undefined || claude === undefined || !("managed" in claude))
+      return { managed: undefined, rest: targets };
+    const { managed, ...others } = claude;
+    if (!isPlainObject(managed)) {
+      throw new ResolveError("invalid-persona", {
+        layer: this.layer,
+        path: "targets.claude-code.managed",
+        issues: "must be an object",
+      });
+    }
+    return { managed, rest: { ...targets, "claude-code": others } };
   }
 
   /**
@@ -354,7 +362,7 @@ export class Merge {
       throw new ResolveError("policy-in-lower-layer", { layer: this.layer });
     }
     for (const [key, value] of Object.entries(policy ?? {})) {
-      this.setOnce(`policy.${key}`, () => {
+      this.setOnce(`policy.${key}`, value, () => {
         (this.policy as Record<string, unknown>)[key] = value;
       });
     }
@@ -365,15 +373,26 @@ export class Merge {
     >;
     const store = (claude["managed"] ??= {}) as Record<string, unknown>;
     for (const [key, value] of Object.entries(managed)) {
-      this.setOnce(`targets.claude-code.managed.${key}`, () => {
+      this.setOnce(`targets.claude-code.managed.${key}`, value, () => {
         store[key] = value;
       });
     }
   }
 
-  private setOnce(path: string, set: () => void): void {
+  private current(path: string): unknown {
+    const keys = path.split(".");
+    if (keys[0] === "policy")
+      return (this.policy as Record<string, unknown>)[keys[1]!];
+    const claude = this.targets["claude-code"] as Record<string, unknown>;
+    return (claude["managed"] as Record<string, unknown>)[
+      keys.slice(3).join(".")
+    ];
+  }
+
+  private setOnce(path: string, value: unknown, set: () => void): void {
     const lockedBy = this.provenance.get(path);
     if (lockedBy !== undefined) {
+      if (isDeepStrictEqual(this.current(path), value)) return;
       throw new ResolveError("lock-violation", {
         path,
         lock: path,
