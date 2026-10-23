@@ -244,3 +244,7 @@ the current persona, the mod shows a one-line nudge. Never auto-switch silently.
   `locks` — a user should never be able to lock anything for themselves.
 - **Provenance format.** JSON sidecar next to the build, consumed by `--explain` and by the
   paid tier's drift detection.
+
+> **Amendment 2026-10-23 (spec 21):** persona files gain a `policy` block (and
+> `targets.claude-code.managed` is treated like it): settable only by `org/`, `area/` and `team/`
+> layers, implicitly locked per key by the layer that first sets it. See `21-managed-settings.md` §1.

@@ -1,0 +1,11 @@
+description: >-
+  policy merges down the chain key by key: the org sets permissions, the team adds hooks, and the
+  IR carries both. Provenance records policy.<key>.
+resolve: team/t
+expect:
+  resolved:
+    policy: { permissions: exclusive, hooks: exclusive }
+  provenance:
+    policy.permissions: org/base
+    policy.hooks: team/t
+  warnings: []

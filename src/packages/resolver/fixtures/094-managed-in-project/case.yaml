@@ -1,0 +1,6 @@
+description: A project layer cannot set targets.claude-code.managed either.
+resolve: project/p
+expect:
+  error:
+    code: policy-in-lower-layer
+    layer: project/p

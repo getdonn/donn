@@ -103,4 +103,39 @@ describe("resolve", () => {
       ".registry/org/a/hooks/h.sh",
     );
   });
+
+  describe("managed keys", () => {
+    const managed = (value: unknown) => ({
+      targets: { "claude-code": { managed: value } },
+    });
+
+    it("does not mutate documents, so a second resolve checks the same", async () => {
+      const docs = {
+        "org/base": persona("base", managed({ deniedModels: ["x"] })),
+        "project/p": persona("p", { extends: ["org/base"], ...managed({}) }),
+        "team/t": persona("t", { extends: ["org/base"] }),
+      };
+      const { source } = memory(docs);
+      for (let i = 0; i < 2; i++) {
+        const ok = await resolve("team/t", { source });
+        expect(ok.ir.targets).toStrictEqual({
+          "claude-code": { managed: { deniedModels: ["x"] } },
+        });
+        const error = await failure(resolve("project/p", { source }));
+        expect(error).toMatchObject({
+          code: "policy-in-lower-layer",
+          layer: "project/p",
+        });
+      }
+    });
+
+    it("rejects a managed value that is not an object, naming layer and path", async () => {
+      const { source } = memory({ "org/base": persona("base", managed("x")) });
+      expect(await failure(resolve("org/base", { source }))).toMatchObject({
+        code: "invalid-persona",
+        layer: "org/base",
+        path: "targets.claude-code.managed",
+      });
+    });
+  });
 });

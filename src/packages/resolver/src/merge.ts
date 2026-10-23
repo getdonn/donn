@@ -15,6 +15,7 @@ import {
   type Persona,
   type PersonaOverlay,
   type PersonaPath,
+  type Policy,
   type Ref,
   type ResolveResult,
   type ResolveWarning,
@@ -82,6 +83,7 @@ export class Merge {
   private readonly knowledge: KnowledgePointer[] = [];
   private readonly providers = new Map<string, SecretProvider>();
   private readonly targets: Record<string, unknown> = {};
+  private readonly policy: Policy = {};
 
   apply(layer: Ref, doc: Persona | PersonaOverlay, dir?: string): void {
     this.layer = layer;
@@ -119,7 +121,9 @@ export class Merge {
         name,
       );
     }
-    this.mergeTargets(doc.targets ?? {}, ["targets"]);
+    const { managed, rest } = this.takeManaged(doc.targets);
+    this.mergePolicy(doc.kind === "Persona" ? doc.policy : undefined, managed);
+    this.mergeTargets(rest ?? {}, ["targets"]);
 
     // A lock applies to every layer after the one that declared it.
     for (const path of declared)
@@ -173,6 +177,7 @@ export class Merge {
       secrets: { providers: Object.fromEntries(this.providers) },
       locks: this.locks.map(({ path, layer }) => ({ path, layer })),
       targets: this.targets,
+      policy: this.policy,
     });
     return {
       ir,
@@ -323,6 +328,80 @@ export class Merge {
       this.forget(formatPath(path));
       this.warn("security-removal", path);
     }
+  }
+
+  /** Splits `targets.claude-code.managed` from the targets, without touching the input. */
+  private takeManaged(targets: Persona["targets"]): {
+    managed: Record<string, unknown> | undefined;
+    rest: Persona["targets"];
+  } {
+    const claude = targets?.["claude-code"];
+    if (targets === undefined || claude === undefined || !("managed" in claude))
+      return { managed: undefined, rest: targets };
+    const { managed, ...others } = claude;
+    if (!isPlainObject(managed)) {
+      throw new ResolveError("invalid-persona", {
+        layer: this.layer,
+        path: "targets.claude-code.managed",
+        issues: "must be an object",
+      });
+    }
+    return { managed, rest: { ...targets, "claude-code": others } };
+  }
+
+  /**
+   * `policy` and `targets.claude-code.managed` belong to org, area and team layers. Each key is
+   * implicitly locked by the layer that first sets it: no later layer may set it again.
+   */
+  private mergePolicy(
+    policy: Policy | undefined,
+    managed: Record<string, unknown> | undefined,
+  ): void {
+    if (policy === undefined && managed === undefined) return;
+    if (!["org", "area", "team"].includes(this.layer.split("/")[0]!)) {
+      throw new ResolveError("policy-in-lower-layer", { layer: this.layer });
+    }
+    for (const [key, value] of Object.entries(policy ?? {})) {
+      this.setOnce(`policy.${key}`, value, () => {
+        (this.policy as Record<string, unknown>)[key] = value;
+      });
+    }
+    if (managed === undefined) return;
+    const claude = (this.targets["claude-code"] ??= {}) as Record<
+      string,
+      unknown
+    >;
+    const store = (claude["managed"] ??= {}) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(managed)) {
+      this.setOnce(`targets.claude-code.managed.${key}`, value, () => {
+        store[key] = value;
+      });
+    }
+  }
+
+  private current(path: string): unknown {
+    const keys = path.split(".");
+    if (keys[0] === "policy")
+      return (this.policy as Record<string, unknown>)[keys[1]!];
+    const claude = this.targets["claude-code"] as Record<string, unknown>;
+    return (claude["managed"] as Record<string, unknown>)[
+      keys.slice(3).join(".")
+    ];
+  }
+
+  private setOnce(path: string, value: unknown, set: () => void): void {
+    const lockedBy = this.provenance.get(path);
+    if (lockedBy !== undefined) {
+      if (isDeepStrictEqual(this.current(path), value)) return;
+      throw new ResolveError("lock-violation", {
+        path,
+        lock: path,
+        lockedBy,
+        layer: this.layer,
+      });
+    }
+    set();
+    this.record(path);
   }
 
   /** Deep merge; arrays and scalars are leaves, replaced whole. */

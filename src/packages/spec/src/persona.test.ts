@@ -115,6 +115,36 @@ describe("InstructionFragment", () => {
   });
 });
 
+describe("policy", () => {
+  it("accepts a policy block", () => {
+    const policy = {
+      permissions: "exclusive",
+      hooks: "exclusive",
+      mcp: "exclusive",
+      bypassPermissions: "disabled",
+    };
+    expect(Persona.parse({ ...base, policy }).policy).toEqual(policy);
+    expect(Persona.safeParse({ ...base, policy: {} }).success).toBe(true);
+  });
+
+  it("rejects unknown policy keys and values", () => {
+    expect(
+      Persona.safeParse({ ...base, policy: { permissions: "shared" } }).success,
+    ).toBe(false);
+    expect(
+      Persona.safeParse({ ...base, policy: { network: "exclusive" } }).success,
+    ).toBe(false);
+  });
+
+  it("an overlay cannot carry policy", () => {
+    const overlay = { apiVersion: "zzpersona/v0", kind: "PersonaOverlay" };
+    expect(
+      PersonaOverlay.safeParse({ ...overlay, policy: { mcp: "exclusive" } })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe("PersonaOverlay", () => {
   it("cannot carry metadata, extends or locks", () => {
     const overlay = { apiVersion: "zzpersona/v0", kind: "PersonaOverlay" };

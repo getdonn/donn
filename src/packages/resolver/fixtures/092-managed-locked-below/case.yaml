@@ -1,0 +1,10 @@
+description: >-
+  Keys under targets.claude-code.managed are locked the same way, key by key: the team may add a
+  new key but not change deniedModels, which the org set.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: targets.claude-code.managed.deniedModels
+    lockedBy: org/base
+    layer: team/t

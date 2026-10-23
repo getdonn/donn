@@ -22,5 +22,6 @@ export const minimal: CorpusEntry = {
     secrets: { providers: {} },
     locks: [],
     targets: {},
+    policy: {},
   },
 };
