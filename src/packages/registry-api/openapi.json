@@ -30,6 +30,16 @@
               }
             }
           },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -102,6 +112,16 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -135,6 +155,16 @@
               }
             }
           },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -207,6 +237,16 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -258,6 +298,16 @@
               }
             }
           },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -330,6 +380,16 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -391,6 +451,16 @@
               }
             }
           },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -463,6 +533,196 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed/bundle": {
+      "get": {
+        "operationId": "managedBundle",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "layer",
+            "in": "query",
+            "required": true,
+            "description": "The org/, area/ or team/ layer to build the managed bundle for.",
+            "schema": {
+              "$ref": "#/components/schemas/LayerRef"
+            }
+          },
+          {
+            "name": "os",
+            "in": "query",
+            "required": true,
+            "description": "The operating system the bundle is for.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "macos",
+                "linux",
+                "windows"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "The output format; `bundle` (the default) is required of every server, the others may answer 501.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "bundle",
+                "console",
+                "mobileconfig",
+                "reg",
+                "script-macos",
+                "script-linux",
+                "script-windows"
+              ],
+              "default": "bundle"
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "description": "For the script formats: `files` leaves out the settings drop-in.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "files"
+              ],
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBundleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or refused token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the role the request needs (forbidden), or a sign-in was refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown ref or version",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "baseVersion is not the latest version",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The sign-in expired, was refused or was already redeemed (login-expired)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The bundle or its place in the layer graph is refused",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "The sign-in is not finished yet (authorization-pending)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -489,6 +749,16 @@
               }
             }
           },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -561,6 +831,16 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -608,6 +888,16 @@
               }
             }
           },
+          "400": {
+            "description": "A query parameter is missing or invalid (invalid-request)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or refused token",
             "content": {
@@ -680,6 +970,16 @@
           },
           "429": {
             "description": "Polled faster than the login's interval (slow-down)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The server does not build the requested managed format (format-unsupported)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1084,7 +1384,11 @@
                     "forbidden",
                     "authorization-pending",
                     "slow-down",
-                    "login-expired"
+                    "login-expired",
+                    "invalid-request",
+                    "managed-refused",
+                    "managed-needs-files",
+                    "format-unsupported"
                   ]
                 },
                 "ref": {
@@ -1194,6 +1498,164 @@
           "token",
           "subject",
           "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "ManagedBundleResponse": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "number",
+                "const": 1
+              },
+              "zzpersona": {
+                "type": "string"
+              },
+              "os": {
+                "type": "string",
+                "enum": [
+                  "macos",
+                  "linux",
+                  "windows"
+                ]
+              },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "digest": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "digest"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "files": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "minClaudeCode": {
+                "type": "string"
+              },
+              "report": {
+                "type": "object",
+                "properties": {
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "layer": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "enforced",
+                            "advisory",
+                            "refused"
+                          ]
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "managed-secret",
+                            "managed-mcp-needs-exclusive",
+                            "managed-unknown-key",
+                            "managed-passthrough-conflict"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "layer",
+                        "outcome",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "entries",
+                  "warnings"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "format",
+              "zzpersona",
+              "os",
+              "layers",
+              "files",
+              "report"
+            ],
+            "additionalProperties": false
+          },
+          "files": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+            }
+          }
+        },
+        "required": [
+          "manifest",
+          "files"
         ],
         "additionalProperties": false
       }

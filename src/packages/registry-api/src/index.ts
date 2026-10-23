@@ -8,4 +8,9 @@ export {
 } from "./bundle.js";
 export { buildOpenApi } from "./openapi.js";
 export * from "./engine.js";
-export { compileFromSource, type CompileFromSource } from "./managed.js";
+export {
+  compileFromSource,
+  publishedSource,
+  type CompileFromSource,
+  type PublishedLayer,
+} from "./managed.js";

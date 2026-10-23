@@ -135,6 +135,10 @@ export const PROBLEM_CODES = [
   "authorization-pending",
   "slow-down",
   "login-expired",
+  "invalid-request",
+  "managed-refused",
+  "managed-needs-files",
+  "format-unsupported",
 ] as const;
 export const ProblemCode = z.enum(PROBLEM_CODES);
 export type ProblemCode = z.infer<typeof ProblemCode>;
@@ -187,6 +191,71 @@ export const LoginToken = z.object(
 );
 export type LoginToken = z.infer<typeof LoginToken>;
 
+// The managed policy bundle: docs/planning/21-managed-settings.md, section 4.
+
+export const MANAGED_OSES = ["macos", "linux", "windows"] as const;
+export const MANAGED_FORMATS = [
+  "bundle",
+  "console",
+  "mobileconfig",
+  "reg",
+  "script-macos",
+  "script-linux",
+  "script-windows",
+] as const;
+export const MANAGED_INCLUDES = ["all", "files"] as const;
+
+const managedManifestShape = (object: ObjectOf, strict: boolean) => {
+  const word = <T extends string>(values: readonly [T, ...T[]]) =>
+    strict ? z.enum(values) : z.string();
+  return object({
+    format: z.literal(1),
+    zzpersona: z.string(),
+    os: word(MANAGED_OSES),
+    layers: z.array(
+      object({
+        ref: z.string().min(1),
+        version: z.int().min(1).optional(),
+        digest: z.string(),
+      }),
+    ),
+    files: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)),
+    minClaudeCode: z.string().optional(),
+    report: object({
+      entries: z.array(
+        object({
+          path: z.string(),
+          layer: z.string(),
+          outcome: word(["enforced", "advisory", "refused"]),
+          code: (strict
+            ? z.enum([
+                "managed-secret",
+                "managed-mcp-needs-exclusive",
+                "managed-unknown-key",
+                "managed-passthrough-conflict",
+              ])
+            : z.string()
+          ).optional(),
+          reason: z.string(),
+        }),
+      ),
+      warnings: z.array(object({ code: z.string(), message: z.string() })),
+    }),
+  });
+};
+
+const managedBundleShape = (object: ObjectOf, strict: boolean) =>
+  object({
+    manifest: managedManifestShape(object, strict),
+    files: z.record(
+      z.string().min(1),
+      z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, "must be base64"),
+    ),
+  });
+/** `GET /v1/managed/bundle`: the manifest and every file, base64. */
+export const ManagedBundleResponse = managedBundleShape(z.object, false);
+export type ManagedBundleResponse = z.infer<typeof ManagedBundleResponse>;
+
 /** Strict copies of the response schemas: the conformance kit checks servers with these. */
 export const ConformanceSchemas = {
   Whoami: z.strictObject(whoamiShape(z.strictObject)),
@@ -197,6 +266,7 @@ export const ConformanceSchemas = {
   Problem: z.strictObject(problemShape(ProblemCode, z.strictObject)),
   LoginStart: z.strictObject(loginStartShape),
   LoginToken: z.strictObject(loginTokenShape()),
+  ManagedBundleResponse: managedBundleShape(z.strictObject, true),
 } as const;
 
 /**

@@ -4,6 +4,7 @@ import {
   ROUTES,
   type LayerSummary,
   type LayerVersion,
+  type ManagedBundleResponse,
   type LoginStart,
   type LoginToken,
   type ProblemCode,
@@ -28,6 +29,17 @@ export interface RegistryClient {
   listLayers(): Promise<LayerSummary[]>;
   getVersion(ref: string, version: number | "latest"): Promise<LayerVersion>;
   publish(ref: string, body: PublishRequest): Promise<PublishResult>;
+  /**
+   * The managed policy bundle of an org, area or team layer (format `bundle`): the manifest and
+   * every file's bytes. File paths are the registry's word; the caller checks them before writing.
+   */
+  managedBundle(query: {
+    layer: string;
+    os: "macos" | "linux" | "windows";
+  }): Promise<{
+    manifest: ManagedBundleResponse["manifest"];
+    files: Record<string, Uint8Array>;
+  }>;
 }
 
 export interface ClientOptions {
@@ -44,6 +56,7 @@ type Call = (
   name: RouteName,
   params: Record<string, string>,
   body?: unknown,
+  query?: Record<string, string>,
 ) => Promise<unknown>;
 
 function makeCall(options: ClientOptions): Call {
@@ -54,7 +67,7 @@ function makeCall(options: ClientOptions): Call {
   const scrub = (text: string) =>
     token === "" ? text : text.split(token).join("***");
 
-  return async function call(name, params, body) {
+  return async function call(name, params, body, query) {
     const route = ROUTES[name];
     const label = `${route.method} ${route.path}`;
     const timeout = AbortSignal.timeout(timeoutMs);
@@ -65,7 +78,11 @@ function makeCall(options: ClientOptions): Call {
     let status: number;
     let text: string;
     try {
-      const response = await fetch(routeUrl(base, route.path, params), {
+      const url = routeUrl(base, route.path, params);
+      for (const [key, value] of Object.entries(query ?? {})) {
+        url.searchParams.set(key, value);
+      }
+      const response = await fetch(url, {
         method: route.method,
         headers: {
           ...(!("auth" in route) && { authorization: `Bearer ${token}` }),
@@ -182,5 +199,21 @@ export function createClient(options: ClientOptions): RegistryClient {
       }) as Promise<LayerVersion>,
     publish: (ref, body) =>
       call("publish", { ref }, body) as Promise<PublishResult>,
+    managedBundle: async ({ layer, os }) => {
+      const answer = (await call("managedBundle", {}, undefined, {
+        layer,
+        os,
+        format: "bundle",
+      })) as ManagedBundleResponse;
+      return {
+        manifest: answer.manifest,
+        files: Object.fromEntries(
+          Object.entries(answer.files).map(([path, base64]) => [
+            path,
+            new Uint8Array(Buffer.from(base64, "base64")),
+          ]),
+        ),
+      };
+    },
   };
 }

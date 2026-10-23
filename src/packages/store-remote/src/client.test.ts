@@ -225,3 +225,83 @@ describe("sign-in", () => {
     });
   });
 });
+
+describe("managedBundle", () => {
+  const manifestOf = (os: "macos" | "linux" | "windows") => ({
+    format: 1 as const,
+    zzpersona: "t",
+    os,
+    layers: [],
+    files: {},
+    report: { entries: [], warnings: [] },
+  });
+  async function withManaged() {
+    const registry = await startMockRegistry({
+      managed: {
+        roots: { macos: "/m", linux: "/l", windows: "C:\\w" },
+        inputs: () => ({ texts: [], scripts: [] }),
+        compile: (input) => ({
+          report: { entries: [], warnings: [] },
+          bundle: {
+            files: {
+              "a/b.txt": new TextEncoder().encode("hello"),
+              "zzpersona/manifest.json": new TextEncoder().encode(
+                JSON.stringify(manifestOf(input.os)),
+              ),
+            },
+            manifest: manifestOf(input.os),
+          },
+        }),
+      },
+    });
+    stops.push(registry.stop);
+    const client = createClient({ url: registry.url, token: registry.token });
+    await client.publish("org/acme", {
+      source: persona("acme"),
+      files: [],
+      baseVersion: 0,
+    });
+    return { registry, client };
+  }
+
+  it("downloads the manifest and decodes the files to bytes", async () => {
+    const { client } = await withManaged();
+    const bundle = await client.managedBundle({
+      layer: "org/acme",
+      os: "linux",
+    });
+    expect(bundle.manifest.os).toBe("linux");
+    expect(new TextDecoder().decode(bundle.files["a/b.txt"])).toBe("hello");
+    expect(Object.keys(bundle.files)).toContain("zzpersona/manifest.json");
+  });
+
+  it("surfaces the registry's problems", async () => {
+    const { client } = await withManaged();
+    await expect(
+      client.managedBundle({ layer: "team/nope", os: "linux" }),
+    ).rejects.toMatchObject({ code: "not-found" });
+    const bare = await mock();
+    const plain = createClient({ url: bare.url, token: bare.token });
+    await plain.publish("org/acme", {
+      source: persona("acme"),
+      files: [],
+      baseVersion: 0,
+    });
+    await expect(
+      plain.managedBundle({ layer: "org/acme", os: "linux" }),
+    ).rejects.toMatchObject({ code: "format-unsupported" });
+  });
+
+  it("rejects an answer that does not match the contract", async () => {
+    const url = await fake((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ manifest: {}, files: {} }));
+    });
+    await expect(
+      createClient({ url, token: "t" }).managedBundle({
+        layer: "org/acme",
+        os: "linux",
+      }),
+    ).rejects.toMatchObject({ code: "registry-protocol" });
+  });
+});

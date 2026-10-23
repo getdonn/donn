@@ -3,6 +3,7 @@ import {
   ConformanceSchemas,
   LayerVersion,
   LoginToken,
+  ManagedBundleResponse,
   Problem,
   PublishResult,
   Whoami,
@@ -152,6 +153,55 @@ describe("tolerant results", () => {
         status: 404,
         detail: "d",
         problems: [{ code: "not-found", message: "m", extra: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("managed bundle response", () => {
+  const manifest = {
+    format: 1,
+    zzpersona: "0.1.0",
+    os: "linux",
+    layers: [
+      { ref: "org/acme", version: 1, digest: `sha256:${"a".repeat(64)}` },
+    ],
+    files: { "managed-settings.d/50-zzpersona.json": "b".repeat(64) },
+    report: { entries: [], warnings: [] },
+  };
+  const answer = {
+    manifest,
+    files: { "managed-settings.d/50-zzpersona.json": "e30=" },
+  };
+
+  it("the client schema strips unknown keys; the kit's copy refuses them", () => {
+    const extra = { ...answer, teapot: true };
+    expect(ManagedBundleResponse.parse(extra)).toEqual(answer);
+    expect(
+      ConformanceSchemas.ManagedBundleResponse.safeParse(answer).error,
+    ).toBeUndefined();
+    expect(
+      ConformanceSchemas.ManagedBundleResponse.safeParse(extra).success,
+    ).toBe(false);
+    expect(
+      ManagedBundleResponse.parse({
+        ...answer,
+        manifest: { ...manifest, future: 1 },
+      }).manifest,
+    ).toEqual(manifest);
+  });
+
+  it("files must be base64 and the manifest a format 1 manifest", () => {
+    expect(
+      ManagedBundleResponse.safeParse({
+        ...answer,
+        files: { a: "not base64!" },
+      }).success,
+    ).toBe(false);
+    expect(
+      ManagedBundleResponse.safeParse({
+        ...answer,
+        manifest: { ...manifest, format: 2 },
       }).success,
     ).toBe(false);
   });

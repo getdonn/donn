@@ -196,3 +196,67 @@ plugins (later, with a published org marketplace); drift reporting to the contro
 ## Open questions
 
 None.
+
+## Amendments from implementation (2026-10-23)
+
+Decisions made while building layers 1 to 5; the sections above stand as written except where
+these say otherwise.
+
+1. **Hooks.** A hook's `run` is always a script file (the schema has no command form), so the bundle
+   always copies it; the "a command `run` is used as is" case of §2 does not exist. POSIX hook
+   commands are single-quoted (`'` escaped as `'\''`); on Windows they are double-quoted and a
+   basename containing `"`, `$`, a backtick or `%` is refused.
+2. **Value paths** in the report and in locks use the resolver's dotted forms: `mcp.servers.<name>`
+   and `secrets.providers.<name>` (not `mcp.servers[name]`).
+3. **Provenance.** `ManagedInput.provenance` (from `ResolveResult.provenance`) names the layer that
+   set a `policy` or `targets.claude-code.managed` key; an equal re-set of a policy key is a no-op,
+   so it keeps the first layer.
+4. **The passthrough is not "applied last over everything".** A passthrough key (or nested key) that
+   would replace a compiled value, or that sits at or below a compiled `managedMcpServers.<name>`
+   (including servers compiled into `managed-mcp.json`), is refused with a fifth code,
+   `managed-passthrough-conflict`. Lists still combine; non-colliding keys still apply.
+5. **Headers.** A server with literal `headers` stays on `managed-mcp.json` (it needs
+   `policy.mcp: exclusive`), although Claude Code's docs allow literal headers in
+   `managedMcpServers`; this is deliberately conservative.
+6. **Secret scan.** It covers every IR value that can hold a reference (MCP server fields and the
+   passthrough values). Instruction text, permission rules and hook script bytes are never resolved
+   and are not scanned.
+7. **`gateway://` servers.** A locked `gateway://` server is advisory; under `policy.mcp: exclusive`
+   its reason says sessions will not load it.
+8. **`build`.** A local layer with a missing referenced file fails (`managed-layer-files`), as publish
+   would. Registry-cached layers are re-hashed, and a mismatch with the index digest fails
+   (`managed-cache-mismatch`, suggesting `zzpersona pull`). The empty-chain notice is also `notice`
+   in `--json`.
+9. **`install`.** It refuses a parent path blocked by a file, a symlinked root or zzpersona folder
+   (always) and, when root, a root, folder, manifest or `pending.json` that is not root-owned or is
+   group/other-writable, all before any write. `zzpersona/pending.json` (old paths, new paths and
+   earlier pending paths) is written before the first write and removed after the manifest; while it
+   exists, `install` and `uninstall` treat its paths as owned and `check` reports `edited` ("an
+   interrupted install"). A file at a zzpersona path whose bytes equal the bundle's is adopted.
+10. **`check`, `status`, `doctor`.** When the manifest's deepest layer is not in the store, freshness
+    is skipped with the note `cannot check for newer layers: <ref> is not in the store` (the state is
+    unaffected). A present but unreadable MDM profile counts as winning (`ignored`). `status` omits
+    the `managed:` line when nothing is installed (its `--json` always has `managed`); `doctor`
+    skips the check when nothing is installed.
+11. **Capability matrix.** The `policy` row: native for Claude Code through the managed bundle,
+    advisory for the other built-in adapters. `FIXED_CAPABILITY_FIELDS` gained `policy`, so a
+    third-party adapter must declare that row.
+12. **Registry route (§4), as built.** The client schemas are tolerant and the conformance kit holds
+    servers to strict copies. New problem codes: `invalid-request` (400), `managed-refused` (422;
+    one problem per refused entry, `path` and `ref` set, message `<path>: <code>: <reason>`),
+    `managed-needs-files` and `format-unsupported` (501). Checks run in this order: token (401),
+    parameters (400), unknown layer (404), format (501), compile (422). The mock and the kit take
+    `managed?: ManagedCompiler` because `@zzpersona/registry-api` depends on no adapter; the kit
+    skips its bundle case without one and compares `manifest.files` and the file bytes with a
+    local compile of the same published layers. Layers are read through virtual folders
+    `.registry/<ref>/@`, as the CLI's cache mount does, so two layers may each bundle a same-named
+    file. `--from-registry` rejects any file key that is absolute, has `..`, a backslash or a drive
+    letter, any file whose sha256 differs from the manifest, any file the manifest does not list,
+    and a missing `zzpersona/manifest.json`, before writing anything; a registry that answers
+    `format-unsupported` gives `not supported by this registry: --from-registry`.
+13. **Real Claude Code (§5), as run.** `ZZP_E2E_MANAGED=1` builds a Linux bundle on the host, runs
+    a `node:26-slim` container with the repo mounted read-only and Claude Code 2.1.309 installed
+    inside, runs `managed install --yes` as root, and checks `managed check`, `claude mcp list`
+    (shows the locked server) and `claude doctor` (no installation issues; it needs neither a TTY
+    nor a login). `claude doctor` does not itself list managed settings, so the files, `check` and
+    `mcp list` carry the assertion.

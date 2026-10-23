@@ -1,13 +1,66 @@
+import { createHash } from "node:crypto";
+import type { ManagedCompiler } from "@zzpersona/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import { registryConformance } from "./conformance.js";
 import { startMockRegistry } from "./mock.js";
 
+// A stand-in compiler: the bundle holds the chain and one locked instruction file; a layer
+// that sets `policy.mcp: exclusive` is refused, to exercise the 422.
+const compiler: ManagedCompiler = {
+  roots: { macos: "/m", linux: "/l", windows: "C:\\w" },
+  inputs: (ir) => ({
+    texts: ir.instructions.map((f) => (f as { file: string }).file),
+    scripts: [],
+  }),
+  compile: (input) => {
+    if (input.ir.policy.mcp === "exclusive") {
+      return {
+        report: {
+          entries: [
+            {
+              path: "mcp.servers.x",
+              layer: input.layers.at(-1)!.ref,
+              outcome: "refused",
+              code: "managed-secret",
+              reason: "holds a secret reference",
+            },
+          ],
+          warnings: [],
+        },
+      };
+    }
+    const files: Record<string, Uint8Array> = {};
+    for (const [path, text] of Object.entries(input.texts)) {
+      files[`texts/${path.split("/").pop()}`] = new TextEncoder().encode(text);
+    }
+    const hashes = Object.fromEntries(
+      Object.entries(files).map(([p, b]) => [
+        p,
+        createHash("sha256").update(b).digest("hex"),
+      ]),
+    );
+    const manifest = {
+      format: 1 as const,
+      zzpersona: input.zzpersona,
+      os: input.os,
+      layers: input.layers,
+      files: hashes,
+      report: { entries: [], warnings: [] },
+    };
+    files["zzpersona/manifest.json"] = new TextEncoder().encode(
+      JSON.stringify(manifest),
+    );
+    return { report: manifest.report, bundle: { files, manifest } };
+  },
+};
+
 registryConformance(async (options) => {
-  const mock = await startMockRegistry(options);
+  const mock = await startMockRegistry({ ...options, managed: compiler });
   return {
     url: mock.url,
     token: mock.token,
     stop: mock.stop,
+    managed: compiler,
     limitedToken: mock.limitedToken(),
     completeLogin: (verifyUrl, identity) => {
       mock.completeLogin(verifyUrl, identity);
@@ -168,6 +221,147 @@ describe("mock roles", () => {
         })
       ).json()) as { roles: unknown };
       expect(me.roles).toEqual([{ role: "publish", path: "area" }]);
+    } finally {
+      await mock.stop();
+    }
+  });
+});
+
+describe("mock managed bundle", () => {
+  const doc = (name: string, extra = "") =>
+    `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
+
+  async function seed(mock: Awaited<ReturnType<typeof startMockRegistry>>) {
+    const send = async (ref: string, source: string, files: object[] = []) =>
+      fetch(`${mock.url}/v1/layers/${encodeURIComponent(ref)}/versions`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${mock.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ source, files, baseVersion: 0 }),
+      });
+    await send(
+      "org/acme",
+      doc(
+        "acme",
+        "instructions:\n  - id: conduct\n    file: ./conduct.md\nlocks:\n  - instructions[conduct]\n",
+      ),
+      [
+        {
+          path: "conduct.md",
+          content: Buffer.from("Review kindly.").toString("base64"),
+        },
+      ],
+    );
+    await send("team/web", doc("web", "extends: [org/acme]\n"));
+    await send(
+      "team/bad",
+      doc("bad", "extends: [org/acme]\npolicy:\n  mcp: exclusive\n"),
+    );
+  }
+
+  const get = async (
+    mock: Awaited<ReturnType<typeof startMockRegistry>>,
+    query: string,
+    token: string | null = mock.token,
+  ) => {
+    const response = await fetch(`${mock.url}/v1/managed/bundle?${query}`, {
+      headers: token === null ? {} : { authorization: `Bearer ${token}` },
+    });
+    return {
+      status: response.status,
+      body: (await response.json()) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
+  };
+
+  it("answers the bundle for a chain, with the published versions and digests", async () => {
+    const mock = await startMockRegistry({ managed: compiler });
+    try {
+      await seed(mock);
+      const answer = await get(mock, "layer=team%2Fweb&os=linux");
+      expect(answer.status).toBe(200);
+      const [acme, web] = mock.layers().filter((l) => l.ref !== "team/bad");
+      expect(answer.body.manifest.layers).toEqual([
+        { ref: "org/acme", version: 1, digest: acme!.digest },
+        { ref: "team/web", version: 1, digest: web!.digest },
+      ]);
+      expect(answer.body.manifest.os).toBe("linux");
+      expect(
+        Buffer.from(answer.body.files["texts/conduct.md"], "base64").toString(),
+      ).toBe("Review kindly.");
+      expect(Object.keys(answer.body.files)).toContain(
+        "zzpersona/manifest.json",
+      );
+    } finally {
+      await mock.stop();
+    }
+  });
+
+  it("refuses with 422 managed-refused naming the path and code", async () => {
+    const mock = await startMockRegistry({ managed: compiler });
+    try {
+      await seed(mock);
+      const answer = await get(mock, "layer=team%2Fbad&os=linux");
+      expect(answer.status).toBe(422);
+      expect(answer.body.problems[0]).toMatchObject({
+        code: "managed-refused",
+        ref: "team/bad",
+        path: "mcp.servers.x",
+      });
+      expect(answer.body.detail).toContain("mcp.servers.x");
+      expect(answer.body.detail).toContain("managed-secret");
+    } finally {
+      await mock.stop();
+    }
+  });
+
+  it("answers 501 format-unsupported for other formats and without a compiler", async () => {
+    const mock = await startMockRegistry({ managed: compiler });
+    const bare = await startMockRegistry();
+    try {
+      await seed(mock);
+      await seed(bare);
+      const console_ = await get(
+        mock,
+        "layer=team%2Fweb&os=linux&format=console",
+      );
+      expect(console_.status).toBe(501);
+      expect(console_.body.problems[0].code).toBe("format-unsupported");
+      const none = await get(bare, "layer=team%2Fweb&os=linux");
+      expect(none.status).toBe(501);
+      expect(none.body.problems[0].code).toBe("format-unsupported");
+    } finally {
+      await mock.stop();
+      await bare.stop();
+    }
+  });
+
+  it("answers 400 invalid-request, 404 not-found and 401", async () => {
+    const mock = await startMockRegistry({ managed: compiler });
+    try {
+      await seed(mock);
+      for (const query of [
+        "layer=team%2Fweb&os=beos",
+        "layer=team%2Fweb",
+        "os=linux",
+        "layer=team%2Fweb&os=linux&format=zip",
+        "layer=team%2Fweb&os=linux&include=some",
+        "layer=project%2Fx&os=linux",
+      ]) {
+        const answer = await get(mock, query);
+        expect([query, answer.status]).toEqual([query, 400]);
+        expect(answer.body.problems[0].code).toBe("invalid-request");
+      }
+      const missing = await get(mock, "layer=team%2Fnope&os=linux");
+      expect(missing.status).toBe(404);
+      expect(missing.body.problems[0]).toMatchObject({
+        code: "not-found",
+        ref: "team/nope",
+      });
+      expect((await get(mock, "layer=team%2Fweb&os=linux", null)).status).toBe(
+        401,
+      );
     } finally {
       await mock.stop();
     }

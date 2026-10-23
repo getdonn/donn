@@ -37,7 +37,7 @@ describe("buildOpenApi", () => {
     expect(Problem.properties.problems.items.properties.code.enum).toEqual([
       ...PROBLEM_CODES,
     ]);
-    expect(PROBLEM_CODES).toHaveLength(15);
+    expect(PROBLEM_CODES).toHaveLength(19);
     expect(Problem.properties.problems.items.additionalProperties).toBe(false);
     expect(Whoami.additionalProperties).toBe(false);
     expect(Change.additionalProperties).toBe(false);

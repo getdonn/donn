@@ -3,7 +3,10 @@ import { join, sep } from "node:path";
 import type { LocalStore } from "@zzpersona/store-local";
 import claudeCode from "@zzpersona/adapter-claude-code";
 import type {
+  ManagedCode,
+  ManagedEntry,
   ManagedLayer,
+  ManagedManifest,
   ManagedOs,
   ManagedResult,
 } from "@zzpersona/adapter-sdk";
@@ -18,8 +21,11 @@ import {
   type RegistryStore,
 } from "@zzpersona/store-remote";
 import { cliVersion } from "../commands/daemon.js";
+import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
+import { clientFor } from "../registry.js";
+import { checkedPath, MANIFEST_PATH, sha256 } from "./bundle-io.js";
 
 // Compile the locks of an org, area or team chain to a managed policy bundle.
 // See docs/planning/21-managed-settings.md, sections 2 and 3.
@@ -161,16 +167,93 @@ export interface BuildOptions {
   fromRegistry: boolean;
 }
 
-export async function buildBundle(
+/**
+ * Download the bundle from the registry (docs/planning/21-managed-settings.md, section 4). The
+ * registry is not trusted with paths or bytes: every file key must stay inside the bundle folder
+ * and every file must hash to the digest its manifest lists.
+ */
+async function downloadBundle(
+  io: CliIo,
   context: Context,
   options: BuildOptions,
 ): Promise<ManagedResult> {
-  if (options.fromRegistry) {
-    // The registry route lands in Task 5 (docs/planning/21-managed-settings.md, section 4).
+  const { client } = await clientFor(io, context.home, context.config);
+  const layer = await pickLayer(context, options.layer);
+  let answer;
+  try {
+    answer = await client.managedBundle({ layer, os: options.os });
+  } catch (error) {
+    if (!(error instanceof RegistryError)) throw error;
+    if (error.code === "format-unsupported") {
+      throw new CliError(
+        "not-supported",
+        "not supported by this registry: --from-registry",
+      );
+    }
+    if (error.code === "managed-refused") {
+      // The mock and the control plane word a problem as `<path>: <code>: <reason>`.
+      const entries: ManagedEntry[] = (error.problems ?? []).map((p) => {
+        const path = p.path ?? "";
+        const rest = p.message.startsWith(`${path}: `)
+          ? p.message.slice(path.length + 2)
+          : p.message;
+        const coded = /^(managed-[a-z-]+): ([\s\S]*)$/.exec(rest);
+        return {
+          path,
+          layer: p.ref ?? layer,
+          outcome: "refused" as const,
+          ...(coded && { code: coded[1] as ManagedCode }),
+          reason: coded ? coded[2]! : rest,
+        };
+      });
+      return { report: { entries, warnings: [] } };
+    }
+    throw error;
+  }
+  const { manifest, files } = answer;
+  for (const path of Object.keys(files)) checkedPath(path);
+  const listed = new Set(Object.keys(manifest.files));
+  for (const [path, expected] of Object.entries(manifest.files)) {
+    checkedPath(path);
+    const bytes = files[path];
+    if (bytes === undefined || sha256(bytes) !== expected) {
+      throw new CliError(
+        "managed-bundle-mismatch",
+        `${path} ${bytes === undefined ? "is listed in" : "does not match its digest in"} the manifest the registry sent`,
+        { path },
+      );
+    }
+  }
+  for (const path of Object.keys(files)) {
+    if (path !== MANIFEST_PATH && !listed.has(path)) {
+      throw new CliError(
+        "managed-bundle-mismatch",
+        `${path} is not listed in the manifest the registry sent`,
+        { path },
+      );
+    }
+  }
+  if (files[MANIFEST_PATH] === undefined) {
     throw new CliError(
-      "not-supported",
-      "not supported by this registry: --from-registry",
+      "managed-bundle-mismatch",
+      `${MANIFEST_PATH} is missing from the bundle the registry sent`,
     );
+  }
+  return {
+    report: manifest.report as ManagedManifest["report"],
+    bundle: { files, manifest: manifest as ManagedManifest },
+  };
+}
+
+/** `io` is needed only for `fromRegistry` (it reads the registry token). */
+export async function buildBundle(
+  context: Context,
+  options: BuildOptions,
+  io?: CliIo,
+): Promise<ManagedResult> {
+  if (options.fromRegistry) {
+    if (io === undefined) throw new Error("--from-registry needs the CLI io");
+    return downloadBundle(io, context, options);
   }
   const compiler = claudeCode.managed;
   if (compiler === undefined) {

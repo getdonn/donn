@@ -40,11 +40,15 @@ export async function managedBuildCommand(
     );
   }
   const ctx = await createContext(io);
-  const result = await buildBundle(ctx, {
-    ...(options.layer !== undefined && { layer: options.layer }),
-    os,
-    fromRegistry: options.fromRegistry === true,
-  });
+  const result = await buildBundle(
+    ctx,
+    {
+      ...(options.layer !== undefined && { layer: options.layer }),
+      os,
+      fromRegistry: options.fromRegistry === true,
+    },
+    io,
+  );
   const { report, bundle } = result;
   const refused = report.entries.filter((e) => e.outcome === "refused");
   if (bundle === undefined) {
