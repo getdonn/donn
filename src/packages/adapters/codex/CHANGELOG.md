@@ -1,5 +1,19 @@
 # @zzpersona/adapter-codex
 
+## 0.2.0
+
+### Minor Changes
+
+- d221b8b: Declares the `policy` capability row as `none`: not rendered; enforced only by managed bundles for
+  Claude Code.
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+  - @zzpersona/adapter-sdk@0.3.0
+  - @zzpersona/spec@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

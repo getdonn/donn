@@ -1,5 +1,36 @@
 # @zzpersona/cli
 
+## 0.10.0
+
+### Minor Changes
+
+- d221b8b: `zzpersona managed build|install|uninstall|check` for machine-wide Claude Code policy, with
+  `build --from-registry` (checks every path and digest the registry sends before writing), a
+  `managed:` line in `status` and a `doctor` check. See the README's "Managed policy" section.
+  
+  **Breaking for third-party adapters:** `FIXED_CAPABILITY_FIELDS` gained `policy`.
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+  - @zzpersona/adapter-claude-code@0.2.0
+  - @zzpersona/adapter-sdk@0.3.0
+  - @zzpersona/adapter-codex@0.2.0
+  - @zzpersona/adapter-agents-md@0.2.0
+  - @zzpersona/registry-api@0.5.0
+  - @zzpersona/resolver@0.4.0
+  - @zzpersona/spec@0.2.0
+  - @zzpersona/store-remote@0.4.0
+  - @zzpersona/executor@0.2.2
+  - @zzpersona/store-local@0.1.2
+  - @zzpersona/secrets@0.2.1
+
 ## 0.9.1
 
 ### Patch Changes

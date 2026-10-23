@@ -1,5 +1,14 @@
 # @zzpersona/store-local
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [d221b8b]
+- Updated dependencies [d221b8b]
+  - @zzpersona/resolver@0.4.0
+  - @zzpersona/spec@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
