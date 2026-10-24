@@ -30,6 +30,13 @@ export interface MigrateOptions {
   json?: boolean;
 }
 
+/** The steps a run left `pending`: it is not finished, so the command fails. */
+const pendingIds = (results: StepResult[]) =>
+  results.filter((r) => r.status === "pending").map((r) => r.id);
+
+const notFinished = (pending: string[]) =>
+  `not finished: ${pending.join(", ")}; see the notes above, then run donn migrate again\n`;
+
 const stepsJson = (results: StepResult[]) =>
   results.map(({ id, status, notes }) => ({
     id,
@@ -77,11 +84,13 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
   const cli = oldCli(io);
   const projects = await pendingProjects(io);
   const oldPaths = await oldHomePaths(io);
+  const pending = pendingIds(results);
   if (options.json) {
     io.stdout.write(
       `${JSON.stringify(
         {
           steps: stepsJson(results),
+          ...(pending.length > 0 && { pending }),
           env,
           ...(warnings.length > 0 && { warnings }),
           ...(projects.length > 0 && { projects }),
@@ -96,7 +105,7 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
         2,
       )}\n`,
     );
-    return 0;
+    return pending.length > 0 ? 1 : 0;
   }
   if (nothing) io.stdout.write(`${NOTHING}\n`);
   if (env.length > 0) {
@@ -133,7 +142,8 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
     );
   }
   if (checks !== undefined) printDoctor(io, checks);
-  return 0;
+  if (pending.length > 0) io.stdout.write(notFinished(pending));
+  return pending.length > 0 ? 1 : 0;
 }
 
 async function projectForm(
@@ -159,12 +169,14 @@ async function projectForm(
   const nothing = results.every((r) => r.status === "done");
   const message = `nothing to migrate in ${root}`;
   const checks = nothing ? undefined : await doctor(io);
+  const pending = pendingIds(results);
   if (options.json) {
     io.stdout.write(
       `${JSON.stringify(
         {
           project: root,
           steps: stepsJson(results),
+          ...(pending.length > 0 && { pending }),
           ...(gitignore !== undefined && { gitignore }),
           ...(checks === undefined ? { message } : { doctor: { checks } }),
         },
@@ -172,7 +184,7 @@ async function projectForm(
         2,
       )}\n`,
     );
-    return 0;
+    return pending.length > 0 ? 1 : 0;
   }
   for (const hit of gitignore ?? []) {
     io.stdout.write(
@@ -184,7 +196,8 @@ async function projectForm(
     io.stdout.write("nothing was committed; review the changes with git\n");
     printDoctor(io, checks);
   }
-  return 0;
+  if (pending.length > 0) io.stdout.write(notFinished(pending));
+  return pending.length > 0 ? 1 : 0;
 }
 
 async function managedForm(
