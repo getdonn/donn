@@ -85,6 +85,12 @@
 | `daemon` (`donnd`) | Long-running local service: sync, cache, watchers, local API. See "Local daemon" below | local HTTP/unix-socket API |
 | `mod-claude-code` | In-session UX for Claude Code (status line, `/persona`, nudges); a client of the daemon | mod |
 | `desktop` | Tray/menubar app (Tauri or Electron) over the daemon: current persona, switch, sync status, drift, logs. Optional; no logic of its own | daemon client |
+| `ui` *(2026-10-24)* | The GUI app (Vite + React), served by the daemon on loopback (`donn ui`) and wrapped by `desktop`; no logic of its own (`26`) | daemon loopback bridge |
+| `adapters/eve` *(2026-10-24)* | Compiles one agent (persona + `agents.define` entry + `models`) into an eve extension and config inside a template's project (`24`); driven by `donn agent` (`25`) | `AgentAdapter` |
+
+> *Amended 2026-10-24 (specs 23–26):* `desktop` becomes the Tauri shell of `ui` (Tauri 2), with
+> the tray; the GUI is a planned surface for adoption, not an optional later tray. The adapter SDK
+> gains `AgentAdapter` beside `HarnessAdapter`.
 
 ### Enterprise (private repo)
 
@@ -220,6 +226,12 @@ and drift status, and the compile report. Enterprise can later add "assigned to 
 notifications here. It never embeds business logic; if it works in the tray app, it must also work
 via `donn --json`.
 
+> *Amended 2026-10-24 (`25`, `26`):* the daemon gains a **loopback HTTP bridge** for the GUI
+> (`127.0.0.1`, a UI token separate from the socket's, Host and Origin checks, its own command
+> allowlist served by the same in-process CLI as `POST /run`) and **agent runs**: it starts local
+> agents (`donn agent run`), keeps created agents in sync with their persona, and reports them in
+> `donn status`. The desktop app is the Tauri shell of the GUI app (`ui`), with this tray.
+
 ## Data flows
 
 **Author / publish**
@@ -312,6 +324,8 @@ src/
     adapters/  claude-code/  codex/  antigravity/  cursor/  gemini-cli/  agents-md/
     mod-claude-code/
     typescript-config/  eslint-config/
+  (2026-10-24, specs 24 and 26: apps/ui/ the GUI app; apps/desktop/ its Tauri shell;
+   packages/adapters/eve/ the first agent adapter)
 spikes/              (throwaway investigations per harness; findings feed the capability matrix)
 docs/planning/       (these documents)
 ```

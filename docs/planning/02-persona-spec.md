@@ -106,6 +106,10 @@ targets:                         # per-compiler escape hatch
     model: sonnet
 ```
 
+> Amended 2026-10-24: two optional top-level fields, `models` (model routing through an
+> organisation's gateway, lockable) and `agents` (project agents built on the persona), with their
+> merge rules and lock paths, are specified in `23-models-and-agents.md`.
+
 ## Merge semantics
 
 The single most important design decision. Default rule per field type:

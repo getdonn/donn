@@ -50,6 +50,16 @@ of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
 | Relaunch wrapper is the deterministic Claude Code switch; mod is status/nudge | Mod performs the switch | Verified: mods have read-only `$.settings`, no API to toggle plugins or run `/reload-plugins` |
 | Apache-2.0 leaning for OSS | MIT | Patent grant matters to enterprise buyers (not final) |
 | Postgres, TypeScript everywhere, pnpm + turborepo, zod → JSON Schema | — | Boring defaults; change with reason |
+| *(2026-10-24)* Personas also power **project agents**; eve is the first agent framework, optional (`23`) | eve as a later third-party plugin adapter (2026-10-22); no agents | A persona already holds what a PR reviewer needs; the GUI needs a workflow that makes donn worth opening |
+| *(2026-10-24)* The persona compiles to an eve **extension** in a thin generated agent; donn owns only its files (`24`) | Compile the whole eve project; scaffold once and hand over | Repo automation needs custom tools; a one-off scaffold drifts from the persona |
+| *(2026-10-24)* Agents run locally, self-hosted or on Vercel; model calls go through the org's gateway when there is one (`models`, lockable) | Vercel only; require a gateway | Enterprises host their own; OSS users mostly have no gateway |
+| *(2026-10-24)* A web and desktop **GUI** over the daemon, with the agent builder (`26`) | The thin tray client only (the daemon row above) | Revised by the founder: a GUI drives full adoption. Kept from the old row: no logic in the UI, Tauri |
+
+> *Amended 2026-10-24:* the row "Local daemon (`donnd`) is core; tray app is a thin client,
+> later" is revised by specs 23–26. The daemon stays the only backend and the UI holds no logic;
+> what changed is that a GUI (`donn ui` on loopback, and a Tauri desktop app) is now a planned
+> surface, not an optional later tray. The founder's first instinct ("web and desktop clients",
+> under "How this started") comes back with the daemon underneath it.
 
 ## Research findings that shaped the design (verified 2026-10-20 against code.claude.com docs)
 
@@ -194,6 +204,9 @@ ship OSS early, watch for team-shaped issues, recruit 2–3 friends who lead sma
 - **Gateway** — an MCP gateway (e.g. Bifrost) that governs which tools exist; personas reference servers by `gateway://name`.
 - **`donnd`** — the local daemon: sync, cache, pre-build, watchers, local API.
 - **Mod** — a Claude Code plugin with in-process JS/TS hooks; our in-session UX for that harness.
+- **Agent** *(2026-10-24)* — a project agent (a PR reviewer, a triage bot) declared in a persona's `agents` and built on that persona by an agent adapter; eve is the first (`23`–`25`).
+- **Agent adapter** *(2026-10-24)* — like a harness adapter, but compiles one agent for an agent framework (`AgentAdapter`, `24`).
+- **Model gateway** *(2026-10-24)* — an LLM gateway (LiteLLM, Bifrost) that model calls route through; `models.gateway`. Not the MCP gateway above.
 
 ## If you are a fresh session starting work
 

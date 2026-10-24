@@ -44,6 +44,10 @@ overrides them.
 20. `docs/planning/20-registry-identity.md` — registry identity: browser sign-in (`donn login <url>`), server-issued sessions, roles in `whoami`, tolerant reading of registry answers; the OSS half of C
 21. `docs/planning/21-managed-settings.md` — Claude Code enforcement (open-source half of E): org/area/team locks compiled to a managed policy bundle, `policy` block, `donn managed build|install|uninstall|check`, `/v1/managed/bundle`
 22. `docs/planning/22-rename-donn.md` — the rename to donn: the full name mapping, the one-off rename script, `donn migrate` for existing installs, the move to the `getdonn` GitHub org, release 0.13.0
+23. `docs/planning/23-models-and-agents.md` — the agents and GUI track starts: `models` (model routing through an org's gateway, lockable) and `agents` (project agents built on a persona) in the spec, merge rules, the capability-matrix row
+24. `docs/planning/24-adapter-eve.md` — `AgentAdapter` and `adapters/eve`: a persona compiled into an eve extension inside a template's project, the ownership manifest, the portability report
+25. `docs/planning/25-agent-runner.md` — `donn agent create|sync|run|build|deploy|env|exec`; local, self-host and Vercel targets; secrets; driving the project-local eve CLI; a GitHub Actions spike
+26. `docs/planning/26-gui.md` — the GUI: one React app served by the daemon (`donn ui`) and a Tauri desktop shell, the loopback bridge, the screens, the agent builder
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
@@ -57,6 +61,10 @@ overrides them.
   relaunch wrapper is the deterministic switch, mod is status/nudge only; org locks compile to
   managed settings. (See `03` Appendix A — a plugin cannot carry CLAUDE.md or permissions.)
 - Desktop presence = a local daemon (`donnd`) first; tray app is a thin client of it, later.
+  _Revised 2026-10-24 (`26`):_ a web and desktop GUI over the daemon is planned, still with no
+  logic of its own.
+- Agents are optional (`23`–`25`): eve is the first agent framework; local and self-host are
+  first-class, Vercel is an option; model calls go through the org's gateway when there is one.
 - Critical path is `spec → resolver → adapter-sdk → adapters/claude-code`; one person, serial.
 
 ## Current phase
@@ -70,7 +78,8 @@ built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-
 `secrets`, `executor` and `donn resolve|compile|claude` (opt-in `DONN_E2E=1` runs the built
 binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `donn mod install`). Spec 10 (live in-session switching: session plugin folders, `donn live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `donn write`), spec 12 (the Codex adapter, `donn codex`), spec 13 (the capability matrix: `donn capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `donn daemon`, `donn status`, live sessions refreshed on persona edits), spec 15 (mod transport: `/persona` through the daemon) and spec 16 (the daemon service: `donn daemon install|uninstall`, auto-start in `claude`/`codex`, the race-safe lock) and spec 17 (`switch` reports per harness) are built; Phase 2's roadmap items are done; Phase 3 has started with spec 18 (registry contract and client, built ahead of a design partner); spec 21 (managed settings: `policy`, `donn managed build|install|uninstall|check`, the registry's `/v1/managed/bundle`, a real Claude Code e2e) is built, E's open-source half, and the control plane's spec 04 is next; also open: the hardening pass on spec 16's deferred minors, or the rest of Phase 3 (spec 18 built the registry contract and client; spec 19 the shared publish engine; B is built as the private control plane, `~/Repos/persona-ai-control-plane`, v0.1.0; C, identity, has its open-source half in spec 20, and the server half follows). The name is chosen
 (donn) and the rename is done (spec 22; release 0.13.0 follows; `donn migrate` moves an existing
-install); the first `npm publish` is the next step the name unblocks.
+install); the first `npm publish` is the next step the name unblocks. Planned after it: the agents
+and GUI track, specs 23–26 (designed 2026-10-24, nothing built).
 
 ## Conventions (once code exists)
 

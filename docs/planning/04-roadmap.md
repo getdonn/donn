@@ -115,6 +115,26 @@ community) so the funnel does not stall while the paid tier is built.
 Exit question: *Is there one organization (even a friend's 10-person team) that would deploy this
 and let us watch?*
 
+## Track: agents and the GUI (added 2026-10-24)
+
+Starts after the first `npm publish`; runs beside Phase 3 and does not block the control plane.
+Specs `23`–`26`.
+
+Work, in order:
+- `23` — `models` and `agents` in the spec and resolver; `models` in the capability matrix.
+- `24` — `adapters/eve`: the `AgentAdapter` contract, the compile into an eve extension, the
+  ownership manifest, the portability report.
+- `25` — `donn agent` (create, sync, run, build, deploy, env, exec); local, self-host and Vercel
+  targets; a spike on a GitHub Actions target.
+- `26` — the GUI (`donn ui` and the Tauri desktop app). Its bridge and non-agent screens can start
+  in parallel with `23`; the agents screen follows `25`'s create layer.
+
+Private repo, later: agent governance in the control plane and console (who may create and deploy
+which agents, against which gateway; an inventory of running agents).
+
+Exit question: *Does a team run a PR reviewer built from its persona, self-hosted or on Vercel,
+and keep it after the first month?*
+
 ## Phase 4 — Harden and decide (ongoing)
 
 Only after Phase 3 has a design partner:
