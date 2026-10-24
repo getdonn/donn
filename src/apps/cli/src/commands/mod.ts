@@ -12,6 +12,8 @@ import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 // marketplace that Claude Code reads in place. See docs/planning/09-mod-claude-code.md §1.
 
 export const MOD_ID = "donn@donn";
+/** The local marketplace the mod is registered through. */
+export const MARKETPLACE = "donn";
 
 /** The built mod this CLI ships. */
 export function bundledMod(): { dir: string; version: string } {
@@ -66,10 +68,15 @@ async function claude(
   return { argv, missing: false };
 }
 
-export async function modInstall(
-  io: CliIo,
-  options: { json?: boolean },
-): Promise<number> {
+export interface RegisteredMod {
+  installed: string;
+  version: string;
+  ran: string[][];
+  warnings: string[];
+}
+
+/** Copy the mod into `<home>/mod`, write its marketplace and register both with claude. */
+export async function registerMod(io: CliIo): Promise<RegisteredMod> {
   const home = homeOf(io);
   const modDir = join(home, "mod");
   const plugin = join(modDir, "plugin");
@@ -90,7 +97,7 @@ export async function modInstall(
       marketplace,
       `${JSON.stringify(
         {
-          name: "donn",
+          name: MARKETPLACE,
           owner: { name: "donn" },
           plugins: [{ name: "donn", source: "./plugin" }],
         },
@@ -122,11 +129,19 @@ export async function modInstall(
   const warnings = findOnPath("donn", io.env)
     ? []
     : [`donn is not on PATH, so the mod cannot run it; ${CLI_ON_PATH_FIX}`];
+  return { installed: plugin, version: source.version, ran, warnings };
+}
+
+export async function modInstall(
+  io: CliIo,
+  options: { json?: boolean },
+): Promise<number> {
+  const { installed, version, ran, warnings } = await registerMod(io);
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ installed: plugin, ran, warnings }, null, 2)}\n`
+      ? `${JSON.stringify({ installed, ran, warnings }, null, 2)}\n`
       : [
-          `copied the mod (${source.version}) to ${plugin}`,
+          `copied the mod (${version}) to ${installed}`,
           ...ran.map((argv) => `ran: ${argv.join(" ")}`),
           ...warnings.map((w) => `warning: ${w}`),
           "start a new claude session to load it",
@@ -136,39 +151,50 @@ export async function modInstall(
   return 0;
 }
 
+/** A mod's names in Claude Code: its plugin id and its marketplace. */
+export interface ModNames {
+  plugin: string;
+  marketplace: string;
+}
+
+/**
+ * Unregister a mod from claude; its folder stays. `missing` when claude is not installed (then
+ * there was nothing to unregister). `donn migrate` passes the old name's mod.
+ */
+export async function unregisterMod(
+  io: CliIo,
+  names: ModNames = { plugin: MOD_ID, marketplace: MARKETPLACE },
+): Promise<{ ran: string[][]; missing: boolean }> {
+  // Claude's own answers for a plugin or marketplace that is already gone.
+  const gone = /not (?:be )?(?:found|installed)/i;
+  const first = await claude(
+    io,
+    ["plugin", "uninstall", names.plugin],
+    gone,
+    "mod-uninstall",
+    true,
+  );
+  if (first.missing) return { ran: [], missing: true };
+  const second = await claude(
+    io,
+    ["plugin", "marketplace", "remove", names.marketplace],
+    gone,
+    "mod-uninstall",
+  );
+  return { ran: [first.argv, second.argv], missing: false };
+}
+
 export async function modUninstall(
   io: CliIo,
   options: { json?: boolean },
 ): Promise<number> {
   const home = homeOf(io);
   const modDir = join(home, "mod");
-  // Claude's own answers for a plugin or marketplace that is already gone.
-  const gone = /not (?:be )?(?:found|installed)/i;
-  const notes: string[] = [];
-  const ran: string[][] = [];
   // Without claude there is nothing to unregister; still remove the folder.
-  const first = await claude(
-    io,
-    ["plugin", "uninstall", MOD_ID],
-    gone,
-    "mod-uninstall",
-    true,
-  );
-  if (first.missing) {
-    notes.push("claude is not installed; skipped unregistering the mod");
-  } else {
-    ran.push(
-      first.argv,
-      (
-        await claude(
-          io,
-          ["plugin", "marketplace", "remove", "donn"],
-          gone,
-          "mod-uninstall",
-        )
-      ).argv,
-    );
-  }
+  const { ran, missing } = await unregisterMod(io);
+  const notes = missing
+    ? ["claude is not installed; skipped unregistering the mod"]
+    : [];
   await fsStep(modDir, () => rm(modDir, { recursive: true, force: true }));
   io.stdout.write(
     options.json

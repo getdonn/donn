@@ -83,7 +83,8 @@ export function spawnWithInput(
   });
 }
 
-function keychainContext(io: CliIo): KeychainContext {
+/** The keychain as the registry token uses it: the secret probe's platform, commands with stdin. */
+export function keychainContext(io: CliIo): KeychainContext {
   return {
     platform: (io.secretProbe ?? io.probe).platform,
     run: io.runInput ?? spawnWithInput,

@@ -284,10 +284,22 @@ function requireService(io: CliIo): ServiceManager {
   );
 }
 
-export async function daemonInstall(
+export interface InstalledServiceResult {
+  path: string;
+  command: string;
+  pid: number;
+  /** The other home whose service this one replaced. */
+  replaced?: string;
+}
+
+/**
+ * Install the login service for this home and wait for its daemon: what `daemon install` does,
+ * without the output. `onReplace` hears about another home's service before it is replaced.
+ */
+export async function installService(
   io: CliIo,
-  options: DaemonCommandOptions,
-): Promise<number> {
+  onReplace: (home: string) => void = () => {},
+): Promise<InstalledServiceResult> {
   const service = requireService(io);
   const cli = findOnPath("donn", io.env);
   if (!cli) {
@@ -303,9 +315,7 @@ export async function daemonInstall(
   const paths = daemonPaths(home);
   mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
   const replaced = await otherHome(io, service, home);
-  if (replaced !== undefined && !options.json) {
-    io.stdout.write(`replacing the service for ${replaced}\n`);
-  }
+  if (replaced !== undefined) onReplace(replaced);
   await service.install({
     command: [cli, "daemon", "run"],
     env: {
@@ -316,10 +326,26 @@ export async function daemonInstall(
     log: paths.log,
   });
   const status = await waitForDaemon(home, service);
+  return {
+    path: service.path,
+    command: cli,
+    pid: status.pid,
+    ...(replaced !== undefined && { replaced }),
+  };
+}
+
+export async function daemonInstall(
+  io: CliIo,
+  options: DaemonCommandOptions,
+): Promise<number> {
+  const result = await installService(io, (replaced) => {
+    if (!options.json)
+      io.stdout.write(`replacing the service for ${replaced}\n`);
+  });
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ installed: true, path: service.path, command: cli, pid: status.pid, ...(replaced !== undefined && { replaced }) }, null, 2)}\n`
-      : `service installed (${service.path}); daemon running (pid ${status.pid})\n`,
+      ? `${JSON.stringify({ installed: true, ...result }, null, 2)}\n`
+      : `service installed (${result.path}); daemon running (pid ${result.pid})\n`,
   );
   return 0;
 }
