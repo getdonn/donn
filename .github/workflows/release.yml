@@ -93,16 +93,14 @@ jobs:
           fi
           notes="$RUNNER_TEMP/notes.md"
           pnpm ls -r --json --depth -1 > "$RUNNER_TEMP/workspaces.json"
-          jq -r --arg tag "$GITHUB_REF_NAME" --arg root "$GITHUB_WORKSPACE/" \
-            --slurpfile ws "$RUNNER_TEMP/workspaces.json" '
-            .published[] as $id
-            | ($id | sub("@[^@]+$"; "")) as $name
-            | ($ws[0][] | select(.name == $name) | .path | ltrimstr($root)) as $dir
-            | "- [\($id)](https://github.com/getdonn/donn/blob/\($tag)/\($dir)/CHANGELOG.md)"
-          ' "$RUNNER_TEMP/summary.json" > "$notes"
-          if [ ! -s "$notes" ]; then
-            echo "No package versions were published by this run." > "$notes"
-          fi
+          # Every public workspace package at its version, whether or not
+          # this run published it (a re-run skips what npm already has).
+          jq -r --arg tag "$GITHUB_REF_NAME" --arg repo "$GITHUB_REPOSITORY" --arg root "$GITHUB_WORKSPACE/" '
+            "## Packages in this release\n",
+            ( [ .[] | select(.private != true and .path != ($root | rtrimstr("/"))) ]
+              | sort_by(.name)[]
+              | "- [\(.name)@\(.version)](https://github.com/\($repo)/blob/\($tag)/\(.path | ltrimstr($root))/CHANGELOG.md)" )
+          ' "$RUNNER_TEMP/workspaces.json" > "$notes"
           gh release create "$GITHUB_REF_NAME" --verify-tag \
             --title "$GITHUB_REF_NAME" --notes-file "$notes"
 
@@ -126,7 +124,7 @@ jobs:
         run: |
           docker run -d --name verdaccio -p 4873:4873 \
             -v "$PWD/src/packages/release/verdaccio/config.yaml:/verdaccio/conf/config.yaml:ro" \
-            verdaccio/verdaccio:6.10.7
+            verdaccio/verdaccio:6.10.7@sha256:d394c36d62a62d264cf5566eabe323050f3e0a3f6455ccff9c355fcbfcb28073
           for _ in $(seq 1 30); do
             curl -sf http://localhost:4873/-/ping > /dev/null && exit 0
             sleep 1
@@ -184,7 +182,8 @@ jobs:
             > "$RUNNER_TEMP/summary-again.json" || status=$?
           cat "$RUNNER_TEMP/summary-again.json"
           [ "$status" -eq 0 ] || exit "$status"
-          jq -e '(.published | length == 0) and (.skipped | length == 13)' \
+          jq -e '(.published | length == 0) and (.skipped | length == 13)
+            and ((.conflicted // []) | length == 0)' \
             "$RUNNER_TEMP/summary-again.json"
       - name: Verdaccio log
         if: failure()
