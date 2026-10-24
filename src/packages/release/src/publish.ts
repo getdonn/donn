@@ -33,6 +33,10 @@ export interface PublishSummary {
   failed?: { name: string; error: string };
 }
 
+/** An `npm view` that failed because the package or version is not there. */
+export const isMissing = (res: { code: number; stderr: string }): boolean =>
+  res.code !== 0 && res.stderr.includes("E404");
+
 const MIN_NPM = [11, 5, 1] as const;
 
 export function isNpmjs(registry: string): boolean {
@@ -128,9 +132,7 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
       continue;
     }
     // Exit 0 with no output: the package exists, this version does not.
-    const missing =
-      (view.code === 0 && seen === "") ||
-      (view.code !== 0 && view.stderr.includes("E404"));
+    const missing = (view.code === 0 && seen === "") || isMissing(view);
     if (!missing) {
       return stop(
         `npm view exited ${view.code}: ${(view.stderr.trim() || seen).slice(0, 500)}`,

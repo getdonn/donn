@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReleaseError } from "./errors.js";
 import { listWorkspaces, publicPackages } from "./packages.js";
-import { isNpmjs } from "./publish.js";
+import { isMissing, isNpmjs } from "./publish.js";
 import type { RunResult, Runner } from "./run.js";
 
 export interface ClaimOptions {
@@ -30,9 +30,6 @@ export interface ClaimResult {
 const README =
   "Reserved. Releases come from https://github.com/getdonn/donn.\n";
 const DEPRECATION = "placeholder; use the latest version";
-
-const missing = (res: RunResult): boolean =>
-  res.code !== 0 && res.stderr.includes("E404");
 
 function viewFailed(spec: string, res: RunResult): ReleaseError {
   return new ReleaseError(
@@ -87,7 +84,7 @@ export async function claim(opts: ClaimOptions): Promise<ClaimResult> {
         result.deprecated.push(pkg.name);
       } else if (
         !(view.code === 0 && view.stdout.trim() === "") &&
-        !missing(view)
+        !isMissing(view)
       ) {
         throw viewFailed(spec, view);
       }
@@ -99,7 +96,7 @@ export async function claim(opts: ClaimOptions): Promise<ClaimResult> {
       result.existing.push(pkg.name);
       continue;
     }
-    if (!missing(view)) throw viewFailed(pkg.name, view);
+    if (!isMissing(view)) throw viewFailed(pkg.name, view);
     if (yes) {
       const dir = await mkdtemp(join(tmpdir(), "donn-claim-"));
       try {

@@ -27,11 +27,13 @@ function handlers(opts: { version?: string; plugin?: boolean } = {}) {
   return [
     [(c: string) => c === "npm", ok("")],
     [
-      (c: string, a: string[]) => c === "donn" && a[0] === "--version",
+      (c: string, a: string[]) =>
+        c.endsWith("/node_modules/.bin/donn") && a[0] === "--version",
       ok(`${opts.version ?? "1.2.3"}\n`),
     ],
     [
-      (c: string, a: string[]) => c === "donn" && a[0] === "mod",
+      (c: string, a: string[]) =>
+        c.endsWith("/node_modules/.bin/donn") && a[0] === "mod",
       async (_c: string, _a: string[], o: { env?: NodeJS.ProcessEnv }) => {
         if (opts.plugin !== false) {
           const f = join(
@@ -44,7 +46,7 @@ function handlers(opts: { version?: string; plugin?: boolean } = {}) {
         return ok();
       },
     ],
-    [(c: string) => c === "donn", ok()],
+    [(c: string) => c.endsWith("/node_modules/.bin/donn"), ok()],
   ] as never;
 }
 
@@ -52,7 +54,14 @@ describe("smoke", () => {
   it("runs the steps in order with the throwaway home", async () => {
     const run = fakeRunner(handlers());
     await smoke({ root: await rootWith("1.2.3"), source: { tarballs }, run });
-    expect(run.calls.map((c) => [c.cmd, ...c.args].slice(0, 3))).toEqual([
+    expect(
+      run.calls.map((c) =>
+        [
+          c.cmd.endsWith("/node_modules/.bin/donn") ? "donn" : c.cmd,
+          ...c.args,
+        ].slice(0, 3),
+      ),
+    ).toEqual([
       ["npm", "install", "--prefix"],
       ["donn", "--version"],
       ["donn", "capabilities", "--json"],
@@ -62,6 +71,8 @@ describe("smoke", () => {
       ["donn", "doctor", "--json"],
       ["donn", "mod", "install"],
     ]);
+    // donn runs by absolute path, never by PATH lookup.
+    expect(run.calls[1]?.cmd.startsWith("/")).toBe(true);
     expect(run.calls[0]?.args.slice(3)).toEqual(["/t/spec.tgz", "/t/cli.tgz"]);
     for (const c of run.calls) {
       const env = c.opts?.env ?? {};

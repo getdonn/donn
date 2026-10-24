@@ -5,32 +5,22 @@ composable bundle (instructions, skills, MCP servers, permissions, hooks, knowle
 secret refs) that inherits through org → area → team → project → user layers and compiles to each
 harness's native config. Claude Code is the first harness.
 
-Personal project; planning lives in `docs/planning/` (start with `00-handoff.md`). Nothing is
-published to npm yet, so you run it from a checkout.
+Personal project; planning lives in `docs/planning/` (start with `00-handoff.md`).
 
-## Install from a checkout
+## Install
 
-Requires pnpm (it downloads the Node version the repo develops on) and, for the Claude Code
-pieces, Claude Code itself.
-
-Upgrading from zzpersona? Run `donn migrate` right after linking donn, before any other donn
-command (see [Upgrading from zzpersona](#upgrading-from-zzpersona)).
+Requires Node 24 or later and, for the Claude Code pieces, Claude Code itself.
 
 ```sh
-pnpm install
-pnpm build
-
-# Put `donn` on PATH. pnpm 12 keeps global binaries in ~/Library/pnpm/bin (macOS);
-# `pnpm setup` adds that to your shell config. If it reports an existing pnpm section from an
-# older pnpm, run `pnpm setup --force`. Then open a new shell.
-pnpm setup
-pnpm add --global "link:$PWD/src/apps/cli"   # a link: later builds take effect without reinstalling
-
+npm i -g @getdonn/cli
 donn doctor                              # checks the setup, says what to fix
 ```
 
 `donn` must be a real executable on `PATH`, not a shell alias: the Claude Code mod and
 `donn claude` start programs without a shell.
+
+Upgrading from zzpersona? Run `donn migrate` right after installing donn, before any other donn
+command (see [Upgrading from zzpersona](#upgrading-from-zzpersona)).
 
 ## Examples
 
@@ -309,7 +299,21 @@ approximated, advisory or not at all, and why. The same matrix is published in
 `donn claude` runs the `claude` that `PATH` finds, which may not be the one your shell's
 `claude` alias runs. `donn doctor` names the binary it checked.
 
-## Developing
+## Contributing
+
+Working on donn itself: run it from a checkout. This needs pnpm (it downloads the Node version
+the repo develops on).
+
+```sh
+pnpm install
+pnpm build
+
+# Put `donn` on PATH. pnpm 12 keeps global binaries in ~/Library/pnpm/bin (macOS);
+# `pnpm setup` adds that to your shell config. If it reports an existing pnpm section from an
+# older pnpm, run `pnpm setup --force`. Then open a new shell.
+pnpm setup
+pnpm add --global "link:$PWD/src/apps/cli"   # a link: later builds take effect without reinstalling
+```
 
 ```sh
 pnpm turbo run build check-types lint test
@@ -317,4 +321,9 @@ pnpm format:check
 DONN_E2E=1 pnpm --filter @getdonn/cli exec vitest run src/e2e.test.ts   # real claude, opt-in
 ```
 
-Conventions (gitflow, stacked PRs, changesets) are in `CLAUDE.md`.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the DCO, the gitflow and the release checklist.
+Conventions are in `CLAUDE.md`.
+
+## License
+
+Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

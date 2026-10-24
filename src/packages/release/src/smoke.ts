@@ -1,12 +1,12 @@
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { ReleaseError } from "./errors.js";
@@ -62,11 +62,9 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
   delete env["CLAUDE_CONFIG_DIR"];
   env["HOME"] = home;
   env["DONN_HOME"] = donnHome;
-  env["PATH"] = [
-    stubBin,
-    join(prefix, "node_modules/.bin"),
-    process.env["PATH"] ?? "",
-  ].join(delimiter);
+  env["PATH"] = [stubBin, process.env["PATH"] ?? ""].join(delimiter);
+  // By absolute path: a `donn` elsewhere on PATH can never stand in.
+  const donnBin = join(prefix, "node_modules/.bin/donn");
 
   // The version the workspace is about to publish; both modes check for it.
   let expected: string;
@@ -137,7 +135,7 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
   }
 
   async function donn(args: string[], step: string, mustPass = true) {
-    const res = await run("donn", args, { cwd: tmp, env });
+    const res = await run(donnBin, args, { cwd: tmp, env });
     if (mustPass && res.code !== 0) {
       fail(
         step,

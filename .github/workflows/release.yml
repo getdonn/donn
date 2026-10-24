@@ -15,10 +15,6 @@ on:
         options: [verdaccio]
         default: verdaccio
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -26,6 +22,7 @@ jobs:
   verify:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,6 +53,12 @@ jobs:
     runs-on: ubuntu-latest
     # Required reviewer: the maintainer.
     environment: npm
+    timeout-minutes: 30
+    # Job-level, so a dispatched rehearsal never cancels a tag run that is
+    # waiting for approval.
+    concurrency:
+      group: npm-publish
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: write
@@ -106,6 +109,7 @@ jobs:
   rehearse:
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'verdaccio'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -138,6 +142,29 @@ jobs:
           echo "::add-mask::$token"
           printf '//localhost:4873/:_authToken=%s\n' "$token" > "$RUNNER_TEMP/npmrc"
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
+      # Two names exist already (as `claim` leaves them), so the first publish
+      # also takes the "package exists, version missing" path.
+      - name: Seed placeholders
+        run: |
+          for name in spec cli; do
+            dir="$RUNNER_TEMP/placeholder-$name"
+            mkdir -p "$dir"
+            cat > "$dir/package.json" <<JSON
+          {
+            "name": "@getdonn/$name",
+            "version": "0.0.0",
+            "description": "Reserved name",
+            "license": "Apache-2.0",
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/getdonn/donn.git"
+            }
+          }
+          JSON
+            echo "Reserved. Releases come from https://github.com/getdonn/donn." \
+              > "$dir/README.md"
+            npm publish "$dir" --registry http://localhost:4873
+          done
       - name: Publish
         run: |
           status=0

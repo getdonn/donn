@@ -3,8 +3,9 @@
 > The name is **donn** (chosen 2026-10-23): npm org `@getdonn` (CLI package `@getdonn/cli`,
 > command `donn`), GitHub org `getdonn`, domain `getdonn.dev`. The rename landed 2026-10-23
 > (`docs/planning/22-rename-donn.md`): code and docs say donn, with the old names kept only in
-> `donn migrate`, the changelogs and history notes. All packages stay `"private": true` until the
-> first npm publish. See `docs/planning/00-handoff.md` → "Naming".
+> `donn migrate`, the changelogs and history notes. _(2026-10-24)_ The 13 runtime packages are
+> public, published from `release.yml` (`docs/planning/27-first-publish.md`); tooling
+> (`eslint-config`, `typescript-config`, `release`) and the root stay `"private": true`. See `docs/planning/00-handoff.md` → "Naming".
 
 A persona compiler and control plane for AI coding harnesses. A **persona** is a declarative,
 composable bundle (instructions, skills, MCP servers, permissions, hooks, knowledge pointers,
@@ -88,7 +89,7 @@ and GUI track, specs 23–26 (designed 2026-10-24, nothing built).
 - Node: develop on 26 (pnpm downloads it via `devEngines.runtime`; system Node is irrelevant);
   `engines` floor is >=24, and `@types/node` tracks the floor, not the dev version.
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
-  never at the repo root. All packages `"private": true` until the first npm publish.
+  never at the repo root. The 13 runtime packages are public (published from `release.yml`, spec 27); tooling (`eslint-config`, `typescript-config`, `release`) and the root stay `"private": true`.
 - Every CLI command supports `--json`.
 - Formatting: Prettier at width 80 (`.prettierrc.json`). `pnpm format` before committing;
   `pnpm format:check` must pass. `.prettierignore` excludes generated files, test fixtures and
