@@ -15,13 +15,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ManagedManifest, ManagedOs } from "@zzpersona/adapter-sdk";
+import type { ManagedManifest, ManagedOs } from "@getdonn/adapter-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ManagedEnv } from "./managed/env.js";
 import { parsePlutilJson, parseRegQuery } from "./managed/env.js";
 import { zz } from "./test/seed.js";
 
-// zzpersona managed install, uninstall and check against temp roots: every system path, the
+// donn managed install, uninstall and check against temp roots: every system path, the
 // MDM reader and the remote-settings file come through the `managed` seam, so no test reads or
 // writes a real system folder, needs root, or runs plutil or reg.
 // See docs/planning/21-managed-settings.md, section 3.
@@ -37,7 +37,7 @@ const put = (path: string, text: string) => {
   writeFileSync(path, text);
 };
 
-const ORG = `apiVersion: zzpersona/v0
+const ORG = `apiVersion: donn/v0
 kind: Persona
 metadata: { name: acme }
 instructions:
@@ -55,8 +55,8 @@ locks:
   - hooks.pre-tool-use[guard]
 `;
 
-const SETTINGS = "managed-settings.d/50-zzpersona.json";
-const MANIFEST = "zzpersona/manifest.json";
+const SETTINGS = "managed-settings.d/50-donn.json";
+const MANIFEST = "donn/manifest.json";
 
 interface Machine {
   root: string;
@@ -69,7 +69,7 @@ interface Machine {
 }
 
 function machine(org: string = ORG): Machine {
-  const root = mkdtempSync(join(tmpdir(), "zzp-managed-install-"));
+  const root = mkdtempSync(join(tmpdir(), "donn-managed-install-"));
   roots.push(root);
   const home = join(root, "home");
   const personas = join(root, "personas");
@@ -125,18 +125,20 @@ async function build(m: Machine, os: ManagedOs = "linux", out = "bundle") {
 }
 
 const read = (path: string) => readFileSync(path, "utf8");
-const PENDING = "zzpersona/pending.json";
+const PENDING = "donn/pending.json";
 
 /** Install `bundle`, stopping as a crash would right after the settings file is written. */
-const crash = (m: Machine, bundle: string) =>
-  expect(
+const crash = (m: Machine, bundle: string) => {
+  let settingsWritten = false;
+  return expect(
     cli(m, ["managed", "install", bundle, "--yes"], {
       onWrite: (path) => {
-        if (path !== SETTINGS)
-          throw new Error(`simulated crash before ${path}`);
+        if (settingsWritten) throw new Error(`simulated crash before ${path}`);
+        if (path === SETTINGS) settingsWritten = true;
       },
     }),
   ).rejects.toThrow("simulated crash");
+};
 
 /** lstat with every owner reported as root, except `others` (path → uid). */
 function rootOwned(others: Record<string, number> = {}): Partial<ManagedEnv> {
@@ -196,7 +198,7 @@ async function check(m: Machine, managed: Partial<ManagedEnv> = {}) {
   };
 }
 
-describe("zzpersona managed install", () => {
+describe("donn managed install", () => {
   it("writes every file with its mode, the manifest included", async () => {
     const m = machine();
     const bundle = await build(m);
@@ -207,10 +209,10 @@ describe("zzpersona managed install", () => {
     for (const p of listed) {
       expect(read(join(m.system, p))).toBe(read(join(bundle, p)));
       expect(mode(join(m.system, p))).toBe(
-        p.startsWith("zzpersona/hooks/") ? 0o755 : 0o644,
+        p.startsWith("donn/hooks/") ? 0o755 : 0o644,
       );
     }
-    for (const dir of ["managed-settings.d", "zzpersona", "zzpersona/hooks"]) {
+    for (const dir of ["managed-settings.d", "donn", "donn/hooks"]) {
       expect(mode(join(m.system, dir))).toBe(0o755);
     }
     expect(r.stdout).toContain(`write    ${SETTINGS}`);
@@ -219,21 +221,25 @@ describe("zzpersona managed install", () => {
   it("refuses a blocked parent folder before any write", async () => {
     const m = machine();
     const bundle = await build(m);
-    put(join(m.system, "zzpersona/hooks"), "in the way");
+    put(join(m.system, "donn/hooks"), "in the way");
     const r = await cli(m, ["managed", "install", bundle, "--yes"]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain(
-      `${join(m.system, "zzpersona/hooks")} is not a folder`,
+      `${join(m.system, "donn/hooks")} is not a folder`,
     );
-    expect(tree(m.system)).toEqual(["zzpersona/hooks"]);
+    expect(tree(m.system)).toEqual(["donn/hooks"]);
   });
 
   it("an interrupted install leaves pending.json; a re-run with a newer bundle finishes", async () => {
     const m = machine();
     const first = await build(m, "linux", "first");
     await crash(m, first);
-    // The settings file was written; the manifest never was; pending.json claims both bundles' files.
-    expect(tree(m.system)).toEqual([SETTINGS, PENDING]);
+    // The settings file (and the hook written before it) was; the manifest never was; pending.json
+    // claims both bundles' files.
+    expect(tree(m.system)).toEqual(
+      [...Object.keys(manifestOf(first).files), PENDING].sort(),
+    );
+    expect(tree(m.system)).toContain(SETTINGS);
     const pending = JSON.parse(read(join(m.system, PENDING))) as {
       paths: string[];
     };
@@ -265,7 +271,7 @@ describe("zzpersona managed install", () => {
     expect(tree(m.system)).toEqual(["managed-settings.d/90-org.json"]);
   });
 
-  it("adopts a file of zzpersona's that already holds the bundle's bytes", async () => {
+  it("adopts a file of donn's that already holds the bundle's bytes", async () => {
     const m = machine();
     const bundle = await build(m);
     put(join(m.system, SETTINGS), read(join(bundle, SETTINGS)));
@@ -284,13 +290,13 @@ describe("zzpersona managed install", () => {
     expect((await cli(m, ["managed", "install", bundle, "--yes"])).code).toBe(
       0,
     );
-    const hook = tree(join(m.system, "zzpersona/hooks"))[0]!;
-    rmSync(join(m.system, "zzpersona/hooks", hook));
-    put(join(m.system, "zzpersona/hooks", hook, "inside"), "x");
+    const hook = tree(join(m.system, "donn/hooks"))[0]!;
+    rmSync(join(m.system, "donn/hooks", hook));
+    put(join(m.system, "donn/hooks", hook, "inside"), "x");
     const r = await cli(m, ["managed", "uninstall", "--yes"]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain(
-      `could not remove ${join(m.system, "zzpersona/hooks", hook)}`,
+      `could not remove ${join(m.system, "donn/hooks", hook)}`,
     );
   });
 
@@ -370,10 +376,10 @@ describe("zzpersona managed install", () => {
     const first = await build(m, "linux", "first");
     expect((await cli(m, ["managed", "install", first, "--yes"])).code).toBe(0);
     const hook = Object.keys(manifestOf(first).files).find((p) =>
-      p.startsWith("zzpersona/hooks/"),
+      p.startsWith("donn/hooks/"),
     )!;
     // Someone else's file in our folder, and org files beside ours.
-    put(join(m.system, "zzpersona/hooks/org-audit.sh"), "#!/bin/sh\n");
+    put(join(m.system, "donn/hooks/org-audit.sh"), "#!/bin/sh\n");
     put(join(m.system, "managed-settings.d/10-org.json"), "{}\n");
     // The next bundle no longer locks the hook.
     put(
@@ -392,10 +398,10 @@ describe("zzpersona managed install", () => {
       check: { state: "current", findings: [] },
     });
     expect(tree(m.system)).toEqual([
+      "donn/hooks/org-audit.sh",
+      MANIFEST,
       "managed-settings.d/10-org.json",
       SETTINGS,
-      "zzpersona/hooks/org-audit.sh",
-      MANIFEST,
     ]);
     expect(read(join(m.system, SETTINGS))).toBe(read(join(second, SETTINGS)));
   });
@@ -433,7 +439,7 @@ describe("zzpersona managed install", () => {
     expect(tree(m.system)).toEqual(["managed-mcp.json"]);
   });
 
-  it("refuses a 50-zzpersona.json it did not install", async () => {
+  it("refuses a 50-donn.json it did not install", async () => {
     const m = machine();
     const bundle = await build(m);
     put(join(m.system, SETTINGS), "{}\n");
@@ -479,7 +485,7 @@ describe("zzpersona managed install", () => {
     );
   });
 
-  it("refuses a manifest that lists a file outside zzpersona's own", async () => {
+  it("refuses a manifest that lists a file outside donn's own", async () => {
     const m = machine();
     const bundle = await build(m);
     const text = '{ "model": "x" }\n';
@@ -500,7 +506,7 @@ describe("zzpersona managed install", () => {
     const r = await cli(m, ["managed", "install", "bundle", "--yes"], notAdmin);
     expect(r.code).toBe(1);
     expect(r.stderr).toBe(
-      "error: managed install needs administrator rights; run: sudo zzpersona managed install bundle\n",
+      "error: managed install needs administrator rights; run: sudo donn managed install bundle\n",
     );
     const win = await cli(m, ["managed", "install", bundle, "--yes"], {
       ...notAdmin,
@@ -508,12 +514,12 @@ describe("zzpersona managed install", () => {
     });
     expect(win.code).toBe(1);
     expect(win.stderr).toContain(
-      "managed install needs administrator rights; run it in an elevated PowerShell: zzpersona managed install",
+      "managed install needs administrator rights; run it in an elevated PowerShell: donn managed install",
     );
     const un = await cli(m, ["managed", "uninstall", "--yes"], notAdmin);
     expect(un.code).toBe(1);
     expect(un.stderr).toBe(
-      "error: managed uninstall needs administrator rights; run: sudo zzpersona managed uninstall\n",
+      "error: managed uninstall needs administrator rights; run: sudo donn managed uninstall\n",
     );
     expect(existsSync(m.system)).toBe(false);
   });
@@ -521,11 +527,11 @@ describe("zzpersona managed install", () => {
   it("a newer manifest format stops check and install", async () => {
     const m = machine();
     const bundle = await build(m);
-    const newer = `${JSON.stringify({ format: 2, zzpersona: "9.0.0", files: {} })}\n`;
+    const newer = `${JSON.stringify({ format: 2, donn: "9.0.0", files: {} })}\n`;
     put(join(m.system, MANIFEST), newer);
     age(m.system);
     const before = mtimes(m.system);
-    const message = "installed by a newer zzpersona (9.0.0); upgrade zzpersona";
+    const message = "installed by a newer donn (9.0.0); upgrade donn";
     for (const argv of [
       ["managed", "install", bundle, "--yes"],
       ["managed", "uninstall", "--yes"],
@@ -625,12 +631,7 @@ describe("unsafe policy folders", () => {
 
   it("passes when every folder is root's and not group or other writable", async () => {
     const { m, bundle } = await installed();
-    for (const dir of [
-      "",
-      "managed-settings.d",
-      "zzpersona",
-      "zzpersona/hooks",
-    ])
+    for (const dir of ["", "managed-settings.d", "donn", "donn/hooks"])
       chmodSync(join(m.system, dir), 0o755);
     const r = await cli(
       m,
@@ -640,13 +641,13 @@ describe("unsafe policy folders", () => {
     expect(r.code, r.stderr).toBe(0);
   });
 
-  it("refuses a symlinked zzpersona/hooks, for install and uninstall", async () => {
+  it("refuses a symlinked donn/hooks, for install and uninstall", async () => {
     const { m, bundle } = await installed();
     const elsewhere = join(m.root, "elsewhere");
     put(join(elsewhere, "keep.sh"), "#!/bin/sh\n");
-    rmSync(join(m.system, "zzpersona/hooks"), { recursive: true });
-    symlinkSync(elsewhere, join(m.system, "zzpersona/hooks"));
-    const path = join(m.system, "zzpersona/hooks");
+    rmSync(join(m.system, "donn/hooks"), { recursive: true });
+    symlinkSync(elsewhere, join(m.system, "donn/hooks"));
+    const path = join(m.system, "donn/hooks");
     for (const argv of [
       ["managed", "install", bundle, "--yes"],
       ["managed", "uninstall", "--yes"],
@@ -664,7 +665,7 @@ describe("unsafe policy folders", () => {
 
   it("refuses a folder not owned by root", async () => {
     const { m, bundle } = await installed();
-    const path = join(m.system, "zzpersona");
+    const path = join(m.system, "donn");
     const r = await cli(
       m,
       ["managed", "install", bundle, "--yes"],
@@ -676,7 +677,7 @@ describe("unsafe policy folders", () => {
 
   it("refuses a group-writable folder, and a manifest that is", async () => {
     const { m } = await installed();
-    for (const dir of ["", "zzpersona", "zzpersona/hooks"])
+    for (const dir of ["", "donn", "donn/hooks"])
       chmodSync(join(m.system, dir), 0o755);
     chmodSync(join(m.system, "managed-settings.d"), 0o775);
     const r = await cli(m, ["managed", "uninstall", "--yes"], rootOwned());
@@ -693,7 +694,7 @@ describe("unsafe policy folders", () => {
   });
 });
 
-describe("zzpersona managed uninstall", () => {
+describe("donn managed uninstall", () => {
   it("removes exactly the manifest's files and the manifest", async () => {
     const m = machine();
     const bundle = await build(m);
@@ -713,7 +714,7 @@ describe("zzpersona managed uninstall", () => {
       "managed-settings.d/90-org.json",
     ]);
     // Our own folders go when empty; managed-settings.d is shared and stays.
-    expect(existsSync(join(m.system, "zzpersona"))).toBe(false);
+    expect(existsSync(join(m.system, "donn"))).toBe(false);
     expect(existsSync(join(m.system, "managed-settings.d"))).toBe(true);
   });
 
@@ -747,7 +748,7 @@ describe("zzpersona managed uninstall", () => {
   });
 });
 
-describe("zzpersona managed check", () => {
+describe("donn managed check", () => {
   async function installed(org: string = ORG) {
     const m = machine(org);
     const bundle = await build(m);
@@ -835,7 +836,7 @@ describe("zzpersona managed check", () => {
     expect(out.findings).toContainEqual({
       state: "edited",
       detail:
-        "an interrupted install; re-run zzpersona managed install or uninstall",
+        "an interrupted install; re-run donn managed install or uninstall",
     });
     expect(r.code).toBe(1);
   });
@@ -943,8 +944,8 @@ describe("zzpersona managed check", () => {
       join(m.system, "managed-settings.d/90-org.json"),
       JSON.stringify({ claudeMd: "theirs" }),
     );
-    const hook = tree(join(m.system, "zzpersona/hooks"))[0]!;
-    writeFileSync(join(m.system, "zzpersona/hooks", hook), "#!/bin/sh\n");
+    const hook = tree(join(m.system, "donn/hooks"))[0]!;
+    writeFileSync(join(m.system, "donn/hooks", hook), "#!/bin/sh\n");
     const { out } = await check(m, {
       mdmPolicy: async () => ({ model: "y" }),
     });
@@ -982,7 +983,7 @@ describe("zzpersona managed check", () => {
       `personas: ${m.personas}\nregistry:\n  url: http://127.0.0.1:9\n`,
     );
     const note =
-      "compared with the layers pulled locally; run zzpersona pull for the latest";
+      "compared with the layers pulled locally; run donn pull for the latest";
     const current = await check(m);
     expect(current.out).toEqual({
       state: "current",
@@ -1102,7 +1103,7 @@ describe("doctor and status", () => {
     const warn = await doctorManaged(m);
     expect(warn.status).toBe("warn");
     expect(warn.message).toContain(`${SETTINGS} is missing`);
-    expect(warn.fix).toContain("zzpersona managed install");
+    expect(warn.fix).toContain("donn managed install");
   });
 
   it("doctor: an unreadable installed manifest names the file to remove", async () => {
@@ -1125,11 +1126,11 @@ describe("doctor and status", () => {
     const m = machine();
     put(
       join(m.system, MANIFEST),
-      JSON.stringify({ format: 2, zzpersona: "9.0.0", files: {} }),
+      JSON.stringify({ format: 2, donn: "9.0.0", files: {} }),
     );
     const c = await doctorManaged(m);
     expect(c.status).toBe("warn");
-    expect(c.message).toContain("installed by a newer zzpersona (9.0.0)");
+    expect(c.message).toContain("installed by a newer donn (9.0.0)");
   });
 
   it("status: a managed line when something is installed", async () => {

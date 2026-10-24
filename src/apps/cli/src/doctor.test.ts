@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
 import { bundledMod } from "./commands/mod.js";
@@ -34,18 +34,18 @@ function healthy() {
     ),
   );
   mkdirSync(join(s.personas, ".git"));
-  // The mod this CLI ships, as `zzpersona mod install` leaves it.
+  // The mod this CLI ships, as `donn mod install` leaves it.
   const manifest = join(s.home, "mod/plugin/.claude-plugin/plugin.json");
   mkdirSync(join(manifest, ".."), { recursive: true });
   writeFileSync(
     manifest,
-    JSON.stringify({ name: "zzpersona", version: bundledMod().version }),
+    JSON.stringify({ name: "donn", version: bundledMod().version }),
   );
-  // zzpersona on PATH, as the mod needs it.
+  // donn on PATH, as the mod needs it.
   const bin = join(s.root, "bin");
   mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, "zzpersona"), "#!/bin/sh\n");
-  chmodSync(join(bin, "zzpersona"), 0o755);
+  writeFileSync(join(bin, "donn"), "#!/bin/sh\n");
+  chmodSync(join(bin, "donn"), 0o755);
   return { "payments/schema-token": SECRET, PATH: bin };
 }
 
@@ -88,7 +88,7 @@ const IDS = [
   "managed",
 ];
 
-describe("zzpersona doctor", () => {
+describe("donn doctor", () => {
   it("is all ok for a healthy setup", async () => {
     const { r, checks } = await doctor([], { env: healthy() });
     expect(checks.map((c) => c.id)).toEqual(IDS);
@@ -166,7 +166,7 @@ describe("zzpersona doctor", () => {
       join(s.home, "state.json"),
       JSON.stringify({
         version: 1,
-        projects: { [join(s.root, "gone/.zzpersona")]: "team/payments" },
+        projects: { [join(s.root, "gone/.donn")]: "team/payments" },
       }),
     );
     expect((await doctor([], { env })).status.state).toBe("warn");
@@ -256,7 +256,7 @@ describe("zzpersona doctor", () => {
     )!;
     expect(claude.status).toBe("warn");
     expect(claude.message).toContain(
-      `your shell's claude alias runs /opt/claude/claude, but zzpersona runs ${join(s.home, "bin/claude")} (PATH)`,
+      `your shell's claude alias runs /opt/claude/claude, but donn runs ${join(s.home, "bin/claude")} (PATH)`,
     );
   });
 
@@ -315,7 +315,7 @@ describe("doctor text output", () => {
   });
 });
 
-describe("zzpersona doctor (daemon)", () => {
+describe("donn doctor (daemon)", () => {
   const daemonCheck = async () => {
     const { checks } = await doctor([], { env: healthy() });
     return checks.find((c) => c.id === "daemon")!;
@@ -349,7 +349,7 @@ describe("zzpersona doctor (daemon)", () => {
     daemon = await startDaemon({ home: s.home, env: {}, version: "0.0.1" });
     expect(await daemonCheck()).toMatchObject({
       status: "warn",
-      message: `daemon runs 0.0.1, CLI is ${cliVersion()}; zzpersona daemon stop && zzpersona daemon start`,
+      message: `daemon runs 0.0.1, CLI is ${cliVersion()}; donn daemon stop && donn daemon start`,
     });
   });
 
@@ -360,16 +360,16 @@ describe("zzpersona doctor (daemon)", () => {
     const check = await daemonCheck();
     expect(check.status).toBe("warn");
     expect(check.message).toContain("stale");
-    expect(check.fix).toBe("zzpersona daemon start");
+    expect(check.fix).toBe("donn daemon start");
   });
 });
 
-describe("zzpersona doctor (spec 08 hardening)", () => {
+describe("donn doctor (spec 08 hardening)", () => {
   it("keeps a switch whose repo still exists, removing only gone repos", async () => {
     const env = healthy();
-    mkdirSync(join(s.root, "branch-without-zzp"));
-    const kept = join(s.root, "branch-without-zzp/.zzpersona");
-    const gone = join(s.root, "gone/.zzpersona");
+    mkdirSync(join(s.root, "branch-without-donn"));
+    const kept = join(s.root, "branch-without-donn/.donn");
+    const gone = join(s.root, "gone/.donn");
     writeFileSync(
       join(s.home, "state.json"),
       JSON.stringify({
@@ -386,7 +386,7 @@ describe("zzpersona doctor (spec 08 hardening)", () => {
 
   it("keeps a switch on an unmounted volume", async () => {
     const env = healthy();
-    const unmounted = join(s.root, "Volumes/Ext/repo/.zzpersona");
+    const unmounted = join(s.root, "Volumes/Ext/repo/.donn");
     writeFileSync(
       join(s.home, "state.json"),
       JSON.stringify({
@@ -401,19 +401,19 @@ describe("zzpersona doctor (spec 08 hardening)", () => {
     ).toEqual({ [unmounted]: "team/payments" });
   });
 
-  it("checks the fallback home when ZZPERSONA_HOME is empty", async () => {
+  it("checks the fallback home when DONN_HOME is empty", async () => {
     const fakeHome = join(s.root, "fake-user");
-    mkdirSync(join(fakeHome, ".zzpersona"), { recursive: true });
-    chmodSync(join(fakeHome, ".zzpersona"), 0o500);
+    mkdirSync(join(fakeHome, ".donn"), { recursive: true });
+    chmodSync(join(fakeHome, ".donn"), 0o500);
     try {
       const { checks } = await doctor([], {
-        env: { ZZPERSONA_HOME: "", HOME: fakeHome },
+        env: { DONN_HOME: "", HOME: fakeHome },
       });
       expect(checks.find((c) => c.id === "home")).toMatchObject({
         status: "error",
       });
     } finally {
-      chmodSync(join(fakeHome, ".zzpersona"), 0o700);
+      chmodSync(join(fakeHome, ".donn"), 0o700);
     }
   });
 
@@ -438,7 +438,7 @@ describe("zzpersona doctor (spec 08 hardening)", () => {
   });
 });
 
-describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
+describe("donn doctor: plugins and keychain (spec 08)", () => {
   const configure = (lines: string) =>
     writeFileSync(
       join(s.home, "config.yaml"),
@@ -545,19 +545,19 @@ describe("zzpersona doctor: plugins and keychain (spec 08)", () => {
   });
 });
 
-describe("zzpersona doctor (0.3.1)", () => {
-  it("checks zzpersona is on PATH for the mod", async () => {
+describe("donn doctor (0.3.1)", () => {
+  it("checks donn is on PATH for the mod", async () => {
     const env = healthy();
     const ok = (await doctor([], { env })).checks.find((c) => c.id === "cli")!;
     expect(ok).toMatchObject({
       status: "ok",
-      message: `zzpersona on PATH: ${join(env.PATH, "zzpersona")}`,
+      message: `donn on PATH: ${join(env.PATH, "donn")}`,
     });
     const missing = (
       await doctor([], { env: { ...env, PATH: join(s.root, "nowhere") } })
     ).checks.find((c) => c.id === "cli")!;
     expect(missing.status).toBe("warn");
-    expect(missing.message).toContain("zzpersona is not on PATH");
+    expect(missing.message).toContain("donn is not on PATH");
     expect(missing.fix).toContain('pnpm add --global "link:');
   });
 
@@ -588,12 +588,12 @@ describe("zzpersona doctor (0.3.1)", () => {
   });
 });
 
-describe("zzpersona doctor and AGENTS.md", () => {
+describe("donn doctor and AGENTS.md", () => {
   it("notes when Claude Code also reads the generated AGENTS.md", async () => {
     const env = healthy();
     writeFileSync(
       join(s.repo, "AGENTS.md"),
-      "<!-- zzpersona:begin — generated; edit the source, not this block -->\nx\n<!-- zzpersona:end -->\n",
+      "<!-- donn:begin — generated; edit the source, not this block -->\nx\n<!-- donn:end -->\n",
     );
     const persona = (await doctor([], { env })).checks.find(
       (c) => c.id === "persona",

@@ -12,7 +12,7 @@ afterEach(() => s.cleanup());
 
 const json = (stdout: string) => JSON.parse(stdout) as Record<string, unknown>;
 
-describe("zzpersona switch", () => {
+describe("donn switch", () => {
   it("switches this project and resolve follows it", async () => {
     const r = await zz(["switch", "team/payments"], {
       cwd: s.repo,
@@ -23,7 +23,7 @@ describe("zzpersona switch", () => {
     expect(r.stdout.split("\n")[0]).toBe(
       `team/payments is now used for ${s.repo}`,
     );
-    const key = await projectKey(join(s.repo, ".zzpersona"));
+    const key = await projectKey(join(s.repo, ".donn"));
     expect((await readState(s.home)).projects[key]).toBe("team/payments");
     const resolved = await zz(["resolve", "--json"], {
       cwd: s.repo,
@@ -38,7 +38,7 @@ describe("zzpersona switch", () => {
     const deep = join(s.repo, "src/deep");
     mkdirSync(deep, { recursive: true });
     await zz(["switch", "team/payments"], { cwd: deep, home: s.home });
-    const key = await projectKey(join(s.repo, ".zzpersona"));
+    const key = await projectKey(join(s.repo, ".donn"));
     const state = await readState(s.home);
     expect(state.projects).toEqual({ [key]: "team/payments" });
     expect(state.default).toBeUndefined();
@@ -88,7 +88,7 @@ describe("zzpersona switch", () => {
       `project/persona (project persona for ${s.repo})\n`,
     );
     await zz(["switch", "team/payments"], { cwd: s.repo, home: s.home });
-    const key = await projectKey(join(s.repo, ".zzpersona"));
+    const key = await projectKey(join(s.repo, ".donn"));
     const r = await zz(["switch", "--json"], { cwd: s.repo, home: s.home });
     expect(json(r.stdout)).toEqual({
       persona: "team/payments",

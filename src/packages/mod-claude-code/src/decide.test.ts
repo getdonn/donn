@@ -74,7 +74,7 @@ describe("nudge", () => {
 
   it("tells a plain session how to load this folder's persona", () => {
     expect(nudgeText(undefined, here("team/platform", "project"))).toBe(
-      "this folder uses team/platform; start with zzpersona claude to load it, or zzpersona claude -- --continue to keep this conversation",
+      "this folder uses team/platform; start with donn claude to load it, or donn claude -- --continue to keep this conversation",
     );
   });
 
@@ -93,9 +93,9 @@ describe("nudge", () => {
     expect(
       nudgeText(A, {
         kind: "unavailable",
-        reason: "the zzpersona command was not found on PATH",
+        reason: "the donn command was not found on PATH",
       }),
-    ).toBe("unavailable: the zzpersona command was not found on PATH");
+    ).toBe("unavailable: the donn command was not found on PATH");
   });
 });
 
@@ -138,7 +138,7 @@ describe("/persona output", () => {
         {
           persona: "team/platform",
           source: "project",
-          project: "/r/.zzpersona",
+          project: "/r/.donn",
         },
         A,
         here("team/platform", "project"),
@@ -191,7 +191,7 @@ describe("/persona output", () => {
         {
           scope: "project",
           persona: "team/platform",
-          project: "/Users/you/repo/.zzpersona",
+          project: "/Users/you/repo/.donn",
         },
         A,
         here("team/platform", "switch"),
@@ -200,8 +200,8 @@ describe("/persona output", () => {
       [
         "team/platform is now used for /Users/you/repo.",
         "This session still runs team/payments. To apply it, exit and run:",
-        "  zzpersona claude",
-        "(zzpersona claude -- --continue keeps this conversation, but not the new persona's instructions.)",
+        "  donn claude",
+        "(donn claude -- --continue keeps this conversation, but not the new persona's instructions.)",
       ].join("\n"),
     );
     expect(
@@ -239,26 +239,26 @@ describe("live switching", () => {
     previous: "team/payments",
     launched: "team/payments",
     instructions:
-      "## zzpersona persona: team/platform\n\nYou are running the platform persona.\n",
+      "## donn persona: team/platform\n\nYou are running the platform persona.\n",
     held: ["mcp", "permissions"],
     stricter: false,
-    plugin: "zzp-team--platform",
+    plugin: "donn-team--platform",
     appliedAt: "2026-10-21T00:00:00.000Z",
     ...over,
   });
 
   it("adds a section that supersedes the launch instructions", () => {
     expect(liveSection(live())).toEqual({
-      id: "zzpersona:live-persona",
+      id: "donn:live-persona",
       scope: "session",
       text: [
         "The persona for this session is now team/platform. Disregard the section headed exactly",
-        '"## zzpersona persona: team/payments" (the launch instructions), wherever it appears in this',
-        'prompt; the section headed "## zzpersona persona: team/platform (updated',
+        '"## donn persona: team/payments" (the launch instructions), wherever it appears in this',
+        'prompt; the section headed "## donn persona: team/platform (updated',
         '2026-10-21T00:00:00.000Z)" below is current. Answers given earlier in this conversation may',
         "be outdated.",
         "",
-        "## zzpersona persona: team/platform (updated 2026-10-21T00:00:00.000Z)",
+        "## donn persona: team/platform (updated 2026-10-21T00:00:00.000Z)",
         "",
         "You are running the platform persona.",
       ].join("\n"),
@@ -269,19 +269,19 @@ describe("live switching", () => {
     const refreshed = live({
       persona: "team/payments",
       instructions:
-        "## zzpersona persona: team/payments\n\nYou are running the edited payments persona.\n",
+        "## donn persona: team/payments\n\nYou are running the edited payments persona.\n",
     });
     expect(liveSection(refreshed)).toEqual({
-      id: "zzpersona:live-persona",
+      id: "donn:live-persona",
       scope: "session",
       text: [
         "The instructions for this session's persona team/payments were updated. Disregard the section headed exactly",
-        '"## zzpersona persona: team/payments" (the launch instructions), wherever it appears in this',
-        'prompt; the section headed "## zzpersona persona: team/payments (updated',
+        '"## donn persona: team/payments" (the launch instructions), wherever it appears in this',
+        'prompt; the section headed "## donn persona: team/payments (updated',
         '2026-10-21T00:00:00.000Z)" below is current. Answers given earlier in this conversation may',
         "be outdated.",
         "",
-        "## zzpersona persona: team/payments (updated 2026-10-21T00:00:00.000Z)",
+        "## donn persona: team/payments (updated 2026-10-21T00:00:00.000Z)",
         "",
         "You are running the edited payments persona.",
       ].join("\n"),
@@ -294,7 +294,7 @@ describe("live switching", () => {
     ).text;
     expect(
       text.endsWith(
-        "## zzpersona persona: team/platform (updated 2026-10-21T00:00:00.000Z)\n\nBare instructions.",
+        "## donn persona: team/platform (updated 2026-10-21T00:00:00.000Z)\n\nBare instructions.",
       ),
     ).toBe(true);
   });
@@ -304,7 +304,7 @@ describe("live switching", () => {
       [
         "team/platform is now live in this session (skills, hooks, agents, instructions).",
         "Still from team/payments until you relaunch: MCP servers, permissions.",
-        "To apply those too, exit and run: zzpersona claude team/platform",
+        "To apply those too, exit and run: donn claude team/platform",
       ].join("\n"),
     );
     expect(liveText(live({ held: ["settings"] }))).toContain(
@@ -405,24 +405,24 @@ describe("0.3.1 hints", () => {
       [
         "team/platform is now your default.",
         "This session still runs team/payments. To apply it, exit and run:",
-        "  zzpersona claude team/platform",
+        "  donn claude team/platform",
       ].join("\n"),
     );
   });
 });
 
-describe("host-displayed text never starts with zzpersona", () => {
+describe("host-displayed text never starts with donn", () => {
   it("failure and folder texts leave the prefix to the host", () => {
     expect(failureText("boom", "unavailable")).toBe("unavailable: boom");
     expect(failureText("boom")).toBe("boom");
     for (const reason of [
-      "the zzpersona command was not found on PATH",
-      "the zzpersona command printed something that is not JSON",
-      "the zzpersona command exited 1",
+      "the donn command was not found on PATH",
+      "the donn command printed something that is not JSON",
+      "the donn command exited 1",
     ])
-      expect(failureText(reason)).not.toMatch(/^zzpersona/);
+      expect(failureText(reason)).not.toMatch(/^donn/);
     expect(
       commandText("list", {}, undefined, { kind: "unavailable", reason: "x" }),
-    ).not.toMatch(/^zzpersona/);
+    ).not.toMatch(/^donn/);
   });
 });

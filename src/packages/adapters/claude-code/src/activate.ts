@@ -1,4 +1,4 @@
-import type { ActivateInput, ActivationPlan } from "@zzpersona/adapter-sdk";
+import type { ActivateInput, ActivationPlan } from "@getdonn/adapter-sdk";
 
 // One launch step: `claude` with the flags for whatever compile produced. The CLI adds the
 // resolved secret env vars from output.secretEnv. See docs/planning/05-adapter-sdk.md, section 5.

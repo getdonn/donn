@@ -29,7 +29,7 @@ export async function ensureDaemon(
   config: Config,
 ): Promise<void> {
   if (config.daemon?.autoStart === false) return;
-  if (io.env.ZZPERSONA_NO_DAEMON === "1") return;
+  if (io.env.DONN_NO_DAEMON === "1") return;
   const deadline = Date.now() + WAIT_MS;
   const work = async () => {
     if (await answers(io, home)) return;
@@ -58,7 +58,7 @@ export async function ensureDaemon(
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     io.stderr.write(
-      `zzpersona: daemon not started (${reason}); live refresh is off for this session\n`,
+      `donn: daemon not started (${reason}); live refresh is off for this session\n`,
     );
   } finally {
     clearTimeout(timer);

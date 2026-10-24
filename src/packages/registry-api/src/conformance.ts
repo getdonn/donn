@@ -1,4 +1,4 @@
-import type { ManagedCompiler, ManagedLayer } from "@zzpersona/adapter-sdk";
+import type { ManagedCompiler, ManagedLayer } from "@getdonn/adapter-sdk";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MAX_BUNDLE_BYTES, bundleDigest } from "./bundle.js";
@@ -72,7 +72,7 @@ const file = (path: string, text: string): BundleFile => ({
 
 /** A layer's YAML; `extra` is appended as top-level keys. */
 const layer = (name: string, extra = ""): string =>
-  `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
+  `apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
 
 /**
  * The registry contract as a vitest suite: every route, every problem code and every publish
@@ -838,7 +838,7 @@ export function registryConformance(
           ref: "team/web",
           os: "linux",
           layers,
-          zzpersona: answer.body.manifest.zzpersona,
+          donn: answer.body.manifest.donn,
           readFile,
         });
         expect(local.bundle).toBeDefined();

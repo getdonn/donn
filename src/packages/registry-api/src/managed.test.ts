@@ -1,10 +1,10 @@
-import type { ManagedCompiler, ManagedInput } from "@zzpersona/adapter-sdk";
+import type { ManagedCompiler, ManagedInput } from "@getdonn/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import { compileFromSource } from "./managed.js";
 
 const docs: Record<string, unknown> = {
   "org/acme": {
-    apiVersion: "zzpersona/v0",
+    apiVersion: "donn/v0",
     kind: "Persona",
     metadata: { name: "acme" },
     instructions: [{ id: "conduct", file: "./instructions/conduct.md" }],
@@ -12,7 +12,7 @@ const docs: Record<string, unknown> = {
     locks: ["instructions[conduct]", "hooks.pre-tool-use[guard]"],
   },
   "team/payments": {
-    apiVersion: "zzpersona/v0",
+    apiVersion: "donn/v0",
     kind: "Persona",
     metadata: { name: "payments" },
     extends: ["org/acme"],
@@ -59,13 +59,13 @@ describe("compileFromSource", () => {
       ref: "team/payments",
       os: "linux",
       layers,
-      zzpersona: "1.2.3",
+      donn: "1.2.3",
       readFile: read,
     });
     expect(seen.wanted).toEqual(["org/acme", "team/payments"]);
     expect(seen.input).toMatchObject({
       os: "linux",
-      zzpersona: "1.2.3",
+      donn: "1.2.3",
       layers,
       texts: {
         "org/instructions/conduct.md": "bytes of org/instructions/conduct.md",
@@ -83,7 +83,7 @@ describe("compileFromSource", () => {
       ref: "team/payments",
       os: "macos",
       layers: [],
-      zzpersona: "0",
+      donn: "0",
       readFile: read,
     });
     const provenance = seen.input!.provenance!;
@@ -107,7 +107,7 @@ describe("compileFromSource", () => {
         ref: "org/acme",
         os: "linux",
         layers: [],
-        zzpersona: "0",
+        donn: "0",
         readFile: async (path) => {
           throw new Error(`cannot read ${path}`);
         },

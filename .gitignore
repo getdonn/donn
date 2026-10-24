@@ -11,7 +11,7 @@ coverage/
 .turbo/
 
 # Persona builds (may contain resolved secrets)
-.zzpersona/build/
+.donn/build/
 
 # Debug
 npm-debug.log*

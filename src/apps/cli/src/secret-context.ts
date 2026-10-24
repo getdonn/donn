@@ -1,4 +1,4 @@
-import type { SecretContext } from "@zzpersona/secrets";
+import type { SecretContext } from "@getdonn/secrets";
 import type { CliIo } from "./cli.js";
 
 /** The context secret backends run in: the user's environment and the secret probe. */

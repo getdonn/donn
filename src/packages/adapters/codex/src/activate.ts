@@ -1,4 +1,4 @@
-import type { ActivateInput, ActivationPlan } from "@zzpersona/adapter-sdk";
+import type { ActivateInput, ActivationPlan } from "@getdonn/adapter-sdk";
 import { INSTRUCTIONS, LAUNCH, type LaunchSpec } from "./compile.js";
 import { tomlKey, tomlString, tomlValue } from "./toml.js";
 

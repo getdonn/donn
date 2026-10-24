@@ -1,4 +1,4 @@
-apiVersion: zzpersona/v0
+apiVersion: donn/v0
 kind: Persona
 metadata:
   name: org-base

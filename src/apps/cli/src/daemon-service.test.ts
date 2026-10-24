@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Platform, Probe } from "@zzpersona/adapter-sdk";
+import type { Platform, Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
 import { CliError } from "./errors.js";
@@ -25,7 +25,7 @@ import {
 } from "./daemon/service.js";
 import { seed, zz } from "./test/seed.js";
 
-// zzpersona daemon install|uninstall, and the service seen from start, run, status and doctor.
+// donn daemon install|uninstall, and the service seen from start, run, status and doctor.
 // launchctl and systemctl are never run: a fake probe records the calls. See
 // docs/planning/16-daemon-service.md §1.
 
@@ -33,11 +33,11 @@ const GOLDEN = join(import.meta.dirname, "../test/golden/service");
 const uid = process.getuid!();
 
 const SPEC: ServiceSpec = {
-  command: ["/u/bin/zzpersona", "daemon", "run"],
+  command: ["/u/bin/donn", "daemon", "run"],
   env: {
     PATH: "/u/bin:/usr/bin",
-    ZZPERSONA_HOME: "/h",
-    ZZPERSONA_SERVICE: "1",
+    DONN_HOME: "/h",
+    DONN_SERVICE: "1",
   },
   log: "/h/daemon/daemon.log",
 };
@@ -45,7 +45,7 @@ const SPEC: ServiceSpec = {
 let root: string;
 let daemons: Daemon[];
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-service-"));
+  root = mkdtempSync(join(tmpdir(), "donn-service-"));
   daemons = [];
 });
 afterEach(async () => {
@@ -94,18 +94,18 @@ function launchd(env: NodeJS.ProcessEnv = {}) {
   return { ...fake, manager };
 }
 
-/** A folder holding an executable `zzpersona`, for PATH. */
+/** A folder holding an executable `donn`, for PATH. */
 function binWithCli(): string {
   const bin = join(root, "bin");
   mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, "zzpersona"), "#!/bin/sh\n");
-  chmodSync(join(bin, "zzpersona"), 0o755);
+  writeFileSync(join(bin, "donn"), "#!/bin/sh\n");
+  chmodSync(join(bin, "donn"), 0o755);
   return bin;
 }
 
 /**
  * Write a service file as `install` would, without loading anything; it serves `home`, or with
- * `null` the default home (no ZZPERSONA_HOME).
+ * `null` the default home (no DONN_HOME).
  */
 function writeServiceFile(
   manager: ServiceManager,
@@ -113,13 +113,13 @@ function writeServiceFile(
   home: string | null = zzHome(),
 ) {
   mkdirSync(dirname(manager.path), { recursive: true });
-  const { ZZPERSONA_HOME: _, ...env } = SPEC.env;
+  const { DONN_HOME: _, ...env } = SPEC.env;
   writeFileSync(
     manager.path,
     manager.render({
       ...SPEC,
       command: [command, "daemon", "run"],
-      env: home === null ? env : { ...env, ZZPERSONA_HOME: home },
+      env: home === null ? env : { ...env, DONN_HOME: home },
     }),
   );
 }
@@ -137,7 +137,7 @@ async function inProcessDaemon(
 describe("the service files", () => {
   it("renders the plist", () => {
     expect(launchd().manager.render(SPEC)).toBe(
-      readFileSync(join(GOLDEN, "zzpersona.daemon.plist"), "utf8"),
+      readFileSync(join(GOLDEN, "dev.getdonn.daemon.plist"), "utf8"),
     );
   });
 
@@ -147,7 +147,7 @@ describe("the service files", () => {
       probe: fakeProbe("linux").probe,
     })!;
     expect(manager.render(SPEC)).toBe(
-      readFileSync(join(GOLDEN, "zzpersona-daemon.service"), "utf8"),
+      readFileSync(join(GOLDEN, "donn-daemon.service"), "utf8"),
     );
   });
 
@@ -155,7 +155,7 @@ describe("the service files", () => {
     const odd = '/a b&<c>:%x"y';
     const spec: ServiceSpec = {
       ...SPEC,
-      command: [`${odd}/zzpersona`, "daemon", "run"],
+      command: [`${odd}/donn`, "daemon", "run"],
       env: { ...SPEC.env, PATH: odd },
     };
     const mac = launchd().manager;
@@ -163,7 +163,7 @@ describe("the service files", () => {
       '<string>/a b&amp;&lt;c&gt;:%x"y</string>',
     );
     await mac.install(spec);
-    expect(await installedCommand(mac)).toBe(`${odd}/zzpersona`);
+    expect(await installedCommand(mac)).toBe(`${odd}/donn`);
 
     const linux = serviceManager({
       env: { HOME: userHome() },
@@ -171,9 +171,9 @@ describe("the service files", () => {
     })!;
     const unit = linux.render(spec);
     expect(unit).toContain('Environment="PATH=/a b&<c>:%%x\\"y"');
-    expect(unit).toContain('ExecStart="/a b&<c>:%%x\\"y/zzpersona" daemon run');
+    expect(unit).toContain('ExecStart="/a b&<c>:%%x\\"y/donn" daemon run');
     await linux.install(spec);
-    expect(await installedCommand(linux)).toBe(`${odd}/zzpersona`);
+    expect(await installedCommand(linux)).toBe(`${odd}/donn`);
   });
 });
 
@@ -182,11 +182,11 @@ describe("the service managers", () => {
     const { calls, manager } = launchd();
     const plist = join(
       userHome(),
-      "Library/LaunchAgents/zzpersona.daemon.plist",
+      "Library/LaunchAgents/dev.getdonn.daemon.plist",
     );
     expect(manager).toMatchObject({
       kind: "launchd",
-      label: "zzpersona.daemon",
+      label: "dev.getdonn.daemon",
       path: plist,
     });
     expect(await installedCommand(manager)).toBeUndefined();
@@ -195,24 +195,24 @@ describe("the service managers", () => {
     await manager.install(SPEC);
     expect(readFileSync(plist, "utf8")).toBe(manager.render(SPEC));
     expect(statSync(plist).mode & 0o777).toBe(0o644);
-    expect(await installedCommand(manager)).toBe("/u/bin/zzpersona");
+    expect(await installedCommand(manager)).toBe("/u/bin/donn");
     await manager.start();
     expect(await manager.loaded()).toBe(true);
     await manager.uninstall();
     expect(existsSync(plist)).toBe(false);
 
     const install = [
-      `launchctl bootout gui/${uid}/zzpersona.daemon`,
-      `launchctl print gui/${uid}/zzpersona.daemon`,
+      `launchctl bootout gui/${uid}/dev.getdonn.daemon`,
+      `launchctl print gui/${uid}/dev.getdonn.daemon`,
       `launchctl bootstrap gui/${uid} ${plist}`,
     ];
     expect(calls).toEqual([
       ...install,
       ...install,
-      `launchctl print gui/${uid}/zzpersona.daemon`,
-      `launchctl kickstart gui/${uid}/zzpersona.daemon`,
-      `launchctl print gui/${uid}/zzpersona.daemon`,
-      `launchctl bootout gui/${uid}/zzpersona.daemon`,
+      `launchctl print gui/${uid}/dev.getdonn.daemon`,
+      `launchctl kickstart gui/${uid}/dev.getdonn.daemon`,
+      `launchctl print gui/${uid}/dev.getdonn.daemon`,
+      `launchctl bootout gui/${uid}/dev.getdonn.daemon`,
     ]);
   });
 
@@ -223,7 +223,7 @@ describe("the service managers", () => {
       env: { HOME: userHome(), XDG_CONFIG_HOME: config },
       probe,
     })!;
-    const unit = join(config, "systemd/user/zzpersona-daemon.service");
+    const unit = join(config, "systemd/user/donn-daemon.service");
     expect(manager).toMatchObject({ kind: "systemd", path: unit });
 
     await manager.install(SPEC);
@@ -236,27 +236,27 @@ describe("the service managers", () => {
     expect(existsSync(unit)).toBe(false);
 
     const install = [
-      "systemctl --user disable --now zzpersona-daemon.service",
+      "systemctl --user disable --now donn-daemon.service",
       "systemctl --user daemon-reload",
-      "systemctl --user enable --now zzpersona-daemon.service",
+      "systemctl --user enable --now donn-daemon.service",
     ];
     expect(calls).toEqual([
       ...install,
       ...install,
-      "systemctl --user is-enabled zzpersona-daemon.service",
-      "systemctl --user start zzpersona-daemon.service",
-      "systemctl --user is-enabled zzpersona-daemon.service",
-      "systemctl --user disable --now zzpersona-daemon.service",
+      "systemctl --user is-enabled donn-daemon.service",
+      "systemctl --user start donn-daemon.service",
+      "systemctl --user is-enabled donn-daemon.service",
+      "systemctl --user disable --now donn-daemon.service",
       "systemctl --user daemon-reload",
     ]);
   });
 
   it("start loads a service that is not loaded", async () => {
     const mac = launchd();
-    writeServiceFile(mac.manager, "/u/bin/zzpersona");
+    writeServiceFile(mac.manager, "/u/bin/donn");
     await mac.manager.start();
     expect(mac.calls).toEqual([
-      `launchctl print gui/${uid}/zzpersona.daemon`,
+      `launchctl print gui/${uid}/dev.getdonn.daemon`,
       `launchctl bootstrap gui/${uid} ${mac.manager.path}`,
     ]);
 
@@ -266,9 +266,9 @@ describe("the service managers", () => {
     const linux = serviceManager({ env: { HOME: userHome() }, probe })!;
     await linux.start();
     expect(calls).toEqual([
-      "systemctl --user is-enabled zzpersona-daemon.service",
+      "systemctl --user is-enabled donn-daemon.service",
       "systemctl --user daemon-reload",
-      "systemctl --user enable --now zzpersona-daemon.service",
+      "systemctl --user enable --now donn-daemon.service",
     ]);
   });
 
@@ -278,18 +278,18 @@ describe("the service managers", () => {
       probe: fakeProbe("linux").probe,
     })!;
     expect(manager.path).toBe(
-      join(userHome(), ".config/systemd/user/zzpersona-daemon.service"),
+      join(userHome(), ".config/systemd/user/donn-daemon.service"),
     );
   });
 
   it("takes a test-only label", () => {
-    const mac = launchd({ ZZPERSONA_SERVICE_LABEL: "zzpersona.daemon.e2e-1" });
-    expect(mac.manager.label).toBe("zzpersona.daemon.e2e-1");
+    const mac = launchd({ DONN_SERVICE_LABEL: "dev.getdonn.daemon.e2e-1" });
+    expect(mac.manager.label).toBe("dev.getdonn.daemon.e2e-1");
     expect(mac.manager.path).toBe(
-      join(userHome(), "Library/LaunchAgents/zzpersona.daemon.e2e-1.plist"),
+      join(userHome(), "Library/LaunchAgents/dev.getdonn.daemon.e2e-1.plist"),
     );
     const linux = serviceManager({
-      env: { HOME: userHome(), ZZPERSONA_SERVICE_LABEL: "zz-e2e" },
+      env: { HOME: userHome(), DONN_SERVICE_LABEL: "zz-e2e" },
       probe: fakeProbe("linux").probe,
     })!;
     expect(linux.path).toBe(
@@ -386,7 +386,7 @@ describe("the service managers", () => {
   it("a failed reinstall puts the working file back and loads it again", async () => {
     const next: ServiceSpec = {
       ...SPEC,
-      command: ["/new/bin/zzpersona", "daemon", "run"],
+      command: ["/new/bin/donn", "daemon", "run"],
     };
     for (const [platform, step] of [
       ["darwin", "bootstrap"],
@@ -418,7 +418,7 @@ describe("the service managers", () => {
       env: { HOME: userHome() },
       probe: fakeProbe("linux", (call) => call.includes("daemon-reload")).probe,
     })!;
-    writeServiceFile(linux, "/u/bin/zzpersona");
+    writeServiceFile(linux, "/u/bin/donn");
     await linux.uninstall();
     expect(existsSync(linux.path)).toBe(false);
   });
@@ -433,10 +433,10 @@ describe("the service managers", () => {
   });
 });
 
-describe("zzpersona daemon install|uninstall", () => {
+describe("donn daemon install|uninstall", () => {
   const json = (r: { stdout: string }) => JSON.parse(r.stdout);
 
-  it("daemon install refuses without zzpersona on PATH", async () => {
+  it("daemon install refuses without donn on PATH", async () => {
     const r = await zz(["daemon", "install", "--json"], {
       cwd: root,
       home: zzHome(),
@@ -462,7 +462,7 @@ describe("zzpersona daemon install|uninstall", () => {
         writeServiceFile(base, spec.command[0]!);
         // The service's daemon comes up a little later, as launchd's would.
         setTimeout(
-          () => void inProcessDaemon(zzHome(), { ZZPERSONA_SERVICE: "1" }),
+          () => void inProcessDaemon(zzHome(), { DONN_SERVICE: "1" }),
           50,
         );
       },
@@ -482,11 +482,11 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(stoppedFirst).toBe(true);
     expect(specs).toEqual([
       {
-        command: [join(bin, "zzpersona"), "daemon", "run"],
+        command: [join(bin, "donn"), "daemon", "run"],
         env: {
           PATH: `${bin}:/usr/bin`,
-          ZZPERSONA_HOME: zzHome(),
-          ZZPERSONA_SERVICE: "1",
+          DONN_HOME: zzHome(),
+          DONN_SERVICE: "1",
         },
         log: daemonPaths(zzHome()).log,
       },
@@ -494,7 +494,7 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(json(r)).toEqual({
       installed: true,
       path: base.path,
-      command: join(bin, "zzpersona"),
+      command: join(bin, "donn"),
       pid: process.pid,
     });
 
@@ -507,7 +507,7 @@ describe("zzpersona daemon install|uninstall", () => {
     });
   });
 
-  it("leaves ZZPERSONA_HOME out of the file when it is not set", async () => {
+  it("leaves DONN_HOME out of the file when it is not set", async () => {
     const bin = binWithCli();
     const base = launchd().manager;
     const specs: ServiceSpec[] = [];
@@ -515,7 +515,7 @@ describe("zzpersona daemon install|uninstall", () => {
       ...base,
       install: async (spec) => {
         specs.push(spec);
-        void inProcessDaemon(join(userHome(), ".zzpersona"));
+        void inProcessDaemon(join(userHome(), ".donn"));
       },
     };
     const r = await zz(["daemon", "install"], {
@@ -527,10 +527,10 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(r.stdout).toBe(
       `service installed (${base.path}); daemon running (pid ${process.pid})\n`,
     );
-    expect(specs[0]!.env).toEqual({ PATH: bin, ZZPERSONA_SERVICE: "1" });
+    expect(specs[0]!.env).toEqual({ PATH: bin, DONN_SERVICE: "1" });
   });
 
-  it("writes a relative ZZPERSONA_HOME as an absolute path", async () => {
+  it("writes a relative DONN_HOME as an absolute path", async () => {
     const bin = binWithCli();
     const base = launchd().manager;
     const specs: ServiceSpec[] = [];
@@ -538,16 +538,16 @@ describe("zzpersona daemon install|uninstall", () => {
       ...base,
       install: async (spec) => {
         specs.push(spec);
-        await inProcessDaemon(join(root, "rel"), { ZZPERSONA_SERVICE: "1" });
+        await inProcessDaemon(join(root, "rel"), { DONN_SERVICE: "1" });
       },
     };
     const r = await zz(["daemon", "install"], {
       cwd: root,
-      env: { HOME: userHome(), PATH: bin, ZZPERSONA_HOME: "rel" },
+      env: { HOME: userHome(), PATH: bin, DONN_HOME: "rel" },
       service,
     });
     expect(r.code).toBe(0);
-    expect(specs[0]!.env.ZZPERSONA_HOME).toBe(join(root, "rel"));
+    expect(specs[0]!.env.DONN_HOME).toBe(join(root, "rel"));
     expect(specs[0]!.log).toBe(daemonPaths(join(root, "rel")).log);
   });
 
@@ -579,13 +579,13 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(r.code).toBe(1);
     expect(json(r).error).toMatchObject({
       code: "daemon-start",
-      message: expect.stringContaining("journalctl --user -u zzpersona-daemon"),
+      message: expect.stringContaining("journalctl --user -u donn-daemon"),
     });
   }, 10_000);
 
   it("daemon start falls back to a detached daemon when the service will not start", async () => {
     const base = launchd().manager;
-    writeServiceFile(base, "/u/bin/zzpersona");
+    writeServiceFile(base, "/u/bin/donn");
     let spawned = 0;
     const refused = async () => {
       throw new CliError("service", "systemctl --user start failed: no bus");
@@ -605,7 +605,7 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(json(r)).toMatchObject({ running: true, already: false });
 
     // The service's error shows only when the fallback fails too.
-    writeServiceFile(base, "/u/bin/zzpersona", join(root, "other"));
+    writeServiceFile(base, "/u/bin/donn", join(root, "other"));
     const both = await zz(["daemon", "start", "--json"], {
       cwd: root,
       home: join(root, "other"),
@@ -633,10 +633,10 @@ describe("zzpersona daemon install|uninstall", () => {
     const none = await zz(["daemon", "uninstall"], options);
     expect(none).toMatchObject({ code: 0, stdout: "not installed\n" });
     // Only asked whether a job is loaded without its file.
-    expect(calls).toEqual([`launchctl print gui/${uid}/zzpersona.daemon`]);
+    expect(calls).toEqual([`launchctl print gui/${uid}/dev.getdonn.daemon`]);
     calls.length = 0;
 
-    writeServiceFile(manager, "/u/bin/zzpersona");
+    writeServiceFile(manager, "/u/bin/donn");
     const r = await zz(["daemon", "uninstall", "--json"], options);
     expect(r.code).toBe(0);
     expect(json(r)).toEqual({
@@ -645,7 +645,7 @@ describe("zzpersona daemon install|uninstall", () => {
       path: manager.path,
     });
     expect(existsSync(manager.path)).toBe(false);
-    expect(calls).toEqual([`launchctl bootout gui/${uid}/zzpersona.daemon`]);
+    expect(calls).toEqual([`launchctl bootout gui/${uid}/dev.getdonn.daemon`]);
   });
 
   it("daemon install and uninstall say when the service served another home", async () => {
@@ -656,7 +656,7 @@ describe("zzpersona daemon install|uninstall", () => {
       ...base,
       install: async (spec) => {
         writeServiceFile(base, spec.command[0]!);
-        await inProcessDaemon(zzHome(), { ZZPERSONA_SERVICE: "1" });
+        await inProcessDaemon(zzHome(), { DONN_SERVICE: "1" });
       },
       uninstall: async () => rmSync(base.path),
     };
@@ -667,7 +667,7 @@ describe("zzpersona daemon install|uninstall", () => {
       service,
     };
 
-    writeServiceFile(base, "/u/bin/zzpersona", other);
+    writeServiceFile(base, "/u/bin/donn", other);
     const r = await zz(["daemon", "install"], options);
     expect(r.code).toBe(0);
     expect(r.stdout).toBe(
@@ -676,7 +676,7 @@ describe("zzpersona daemon install|uninstall", () => {
     );
     await Promise.all(daemons.splice(0).map((d) => d.close()));
 
-    writeServiceFile(base, "/u/bin/zzpersona", other);
+    writeServiceFile(base, "/u/bin/donn", other);
     const j = await zz(["daemon", "install", "--json"], options);
     expect(JSON.parse(j.stdout)).toMatchObject({
       installed: true,
@@ -689,12 +689,12 @@ describe("zzpersona daemon install|uninstall", () => {
     expect(JSON.parse(same.stdout).replaced).toBeUndefined();
     await Promise.all(daemons.splice(0).map((d) => d.close()));
 
-    writeServiceFile(base, "/u/bin/zzpersona", other);
+    writeServiceFile(base, "/u/bin/donn", other);
     const u = await zz(["daemon", "uninstall"], options);
     expect(u.stdout).toBe(
       `removing the service for ${other}\nservice uninstalled (${base.path})\n`,
     );
-    writeServiceFile(base, "/u/bin/zzpersona", other);
+    writeServiceFile(base, "/u/bin/donn", other);
     const uj = await zz(["daemon", "uninstall", "--json"], options);
     expect(JSON.parse(uj.stdout)).toEqual({
       installed: false,
@@ -718,11 +718,11 @@ describe("zzpersona daemon install|uninstall", () => {
     const r = await zz(["daemon", "uninstall"], options);
     expect(r).toMatchObject({
       code: 0,
-      stdout: `service unloaded (zzpersona.daemon); its file was already gone\n`,
+      stdout: `service unloaded (dev.getdonn.daemon); its file was already gone\n`,
     });
     expect(calls).toEqual([
-      `launchctl print gui/${uid}/zzpersona.daemon`,
-      `launchctl bootout gui/${uid}/zzpersona.daemon`,
+      `launchctl print gui/${uid}/dev.getdonn.daemon`,
+      `launchctl bootout gui/${uid}/dev.getdonn.daemon`,
     ]);
     expect(await manager.loaded()).toBe(false);
 
@@ -738,7 +738,7 @@ describe("zzpersona daemon install|uninstall", () => {
 
   it("daemon start uses the service when installed", async () => {
     const base = launchd().manager;
-    writeServiceFile(base, "/u/bin/zzpersona");
+    writeServiceFile(base, "/u/bin/donn");
     let started = 0;
     const r = await zz(["daemon", "start", "--json"], {
       cwd: root,
@@ -748,7 +748,7 @@ describe("zzpersona daemon install|uninstall", () => {
         ...base,
         start: async () => {
           started++;
-          await inProcessDaemon(zzHome(), { ZZPERSONA_SERVICE: "1" });
+          await inProcessDaemon(zzHome(), { DONN_SERVICE: "1" });
         },
       },
       spawnDaemon: async () => {
@@ -773,7 +773,7 @@ describe("zzpersona daemon install|uninstall", () => {
           ...base,
           start: async () => {
             started++;
-            await inProcessDaemon(home ?? join(userHome(), ".zzpersona"));
+            await inProcessDaemon(home ?? join(userHome(), ".donn"));
           },
         },
         spawnDaemon: async (h) => {
@@ -782,7 +782,7 @@ describe("zzpersona daemon install|uninstall", () => {
         },
       });
 
-    writeServiceFile(base, "/u/bin/zzpersona", join(root, "a"));
+    writeServiceFile(base, "/u/bin/donn", join(root, "a"));
     expect((await start(join(root, "b"))).code).toBe(0);
     expect({ started, spawned }).toEqual({ started: 0, spawned: 1 });
 
@@ -792,8 +792,8 @@ describe("zzpersona daemon install|uninstall", () => {
     await Promise.all(daemons.splice(0).map((d) => d.close()));
     started = 0;
 
-    // No ZZPERSONA_HOME in the file: it serves the default home.
-    writeServiceFile(base, "/u/bin/zzpersona", null);
+    // No DONN_HOME in the file: it serves the default home.
+    writeServiceFile(base, "/u/bin/donn", null);
     expect((await start()).code).toBe(0);
     expect({ started, spawned }).toEqual({ started: 1, spawned: 1 });
     expect((await start(join(root, "c"))).code).toBe(0);
@@ -822,7 +822,7 @@ describe("the service elsewhere", () => {
     const base = launchd().manager;
     const service: ServiceManager = { ...base, loaded: async () => false };
     const other = join(root, "other");
-    writeServiceFile(base, join(root, "gone/zzpersona"), other);
+    writeServiceFile(base, join(root, "gone/donn"), other);
     const r = await zz(["daemon", "status"], {
       cwd: root,
       home: zzHome(),
@@ -848,7 +848,7 @@ describe("the service elsewhere", () => {
         ).checks.find((c) => c.id === "daemon"),
       ).toMatchObject({
         status: "warn",
-        fix: "zzpersona daemon stop && zzpersona daemon start",
+        fix: "donn daemon stop && donn daemon start",
       });
     } finally {
       s.cleanup();
@@ -859,7 +859,7 @@ describe("the service elsewhere", () => {
     await inProcessDaemon(zzHome());
     const run = (env: NodeJS.ProcessEnv) =>
       zz(["daemon", "run", "--json"], { cwd: root, home: zzHome(), env });
-    const service = await run({ ZZPERSONA_SERVICE: "1" });
+    const service = await run({ DONN_SERVICE: "1" });
     expect(service.code).toBe(0);
     expect(JSON.parse(service.stdout)).toEqual({
       running: true,
@@ -871,7 +871,7 @@ describe("the service elsewhere", () => {
   });
 
   it("the daemon reports whether it is the service's", async () => {
-    await inProcessDaemon(zzHome(), { ZZPERSONA_SERVICE: "1" });
+    await inProcessDaemon(zzHome(), { DONN_SERVICE: "1" });
     await inProcessDaemon(join(root, "other"));
     const service = async (home: string) =>
       (await (await connectDaemon(home))!.status()).service;
@@ -939,16 +939,16 @@ describe("the service elsewhere", () => {
         id: "daemon",
         status: "warn",
         message: `the daemon service is installed but not loaded (${base.path})`,
-        fix: "zzpersona daemon install",
+        fix: "donn daemon install",
       });
 
       loaded.value = true;
-      writeServiceFile(base, join(root, "gone/zzpersona"));
+      writeServiceFile(base, join(root, "gone/donn"));
       expect(await doctor()).toEqual({
         id: "daemon",
         status: "warn",
-        message: `the daemon service runs ${join(root, "gone/zzpersona")}, which no longer exists`,
-        fix: "zzpersona daemon install",
+        message: `the daemon service runs ${join(root, "gone/donn")}, which no longer exists`,
+        fix: "donn daemon install",
       });
 
       writeServiceFile(base, process.execPath);
@@ -958,7 +958,7 @@ describe("the service elsewhere", () => {
         id: "daemon",
         status: "warn",
         message: `daemon runs 0.0.1, CLI is ${cliVersion()}`,
-        fix: "zzpersona daemon install",
+        fix: "donn daemon install",
       });
     } finally {
       s.cleanup();

@@ -4,6 +4,7 @@
 > `02-persona-spec.md` (layers, locks), `03-architecture.md` → "Control plane", `06-cli-core-loop.md`
 > (`store-local`, secrets), `08-cli-reach.md` (the keychain provider) and `16-daemon-service.md`.
 > Built as a `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Phase 3 decomposition
 
@@ -24,7 +25,7 @@ Each sub-project gets its own spec.
 | H | Minimal console | private | B, C |
 
 Before B: the private repo needs the OSS packages published. GitHub Packages scopes npm packages
-to the repository owner, so `@zzpersona/*` needs a `zzpersona` GitHub org (or the chosen name's).
+to the repository owner, so `@getdonn/*` needs a `donn` GitHub org (or the chosen name's).
 Decided when B starts.
 
 > Amended 2026-10-22: F is now "Gateway adapter v1: Bifrost and LiteLLM": an OSS `list`/`resolve`
@@ -50,15 +51,15 @@ conformance kit that the real server (B) must pass.
 | A published layer wins over a same-name local one, with a warning; `--local` and `publish --dry-run` for authoring | Local wins; separate `registry://` refs | What a team runs is what was published; a local edit is drift, not a silent override; the same persona works online and offline |
 | Ancestors float to the latest published version; publishing a parent is checked against its published descendants | Pin ancestors at publish; floating with optional `@n` pins | An org baseline change reaches every team on the next pull without each team republishing; pins can come later if asked for |
 | Bearer tokens now (keychain, env override for CI); C adds the OIDC device flow | Device flow now against a fake IdP; no auth until C | Nothing in A changes shape when C lands; OIDC decisions (issuer, scopes, refresh) belong with C |
-| Zod-first contract in `@zzpersona/registry-api`, OpenAPI generated | OpenAPI YAML first with generated types; Hono RPC | One source of truth already in the repo's idiom; a typed RPC client would make the OSS client import the private server |
+| Zod-first contract in `@getdonn/registry-api`, OpenAPI generated | OpenAPI YAML first with generated types; Hono RPC | One source of truth already in the repo's idiom; a typed RPC client would make the OSS client import the private server |
 | A published version is a bundle: the YAML plus every file it references | YAML only | Layers point at instruction files, skill folders and hook scripts relative to themselves |
 | One registry per home | A list of registries | YAGNI; a mirror can come later |
 
-## 1. The contract (`@zzpersona/registry-api`)
+## 1. The contract (`@getdonn/registry-api`)
 
 - Zod schemas for every request and response, and `ROUTES` (method, path, request and response
   schemas) so the client and the server agree on paths. `openapi.json` (OpenAPI 3.1) is generated
-  at build from `z.toJSONSchema`, as `@zzpersona/spec` already does for its schemas; no new
+  at build from `z.toJSONSchema`, as `@getdonn/spec` already does for its schemas; no new
   dependency. The generated file is committed as a golden file and published with the package.
 - Every route takes `Authorization: Bearer <token>`. Errors are `application/problem+json`:
   `{ type, title, status, detail, problems?: [{ code, ref?, path?, message }] }`.
@@ -101,9 +102,9 @@ The contract defines them, the mock implements them, and B's server must match t
 5. `baseVersion` must be the latest (0 for a new ref). A digest equal to the latest is
    `unchanged`, no new version.
 
-## 3. The client (`@zzpersona/store-remote`)
+## 3. The client (`@getdonn/store-remote`)
 
-- **Cache:** `~/.zzpersona/cache/registry/<ref>/<version>/` holds a version's YAML (`layer.yaml`)
+- **Cache:** `~/.donn/cache/registry/<ref>/<version>/` holds a version's YAML (`layer.yaml`)
   and its files. `index.json` holds the registry URL and each ref's current version and digest. A
   pull writes each new version to a temp folder, renames it into place, and writes `index.json`
   last; a pull that fails leaves the old cache in use. A changed registry URL clears the cache.
@@ -115,15 +116,15 @@ The contract defines them, the mock implements them, and B's server must match t
   layer's relative paths resolve against (today `dirname(ref)`). Published layers answer
   `.registry/<ref>`, and the store maps `.registry/<ref>/<path>` to that version's folder, so two
   published layers in one folder can each bundle their own `instructions/conduct.md`.
-- **Freshness:** `zzpersona claude`, `codex` and `switch` pull first when the cache is older than
+- **Freshness:** `donn claude`, `codex` and `switch` pull first when the cache is older than
   `registry.maxAge` (config, default 15 minutes), within a 1 s budget. On failure or timeout they
   use the cache and print once `registry unreachable; using cached layers from <age> ago`.
   `--dry-run` and `--json` runs never pull. Background sync in the daemon is a later slice.
 - **Tokens:** the keychain backend from spec 08 gains `set` and `delete` (macOS `security
   add-generic-password` / `delete-generic-password`, Linux `secret-tool store` / `clear`), service
-  `zzpersona-registry`, account the registry URL. Without a keychain (Windows, or none found) the
-  token goes to `~/.zzpersona/registry-token` at mode 0600 and `doctor` warns.
-  `ZZPERSONA_REGISTRY_TOKEN` overrides both. The token never appears in logs, errors or `--json`.
+  `donn-registry`, account the registry URL. Without a keychain (Windows, or none found) the
+  token goes to `~/.donn/registry-token` at mode 0600 and `doctor` warns.
+  `DONN_REGISTRY_TOKEN` overrides both. The token never appears in logs, errors or `--json`.
 - **Transport:** `https://` only, except loopback (`127.0.0.1`, `::1`, `localhost`) so the mock and
   local development work. Each request has a 10 s timeout (the freshness pull keeps its 1 s).
   Responses are validated with the contract's schemas; a response that does not match is
@@ -133,17 +134,17 @@ The contract defines them, the mock implements them, and B's server must match t
 
 All support `--json`.
 
-- `zzpersona login <url> [--token-stdin]`: reads the token (prompt without echo, or stdin), checks
+- `donn login <url> [--token-stdin]`: reads the token (prompt without echo, or stdin), checks
   it with `whoami`, saves `registry: { url }` to `config.yaml` and the token as above, prints
   `logged in to <url> as <subject>`. A refused token saves nothing.
-- `zzpersona logout`: removes the token; the URL and the cache stay.
-- `zzpersona whoami`: `<subject> at <url>`, or `not logged in`.
-- `zzpersona pull`: lists, fetches the versions whose digest changed, removes refs the registry no
+- `donn logout`: removes the token; the URL and the cache stay.
+- `donn whoami`: `<subject> at <url>`, or `not logged in`.
+- `donn pull`: lists, fetches the versions whose digest changed, removes refs the registry no
   longer lists; prints one line per change (`org/base 7 → 8`, `team/web new @1`, `team/old
   removed`) or `up to date`.
-- `zzpersona publish <ref> [--dry-run] [--force]`: bundles the local layer (from the personas
+- `donn publish <ref> [--dry-run] [--force]`: bundles the local layer (from the personas
   folder, never the cache), `baseVersion` from the cache, posts it; prints `published <ref> @<n>`,
-  `unchanged`, the dry-run diff, or each problem with its code. `stale-base` hints `zzpersona pull,
+  `unchanged`, the dry-run diff, or each problem with its code. `stale-base` hints `donn pull,
   then publish again`; `breaks-descendants` hints `--force`. A successful publish updates the cache.
 - **State:** `state.json` and `switch --json` gain `builtFrom: { "<ref>": <version> }` for the
   published layers a resolve used.
@@ -151,10 +152,10 @@ All support `--json`.
 
 ## 5. Mock server and conformance kit
 
-- `@zzpersona/registry-api/mock`: `startMockRegistry(options?) → { url, token, stop }`, an
+- `@getdonn/registry-api/mock`: `startMockRegistry(options?) → { url, token, stop }`, an
   in-memory `node:http` server on a random loopback port with a fixed token. It implements §1–§2
-  using `@zzpersona/resolver`.
-- `@zzpersona/registry-api/conformance`: `registryConformance(start)`, a vitest suite covering every
+  using `@getdonn/resolver`.
+- `@getdonn/registry-api/conformance`: `registryConformance(start)`, a vitest suite covering every
   route, every problem code and every publish rule. The mock runs it here; B runs it against the
   real server.
 
@@ -181,7 +182,7 @@ All support `--json`.
   `path-escapes-layer`, `not-publishable`.
 - Token: never in stdout, stderr or `--json`; `http://` to a non-loopback host refused.
 - **Check run, before the final review:** the built CLI against the mock started from a script:
-  login, publish the examples' `org/acme` and `team/web`, pull in a second temp home, `zzpersona
+  login, publish the examples' `org/acme` and `team/web`, pull in a second temp home, `donn
   claude --dry-run` in `examples/demo-app`.
 
 ## Non-goals
@@ -264,7 +265,7 @@ None.
 
 ## Note (2026-10-22)
 
-The §2 publish rules now live in `publishLayer` (`@zzpersona/registry-api`, spec 19,
+The §2 publish rules now live in `publishLayer` (`@getdonn/registry-api`, spec 19,
 `19-publish-engine.md`); the mock is an in-memory `LayerStore` on it, and the control plane will be
 a Postgres one. The wire contract above is unchanged.
 

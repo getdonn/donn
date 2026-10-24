@@ -11,12 +11,12 @@ export interface Output {
   stdout: string;
 }
 
-/** The session's zzpersona home; literal names, as the engine lists the variables a mod reads. */
+/** The session's donn home; literal names, as the engine lists the variables a mod reads. */
 async function homeOf($: Mod$): Promise<string | undefined> {
-  const home = await $.env.get("ZZPERSONA_HOME");
+  const home = await $.env.get("DONN_HOME");
   if (home) return home;
   const user = await $.env.get("HOME");
-  return user ? `${user}/.zzpersona` : undefined;
+  return user ? `${user}/.donn` : undefined;
 }
 
 /** A file's trimmed text, or undefined when it is missing or empty. */
@@ -32,7 +32,7 @@ async function post(
   token: string,
   body: string,
 ): Promise<{ status: number; output?: Output }> {
-  const reply = await $.http!.fetch("http://zzpersona/run", {
+  const reply = await $.http!.fetch("http://donn/run", {
     method: "POST",
     socketPath,
     headers: {

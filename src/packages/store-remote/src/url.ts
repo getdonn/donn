@@ -1,4 +1,4 @@
-import { routePath } from "@zzpersona/registry-api";
+import { routePath } from "@getdonn/registry-api";
 import { RegistryError } from "./error.js";
 
 const LOOPBACK = new Set(["127.0.0.1", "[::1]", "localhost"]);

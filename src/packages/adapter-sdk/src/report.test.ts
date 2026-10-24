@@ -1,4 +1,4 @@
-import type { ResolvedPersona } from "@zzpersona/spec";
+import type { ResolvedPersona } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import {
   annotateLocks,
@@ -7,7 +7,7 @@ import {
   UNDECLARED,
   type CompileReport,
 } from "./index.js";
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import { HOOK_EVENTS } from "@getdonn/spec";
 
 const pathsAndOutcomes = (entries: { path: string; outcome: string }[]) =>
   entries.map(({ path, outcome }) => ({ path, outcome }));

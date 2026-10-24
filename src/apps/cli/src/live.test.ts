@@ -18,7 +18,7 @@ beforeEach(() => {
     put(
       join(s.personas, `${ref}.yaml`),
       [
-        "apiVersion: zzpersona/v0",
+        "apiVersion: donn/v0",
         "kind: Persona",
         `metadata: { name: ${ref.split("/")[1]} }`,
         "extends: [org/base]",
@@ -39,12 +39,12 @@ function put(path: string, content: string) {
   writeFileSync(path, content);
 }
 
-/** A session launched on org/base, as `zzpersona claude` leaves it. */
+/** A session launched on org/base, as `donn claude` leaves it. */
 async function session(): Promise<string> {
   const plugin = join(s.root, "launched-plugin");
   put(
     join(plugin, ".claude-plugin/plugin.json"),
-    JSON.stringify({ name: "zzp-org--base" }),
+    JSON.stringify({ name: "donn-org--base" }),
   );
   return createSession(
     s.home,
@@ -58,7 +58,7 @@ const live = (args: string[]) =>
   zz(["live", ...args, "--json"], { cwd: s.repo, home: s.home });
 const children = (dir: string) => readdirSync(join(dir, "plugins")).sort();
 
-describe("zzpersona live", () => {
+describe("donn live", () => {
   it("swaps the persona plugin and records the live state", async () => {
     const dir = await session();
     const r = await live(["project/persona", "--session", dir]);
@@ -68,16 +68,16 @@ describe("zzpersona live", () => {
       persona: "project/persona",
       previous: "org/base",
       launched: "org/base",
-      plugin: "zzp-project--persona",
+      plugin: "donn-project--persona",
       held: ["mcp", "permissions", "settings"],
     });
     expect(state.instructions.split("\n")[0]).toBe(
-      "## zzpersona persona: project/persona",
+      "## donn persona: project/persona",
     );
-    expect(children(dir)).toEqual(["zzp-project--persona"]);
+    expect(children(dir)).toEqual(["donn-project--persona"]);
     expect(
       existsSync(
-        join(dir, "plugins/zzp-project--persona/.claude-plugin/plugin.json"),
+        join(dir, "plugins/donn-project--persona/.claude-plugin/plugin.json"),
       ),
     ).toBe(true);
     expect(JSON.parse(readFileSync(join(dir, "live.json"), "utf8"))).toEqual(
@@ -118,7 +118,7 @@ describe("zzpersona live", () => {
     for (const bad of ["team/nope", "team/payments"]) {
       const r = await live([bad, "--session", dir]);
       expect(r.code, bad).toBe(1);
-      expect(children(dir), bad).toEqual(["zzp-team--twin"]);
+      expect(children(dir), bad).toEqual(["donn-team--twin"]);
       expect(readFileSync(join(dir, "live.json"), "utf8"), bad).toBe(before);
     }
   });
@@ -136,7 +136,7 @@ describe("zzpersona live", () => {
     expect(await message(bare)).toMatchObject({
       code: "live-unavailable",
       message:
-        "live switching is unavailable: live switching needs a session started by zzpersona claude",
+        "live switching is unavailable: live switching needs a session started by donn claude",
     });
     const partial = await session();
     rmSync(join(partial, "plugins"), { recursive: true });
@@ -159,8 +159,8 @@ describe("zzpersona live", () => {
   });
 });
 
-describe("zzpersona live against the launch snapshot", () => {
-  /** A session launched on `ref`, with the snapshot zzpersona claude records. */
+describe("donn live against the launch snapshot", () => {
+  /** A session launched on `ref`, with the snapshot donn claude records. */
   async function launchedOn(ref: string, overlay = true): Promise<string> {
     const resolved = await zz(
       ["resolve", ref, "--json", ...(overlay ? [] : ["--no-overlay"])],
@@ -170,7 +170,7 @@ describe("zzpersona live against the launch snapshot", () => {
     const plugin = join(s.root, `plugin-${ref.replace("/", "-")}`);
     put(
       join(plugin, ".claude-plugin/plugin.json"),
-      JSON.stringify({ name: `zzp-${ref.replace("/", "--")}` }),
+      JSON.stringify({ name: `donn-${ref.replace("/", "--")}` }),
     );
     return createSession(
       s.home,
@@ -192,7 +192,7 @@ describe("zzpersona live against the launch snapshot", () => {
     put(
       join(s.personas, `${ref}.yaml`),
       [
-        "apiVersion: zzpersona/v0",
+        "apiVersion: donn/v0",
         "kind: Persona",
         `metadata: { name: ${ref.split("/")[1]} }`,
         "extends: [org/base]",

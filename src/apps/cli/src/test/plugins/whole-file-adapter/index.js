@@ -1,4 +1,4 @@
-import { defineAdapter } from "@zzpersona/adapter-sdk";
+import { defineAdapter } from "@getdonn/adapter-sdk";
 
 // Test-only: a file harness whose overlay owns a whole file (no block).
 

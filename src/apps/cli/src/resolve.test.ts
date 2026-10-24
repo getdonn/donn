@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { explain } from "@zzpersona/resolver";
+import { explain } from "@getdonn/resolver";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seed, zz, type Seeded } from "./test/seed.js";
 
@@ -11,7 +11,7 @@ beforeEach(() => {
 });
 afterEach(() => s.cleanup());
 
-describe("zzpersona resolve", () => {
+describe("donn resolve", () => {
   it("resolves the project persona in a repo", async () => {
     const r = await zz(["resolve"], { cwd: s.repo, home: s.home });
     expect(r.code).toBe(0);
@@ -56,7 +56,7 @@ describe("zzpersona resolve", () => {
     mkdirSync(join(s.personas, "team/x"), { recursive: true });
     writeFileSync(
       join(s.personas, "team/x/base.yaml"),
-      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: x-base\n",
+      "apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: x-base\n",
     );
     const r = await zz(["resolve", "base", "--json"], {
       cwd: s.repo,
@@ -96,7 +96,7 @@ describe("zzpersona resolve", () => {
   });
 
   it("expands ~ in the configured personas path", async () => {
-    const fakeHome = mkdtempSync(join(tmpdir(), "zzp-homedir-"));
+    const fakeHome = mkdtempSync(join(tmpdir(), "donn-homedir-"));
     try {
       writeFileSync(join(s.home, "config.yaml"), "personas: ~/p\n");
       const r = await zz(["resolve", "team/x"], {
@@ -114,7 +114,7 @@ describe("zzpersona resolve", () => {
   it("reports resolver errors as a JSON envelope", async () => {
     writeFileSync(
       join(s.personas, "team/broken.yaml"),
-      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: broken\nextends: [org/nope]\n",
+      "apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: broken\nextends: [org/nope]\n",
     );
     const r = await zz(["resolve", "team/broken", "--json"], {
       cwd: s.repo,

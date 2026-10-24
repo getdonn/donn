@@ -1,4 +1,4 @@
-import type { HookEvent, Ref, ResolvedPersona } from "@zzpersona/spec";
+import type { HookEvent, Ref, ResolvedPersona } from "@getdonn/spec";
 import type { ManagedCompiler } from "./managed.js";
 
 // The harness adapter contract. See docs/planning/05-adapter-sdk.md, sections 1–2.
@@ -155,7 +155,7 @@ export interface CapabilityMatrix {
 }
 
 export interface ReportEntry {
-  /** IR path grammar from @zzpersona/spec. */
+  /** IR path grammar from @getdonn/spec. */
   path: string;
   outcome: "approximated" | "advisory" | "dropped";
   reason: string;

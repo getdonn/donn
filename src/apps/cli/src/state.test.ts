@@ -18,7 +18,7 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 const temp = () => {
-  const dir = mkdtempSync(join(tmpdir(), "zzp-state-"));
+  const dir = mkdtempSync(join(tmpdir(), "donn-state-"));
   dirs.push(dir);
   return dir;
 };
@@ -30,7 +30,7 @@ describe("state.json", () => {
     const state = {
       version: 1 as const,
       default: "team/payments",
-      projects: { "/r/.zzpersona": "org/base" },
+      projects: { "/r/.donn": "org/base" },
     };
     await writeState(home, state);
     expect(await readState(home)).toEqual(state);
@@ -50,17 +50,17 @@ describe("state.json", () => {
 
   it("keys a symlinked project by its real path", async () => {
     const root = temp();
-    mkdirSync(join(root, "real/.zzpersona"), { recursive: true });
+    mkdirSync(join(root, "real/.donn"), { recursive: true });
     symlinkSync(join(root, "real"), join(root, "link"));
-    expect(await projectKey(join(root, "link/.zzpersona"))).toBe(
-      await projectKey(join(root, "real/.zzpersona")),
+    expect(await projectKey(join(root, "link/.donn"))).toBe(
+      await projectKey(join(root, "real/.donn")),
     );
   });
 });
 
 describe("updateState", () => {
   it("keeps both of two concurrent updates", async () => {
-    const home = mkdtempSync(join(tmpdir(), "zzp-state-"));
+    const home = mkdtempSync(join(tmpdir(), "donn-state-"));
     try {
       await Promise.all([
         updateState(home, (state) => {

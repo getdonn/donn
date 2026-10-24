@@ -6,7 +6,7 @@ import { DAEMON_TIMEOUT_MS, viaDaemon } from "./transport.js";
 // A stand-in host for the daemon route: files, stat, a socket that answers, and a clock the test
 // fires. See docs/planning/15-mod-transport.md, section 2.
 
-const HOME = "/home/u/.zzpersona";
+const HOME = "/home/u/.donn";
 const SOCK = `${HOME}/daemon/sock`;
 
 type Reply = { status: number; text: string } | Error | "never";
@@ -114,7 +114,7 @@ describe("viaDaemon", () => {
     });
     expect(h.requests).toEqual([
       {
-        url: "http://zzpersona/run",
+        url: "http://donn/run",
         init: {
           method: "POST",
           socketPath: SOCK,
@@ -131,9 +131,9 @@ describe("viaDaemon", () => {
     ]);
   });
 
-  it("finds the socket through where, under ZZPERSONA_HOME", async () => {
+  it("finds the socket through where, under DONN_HOME", async () => {
     const h = host({
-      env: { ZZPERSONA_HOME: "/z", HOME: "/home/u" },
+      env: { DONN_HOME: "/z", HOME: "/home/u" },
       files: { "/z/daemon/where": "/tmp/zz.sock\n", "/z/daemon/token": "k" },
       stat: { "/tmp/zz.sock": { kind: "other", isLink: false } },
       replies: [ran("{}")],
@@ -276,7 +276,7 @@ describe("runCli through the daemon", () => {
         ok: true,
         json: { from: "cli" },
       });
-      expect(h.runs).toEqual([["zzpersona", "list", "--json"]]);
+      expect(h.runs).toEqual([["donn", "list", "--json"]]);
     }
   });
 
@@ -304,7 +304,7 @@ describe("runCli through the daemon", () => {
       ok: false,
       code: "unavailable",
       reason:
-        "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
+        "start the daemon (donn daemon start), or allow the mod to run donn",
     });
   });
 

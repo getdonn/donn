@@ -16,11 +16,11 @@ import {
   bundleDigest,
   normalizeBundlePath,
   type LayerVersion,
-} from "@zzpersona/registry-api";
+} from "@getdonn/registry-api";
 import type { RegistryClient } from "./client.js";
 import { RegistryError } from "./error.js";
 
-// ~/.zzpersona/cache/registry/<ref>/@<version>-<12 hex of digest>/ holds layer.yaml and the bundled files; index.json
+// ~/.donn/cache/registry/<ref>/@<version>-<12 hex of digest>/ holds layer.yaml and the bundled files; index.json
 // names the current version of each ref. See docs/planning/18-registry-contract.md section 3.
 
 export interface CacheIndex {
@@ -189,7 +189,7 @@ async function withLock<T>(
     if (signal?.aborted) {
       throw new RegistryError(
         "timeout",
-        "the registry cache is locked by another zzpersona process",
+        "the registry cache is locked by another donn process",
       );
     }
     await sleep(50, undefined, signal ? { signal } : undefined).catch(() => {});

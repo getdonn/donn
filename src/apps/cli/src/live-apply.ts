@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, readdir, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { writeBuild } from "@zzpersona/executor";
+import { writeBuild } from "@getdonn/executor";
 import { prepareBuild } from "./build.js";
 import type { CliIo } from "./cli.js";
 import { createContext, resolvePersona } from "./context.js";
@@ -18,7 +18,7 @@ import {
   type LaunchSnapshot,
 } from "./session.js";
 
-// The swap behind `zzpersona live`: compile a persona and replace the session's plugin with it,
+// The swap behind `donn live`: compile a persona and replace the session's plugin with it,
 // recording what it now runs. Shared with the daemon. See docs/planning/10-live-switching.md §2
 // and 14-daemon.md §3.
 
@@ -66,9 +66,7 @@ export async function launchedOf(dir: string): Promise<Launched> {
     throw unavailable("the session folder is gone; relaunch");
   const launched = await readJson<Launched>(join(dir, "launched.json"));
   if (!launched)
-    throw unavailable(
-      "live switching needs a session started by zzpersona claude",
-    );
+    throw unavailable("live switching needs a session started by donn claude");
   if (!existsSync(sessionPlugins(dir)))
     throw unavailable("managed settings block --plugin-dir");
   return launched;

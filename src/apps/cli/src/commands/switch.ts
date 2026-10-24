@@ -8,7 +8,7 @@ import { selectPersona, type Selection } from "../select.js";
 import { projectKey, readState, updateState } from "../state.js";
 import { harnessReport, reportLines } from "../switch-report.js";
 
-// zzpersona switch: choose the persona for this project, or the default for everywhere else.
+// donn switch: choose the persona for this project, or the default for everywhere else.
 // See docs/planning/07-cli-daily-use.md, section 1.
 
 export interface SwitchOptions {

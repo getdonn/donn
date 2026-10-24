@@ -3,7 +3,7 @@ import type { CliIo } from "../cli.js";
 import { launch } from "../launch.js";
 import { buildHash, createSession, removeSession } from "../session.js";
 
-// `zzpersona codex`: the shared launch path with the Codex adapter. See docs/planning/12-codex.md.
+// `donn codex`: the shared launch path with the Codex adapter. See docs/planning/12-codex.md.
 // It registers a plugin-less session so the daemon can list it (spec 14 §2).
 
 export interface CodexOptions {

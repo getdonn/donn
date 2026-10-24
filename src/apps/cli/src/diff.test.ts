@@ -13,7 +13,7 @@ beforeEach(() => {
   put(
     join(s.personas, "team/platform.yaml"),
     [
-      "apiVersion: zzpersona/v0",
+      "apiVersion: donn/v0",
       "kind: Persona",
       "metadata: { name: platform }",
       "extends: [org/base]",
@@ -30,7 +30,7 @@ afterEach(() => s.cleanup());
 const run = (args: string[], cwd = s.root) =>
   zz(["diff", ...args], { cwd, home: s.home });
 
-describe("zzpersona diff", () => {
+describe("donn diff", () => {
   it("prints each difference with its layers", async () => {
     const r = await run(["team/payments", "team/platform", "--no-overlay"]);
     expect(r.code, r.stderr).toBe(0);

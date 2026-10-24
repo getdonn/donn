@@ -7,8 +7,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bundleDigest } from "@zzpersona/registry-api";
-import { startMockRegistry } from "@zzpersona/registry-api/mock";
+import { bundleDigest } from "@getdonn/registry-api";
+import { startMockRegistry } from "@getdonn/registry-api/mock";
 import {
   cacheFolder,
   pull,

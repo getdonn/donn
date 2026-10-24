@@ -3,8 +3,8 @@ import { lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { MANAGED_ROOTS } from "@zzpersona/adapter-claude-code";
-import type { ManagedOs } from "@zzpersona/adapter-sdk";
+import { MANAGED_ROOTS } from "@getdonn/adapter-claude-code";
+import type { ManagedOs } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { defaultOs } from "./build.js";
 
@@ -107,7 +107,7 @@ function canWriteRoot(root: string): boolean {
     if (parent === dir) return false;
     dir = parent;
   }
-  const probe = join(dir, `.zzpersona-admin-probe-${process.pid}`);
+  const probe = join(dir, `.donn-admin-probe-${process.pid}`);
   try {
     writeFileSync(probe, "");
     rmSync(probe, { force: true });

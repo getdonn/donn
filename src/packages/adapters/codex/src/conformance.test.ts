@@ -1,4 +1,4 @@
-import { conformanceSuite } from "@zzpersona/adapter-sdk/conformance/vitest";
+import { conformanceSuite } from "@getdonn/adapter-sdk/conformance/vitest";
 import adapter from "./index.js";
 
 // The shared conformance kit.

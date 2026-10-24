@@ -1,0 +1,35 @@
+{
+  "donn": "0.12.0",
+  "files": {
+    "managed-settings.d/50-donn.json": "dd8edbf4ec1e75c6ff031f711b35542e0825483758c599f03ff12bcf08132d42"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "os": "macos",
+  "report": {
+    "entries": [
+      {
+        "layer": "area/fintech",
+        "outcome": "enforced",
+        "path": "permissions.deny[Bash(rm -rf:*)]",
+        "reason": "lower scopes may add rules, never remove this one"
+      }
+    ],
+    "warnings": []
+  }
+}

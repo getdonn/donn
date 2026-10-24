@@ -7,9 +7,9 @@ import {
   normalizeBundlePath,
   referencedPaths,
   type BundleFile,
-} from "@zzpersona/registry-api";
-import { PersonaDocument } from "@zzpersona/spec";
-import type { LocalStore } from "@zzpersona/store-local";
+} from "@getdonn/registry-api";
+import { PersonaDocument } from "@getdonn/spec";
+import type { LocalStore } from "@getdonn/store-local";
 import { RegistryError } from "./error.js";
 
 const isMissing = (error: unknown) =>

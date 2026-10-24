@@ -1,5 +1,5 @@
-import type { Probe } from "@zzpersona/adapter-sdk";
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import type { Probe } from "@getdonn/adapter-sdk";
+import { HOOK_EVENTS } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import adapter from "./index.js";
 

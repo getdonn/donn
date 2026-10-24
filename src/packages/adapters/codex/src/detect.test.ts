@@ -1,4 +1,4 @@
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import adapter from "./index.js";
 

@@ -1,5 +1,5 @@
-import { renderBuild } from "@zzpersona/adapter-sdk";
-import { writeBuild } from "@zzpersona/executor";
+import { renderBuild } from "@getdonn/adapter-sdk";
+import { writeBuild } from "@getdonn/executor";
 import { prepareBuild, printReport } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";

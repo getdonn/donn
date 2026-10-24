@@ -200,10 +200,10 @@ export function buildOpenApi(): Record<string, unknown> {
   return {
     openapi: "3.1.0",
     info: {
-      title: "zzpersona registry",
+      title: "donn registry",
       version: "0.1.0",
       description:
-        "Publish layers and pull exactly what was published. Generated from @zzpersona/registry-api.",
+        "Publish layers and pull exactly what was published. Generated from @getdonn/registry-api.",
     },
     security: [{ bearer: [] }],
     paths,

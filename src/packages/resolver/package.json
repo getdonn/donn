@@ -1,5 +1,5 @@
 {
-  "name": "@zzpersona/resolver",
+  "name": "@getdonn/resolver",
   "version": "0.4.0",
   "private": true,
   "description": "Resolves a persona's extends DAG into the harness-neutral IR",
@@ -21,12 +21,12 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@zzpersona/spec": "workspace:*"
+    "@getdonn/spec": "workspace:*"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5",

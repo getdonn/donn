@@ -1,8 +1,8 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ManagedCompiler, ManagedLayer } from "@zzpersona/adapter-sdk";
-import { resolve } from "@zzpersona/resolver";
+import type { ManagedCompiler, ManagedLayer } from "@getdonn/adapter-sdk";
+import { resolve } from "@getdonn/resolver";
 import { parse } from "yaml";
 import { memoryStore, problemOf, publishLayer } from "./engine.js";
 import { compileFromSource, publishedSource } from "./managed.js";
@@ -279,7 +279,7 @@ export async function startMockRegistry(
     }
     const identity = login.identity!;
     login.state = "redeemed";
-    const sessionToken = `zzp_${randomBytes(24).toString("hex")}`;
+    const sessionToken = `donn_${randomBytes(24).toString("hex")}`;
     const expiresAt = new Date(now + SESSION_DAYS * 24 * 60 * 60 * 1000);
     callers.set(sessionToken, {
       kind: "session",
@@ -355,7 +355,7 @@ export async function startMockRegistry(
       ref: layer,
       os: os as (typeof MANAGED_OSES)[number],
       layers,
-      zzpersona: "registry-mock",
+      donn: "registry-mock",
       readFile: published.readFile,
     });
     if (result.bundle === undefined) {

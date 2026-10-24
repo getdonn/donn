@@ -3,6 +3,7 @@
 > Status: design, 2026-10-21. Phase 2, the daemon's second slice (spec 14 named it). Answers spec
 > 09 open question 3. Builds on `09-mod-claude-code.md`, `10-live-switching.md` and
 > `14-daemon.md`. Built as a `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
@@ -12,7 +13,7 @@ CLI, as today, when the daemon is not there.
 
 ## Spike (2026-10-21, throwaway, Claude Code 2.1.304, a scratch daemon)
 
-A dev mod called `GET /status` with `$.http.fetch("http://zzpersona/status", { socketPath,
+A dev mod called `GET /status` with `$.http.fetch("http://donn/status", { socketPath,
 headers })`: 200 in 1–3 ms (a CLI call costs a Node start-up, roughly 150–300 ms); 401 without the
 token; still 200 with `permissions.deny: ["WebFetch"]` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
 (the request carries no `auth`); through the fallback socket of 0.5.2 (found via `where`). Not
@@ -30,7 +31,7 @@ testable here: how a real managed policy treats `$.http` over a socket.
 ## 1. The daemon: `POST /run`
 
 - **Request:** `{ argv: string[], cwd: string }`, with the bearer token as for every endpoint.
-  **Response:** `200 { exitCode, stdout, stderr }`, what running `zzpersona <argv>` in `cwd` would
+  **Response:** `200 { exitCode, stdout, stderr }`, what running `donn <argv>` in `cwd` would
   print, from `createCli` run in-process with captured output and the daemon's home.
 - **Allowlist** (every form with `--json`, which the request must carry):
   `switch`, `switch <persona>`, `switch <persona> --default`, `switch --clear`,
@@ -45,13 +46,13 @@ testable here: how a real managed policy treats `$.http` over a socket.
 
 ## 2. The mod
 
-- **Locating the daemon:** the session's home is `ZZPERSONA_HOME` from the session's environment,
-  else `$HOME/.zzpersona`. The socket is `<home>/daemon/where` when present, else
+- **Locating the daemon:** the session's home is `DONN_HOME` from the session's environment,
+  else `$HOME/.donn`. The socket is `<home>/daemon/where` when present, else
   `<home>/daemon/sock`; the token `<home>/daemon/token`; both read with `$.fs.read`.
 - **Socket check:** the token is sent only to a path that `$.fs.stat` shows as `kind: "other"`
   and not a link.
 - **`run(argv, cwd)`** replaces `runCli`:
-  1. `POST http://zzpersona/run` over the socket, raced with `$.clock.after(1500)` (`$.http.fetch`
+  1. `POST http://donn/run` over the socket, raced with `$.clock.after(1500)` (`$.http.fetch`
      has no timeout);
   2. on a 401, the token is read again and the request retried once;
   3. no socket or token, a refused connection, a timeout, a 5xx or a second 401: `$.process.run`
@@ -60,8 +61,8 @@ testable here: how a real managed policy treats `$.http` over a socket.
 - **Unchanged:** the per-turn `live.json` read (a file read), the band, the nudge, `/persona`'s
   wording and every parse.
 - **Both routes failing** (no daemon, and policy refuses `process.run`): `/persona` says
-  `zzpersona unavailable: start the daemon (zzpersona daemon start), or allow the mod to run
-  zzpersona`.
+  `donn unavailable: start the daemon (donn daemon start), or allow the mod to run
+  donn`.
 
 ## 3. Stack and testing
 
@@ -79,7 +80,7 @@ testable here: how a real managed policy treats `$.http` over a socket.
 - **Mod** (the fake host): daemon answers → no `process.run`; daemon missing, refusing, timing out
   (fake clock) or answering 500 → the CLI; a 401 then a fresh token → one retry; a socket path that
   is a link or not a socket → no token sent; both failing → the unavailable message.
-- **E2e (`ZZP_E2E=1`):** the built binary's daemon serves `/run` for `switch` and `list`.
+- **E2e (`DONN_E2E=1`):** the built binary's daemon serves `/run` for `switch` and `list`.
 - **Smoke (herdr, before the final review):** a scratch Claude Code with the dev mod and a stub
   hook refusing `process.run`; `/persona list`, `/persona use` and the band work through the
   daemon; with the daemon stopped, the unavailable message.

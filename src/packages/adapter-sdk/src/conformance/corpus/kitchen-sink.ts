@@ -1,4 +1,4 @@
-import { HOOK_EVENTS, type Hook, type HookEvent } from "@zzpersona/spec";
+import { HOOK_EVENTS, type Hook, type HookEvent } from "@getdonn/spec";
 import type { CorpusEntry } from "./index.js";
 
 /**

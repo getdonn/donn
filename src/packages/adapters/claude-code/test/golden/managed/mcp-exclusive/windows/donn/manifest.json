@@ -1,0 +1,60 @@
+{
+  "donn": "0.12.0",
+  "files": {
+    "managed-mcp.json": "af0cb43172f510f999027e42abfefd07cbdf08555ce5cc6f03f759c9629e3928",
+    "managed-settings.d/50-donn.json": "df97f6b6b71420d8a1dd154923af4aa9f5ab80de1b9bd23251247edbca6bd945"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "minClaudeCode": "2.1.259",
+  "os": "windows",
+  "report": {
+    "entries": [
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "mcp.servers.jira",
+        "reason": "provided to every user through managedMcpServers"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "mcp.servers.records",
+        "reason": "loaded from managed-mcp.json, which only the policy's servers pass"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "mcp.servers.schema",
+        "reason": "loaded from managed-mcp.json, which only the policy's servers pass"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "policy.mcp",
+        "reason": "allowManagedMcpServersOnly and managed-mcp.json: only the policy's servers load"
+      }
+    ],
+    "warnings": [
+      {
+        "code": "partial-mode",
+        "message": "managed-mcp.json makes --mcp-config exit: donn claude launches without the persona's MCP servers"
+      }
+    ]
+  }
+}

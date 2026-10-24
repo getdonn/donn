@@ -1,5 +1,5 @@
 # Team layer: the web team adds its own rules and a review skill on top of Acme's.
-apiVersion: zzpersona/v0
+apiVersion: donn/v0
 kind: Persona
 metadata:
   name: web

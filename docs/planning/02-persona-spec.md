@@ -1,6 +1,7 @@
 # 02 — Persona Spec and Merge Semantics
 
 > Status: draft v0, 2026-10-20. The merge rules are the important part; the YAML shape is negotiable.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Goals
 
@@ -27,13 +28,13 @@ Where personas live (v0):
 | Layer | Location |
 |---|---|
 | org / business-area / team | a personas repo (git), or the control plane in the paid tier |
-| project | `<repo>/.hatrack/persona.yaml` |
-| user | `~/.hatrack/personas/*.yaml` and `~/.hatrack/overrides.yaml` |
+| project | `<repo>/.donn/persona.yaml` |
+| user | `~/.donn/personas/*.yaml` and `~/.donn/overrides.yaml` |
 
 ## Shape (v0)
 
 ```yaml
-apiVersion: hatrack/v0
+apiVersion: donn/v0
 kind: Persona
 metadata:
   name: payments-platform
@@ -137,7 +138,7 @@ Principles behind the table:
 3. **Explicit beats implicit.** Every removal needs an explicit `exclude`/`remove`. Absence of a
    key in a child never deletes anything.
 4. **Order is part of the contract.** `instructions` order is deterministic and visible in
-   `hatrack resolve --explain`.
+   `donn resolve --explain`.
 
 ## Locks
 
@@ -193,18 +194,18 @@ Later targets, cheapest first: `agents-md` (Codex / Copilot / several others), `
 
 ## Switching
 
-`hatrack switch <persona>` (and `/persona switch` in the mod):
+`donn switch <persona>` (and `/persona switch` in the mod):
 
-1. resolve + compile to `~/.hatrack/build/<persona>/`
+1. resolve + compile to `~/.donn/build/<persona>/`
 2. point the harness at it via the adapter's `activate()` (for Claude Code: relaunch wrapper as
    the deterministic path, in-session plugin toggle + `/reload-plugins --force` as best effort —
    see `03` Appendix A)
-3. write `~/.hatrack/state.json` so the status line and `doctor` know
+3. write `~/.donn/state.json` so the status line and `doctor` know
 
 > Amended 2026-10-20: step 2 was "mechanism TBD"; step 3 said `~/.hatrack/current`. Aligned with
 > `03-architecture.md` ("Data flows → Switch" and Appendix A).
 
-Project auto-detection: if the cwd (or a parent) contains `.hatrack/persona.yaml` and it is not
+Project auto-detection: if the cwd (or a parent) contains `.donn/persona.yaml` and it is not
 the current persona, the mod shows a one-line nudge. Never auto-switch silently.
 
 ## Open questions

@@ -3,6 +3,7 @@
 > Purpose: get a fresh session (or a new engineer) fully up to speed in one read. This captures
 > the reasoning and the rejected alternatives that the numbered docs state only as conclusions.
 > Written 2026-10-20 from the original brainstorming session. Update it when decisions change.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## How this started
 
@@ -42,7 +43,7 @@ of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
 | Adapters emit a `CompileReport` of dropped/weakened fields | Silent best-effort mapping | Policy owners must know where enforcement is advisory; also a marketing asset |
 | Open core with a **separate private enterprise repo** depending on published OSS packages | Private packages inside the monorepo excluded from the OSS mirror | Forces a clean boundary; monorepo-with-exclusions always leaks |
 | Knowledge = pointers to MCP-reachable sources | Ship/own a vector database | Every enterprise already has RAG + data-residency review; owning vectors makes this a data vendor, a worse business than config/governance |
-| Local daemon (`hatrackd`) is core; tray app is a thin client, later | Electron desktop app as a primary surface | Founder's real need was "something running locally for sync/agent pod"; that's a daemon. A third UI with no new user is cost without benefit. Tauri preferred over Electron for footprint |
+| Local daemon (`donnd`) is core; tray app is a thin client, later | Electron desktop app as a primary surface | Founder's real need was "something running locally for sync/agent pod"; that's a daemon. A third UI with no new user is cost without benefit. Tauri preferred over Electron for footprint |
 | IDE support = compile to that IDE's config; extensions later as daemon clients | VS Code extension early | Large surface area for a status indicator; wait for the daemon |
 | `locks` as the policy primitive; enforced server-side at publish, client-side advisory, drift as compensating control | Client-side enforcement only | Client is trivially editable; the gap *is* the enterprise upsell |
 | Replace (not deep-merge) opaque objects like MCP server defs; `deny` always beats `allow`; absence never deletes | Deep-merge everything | Deep-merged `args` arrays produce nonsense; security sets should only grow without explicit `remove` |
@@ -189,7 +190,7 @@ ship OSS early, watch for team-shaped issues, recruit 2–3 friends who lead sma
 - **Provenance** — which layer set each resolved value; powers `--explain` and drift.
 - **Drift** — difference between a user's local resolved persona and the published one.
 - **Gateway** — an MCP gateway (e.g. Bifrost) that governs which tools exist; personas reference servers by `gateway://name`.
-- **`hatrackd`** — the local daemon: sync, cache, pre-build, watchers, local API.
+- **`donnd`** — the local daemon: sync, cache, pre-build, watchers, local API.
 - **Mod** — a Claude Code plugin with in-process JS/TS hooks; our in-session UX for that harness.
 
 ## If you are a fresh session starting work

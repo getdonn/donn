@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { isAlive } from "@zzpersona/executor";
+import { isAlive } from "@getdonn/executor";
 
 // Whether a pid is a daemon's. A pid file or lock outlives its daemon, and the OS may give the
 // pid to an unrelated process: liveness alone would signal a stranger, or wait on one forever.

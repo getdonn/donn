@@ -13,8 +13,8 @@ import { createServer, type Server } from "node:net";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ActivationPlan, Probe } from "@zzpersona/adapter-sdk";
-import { startMockRegistry } from "@zzpersona/registry-api/mock";
+import type { ActivationPlan, Probe } from "@getdonn/adapter-sdk";
+import { startMockRegistry } from "@getdonn/registry-api/mock";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installedProbe, zz, type RunResult } from "./test/seed.js";
 
@@ -54,7 +54,7 @@ interface Machine {
 
 /** A home with a copy of examples/personas and a config naming `url` (when given). */
 function machine(url: string | null = registry.url): Machine {
-  const root = mkdtempSync(join(tmpdir(), "zzp-registry-"));
+  const root = mkdtempSync(join(tmpdir(), "donn-registry-"));
   roots.push(root);
   const home = join(root, "home");
   const personas = join(root, "personas");
@@ -84,7 +84,7 @@ async function run(
     secretProbe: noKeychain,
     ...rest,
     env: {
-      ...(token !== false && { ZZPERSONA_REGISTRY_TOKEN: token }),
+      ...(token !== false && { DONN_REGISTRY_TOKEN: token }),
       ...env,
     },
   });
@@ -212,7 +212,7 @@ describe("login, logout, whoami", () => {
       expect(call!.args.join(" ")).not.toContain(TOKEN);
       expect(call!.input).toContain(TOKEN);
       const everything = `${call!.args.join(" ")} ${call!.input}`;
-      expect(everything).toContain("zzpersona-registry");
+      expect(everything).toContain("donn-registry");
       expect(everything).toContain(NORMALISED());
     }
   });
@@ -342,7 +342,7 @@ describe("publish when the cache update fails", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toBe("published org/acme @1\n");
     expect(r.stderr).toBe(
-      "warning: the local cache was not updated; run zzpersona pull\n",
+      "warning: the local cache was not updated; run donn pull\n",
     );
   });
 
@@ -457,7 +457,7 @@ describe("pull and publish", () => {
     const stale = await run(b, ["publish", "org/acme"]);
     expect(stale.code).toBe(1);
     expect(stale.stderr).toContain("stale-base:");
-    expect(stale.stderr).toContain("zzpersona pull, then publish again");
+    expect(stale.stderr).toContain("donn pull, then publish again");
 
     expect((await run(a, ["publish", "team/web"])).code).toBe(0);
     // org/acme now locks permissions.allow, which team/web sets: web would break.
@@ -654,7 +654,7 @@ describe("freshness", () => {
     const r = await run(m, ["switch", "team/web"], { token: WRONG });
     expect(r.code, r.stderr).toBe(0);
     expect(r.stderr).toBe(
-      `registry refused the token for ${NORMALISED()}; using cached layers \u2014 zzpersona login ${NORMALISED()}\n`,
+      `registry refused the token for ${NORMALISED()}; using cached layers \u2014 donn login ${NORMALISED()}\n`,
     );
   });
 

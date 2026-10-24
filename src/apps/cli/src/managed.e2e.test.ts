@@ -10,21 +10,21 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Opt-in (ZZP_E2E_MANAGED=1; needs Docker and network): a managed bundle built on the host,
+// Opt-in (DONN_E2E_MANAGED=1; needs Docker and network): a managed bundle built on the host,
 // installed as root in a Linux container, and read by a real Claude Code. The container is the
-// only thing that touches a system folder; the host's /etc, ~/.claude and ~/.zzpersona are never
+// only thing that touches a system folder; the host's /etc, ~/.claude and ~/.donn are never
 // read or written. See docs/planning/21-managed-settings.md, section 5.
 
-const ENABLED = process.env.ZZP_E2E_MANAGED === "1";
+const ENABLED = process.env.DONN_E2E_MANAGED === "1";
 const PACKAGE = join(import.meta.dirname, "..");
 const REPO = join(PACKAGE, "../../..");
 const BIN = join(PACKAGE, "dist/bin.js");
 /** The Claude Code release this was verified against (npm view @anthropic-ai/claude-code). */
 const CLAUDE_CODE = "2.1.309";
 const IMAGE = "node:26-slim";
-const NAME = `zzp-managed-e2e-${Math.random().toString(36).slice(2, 10)}`;
+const NAME = `donn-managed-e2e-${Math.random().toString(36).slice(2, 10)}`;
 
-const ORG = `apiVersion: zzpersona/v0
+const ORG = `apiVersion: donn/v0
 kind: Persona
 metadata: { name: acme }
 mcp:
@@ -58,7 +58,7 @@ function inside(command: string, timeout = 120_000) {
       "-e",
       "HOME=/root",
       "-e",
-      "ZZPERSONA_HOME=/tmp/zzp-home",
+      "DONN_HOME=/tmp/donn-home",
       NAME,
       "sh",
       "-c",
@@ -73,7 +73,7 @@ const show = (r: ReturnType<typeof spawnSync>) =>
 
 describe.skipIf(!ENABLED)("managed policy in a real Claude Code", () => {
   beforeAll(() => {
-    work = mkdtempSync(join(tmpdir(), "zzp-managed-e2e-"));
+    work = mkdtempSync(join(tmpdir(), "donn-managed-e2e-"));
     const personas = join(work, "personas");
     const home = join(work, "zzhome");
     bundle = join(work, "bundle");
@@ -101,7 +101,7 @@ describe.skipIf(!ENABLED)("managed policy in a real Claude Code", () => {
       {
         cwd: work,
         encoding: "utf8",
-        env: { ...process.env, ZZPERSONA_HOME: home, HOME: work },
+        env: { ...process.env, DONN_HOME: home, HOME: work },
       },
     );
     expect(built.status, show(built)).toBe(0);
@@ -148,20 +148,18 @@ describe.skipIf(!ENABLED)("managed policy in a real Claude Code", () => {
     const files = inside("find /etc/claude-code -type f | sort");
     console.log(`installed files:\n${files.stdout}`);
     for (const path of [
-      "/etc/claude-code/managed-settings.d/50-zzpersona.json",
-      "/etc/claude-code/zzpersona/manifest.json",
+      "/etc/claude-code/managed-settings.d/50-donn.json",
+      "/etc/claude-code/donn/manifest.json",
     ]) {
       expect(files.stdout, show(files)).toContain(path);
     }
-    expect(files.stdout).toMatch(
-      /\/etc\/claude-code\/zzpersona\/hooks\/\S*guard/,
-    );
+    expect(files.stdout).toMatch(/\/etc\/claude-code\/donn\/hooks\/\S*guard/);
 
     const check = inside(`node ${BIN} managed check`);
     expect(check.stdout, show(check)).toContain("current");
 
     const settings = inside(
-      "cat /etc/claude-code/managed-settings.d/50-zzpersona.json",
+      "cat /etc/claude-code/managed-settings.d/50-donn.json",
     );
     const parsed = JSON.parse(settings.stdout) as {
       managedMcpServers?: Record<string, unknown>;

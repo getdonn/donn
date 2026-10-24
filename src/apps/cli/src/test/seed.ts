@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 import { createCli } from "../cli.js";
 import type { ManagedEnv } from "../managed/env.js";
 
@@ -27,7 +27,7 @@ function put(path: string, content: string) {
 }
 
 export function seed(): Seeded {
-  const root = mkdtempSync(join(tmpdir(), "zzp-cli-"));
+  const root = mkdtempSync(join(tmpdir(), "donn-cli-"));
   const home = join(root, "home");
   const personas = join(root, "personas");
   const repo = join(root, "repo");
@@ -36,7 +36,7 @@ export function seed(): Seeded {
   }
   cpSync(
     join(FIXTURE, "project/checkout-api.yaml"),
-    join(repo, ".zzpersona/persona.yaml"),
+    join(repo, ".donn/persona.yaml"),
   );
   cpSync(join(FIXTURE, "user/overrides.yaml"), join(home, "overrides.yaml"));
   put(join(home, "config.yaml"), `personas: ${personas}\n`);
@@ -47,10 +47,10 @@ export function seed(): Seeded {
     "---\nname: run-payment-sim\ndescription: Runs the payment simulator.\n---\nRun pnpm sim.\n",
   );
   put(
-    join(repo, ".zzpersona/instructions/checkout-overview.md"),
+    join(repo, ".donn/instructions/checkout-overview.md"),
     "Checkout overview text.",
   );
-  put(join(repo, ".zzpersona/hooks/format.sh"), "#!/bin/sh\nexit 0\n");
+  put(join(repo, ".donn/hooks/format.sh"), "#!/bin/sh\nexit 0\n");
   return {
     root,
     home,
@@ -80,7 +80,7 @@ export interface RunResult {
 /** Where tests that do not exercise managed settings keep `managed install|check` pointed. */
 export const NO_MANAGED_ROOT = join(
   tmpdir(),
-  "zzp-no-managed-root",
+  "donn-no-managed-root",
   "ClaudeCode",
 );
 
@@ -100,7 +100,7 @@ export function safeManaged(): Partial<ManagedEnv> {
   };
 }
 
-/** Run `zzpersona <argv>` in-process. */
+/** Run `donn <argv>` in-process. */
 export async function zz(
   argv: string[],
   options: {
@@ -132,8 +132,8 @@ export async function zz(
   const cli = createCli({
     env: {
       // Launches must not start real daemons; a test that wants auto-start sets this to "".
-      ZZPERSONA_NO_DAEMON: "1",
-      ...(options.home && { ZZPERSONA_HOME: options.home }),
+      DONN_NO_DAEMON: "1",
+      ...(options.home && { DONN_HOME: options.home }),
       ...options.env,
     },
     cwd: options.cwd,
@@ -164,7 +164,7 @@ export function quietIo(options: {
   env?: NodeJS.ProcessEnv;
 }) {
   return {
-    env: { ZZPERSONA_HOME: options.home, ...options.env },
+    env: { DONN_HOME: options.home, ...options.env },
     cwd: options.cwd,
     stdout: { write: () => true },
     stderr: { write: () => true },

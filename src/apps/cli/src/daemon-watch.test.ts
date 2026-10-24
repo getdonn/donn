@@ -11,8 +11,8 @@ import {
 } from "node:fs";
 import { request } from "node:http";
 import { join } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
-import { writeBuild } from "@zzpersona/executor";
+import type { Probe } from "@getdonn/adapter-sdk";
+import { writeBuild } from "@getdonn/executor";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareBuild } from "./build.js";
 import { createContext } from "./context.js";
@@ -71,7 +71,7 @@ afterEach(async () => {
 });
 
 const conduct = () => join(s.personas, "org/instructions/conduct.md");
-const projectPersona = (repo = s.repo) => join(repo, ".zzpersona/persona.yaml");
+const projectPersona = (repo = s.repo) => join(repo, ".donn/persona.yaml");
 
 /** A process that stays alive until killed: the session's launcher. */
 function owner(): ChildProcess {
@@ -82,7 +82,7 @@ function owner(): ChildProcess {
   return child;
 }
 
-/** Compile a persona as `zzpersona claude` (or `codex`) does for the given options. */
+/** Compile a persona as `donn claude` (or `codex`) does for the given options. */
 async function compileFor(
   persona: string,
   options: {
@@ -103,7 +103,7 @@ async function compileFor(
   return { ...build, ctx };
 }
 
-/** A session as `zzpersona claude` (or `codex`) records it, launched on today's files. */
+/** A session as `donn claude` (or `codex`) records it, launched on today's files. */
 async function launch(
   persona: string,
   options: {
@@ -305,7 +305,7 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
       expect.arrayContaining([
         s.personas,
         join(s.home, "personas"),
-        join(s.repo, ".zzpersona"),
+        join(s.repo, ".donn"),
         join(s.home, "overrides.yaml"),
         join(s.home, "config.yaml"),
         join(s.home, "sessions"),
@@ -521,9 +521,7 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     );
     expect(liveOf(kept).instructions).toContain("Review kindly, and say why.");
     expect(existsSync(join(gone, "live.json"))).toBe(false);
-    expect((await status(daemon)).watching).not.toContain(
-      join(other, ".zzpersona"),
-    );
+    expect((await status(daemon)).watching).not.toContain(join(other, ".donn"));
   });
 
   it("serialises refreshes and applies the last edit", async () => {
@@ -682,7 +680,7 @@ describe("the daemon watches and refreshes", { timeout: 20_000 }, () => {
     }
     await refreshing;
     expect(liveOf(dir).persona).toBe("org/base");
-    expect(readdirSync(join(dir, "plugins"))).toEqual(["zzp-org--base"]);
+    expect(readdirSync(join(dir, "plugins"))).toEqual(["donn-org--base"]);
     expect(logLines(`skip ${dir} project/persona: superseded`)).toHaveLength(1);
     // A follow-up check compiles the persona the user chose.
     await until(

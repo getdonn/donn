@@ -1,4 +1,4 @@
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import { HOOK_EVENTS } from "@getdonn/spec";
 import {
   FIXED_CAPABILITY_FIELDS,
   type ActivationPlan,

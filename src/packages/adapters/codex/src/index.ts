@@ -1,4 +1,4 @@
-import { defineAdapter } from "@zzpersona/adapter-sdk";
+import { defineAdapter } from "@getdonn/adapter-sdk";
 import { activate } from "./activate.js";
 import { capabilities } from "./capabilities.js";
 import { compile } from "./compile.js";

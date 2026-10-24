@@ -1,11 +1,11 @@
-import type { Ref } from "@zzpersona/spec";
+import type { Ref } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import { ResolveError, resolve, type PersonaSource } from "./index.js";
 
 // Paths the fixture suite cannot cover, because every fixture file must be a valid persona.
 
 const persona = (name: string, extra: object = {}) => ({
-  apiVersion: "zzpersona/v0",
+  apiVersion: "donn/v0",
   kind: "Persona",
   metadata: { name },
   ...extra,
@@ -60,7 +60,7 @@ describe("resolve", () => {
   it("rejects an overlay as an extends target", async () => {
     const { source } = memory({
       "team/t": persona("t", { extends: ["user/overrides"] }),
-      "user/overrides": { apiVersion: "zzpersona/v0", kind: "PersonaOverlay" },
+      "user/overrides": { apiVersion: "donn/v0", kind: "PersonaOverlay" },
     });
     expect(await failure(resolve("team/t", { source }))).toMatchObject({
       code: "invalid-persona",

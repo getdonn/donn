@@ -1,8 +1,8 @@
 import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MAX_BUNDLE_BYTES, bundleDigest } from "@zzpersona/registry-api";
-import { createLocalStore } from "@zzpersona/store-local";
+import { MAX_BUNDLE_BYTES, bundleDigest } from "@getdonn/registry-api";
+import { createLocalStore } from "@getdonn/store-local";
 import { bundleLayer } from "./bundle.js";
 import { RegistryError } from "./client.js";
 import { cleanupTemps, persona, put, temp } from "./testing/helpers.js";

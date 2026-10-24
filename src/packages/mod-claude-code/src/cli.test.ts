@@ -17,7 +17,7 @@ function fake(reply: ProcessRunResult | Error) {
 }
 
 describe("runCli", () => {
-  it("runs zzpersona with --json in the folder, with a 5 s timeout", async () => {
+  it("runs donn with --json in the folder, with a 5 s timeout", async () => {
     const { $, calls } = fake({ exitCode: 0, stdout: '{"a":1}', stderr: "" });
     expect(await runCli($, ["switch"], "/r")).toEqual({
       ok: true,
@@ -25,7 +25,7 @@ describe("runCli", () => {
     });
     expect(calls).toEqual([
       {
-        argv: ["zzpersona", "switch", "--json"],
+        argv: ["donn", "switch", "--json"],
         init: { cwd: "/r", timeoutMs: 5000 },
       },
     ]);
@@ -57,15 +57,15 @@ describe("runCli", () => {
     const reason = async (error: Error) =>
       ((await runCli(fake(error).$, ["switch"], "/r")) as { reason: string })
         .reason;
-    expect(await reason(new Error("spawn zzpersona ENOENT"))).toBe(
-      "the zzpersona command was not found on PATH",
+    expect(await reason(new Error("spawn donn ENOENT"))).toBe(
+      "the donn command was not found on PATH",
     );
     expect(await reason(new Error("the command timed out after 5000 ms"))).toBe(
       "timed out",
     );
     // No daemon here either: the refusal says what fixes it (spec 15 §2).
     expect(await reason(new Error("Acme policy: no process.run"))).toBe(
-      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
+      "start the daemon (donn daemon start), or allow the mod to run donn",
     );
   });
 
@@ -73,7 +73,7 @@ describe("runCli", () => {
     const { $ } = fake({ exitCode: 0, stdout: "not json", stderr: "" });
     expect(await runCli($, ["switch"], "/r")).toEqual({
       ok: false,
-      reason: "the zzpersona command printed something that is not JSON",
+      reason: "the donn command printed something that is not JSON",
     });
   });
 
@@ -81,7 +81,7 @@ describe("runCli", () => {
     const { $ } = fake({ exitCode: 1, stdout: "null", stderr: "" });
     expect(await runCli($, ["switch"], "/r")).toEqual({
       ok: false,
-      reason: "the zzpersona command exited 1",
+      reason: "the donn command exited 1",
     });
   });
 });

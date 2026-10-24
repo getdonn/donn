@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CompileOutput } from "@zzpersona/adapter-sdk";
+import type { CompileOutput } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
@@ -23,7 +23,7 @@ import {
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-session-"));
+  root = mkdtempSync(join(tmpdir(), "donn-session-"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -46,7 +46,7 @@ describe("session folders", () => {
   it("copies the plugin under its name and records the launch", async () => {
     const dir = await createSession(
       home(),
-      plugin("zzp-team--payments"),
+      plugin("donn-team--payments"),
       { persona: "team/payments", source: "switch" },
       4242,
     );
@@ -56,7 +56,7 @@ describe("session folders", () => {
     expect(sessionPlugins(dir)).toBe(join(dir, "plugins"));
     expect(
       readFileSync(
-        join(dir, "plugins/zzp-team--payments/skills/s/SKILL.md"),
+        join(dir, "plugins/donn-team--payments/skills/s/SKILL.md"),
         "utf8",
       ),
     ).toBe("skill");
@@ -68,7 +68,7 @@ describe("session folders", () => {
   });
 
   it("finds only old sessions whose process is gone", async () => {
-    const src = plugin("zzp-x");
+    const src = plugin("donn-x");
     const dead = await createSession(
       home(),
       src,
@@ -102,7 +102,7 @@ describe("session registry", () => {
   it("reads an old launched.json as claude-code", async () => {
     const dir = await createSession(
       home(),
-      plugin("zzp-x"),
+      plugin("donn-x"),
       { persona: "x", source: "argument" },
       process.pid,
     );
@@ -112,7 +112,7 @@ describe("session registry", () => {
   });
 
   it("lists sessions with liveness", async () => {
-    const src = plugin("zzp-x");
+    const src = plugin("donn-x");
     const child = spawnSync(process.execPath, ["-e", "0"]);
     const alive = await createSession(
       home(),

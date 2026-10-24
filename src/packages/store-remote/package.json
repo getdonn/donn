@@ -1,5 +1,5 @@
 {
-  "name": "@zzpersona/store-remote",
+  "name": "@getdonn/store-remote",
   "version": "0.4.0",
   "private": true,
   "description": "The registry client: a verified cache of published layers, mounted ahead of the local store, and bundling for publish",
@@ -21,17 +21,17 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@zzpersona/registry-api": "workspace:*",
-    "@zzpersona/resolver": "workspace:*",
-    "@zzpersona/spec": "workspace:*",
-    "@zzpersona/store-local": "workspace:*",
+    "@getdonn/registry-api": "workspace:*",
+    "@getdonn/resolver": "workspace:*",
+    "@getdonn/spec": "workspace:*",
+    "@getdonn/store-local": "workspace:*",
     "yaml": "^2.9.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"

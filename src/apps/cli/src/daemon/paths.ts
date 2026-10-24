@@ -16,7 +16,7 @@ export interface DaemonPaths {
   dir: string;
   /**
    * The socket: `<dir>/sock`, or for a long home a short path in a folder of the user's own:
-   * `$XDG_RUNTIME_DIR`, else `<tmpdir>/zzpd-<uid>` (see `privateSocketDir`).
+   * `$XDG_RUNTIME_DIR`, else `<tmpdir>/donnd-<uid>` (see `privateSocketDir`).
    */
   sock: string;
   token: string;
@@ -33,9 +33,10 @@ export function daemonPaths(
 ): DaemonPaths {
   const dir = join(home, "daemon");
   const inHome = join(dir, "sock");
-  const short = `zzpd-${createHash("sha256").update(home).digest("hex").slice(0, 8)}.sock`;
+  const short = `donnd-${createHash("sha256").update(home).digest("hex").slice(0, 8)}.sock`;
   // A shared temp directory (Linux's /tmp) is anyone's: never a bare name in it.
-  const runtime = env.XDG_RUNTIME_DIR || join(tmpdir(), `zzpd-${currentUid()}`);
+  const runtime =
+    env.XDG_RUNTIME_DIR || join(tmpdir(), `donnd-${currentUid()}`);
   return {
     dir,
     sock:

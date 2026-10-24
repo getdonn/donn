@@ -1,0 +1,63 @@
+{
+  "donn": "0.12.0",
+  "files": {
+    "managed-mcp.json": "d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02",
+    "managed-settings.d/50-donn.json": "0e57a28c73da1b6598fe77bcdd36d9be767573f29406b2b75e9e8c7de3d1ec9e"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "os": "linux",
+  "report": {
+    "entries": [
+      {
+        "layer": "team/payments",
+        "outcome": "enforced",
+        "path": "policy.bypassPermissions",
+        "reason": "permissions.disableBypassPermissionsMode: the bypass mode cannot be entered"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "policy.hooks",
+        "reason": "allowManagedHooksOnly: only the policy's hooks run"
+      },
+      {
+        "layer": "area/fintech",
+        "outcome": "enforced",
+        "path": "policy.mcp",
+        "reason": "allowManagedMcpServersOnly and managed-mcp.json: only the policy's servers load"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "policy.permissions",
+        "reason": "allowManagedPermissionRulesOnly: only the policy's rules count"
+      }
+    ],
+    "warnings": [
+      {
+        "code": "partial-mode",
+        "message": "managed-mcp.json makes --mcp-config exit: donn claude launches without the persona's MCP servers"
+      },
+      {
+        "code": "plugin-hooks-dropped",
+        "message": "allowManagedHooksOnly blocks plugin hooks: persona hooks do not run, only the policy's"
+      }
+    ]
+  }
+}

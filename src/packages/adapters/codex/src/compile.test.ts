@@ -3,10 +3,10 @@ import {
   type CompileInput,
   type Detection,
   type Step,
-} from "@zzpersona/adapter-sdk";
+} from "@getdonn/adapter-sdk";
 
 type LaunchStep = Extract<Step, { kind: "launch" }>;
-import { corpus } from "@zzpersona/adapter-sdk/conformance";
+import { corpus } from "@getdonn/adapter-sdk/conformance";
 import { parse } from "smol-toml";
 import { describe, expect, it } from "vitest";
 import adapter from "./index.js";
@@ -58,7 +58,7 @@ describe("the Codex launch", () => {
       file && "content" in file && instructions.developer_instructions,
     ).toBe(file && "content" in file ? file.content : undefined);
     expect(String(instructions.developer_instructions)).toMatch(
-      /^## zzpersona persona: project\/checkout-api\n/,
+      /^## donn persona: project\/checkout-api\n/,
     );
     expect(String(instructions.developer_instructions)).toContain(
       "## Tool rules",
@@ -176,7 +176,7 @@ describe("the Codex launch", () => {
     });
   });
 
-  it("drops a server whose secret would override a variable Codex or zzpersona uses", () => {
+  it("drops a server whose secret would override a variable Codex or donn uses", () => {
     const { ir } = entry("minimal");
     const { output } = build("minimal", {
       ir: {
@@ -193,7 +193,7 @@ describe("the Codex launch", () => {
     expect(outcome(output, "mcp.servers.a")).toMatchObject({
       outcome: "dropped",
       reason:
-        "OPENAI_API_KEY is a variable Codex or zzpersona reads itself; Codex forwards secrets by name, so it would override it",
+        "OPENAI_API_KEY is a variable Codex or donn reads itself; Codex forwards secrets by name, so it would override it",
     });
     expect(outcome(output, "mcp.servers.b")?.outcome).toBe("dropped");
     expect(output.secretEnv).toEqual({ MY_TOKEN: "secret://env/T" });
@@ -223,7 +223,7 @@ describe("the Codex launch", () => {
     expect(step.args).toContain("-m");
     expect(outcome(output, "targets.codex.sandbox")).toMatchObject({
       outcome: "advisory",
-      reason: "looser than zzpersona's default",
+      reason: "looser than donn's default",
     });
     expect(outcome(output, "targets.codex.approval")?.outcome).toBe("advisory");
     expect(outcome(output, "targets.codex.bogus")?.outcome).toBe("dropped");
@@ -238,7 +238,7 @@ describe("the Codex launch", () => {
     expect(
       kitchen.report.entries.find((e) => e.path.startsWith("hooks."))?.reason,
     ).toBe(
-      "untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust",
+      "untrusted hooks do not run, and donn never bypasses Codex's hook trust",
     );
   });
 

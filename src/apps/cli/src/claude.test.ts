@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ActivationPlan, Probe } from "@zzpersona/adapter-sdk";
+import type { ActivationPlan, Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
@@ -42,7 +42,7 @@ const launchArgs = (plan: ActivationPlan) => {
   return step;
 };
 
-describe("zzpersona claude", () => {
+describe("donn claude", () => {
   it("builds, resolves secrets and launches with passthrough args", async () => {
     useEnvVault();
     const { calls, runPlan } = recorder();
@@ -58,9 +58,9 @@ describe("zzpersona claude", () => {
     expect(step.command).toBe("claude");
     expect(step.args.slice(-2)).toEqual(["-p", "hi"]);
     expect(step.args[0]).toBe("--plugin-dir");
-    expect(calls[0]!.secretEnv).toEqual({ ZZP_SECRET_1: "tok-value" });
+    expect(calls[0]!.secretEnv).toEqual({ DONN_SECRET_1: "tok-value" });
     // The session folder of plugins (spec 10); removed again once claude exits.
-    expect(step.args[1]).toBe(join(step.env.ZZPERSONA_SESSION!, "plugins"));
+    expect(step.args[1]).toBe(join(step.env.DONN_SESSION!, "plugins"));
   });
 
   it("forces partial mode with --mode", async () => {
@@ -212,9 +212,9 @@ describe("zzpersona claude", () => {
     });
     expect(r.code, r.stderr).toBe(0);
     expect(launchArgs(calls[0]!.plan).env).toMatchObject({
-      ZZPERSONA_PERSONA: "project/persona",
-      ZZPERSONA_SOURCE: "project",
-      ZZPERSONA_PROJECT: s.repo,
+      DONN_PERSONA: "project/persona",
+      DONN_SOURCE: "project",
+      DONN_PROJECT: s.repo,
     });
     const json = await zz(["claude", "org/base", "--json"], {
       cwd: s.root,
@@ -222,17 +222,15 @@ describe("zzpersona claude", () => {
     });
     const step = JSON.parse(json.stdout).plan.steps[0];
     expect(step.env).toMatchObject({
-      ZZPERSONA_PERSONA: "org/base",
-      ZZPERSONA_SOURCE: "argument",
+      DONN_PERSONA: "org/base",
+      DONN_SOURCE: "argument",
     });
-    expect(step.env).not.toHaveProperty("ZZPERSONA_PROJECT");
+    expect(step.env).not.toHaveProperty("DONN_PROJECT");
     const dry = await zz(["claude", "--dry-run"], {
       cwd: s.repo,
       home: s.home,
     });
-    expect(dry.stdout).toContain(
-      "ZZPERSONA_PERSONA, ZZPERSONA_PROJECT, ZZPERSONA_SOURCE",
-    );
+    expect(dry.stdout).toContain("DONN_PERSONA, DONN_PROJECT, DONN_SOURCE");
   });
 
   it("launches with a session folder of plugins and removes it afterwards", async () => {
@@ -248,9 +246,9 @@ describe("zzpersona claude", () => {
         const pluginDir = step.args[step.args.indexOf("--plugin-dir") + 1]!;
         seen = {
           pluginDir,
-          session: step.env.ZZPERSONA_SESSION!,
+          session: step.env.DONN_SESSION!,
           existed: existsSync(
-            join(pluginDir, "zzp-project--persona/.claude-plugin/plugin.json"),
+            join(pluginDir, "donn-project--persona/.claude-plugin/plugin.json"),
           ),
         };
         return 0;
@@ -272,7 +270,7 @@ describe("zzpersona claude", () => {
         home: s.home,
         env: SECRET_ENV,
         runPlan: async (plan: ActivationPlan) => {
-          session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+          session = launchArgs(plan).env.DONN_SESSION!;
           if (outcome === "throw") throw new Error("spawn failed");
           return 1;
         },
@@ -291,9 +289,7 @@ describe("zzpersona claude", () => {
       env: SECRET_ENV,
       runPlan,
     });
-    expect(launchArgs(calls[0]!.plan).env).not.toHaveProperty(
-      "ZZPERSONA_SESSION",
-    );
+    expect(launchArgs(calls[0]!.plan).env).not.toHaveProperty("DONN_SESSION");
     await zz(["claude", "--dry-run"], { cwd: s.repo, home: s.home });
     expect(existsSync(join(s.home, "sessions"))).toBe(false);
   });
@@ -306,7 +302,7 @@ describe("zzpersona claude", () => {
       home: s.home,
       env: SECRET_ENV,
       runPlan: async (plan: ActivationPlan) => {
-        const session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+        const session = launchArgs(plan).env.DONN_SESSION!;
         launched = JSON.parse(
           readFileSync(join(session, "launched.json"), "utf8"),
         );
@@ -338,7 +334,7 @@ describe("zzpersona claude", () => {
         home: s.home,
         env: SECRET_ENV,
         runPlan: async (plan: ActivationPlan) => {
-          const session = launchArgs(plan).env.ZZPERSONA_SESSION!;
+          const session = launchArgs(plan).env.DONN_SESSION!;
           launched = JSON.parse(
             readFileSync(join(session, "launched.json"), "utf8"),
           );

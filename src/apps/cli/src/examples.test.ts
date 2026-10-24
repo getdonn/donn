@@ -12,7 +12,7 @@ const DEMO_APP = join(EXAMPLES, "demo-app");
 
 let home: string;
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), "zzp-examples-"));
+  home = mkdtempSync(join(tmpdir(), "donn-examples-"));
   writeFileSync(
     join(home, "config.yaml"),
     `personas: ${join(EXAMPLES, "personas")}\n`,

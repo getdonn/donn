@@ -9,12 +9,12 @@ import {
   ResolvedPersona,
   ResolveWarning,
   type Ref,
-} from "@zzpersona/spec";
+} from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { explain, ResolveError, resolve, type PersonaSource } from "./index.js";
 
-// Each fixture is checked twice: that it is well-formed and agrees with @zzpersona/spec, then
+// Each fixture is checked twice: that it is well-formed and agrees with @getdonn/spec, then
 // that resolve() produces exactly what it expects and explain() renders it as explain.txt.
 // See fixtures/README.md.
 

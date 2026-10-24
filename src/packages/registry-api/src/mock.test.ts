@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ManagedCompiler } from "@zzpersona/adapter-sdk";
+import type { ManagedCompiler } from "@getdonn/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import { registryConformance } from "./conformance.js";
 import { startMockRegistry } from "./mock.js";
@@ -41,13 +41,13 @@ const compiler: ManagedCompiler = {
     );
     const manifest = {
       format: 1 as const,
-      zzpersona: input.zzpersona,
+      donn: input.donn,
       os: input.os,
       layers: input.layers,
       files: hashes,
       report: { entries: [], warnings: [] },
     };
-    files["zzpersona/manifest.json"] = new TextEncoder().encode(
+    files["donn/manifest.json"] = new TextEncoder().encode(
       JSON.stringify(manifest),
     );
     return { report: manifest.report, bundle: { files, manifest } };
@@ -106,7 +106,7 @@ describe("startMockRegistry", () => {
 
 describe("mock roles", () => {
   const layer = (extra = "") =>
-    `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: x\n${extra}`;
+    `apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: x\n${extra}`;
 
   async function session(
     mock: Awaited<ReturnType<typeof startMockRegistry>>,
@@ -152,6 +152,30 @@ describe("mock roles", () => {
       },
     };
   }
+
+  it("tokens use the donn_ prefix", async () => {
+    const mock = await startMockRegistry();
+    try {
+      const token = await session(mock, "ann@acme.test");
+      expect(token).toMatch(/^donn_[0-9a-f]{48}$/);
+      const whoami = (bearer: string) =>
+        fetch(`${mock.url}/v1/whoami`, {
+          headers: { authorization: `Bearer ${bearer}` },
+        });
+      expect((await whoami(token)).status).toBe(200);
+      // A token from before the rename: the old prefix, the same secret. Spelled in two parts
+      // so the old name appears nowhere in the tree.
+      const old = `${"zzp"}_${token.slice("donn_".length)}`;
+      const refused = await whoami(old);
+      expect(refused.status).toBe(401);
+      expect(
+        ((await refused.json()) as { problems: { code: string }[] }).problems[0]
+          ?.code,
+      ).toBe("unauthorized");
+    } finally {
+      await mock.stop();
+    }
+  });
 
   it("grants match by whole segment", async () => {
     const mock = await startMockRegistry();
@@ -229,7 +253,7 @@ describe("mock roles", () => {
 
 describe("mock managed bundle", () => {
   const doc = (name: string, extra = "") =>
-    `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
+    `apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
 
   async function seed(mock: Awaited<ReturnType<typeof startMockRegistry>>) {
     const send = async (ref: string, source: string, files: object[] = []) =>
@@ -290,9 +314,7 @@ describe("mock managed bundle", () => {
       expect(
         Buffer.from(answer.body.files["texts/conduct.md"], "base64").toString(),
       ).toBe("Review kindly.");
-      expect(Object.keys(answer.body.files)).toContain(
-        "zzpersona/manifest.json",
-      );
+      expect(Object.keys(answer.body.files)).toContain("donn/manifest.json");
     } finally {
       await mock.stop();
     }

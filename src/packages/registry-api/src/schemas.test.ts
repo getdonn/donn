@@ -161,17 +161,17 @@ describe("tolerant results", () => {
 describe("managed bundle response", () => {
   const manifest = {
     format: 1,
-    zzpersona: "0.1.0",
+    donn: "0.1.0",
     os: "linux",
     layers: [
       { ref: "org/acme", version: 1, digest: `sha256:${"a".repeat(64)}` },
     ],
-    files: { "managed-settings.d/50-zzpersona.json": "b".repeat(64) },
+    files: { "managed-settings.d/50-donn.json": "b".repeat(64) },
     report: { entries: [], warnings: [] },
   };
   const answer = {
     manifest,
-    files: { "managed-settings.d/50-zzpersona.json": "e30=" },
+    files: { "managed-settings.d/50-donn.json": "e30=" },
   };
 
   it("the client schema strips unknown keys; the kit's copy refuses them", () => {

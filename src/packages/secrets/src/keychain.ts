@@ -118,7 +118,7 @@ export async function setKeychainItem(
           command,
           [
             "store",
-            "--label=zzpersona registry",
+            "--label=donn registry",
             "service",
             service,
             "account",

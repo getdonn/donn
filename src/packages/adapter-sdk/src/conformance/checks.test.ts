@@ -231,14 +231,12 @@ describe("overlay blocks", () => {
   });
 
   it("rejects a bad block name and content holding its own markers", async () => {
-    expect(await failedChecks(withOverlay("zzpersona", "fine\n"))).toEqual([]);
+    expect(await failedChecks(withOverlay("donn", "fine\n"))).toEqual([]);
     expect(await failedChecks(withOverlay("Bad Block", "fine\n"))).toEqual([
       "well-formed-output",
     ]);
     expect(
-      await failedChecks(
-        withOverlay("zzpersona", "x\n<!-- zzpersona:end -->\n"),
-      ),
+      await failedChecks(withOverlay("donn", "x\n<!-- donn:end -->\n")),
     ).toEqual(["well-formed-output"]);
   });
 });

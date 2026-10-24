@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ActivationPlan } from "@zzpersona/adapter-sdk";
+import type { ActivationPlan } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
 import { daemonPaths } from "./daemon/paths.js";
@@ -28,13 +28,13 @@ afterEach(async () => {
   s.cleanup();
 });
 
-// The test helper sets ZZPERSONA_NO_DAEMON=1 by default; these tests opt back in.
+// The test helper sets DONN_NO_DAEMON=1 by default; these tests opt back in.
 const ON = {
-  ZZPERSONA_NO_DAEMON: "",
+  DONN_NO_DAEMON: "",
   "payments/schema-token": "tok-value",
 };
 const FAILURE = (reason: string) =>
-  `zzpersona: daemon not started (${reason}); live refresh is off for this session\n`;
+  `donn: daemon not started (${reason}); live refresh is off for this session\n`;
 
 async function inProcessDaemon(version = cliVersion()) {
   const daemon = await startDaemon({
@@ -89,11 +89,11 @@ describe("auto-start", () => {
     expect(h.events).toEqual(["run"]);
   });
 
-  it("is skipped for --dry-run, --json, autoStart: false and ZZPERSONA_NO_DAEMON=1", async () => {
+  it("is skipped for --dry-run, --json, autoStart: false and DONN_NO_DAEMON=1", async () => {
     const h = harness();
     await zz(["claude", "--dry-run"], options(h));
     await zz(["claude", "--json"], options(h));
-    await zz(["claude"], options(h, { ZZPERSONA_NO_DAEMON: "1" }));
+    await zz(["claude"], options(h, { DONN_NO_DAEMON: "1" }));
     expect(h.events).toEqual(["run"]);
     writeFileSync(
       `${s.home}/config.yaml`,
@@ -119,8 +119,8 @@ describe("auto-start", () => {
     writeFileSync(
       manager.path,
       manager.render({
-        command: ["/u/bin/zzpersona", "daemon", "run"],
-        env: { ZZPERSONA_HOME: s.home, ZZPERSONA_SERVICE: "1" },
+        command: ["/u/bin/donn", "daemon", "run"],
+        env: { DONN_HOME: s.home, DONN_SERVICE: "1" },
         log: daemonPaths(s.home).log,
       }),
     );
@@ -146,7 +146,7 @@ describe("auto-start", () => {
     const mismatch = `daemon runs 0.0.1, CLI is ${cliVersion()}`;
     const plain = await zz(["claude"], options(h));
     expect(plain.stderr).toContain(
-      `${mismatch}; zzpersona daemon stop && zzpersona daemon start\n`,
+      `${mismatch}; donn daemon stop && donn daemon start\n`,
     );
 
     const manager = serviceManager({
@@ -162,8 +162,8 @@ describe("auto-start", () => {
     writeFileSync(
       manager.path,
       manager.render({
-        command: ["/u/bin/zzpersona", "daemon", "run"],
-        env: { ZZPERSONA_HOME: s.home, ZZPERSONA_SERVICE: "1" },
+        command: ["/u/bin/donn", "daemon", "run"],
+        env: { DONN_HOME: s.home, DONN_SERVICE: "1" },
         log: daemonPaths(s.home).log,
       }),
     );
@@ -171,7 +171,7 @@ describe("auto-start", () => {
       ...options(h, { HOME: s.root }),
       service: manager,
     });
-    expect(r.stderr).toContain(`${mismatch}; zzpersona daemon install\n`);
+    expect(r.stderr).toContain(`${mismatch}; donn daemon install\n`);
   });
 
   it("a failed start still launches", async () => {
@@ -193,7 +193,7 @@ describe("auto-start", () => {
     expect(h.events).toEqual(["run"]);
     expect(r.code).toBe(3);
     expect(r.stderr).toMatch(
-      /^zzpersona: daemon not started \(.+\); live refresh is off for this session$/m,
+      /^donn: daemon not started \(.+\); live refresh is off for this session$/m,
     );
   });
 

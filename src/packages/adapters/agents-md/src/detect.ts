@@ -1,4 +1,4 @@
-import type { Detection } from "@zzpersona/adapter-sdk";
+import type { Detection } from "@getdonn/adapter-sdk";
 
 // AGENTS.md is a file format, not a program: there is nothing to look for.
 

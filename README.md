@@ -1,4 +1,4 @@
-# zzpersona (name TBD)
+# donn (name TBD)
 
 A persona compiler and control plane for AI coding harnesses. A **persona** is a declarative,
 composable bundle (instructions, skills, MCP servers, permissions, hooks, knowledge pointers,
@@ -17,17 +17,17 @@ pieces, Claude Code itself.
 pnpm install
 pnpm build
 
-# Put `zzpersona` on PATH. pnpm 12 keeps global binaries in ~/Library/pnpm/bin (macOS);
+# Put `donn` on PATH. pnpm 12 keeps global binaries in ~/Library/pnpm/bin (macOS);
 # `pnpm setup` adds that to your shell config. If it reports an existing pnpm section from an
 # older pnpm, run `pnpm setup --force`. Then open a new shell.
 pnpm setup
 pnpm add --global "link:$PWD/src/apps/cli"   # a link: later builds take effect without reinstalling
 
-zzpersona doctor                              # checks the setup, says what to fix
+donn doctor                              # checks the setup, says what to fix
 ```
 
-`zzpersona` must be a real executable on `PATH`, not a shell alias: the Claude Code mod and
-`zzpersona claude` start programs without a shell.
+`donn` must be a real executable on `PATH`, not a shell alias: the Claude Code mod and
+`donn claude` start programs without a shell.
 
 ## Examples
 
@@ -37,19 +37,19 @@ zzpersona doctor                              # checks the setup, says what to f
 ## First use
 
 ```sh
-zzpersona init --personas ~/personas          # a personas folder with a starter org/base
-cd <a repo> && zzpersona init --extends org/base   # give the repo a project persona
-zzpersona claude                              # launch Claude Code with the persona
+donn init --personas ~/personas          # a personas folder with a starter org/base
+cd <a repo> && donn init --extends org/base   # give the repo a project persona
+donn claude                              # launch Claude Code with the persona
 
-zzpersona mod install                         # the Claude Code mod: band, nudge, /persona
+donn mod install                         # the Claude Code mod: band, nudge, /persona
 ```
 
-Inside a `zzpersona claude` session: `/persona`, `/persona list`, `/persona use <persona>` (this
+Inside a `donn claude` session: `/persona`, `/persona list`, `/persona use <persona>` (this
 session only) and `/persona switch <persona>` (remembered for the folder, and applied now).
 
 ## Switching
 
-`zzpersona switch <persona>` chooses the persona for this repo (outside a repo, or with
+`donn switch <persona>` chooses the persona for this repo (outside a repo, or with
 `--default`, your default); every harness uses it from its next launch. After saving, it says what
 the choice means in each installed harness:
 
@@ -57,7 +57,7 @@ the choice means in each installed harness:
 team/web is now used for ~/src/web
 claude-code  ok · approximates knowledge (1) · 1 session here still runs project/persona: /persona use team/web
 codex        drops skills (1) · approximates knowledge (1), permissions (5)
-agents-md    AGENTS.md carries project/persona (shared); team/web applies to zzpersona launches only
+agents-md    AGENTS.md carries project/persona (shared); team/web applies to donn launches only
 ```
 
 Sessions are counted when the daemon runs. `AGENTS.md` always carries the repo's shared project
@@ -66,7 +66,7 @@ harness; `switch --clear` reports for the persona that applies after clearing; `
 `harnesses` list. A harness that cannot compile the persona is reported as `error`; the switch is
 still saved. An unknown `--harness` id is refused before anything is saved.
 
-Every command takes `--json`. `zzpersona --help` lists them.
+Every command takes `--json`. `donn --help` lists them.
 
 ## Shared `AGENTS.md`
 
@@ -74,9 +74,9 @@ Tools that read a repo's `AGENTS.md` (Codex, Copilot CLI, and Claude Code when t
 `CLAUDE.md`) can get the project persona too, through a generated block you commit:
 
 ```sh
-zzpersona write              # render project/persona into a marked block of <repo>/AGENTS.md
-zzpersona write --check      # in CI: exit 1 when the block is out of date
-zzpersona write --remove     # take the block out again
+donn write              # render project/persona into a marked block of <repo>/AGENTS.md
+donn write --check      # in CI: exit 1 when the block is out of date
+donn write --remove     # take the block out again
 ```
 
 Everything outside the block is left as you wrote it. The block carries instructions, knowledge
@@ -85,13 +85,13 @@ servers, hooks, enforced permissions).
 
 ## Codex
 
-`zzpersona codex` launches Codex CLI with a persona, the way `zzpersona claude` launches Claude
+`donn codex` launches Codex CLI with a persona, the way `donn claude` launches Claude
 Code. Nothing is written to `~/.codex`: everything goes on the command line as `-c` overrides.
 
 ```sh
-zzpersona codex                     # the project persona (or your switch or default)
-zzpersona codex team/payments -- exec "fix the failing test"   # arguments after -- go to codex
-zzpersona compile --harness codex   # see the build and the report without launching
+donn codex                     # the project persona (or your switch or default)
+donn codex team/payments -- exec "fix the failing test"   # arguments after -- go to codex
+donn compile --harness codex   # see the build and the report without launching
 ```
 
 Carried over: instructions (as developer instructions, on top of Codex's own), knowledge pointers,
@@ -107,9 +107,9 @@ runs it with approval `never`; the sandbox still applies.)
 ## Keeping sessions current
 
 ```sh
-zzpersona daemon start    # a background process, per ZZPERSONA_HOME
-zzpersona status          # the sessions it knows of, and whether each is current
-zzpersona daemon stop
+donn daemon start    # a background process, per DONN_HOME
+donn status          # the sessions it knows of, and whether each is current
+donn daemon stop
 ```
 
 With the daemon running, edit a persona and your running Claude Code sessions pick it up on their
@@ -117,25 +117,25 @@ next turn. MCP servers, permissions and settings still need a relaunch. Codex se
 updated in place: they show as stale.
 
 With the daemon running, `/persona` in the Claude Code mod goes through it too: faster, and it works
-where policy stops the mod from running programs. Without the daemon the mod runs `zzpersona` as
+where policy stops the mod from running programs. Without the daemon the mod runs `donn` as
 before.
 
 To keep the daemon running without starting it yourself, install it as a login service (a launchd
 agent on macOS, a systemd user unit on Linux; it restarts after a crash):
 
 ```sh
-zzpersona daemon install     # run again after a CLI update or a PATH change
-zzpersona daemon uninstall
+donn daemon install     # run again after a CLI update or a PATH change
+donn daemon uninstall
 ```
 
 The daemon writes to `daemon.log` in the home's `daemon/` folder; on Linux the service's output
-goes to the journal instead (`journalctl --user -u zzpersona-daemon`).
+goes to the journal instead (`journalctl --user -u donn-daemon`).
 
-`zzpersona claude` and `zzpersona codex` also start the daemon when it is not running (through the
+`donn claude` and `donn codex` also start the daemon when it is not running (through the
 service when it is installed), waiting at most a second; the launch goes ahead either way. So
-`zzpersona daemon stop` lasts until the next `zzpersona claude` or `codex` (or, with the service,
+`donn daemon stop` lasts until the next `donn claude` or `codex` (or, with the service,
 the next login). To turn that off, set `daemon: { autoStart: false }` in `config.yaml` (in
-`~/.zzpersona`, or `ZZPERSONA_HOME`), or `ZZPERSONA_NO_DAEMON=1` for one run.
+`~/.donn`, or `DONN_HOME`), or `DONN_NO_DAEMON=1` for one run.
 
 ## Registry
 
@@ -143,26 +143,26 @@ A team lead can publish a layer (`org/*`, `area/*` or `team/*`) to a registry; e
 and resolves against exactly what was published, offline once pulled.
 
 ```sh
-zzpersona login https://registry.example.com   # sign in through your browser
-zzpersona publish team/web --dry-run           # what would change; nothing is stored
-zzpersona publish team/web                     # published team/web @2
-zzpersona pull                                 # team/web 1 → 2
+donn login https://registry.example.com   # sign in through your browser
+donn publish team/web --dry-run           # what would change; nothing is stored
+donn publish team/web                     # published team/web @2
+donn pull                                 # team/web 1 → 2
 ```
 
-Pulled layers sit in a read-only cache under `~/.zzpersona/cache/registry/`. A published layer wins
+Pulled layers sit in a read-only cache under `~/.donn/cache/registry/`. A published layer wins
 over a same-name file in your personas folder, with `team/web: using published @2; local copy
 differs` once per command; `--local` on `resolve`, `compile` and `diff` leaves the cache out, for
 authoring. `claude`, `codex` and `switch` pull first when the cache is older than `registry.maxAge`
 (15 minutes), within a second; if the registry is down, or you are not logged in or the token is
-refused, they say so and use the cache. `publish` refuses a stale base (`zzpersona pull`, then
+refused, they say so and use the cache. `publish` refuses a stale base (`donn pull`, then
 publish again) and a change that breaks a published layer below it (`--force` publishes anyway).
-The token goes in the OS keychain (`ZZPERSONA_REGISTRY_TOKEN` overrides it for CI) and never in
+The token goes in the OS keychain (`DONN_REGISTRY_TOKEN` overrides it for CI) and never in
 output. `resolve --json` and `switch --json` list the published versions used as `builtFrom`.
-`zzpersona logout` removes the token; the contract is `docs/planning/18-registry-contract.md`.
+`donn logout` removes the token; the contract is `docs/planning/18-registry-contract.md`.
 
 ### Signing in
 
-`zzpersona login <url>` signs you in through the registry's own identity provider. The terminal
+`donn login <url>` signs you in through the registry's own identity provider. The terminal
 prints `Open <link> and confirm the code ABCD-EFGH` and opens the link in your browser; the page
 shows the same code, you sign in there and confirm, and the terminal finishes with `logged in to
 <url> as <you> (session until <date>)`. Ctrl-C cancels. The code is your check that the browser and
@@ -171,30 +171,30 @@ link (so does `CI`), for a remote shell. The link must have the registry's own p
 origin, or the CLI refuses it; it never opens anything else.
 
 For a registry with no sign-in, or for CI, `--token` asks for a token at a hidden prompt and
-`--token-stdin` reads it from stdin (`ZZPERSONA_REGISTRY_TOKEN` still overrides the stored one).
+`--token-stdin` reads it from stdin (`DONN_REGISTRY_TOKEN` still overrides the stored one).
 Sessions end: `whoami` and `doctor` show the date, and you sign in again after it.
 
-`zzpersona whoami` lists your roles, e.g. `roles: publish team/web, lock org`. Who may publish or
+`donn whoami` lists your roles, e.g. `roles: publish team/web, lock org`. Who may publish or
 lock which layer is set on the registry, not in your persona files. When a `publish` is refused
 with `forbidden`, the hint names the grant to ask a registry admin for.
 
-A registry with sign-in needs `@zzpersona/cli` 0.9.0 or later, which is this release (product
+A registry with sign-in needs `@getdonn/cli` 0.9.0 or later, which is this release (product
 0.11.0): older CLIs reject the new fields in its answers. A 401 on `POST /v1/auth/logins` is read as no
 sign-in (registries before control plane 0.2), so the CLI points you to `--token-stdin`.
 
 ## Managed policy
 
 Locks in an `org/`, `area/` or `team/` layer can be enforced machine-wide by Claude Code, so a
-developer cannot undo them from their own settings. `zzpersona` compiles the locks of a layer and
+developer cannot undo them from their own settings. `donn` compiles the locks of a layer and
 its ancestors to the files Claude Code reads from its administrator-owned policy folder
 (`/Library/Application Support/ClaudeCode/` on macOS, `/etc/claude-code/` on Linux,
 `C:\Program Files\ClaudeCode\` on Windows).
 
 ```sh
-zzpersona managed build --layer org/acme --os linux   # ./zzpersona-managed/ and a report
-sudo zzpersona managed install ./zzpersona-managed    # shows the plan, asks (or --yes)
-zzpersona managed check                               # current, stale, edited, missing, ...
-sudo zzpersona managed uninstall                      # removes exactly the files it installed
+donn managed build --layer org/acme --os linux   # ./donn-managed/ and a report
+sudo donn managed install ./donn-managed         # shows the plan, asks (or --yes)
+donn managed check                               # current, stale, edited, missing, ...
+sudo donn managed uninstall                      # removes exactly the files it installed
 ```
 
 `build` compiles from the local store (published layers from the pull cache); `--from-registry`
@@ -203,7 +203,7 @@ path and digest before it writes. `--os` defaults to this machine's, so an admin
 another. `install` verifies the bundle, refuses an unsafe folder (a symlink, or when root a folder
 others can write), writes atomically and never touches `managed-settings.json`, other drop-ins or
 a `managed-mcp.json` it did not install. `uninstall` removes the files the installed manifest
-lists, plus any at zzpersona's own paths that an interrupted install or an adoption counted as
+lists, plus any at donn's own paths that an interrupted install or an adoption counted as
 owned.
 
 **Enforced:** locked permission rules, hooks (the script is copied into the bundle), `http`/`sse`
@@ -235,28 +235,28 @@ settings through MDM or the claude.ai console, set `managedSourcesBehavior: "mer
 files are ignored; `check` reports `ignored` when it sees a higher source without it. The manifest
 records `minClaudeCode`, the oldest Claude Code that understands every key in the bundle.
 `check` never goes to the network: with a registry configured, `stale` compares with the layers
-last pulled (run `zzpersona pull` first for the latest).
+last pulled (run `donn pull` first for the latest).
 `check` run under `sudo`, or by an MDM, reads root's `~/.claude/remote-settings.json`, not the
 developer's. `doctor` and `status` show the result. The design is
 `docs/planning/21-managed-settings.md`.
 
 ## What each harness can carry
 
-`zzpersona capabilities` shows, per harness, which persona fields are carried natively,
+`donn capabilities` shows, per harness, which persona fields are carried natively,
 approximated, advisory or not at all, and why. The same matrix is published in
 [`docs/capabilities.md`](docs/capabilities.md).
 
 ## Two Claude Code installs?
 
-`zzpersona claude` runs the `claude` that `PATH` finds, which may not be the one your shell's
-`claude` alias runs. `zzpersona doctor` names the binary it checked.
+`donn claude` runs the `claude` that `PATH` finds, which may not be the one your shell's
+`claude` alias runs. `donn doctor` names the binary it checked.
 
 ## Developing
 
 ```sh
 pnpm turbo run build check-types lint test
 pnpm format:check
-ZZP_E2E=1 pnpm --filter @zzpersona/cli exec vitest run src/e2e.test.ts   # real claude, opt-in
+DONN_E2E=1 pnpm --filter @getdonn/cli exec vitest run src/e2e.test.ts   # real claude, opt-in
 ```
 
 Conventions (gitflow, stacked PRs, changesets) are in `CLAUDE.md`.

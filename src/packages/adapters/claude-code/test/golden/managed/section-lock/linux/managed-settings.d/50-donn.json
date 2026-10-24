@@ -1,0 +1,37 @@
+{
+  "claudeMd": "Review code the way you would want yours reviewed.\n\nPrefer small PRs.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "'/etc/claude-code/donn/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "'/etc/claude-code/donn/hooks/stop-audit-audit.sh'",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read(./**)"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)"
+    ]
+  }
+}

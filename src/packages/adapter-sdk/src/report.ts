@@ -3,7 +3,7 @@ import {
   lockCovers,
   parsePath,
   type ResolvedPersona,
-} from "@zzpersona/spec";
+} from "@getdonn/spec";
 import {
   FIXED_CAPABILITY_FIELDS,
   type CapabilityField,

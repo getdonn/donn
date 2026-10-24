@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { CliError } from "../errors.js";
@@ -32,11 +32,11 @@ export interface ServiceManager {
   loaded(): Promise<boolean>;
 }
 
-const LABEL = "zzpersona.daemon";
+const LABEL = "dev.getdonn.daemon";
 /** How long a reinstall waits for launchd to let go of the old job. */
 const UNLOAD_WAIT_MS = 5_000;
 const UNLOAD_POLL_MS = 50;
-const UNIT = "zzpersona-daemon";
+const UNIT = "donn-daemon";
 
 type ServiceIo = Pick<CliIo, "env" | "probe">;
 
@@ -57,7 +57,7 @@ export function serviceManager(
   const home = io.env.HOME;
   if (io.probe.platform === "win32" || !home) return undefined;
   // Test-only: a scratch label, so the e2e never touches the real service.
-  const override = io.env.ZZPERSONA_SERVICE_LABEL;
+  const override = io.env.DONN_SERVICE_LABEL;
   return io.probe.platform === "darwin"
     ? launchd(
         io.probe,
@@ -73,7 +73,7 @@ export function serviceManager(
 }
 
 export interface InstalledService {
-  /** The `zzpersona` the file runs ("" when the file names none). */
+  /** The `donn` the file runs ("" when the file names none). */
   command: string;
   /** The file's environment. */
   env: Record<string, string>;
@@ -123,13 +123,13 @@ export async function installedCommand(
 export const absoluteHome = (io: Pick<CliIo, "cwd">, home: string) =>
   resolve(io.cwd, home);
 
-/** The home the installed service's daemon serves: its ZZPERSONA_HOME, else the default home. */
+/** The home the installed service's daemon serves: its DONN_HOME, else the default home. */
 export function serviceHome(io: CliIo, installed: InstalledService): string {
   return absoluteHome(
     io,
     homeOf({
       ...io,
-      env: { ...io.env, ZZPERSONA_HOME: installed.env.ZZPERSONA_HOME },
+      env: { ...io.env, DONN_HOME: installed.env.DONN_HOME },
     }),
   );
 }
@@ -157,7 +157,7 @@ export async function serviceFor(
  * serves it (a restart would run the old command again), else a restart.
  */
 export async function updateFix(io: CliIo, home: string): Promise<string> {
-  return (await serviceFor(io, home)) ? "zzpersona daemon install" : RESTART;
+  return (await serviceFor(io, home)) ? "donn daemon install" : RESTART;
 }
 
 async function writeServiceFile(path: string, text: string): Promise<void> {
@@ -334,7 +334,7 @@ function systemd(probe: Probe, config: string, stem: string): ServiceManager {
   const render = (spec: ServiceSpec) =>
     [
       "[Unit]\n",
-      "Description=zzpersona daemon\n",
+      "Description=donn daemon\n",
       "\n",
       "[Service]\n",
       `ExecStart=${spec.command.map(execWord).join(" ")}\n`,

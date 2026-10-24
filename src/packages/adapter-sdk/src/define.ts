@@ -1,4 +1,4 @@
-import { HOOK_EVENTS, type ResolvedPersona } from "@zzpersona/spec";
+import { HOOK_EVENTS, type ResolvedPersona } from "@getdonn/spec";
 import { FIXED_CAPABILITY_FIELDS, type HarnessAdapter } from "./types.js";
 
 export const ADAPTER_API_VERSION = 1;

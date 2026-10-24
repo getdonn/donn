@@ -1,5 +1,5 @@
 # Org layer: what every engineer at the (fictional) Acme gets.
-apiVersion: zzpersona/v0
+apiVersion: donn/v0
 kind: Persona
 metadata:
   name: acme

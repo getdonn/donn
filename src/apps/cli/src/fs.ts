@@ -66,7 +66,7 @@ export async function withFileLock<T>(
       if (Date.now() > deadline) {
         throw new CliError(
           "locked",
-          `${lock} is held by another zzpersona command; retry, or remove it if none is running`,
+          `${lock} is held by another donn command; retry, or remove it if none is running`,
           { lock },
         );
       }

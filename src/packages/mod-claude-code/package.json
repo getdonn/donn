@@ -1,5 +1,5 @@
 {
-  "name": "@zzpersona/mod-claude-code",
+  "name": "@getdonn/mod-claude-code",
   "version": "0.3.1",
   "private": true,
   "description": "The Claude Code mod: the active persona above the prompt, a folder-mismatch nudge, /persona",
@@ -18,9 +18,9 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "esbuild": "^0.28.2",
     "eslint": "10.13.0",
     "typescript": "7.0.2",

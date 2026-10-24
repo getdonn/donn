@@ -12,7 +12,7 @@ import {
   RegistryError,
   startLogin,
   type PullChange,
-} from "@zzpersona/store-remote";
+} from "@getdonn/store-remote";
 import type { CliIo } from "../cli.js";
 import { loadConfig } from "../config.js";
 import { createContext, homeOf } from "../context.js";
@@ -29,7 +29,7 @@ import {
 // login, logout, whoami, pull and publish. See docs/planning/18-registry-contract.md, section 4.
 
 const HINTS: Record<string, string> = {
-  "stale-base": "zzpersona pull, then publish again",
+  "stale-base": "donn pull, then publish again",
   "breaks-descendants": "--force",
 };
 
@@ -235,7 +235,7 @@ async function browserLogin(
       ) {
         throw new CliError(
           "no-sign-in",
-          `this registry has no sign-in; use zzpersona login ${url} --token-stdin`,
+          `this registry has no sign-in; use donn login ${url} --token-stdin`,
           { hint: "--token-stdin" },
         );
       }
@@ -274,7 +274,7 @@ async function browserLogin(
       if (remaining <= 0) {
         throw new CliError(
           "login-expired",
-          `login timed out; run zzpersona login ${url} again`,
+          `login timed out; run donn login ${url} again`,
         );
       }
       // Never sleep past the end: there is always a last poll before expiry.
@@ -491,7 +491,7 @@ export async function publishCommand(
     } catch {
       cacheUpdated = false;
       io.stderr.write(
-        "warning: the local cache was not updated; run zzpersona pull\n",
+        "warning: the local cache was not updated; run donn pull\n",
       );
     }
     print(

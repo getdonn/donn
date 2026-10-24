@@ -4,6 +4,7 @@
 > at the start growing to 3. Durations are rough and assume part-time; treat them as ordering,
 > not commitments. Each phase ends with an **exit question** — if the answer is no, stop and
 > rethink before spending the next phase.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Phase 0 — Spikes and the IR (serial, 1 person)
 
@@ -72,7 +73,7 @@ Work:
   third. Cursor was not probed.*
 - Fill the capability matrix from real adapters, not guesses; publish it in the docs — it is a
   marketing asset ("here is exactly what each tool can and cannot enforce").
-- `apps/daemon` (`hatrackd`): local API, cache, pre-build, watchers, harness detection, service
+- `apps/daemon` (`donnd`): local API, cache, pre-build, watchers, harness detection, service
   install. CLI and mod become daemon clients with in-process fallback.
 - `switch --harness all` with per-harness results.
   *2026-10-22: built as spec 17: one choice for every harness (already true of `state.json`), and
@@ -93,9 +94,9 @@ who is running what. Build only the slice a design-partner asks for.
 Work:
 - `control-plane`: Postgres, persona registry + versions, publish API with server-side lock
   enforcement, OIDC, RBAC (view / publish / lock per layer path), append-only audit.
-- `packages/store-remote` (OSS client) + `hatrack login|publish|pull`.
+- `packages/store-remote` (OSS client) + `donn login|publish|pull`.
 - Drift: daemon reports local-vs-published; console shows it per team.
-- Claude Code enforcement path: compile org locks → `managed-settings.d/hatrack.json` +
+- Claude Code enforcement path: compile org locks → `managed-settings.d/donn.json` +
   `managed-mcp.json` bundle for the customer's MDM. (Other harnesses: whatever their managed
   surface is, or "advisory only" in the report.)
 - Gateway adapter v1: Bifrost (2026-10-22: renamed "Gateway adapter v1: Bifrost and LiteLLM", see spec 18) — resolve `gateway://` refs, pull allowed-tool sets into policy.

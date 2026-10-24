@@ -3,7 +3,7 @@ import {
   parsePath,
   type McpServer,
   type ResolveResult,
-} from "@zzpersona/spec";
+} from "@getdonn/spec";
 
 // Renders a ResolveResult for a human reviewer: every resolved value on its own line with the
 // layer that set it and any lock that covers it, then the warnings. Plain text, no colors; the

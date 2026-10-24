@@ -187,40 +187,40 @@ importers:
 
   src/apps/cli:
     dependencies:
-      '@zzpersona/adapter-agents-md':
+      '@getdonn/adapter-agents-md':
         specifier: workspace:*
         version: link:../../packages/adapters/agents-md
-      '@zzpersona/adapter-claude-code':
+      '@getdonn/adapter-claude-code':
         specifier: workspace:*
         version: link:../../packages/adapters/claude-code
-      '@zzpersona/adapter-codex':
+      '@getdonn/adapter-codex':
         specifier: workspace:*
         version: link:../../packages/adapters/codex
-      '@zzpersona/adapter-sdk':
+      '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../../packages/adapter-sdk
-      '@zzpersona/executor':
+      '@getdonn/executor':
         specifier: workspace:*
         version: link:../../packages/executor
-      '@zzpersona/mod-claude-code':
+      '@getdonn/mod-claude-code':
         specifier: workspace:*
         version: link:../../packages/mod-claude-code
-      '@zzpersona/registry-api':
+      '@getdonn/registry-api':
         specifier: workspace:*
         version: link:../../packages/registry-api
-      '@zzpersona/resolver':
+      '@getdonn/resolver':
         specifier: workspace:*
         version: link:../../packages/resolver
-      '@zzpersona/secrets':
+      '@getdonn/secrets':
         specifier: workspace:*
         version: link:../../packages/secrets
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../../packages/spec
-      '@zzpersona/store-local':
+      '@getdonn/store-local':
         specifier: workspace:*
         version: link:../../packages/store-local
-      '@zzpersona/store-remote':
+      '@getdonn/store-remote':
         specifier: workspace:*
         version: link:../../packages/store-remote
       commander:
@@ -236,10 +236,10 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
       eslint:
@@ -254,17 +254,17 @@ importers:
 
   src/packages/adapter-sdk:
     dependencies:
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -282,20 +282,20 @@ importers:
 
   src/packages/adapters/agents-md:
     dependencies:
-      '@zzpersona/adapter-sdk':
+      '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../../adapter-sdk
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../../spec
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../typescript-config
       eslint:
@@ -310,20 +310,20 @@ importers:
 
   src/packages/adapters/claude-code:
     dependencies:
-      '@zzpersona/adapter-sdk':
+      '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../../adapter-sdk
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../../spec
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../typescript-config
       eslint:
@@ -338,20 +338,20 @@ importers:
 
   src/packages/adapters/codex:
     dependencies:
-      '@zzpersona/adapter-sdk':
+      '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../../adapter-sdk
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../../spec
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../typescript-config
       eslint:
@@ -399,23 +399,23 @@ importers:
 
   src/packages/executor:
     dependencies:
-      '@zzpersona/adapter-sdk':
+      '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../adapter-sdk
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
-      '@zzpersona/store-local':
+      '@getdonn/store-local':
         specifier: workspace:*
         version: link:../store-local
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -433,10 +433,10 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       esbuild:
@@ -454,13 +454,13 @@ importers:
 
   src/packages/registry-api:
     dependencies:
-      '@zzpersona/adapter-sdk':
+      '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../adapter-sdk
-      '@zzpersona/resolver':
+      '@getdonn/resolver':
         specifier: workspace:*
         version: link:../resolver
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
       yaml:
@@ -473,10 +473,10 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -491,17 +491,17 @@ importers:
 
   src/packages/resolver:
     dependencies:
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -519,17 +519,17 @@ importers:
 
   src/packages/secrets:
     dependencies:
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -551,10 +551,10 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -569,10 +569,10 @@ importers:
 
   src/packages/store-local:
     dependencies:
-      '@zzpersona/resolver':
+      '@getdonn/resolver':
         specifier: workspace:*
         version: link:../resolver
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
       yaml:
@@ -582,10 +582,10 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -600,16 +600,16 @@ importers:
 
   src/packages/store-remote:
     dependencies:
-      '@zzpersona/registry-api':
+      '@getdonn/registry-api':
         specifier: workspace:*
         version: link:../registry-api
-      '@zzpersona/resolver':
+      '@getdonn/resolver':
         specifier: workspace:*
         version: link:../resolver
-      '@zzpersona/spec':
+      '@getdonn/spec':
         specifier: workspace:*
         version: link:../spec
-      '@zzpersona/store-local':
+      '@getdonn/store-local':
         specifier: workspace:*
         version: link:../store-local
       yaml:
@@ -622,10 +622,10 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
-      '@zzpersona/eslint-config':
+      '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@zzpersona/typescript-config':
+      '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:

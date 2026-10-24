@@ -1,4 +1,4 @@
-import type { Ref, ResolvedPersona } from "@zzpersona/spec";
+import type { Ref, ResolvedPersona } from "@getdonn/spec";
 
 // The managed policy bundle: an org/area/team chain's locks compiled to the files a harness's
 // administrator-owned policy folder holds. See docs/planning/21-managed-settings.md, section 2.
@@ -20,7 +20,7 @@ export interface ManagedInput {
   layers: ManagedLayer[];
   os: ManagedOs;
   /** The CLI version that compiles, recorded in the manifest. */
-  zzpersona: string;
+  donn: string;
   /** Instruction file texts, keyed as in the IR (personas-root-relative). */
   texts: Record<string, string>;
   /** Hook run files, keyed as in the IR (personas-root-relative). */
@@ -41,7 +41,7 @@ export type ManagedCode =
   | "managed-passthrough-conflict";
 
 export interface ManagedEntry {
-  /** IR path grammar from @zzpersona/spec. */
+  /** IR path grammar from @getdonn/spec. */
   path: string;
   /** The layer whose lock (or policy) put the value in the bundle. */
   layer: Ref;
@@ -58,13 +58,13 @@ export type ManagedWarningCode =
 export interface ManagedReport {
   /** One per locked value, and one per lock that covers nothing the bundle carries. */
   entries: ManagedEntry[];
-  /** Where the policy weakens zzpersona's own launches. */
+  /** Where the policy weakens donn's own launches. */
   warnings: { code: ManagedWarningCode; message: string }[];
 }
 
 export interface ManagedManifest {
   format: 1;
-  zzpersona: string;
+  donn: string;
   os: ManagedOs;
   layers: ManagedLayer[];
   /** Root-relative path → sha256 hex, for every bundle file but the manifest itself. */
@@ -76,7 +76,7 @@ export interface ManagedManifest {
 
 export interface ManagedResult {
   report: ManagedReport;
-  /** Absent when any entry is refused. Includes zzpersona/manifest.json. */
+  /** Absent when any entry is refused. Includes donn/manifest.json. */
   bundle?: {
     /** Paths relative to the policy root, `/`-separated on every OS. */
     files: Record<string, Uint8Array>;
