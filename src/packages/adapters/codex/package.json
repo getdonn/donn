@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/adapter-codex",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Launches Codex CLI with a persona, as -c overrides on the command line",
   "license": "Apache-2.0",
   "repository": {

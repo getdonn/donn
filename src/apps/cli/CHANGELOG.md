@@ -1,5 +1,24 @@
 # @getdonn/cli
 
+## 0.11.1
+
+### Patch Changes
+
+- 14c7f82: First npm release.
+- Updated dependencies [14c7f82]
+  - @getdonn/spec@0.3.1
+  - @getdonn/resolver@0.5.1
+  - @getdonn/adapter-sdk@0.4.1
+  - @getdonn/adapter-claude-code@0.3.1
+  - @getdonn/adapter-codex@0.3.1
+  - @getdonn/adapter-agents-md@0.3.1
+  - @getdonn/store-local@0.2.1
+  - @getdonn/store-remote@0.5.1
+  - @getdonn/secrets@0.3.1
+  - @getdonn/executor@0.3.1
+  - @getdonn/registry-api@0.6.1
+  - @getdonn/mod-claude-code@0.4.1
+
 ## 0.11.0
 
 ### Minor Changes
