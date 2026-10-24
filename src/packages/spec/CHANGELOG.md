@@ -1,5 +1,11 @@
 # @getdonn/spec
 
+## 0.3.0
+
+### Minor Changes
+
+- 035af67: Renamed from zzpersona to donn. Run `donn migrate` once on a machine that ran zzpersona.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # @getdonn/executor
 
+## 0.3.0
+
+### Minor Changes
+
+- 035af67: Renamed from zzpersona to donn. Run `donn migrate` once on a machine that ran zzpersona.
+
+### Patch Changes
+
+- Updated dependencies [035af67]
+  - @getdonn/adapter-sdk@0.4.0
+  - @getdonn/spec@0.3.0
+  - @getdonn/store-local@0.2.0
+
 ## 0.2.2
 
 ### Patch Changes
