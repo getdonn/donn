@@ -47,6 +47,11 @@ export const serviceOf = (io: CliIo): ServiceManager | undefined =>
 export interface ServiceManagerOptions {
   /** How long a launchd reinstall waits for the old job to go; 5 s. */
   unloadWaitMs?: number;
+  /**
+   * Another service's name: its launchd label, or its systemd unit without `.service`.
+   * `donn migrate` uses it to remove the service of the old name.
+   */
+  label?: string;
 }
 
 /** The platform's manager, or undefined on Windows (or without a HOME to put the file in). */
@@ -57,7 +62,7 @@ export function serviceManager(
   const home = io.env.HOME;
   if (io.probe.platform === "win32" || !home) return undefined;
   // Test-only: a scratch label, so the e2e never touches the real service.
-  const override = io.env.DONN_SERVICE_LABEL;
+  const override = options.label ?? io.env.DONN_SERVICE_LABEL;
   return io.probe.platform === "darwin"
     ? launchd(
         io.probe,

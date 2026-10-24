@@ -23,15 +23,45 @@ import type { ManagedEnv } from "./env.js";
 // or removed; anything else that is in the way is refused, by name, before the first write.
 // See docs/planning/21-managed-settings.md, section 3.
 
-const HOOKS_DIR = "donn/hooks";
-/** Written before an install's first write, removed after its manifest: what it may have written. */
-export const PENDING_PATH = "donn/pending.json";
-/** Every folder an OWN_PATH lives in, below the root. */
-const OWN_FOLDERS = ["managed-settings.d", "donn", HOOKS_DIR];
+/**
+ * Where donn's files go under the root: its folder (which holds the manifest, pending.json and
+ * hooks, and names the manifest's version field) and its settings drop-in. The only other layout
+ * is the old name's, which `donn migrate --managed` removes with these same rules.
+ */
+export interface ManagedLayout {
+  folder: string;
+  dropIn: string;
+}
 
-/** The only paths donn ever writes or removes under the root. */
-const OWN_PATH =
-  /^(?:managed-settings\.d\/50-donn\.json|managed-mcp\.json|donn\/manifest\.json|donn\/hooks\/[^/]+)$/;
+export const LAYOUT: ManagedLayout = {
+  folder: "donn",
+  dropIn: "managed-settings.d/50-donn.json",
+};
+
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A layout's bookkeeping paths and the only paths it ever writes or removes under the root. */
+function layoutPaths(layout: ManagedLayout) {
+  const { folder, dropIn } = layout;
+  const hooks = `${folder}/hooks`;
+  return {
+    manifest: `${folder}/manifest.json`,
+    pending: `${folder}/pending.json`,
+    hooks,
+    /** Every folder an own path lives in, below the root. */
+    folders: ["managed-settings.d", folder, hooks],
+    own: new RegExp(
+      `^(?:${escapeRegExp(dropIn)}|managed-mcp\\.json|${escapeRegExp(folder)}/manifest\\.json|${escapeRegExp(hooks)}/[^/]+)$`,
+    ),
+  };
+}
+
+const OWN = layoutPaths(LAYOUT);
+const HOOKS_DIR = OWN.hooks;
+/** Written before an install's first write, removed after its manifest: what it may have written. */
+export const PENDING_PATH = OWN.pending;
+const OWN_PATH = OWN.own;
 
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");
@@ -40,13 +70,13 @@ const isMissing = (error: unknown) =>
 export const under = (root: string, path: string) =>
   join(root, ...path.split("/"));
 
-function isOwnPath(path: string): boolean {
+function isOwnPath(path: string, own = OWN_PATH): boolean {
   try {
     checkedPath(path);
   } catch {
     return false;
   }
-  return OWN_PATH.test(path);
+  return own.test(path);
 }
 
 function ownPath(path: string, listedIn: string): string {
@@ -62,9 +92,15 @@ function ownPath(path: string, listedIn: string): string {
 }
 
 /** Thrown when an installed manifest comes from a newer donn: touch nothing. */
-function newerFormat(manifest: Record<string, unknown>, path: string) {
+function newerFormat(
+  manifest: Record<string, unknown>,
+  path: string,
+  field: string,
+) {
   const version =
-    typeof manifest.donn === "string" ? manifest.donn : "an unknown version";
+    typeof manifest[field] === "string"
+      ? manifest[field]
+      : "an unknown version";
   return new CliError(
     "managed-newer-format",
     `installed by a newer donn (${version}); upgrade donn`,
@@ -79,8 +115,10 @@ function newerFormat(manifest: Record<string, unknown>, path: string) {
  */
 export async function readInstalled(
   root: string,
+  layout: ManagedLayout = LAYOUT,
 ): Promise<ManagedManifest | undefined> {
-  const path = under(root, MANIFEST_PATH);
+  const { manifest: manifestPath, own } = layoutPaths(layout);
+  const path = under(root, manifestPath);
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -105,7 +143,7 @@ export async function readInstalled(
   }
   const manifest = parsed as Record<string, unknown>;
   if (typeof manifest.format === "number" && manifest.format > 1) {
-    throw newerFormat(manifest, path);
+    throw newerFormat(manifest, path, layout.folder);
   }
   const files = manifest.files;
   if (
@@ -118,7 +156,8 @@ export async function readInstalled(
     throw bad("is not a format 1 manifest");
   }
   for (const key of Object.keys(files)) {
-    if (!isOwnPath(key)) throw bad(`lists ${key}, which donn never installs`);
+    if (!isOwnPath(key, own))
+      throw bad(`lists ${key}, which donn never installs`);
   }
   return manifest as unknown as ManagedManifest;
 }
@@ -144,8 +183,12 @@ const sameBytes = (a: Uint8Array, b: Uint8Array) =>
  * The paths an interrupted install may have written (its pending.json), or undefined when no
  * install is pending. Throws `managed-bad-installed` when the file cannot be read.
  */
-export async function readPending(root: string): Promise<string[] | undefined> {
-  const path = under(root, PENDING_PATH);
+export async function readPending(
+  root: string,
+  layout: ManagedLayout = LAYOUT,
+): Promise<string[] | undefined> {
+  const { pending, own } = layoutPaths(layout);
+  const path = under(root, pending);
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -161,7 +204,7 @@ export async function readPending(root: string): Promise<string[] | undefined> {
   }
   if (
     !Array.isArray(paths) ||
-    paths.some((p) => typeof p !== "string" || !isOwnPath(p))
+    paths.some((p) => typeof p !== "string" || !isOwnPath(p, own))
   ) {
     throw new CliError(
       "managed-bad-installed",
@@ -184,12 +227,16 @@ const unsafe = (path: string, reason: string) =>
  * files. Running as root, each must also be root's and not writable by group or others, or
  * someone else could change what root installs.
  */
-async function checkFolders(env: ManagedEnv): Promise<void> {
+async function checkFolders(
+  env: ManagedEnv,
+  layout: ManagedLayout = LAYOUT,
+): Promise<void> {
+  const paths = layoutPaths(layout);
   const items: [string, "dir" | "file"][] = [
     [env.root, "dir"],
-    ...OWN_FOLDERS.map((d): [string, "dir"] => [under(env.root, d), "dir"]),
-    [under(env.root, MANIFEST_PATH), "file"],
-    [under(env.root, PENDING_PATH), "file"],
+    ...paths.folders.map((d): [string, "dir"] => [under(env.root, d), "dir"]),
+    [under(env.root, paths.manifest), "file"],
+    [under(env.root, paths.pending), "file"],
   ];
   for (const [path, want] of items) {
     const info = await env.inspect(path);
@@ -460,16 +507,18 @@ export async function applyInstall(
  */
 export async function planUninstall(
   env: ManagedEnv,
+  layout: ManagedLayout = LAYOUT,
 ): Promise<string[] | undefined> {
-  await checkFolders(env);
-  const installed = await readInstalled(env.root);
-  const pending = await readPending(env.root);
+  const paths = layoutPaths(layout);
+  await checkFolders(env, layout);
+  const installed = await readInstalled(env.root, layout);
+  const pending = await readPending(env.root, layout);
   if (installed === undefined && pending === undefined) return undefined;
   const listed = new Set([
     ...Object.keys(installed?.files ?? {}),
     ...(pending ?? []),
   ]);
-  listed.delete(MANIFEST_PATH);
+  listed.delete(paths.manifest);
   const removed: string[] = [];
   for (const path of [...listed].sort()) {
     if ((await onDisk(under(env.root, path))).kind !== "missing")
@@ -477,8 +526,8 @@ export async function planUninstall(
   }
   return [
     ...removed,
-    ...(installed ? [MANIFEST_PATH] : []),
-    ...(pending ? [PENDING_PATH] : []),
+    ...(installed ? [paths.manifest] : []),
+    ...(pending ? [paths.pending] : []),
   ];
 }
 
@@ -486,12 +535,14 @@ export async function planUninstall(
 export async function applyUninstall(
   root: string,
   removed: string[],
+  layout: ManagedLayout = LAYOUT,
 ): Promise<void> {
-  const bookkeeping = [MANIFEST_PATH, PENDING_PATH];
+  const paths = layoutPaths(layout);
+  const bookkeeping = [paths.manifest, paths.pending];
   for (const path of removed) {
     if (!bookkeeping.includes(path)) await remove(root, path);
   }
   for (const path of bookkeeping) await remove(root, path);
   // Back to how the machine was before: empty folders go, the root too; others' files keep them.
-  await prune(root, [HOOKS_DIR, "donn", "managed-settings.d", "."]);
+  await prune(root, [paths.hooks, layout.folder, "managed-settings.d", "."]);
 }

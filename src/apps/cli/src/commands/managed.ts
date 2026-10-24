@@ -113,7 +113,7 @@ const shellWord = (value: string, os: ManagedOs) =>
       : `'${value.replaceAll("'", "'\\''")}'`;
 
 /** Refuse without administrator rights, naming the exact command to re-run. */
-function needAdmin(env: ManagedEnv, command: string): void {
+export function needAdmin(env: ManagedEnv, command: string): void {
   if (env.isAdmin()) return;
   const what = command.split(" ").slice(0, 2).join(" ");
   throw new CliError(
@@ -125,20 +125,22 @@ function needAdmin(env: ManagedEnv, command: string): void {
   );
 }
 
-/** True to go ahead; false (after saying so) when declined; throws without a terminal. */
-async function confirmed(
+/**
+ * True to go ahead; false (after saying so) when declined; throws `code` without a terminal.
+ * `donn migrate` asks through it too.
+ */
+export async function confirmed(
   io: CliIo,
-  env: ManagedEnv,
+  env: Pick<ManagedEnv, "confirm">,
   question: string,
   declined: string,
+  code = "managed-confirm",
 ): Promise<boolean> {
   const answer = await env.confirm(question);
   if (answer === undefined) {
-    throw new CliError(
-      "managed-confirm",
-      "no terminal to confirm on; re-run with --yes",
-      { hint: "--yes" },
-    );
+    throw new CliError(code, "no terminal to confirm on; re-run with --yes", {
+      hint: "--yes",
+    });
   }
   if (!answer) io.stderr.write(`cancelled; ${declined}\n`);
   return answer;

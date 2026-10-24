@@ -27,6 +27,8 @@ import {
   managedUninstallCommand,
 } from "./commands/managed.js";
 import { liveCommand } from "./commands/live.js";
+import { migrateCommand } from "./commands/migrate.js";
+import { LEGACY } from "./migrate/legacy.js";
 import { modInstall, modUninstall } from "./commands/mod.js";
 import { initCommand } from "./commands/init.js";
 import {
@@ -461,6 +463,25 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { state, findings } as JSON")
         .action((options) =>
           handle(options.json, () => managedCheckCommand(io, options)),
+        );
+
+      program
+        .command("migrate")
+        .description(
+          `Move a ${LEGACY.name} install to donn: home, service, keychain token and mod`,
+        )
+        .option(
+          "--project [dir]",
+          `migrate a project instead: ${LEGACY.home}/, its persona and AGENTS.md markers (default: this project)`,
+        )
+        .option(
+          "--managed",
+          `remove the old managed policy files (needs administrator rights)`,
+        )
+        .option("--yes", "do not ask before changing anything")
+        .option("--json", "print { steps, env, doctor } as JSON")
+        .action((options) =>
+          handle(options.json, () => migrateCommand(io, options)),
         );
 
       const daemon = program
