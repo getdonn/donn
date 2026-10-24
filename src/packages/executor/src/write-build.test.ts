@@ -166,23 +166,22 @@ describe("review fixes", () => {
 
   it("swaps builds atomically: the build directory is never missing (I2)", async () => {
     const { store, buildDir } = setup();
-    await writeBuild(output({ "a.txt": { content: "1" } }), {
-      buildDir,
-      store,
-    });
+    await writeBuild(
+      output({ "keep.txt": { content: "" }, "a.txt": { content: "1" } }),
+      { buildDir, store },
+    );
     expect(lstatSync(buildDir).isSymbolicLink()).toBe(true);
+    // One path every build has: two checks (a.txt, then b.txt) could straddle a swap.
     let missing = false;
     const watch = setInterval(() => {
-      if (
-        !existsSync(join(buildDir, "a.txt")) &&
-        !existsSync(join(buildDir, "b.txt"))
-      ) {
-        missing = true;
-      }
+      if (!existsSync(join(buildDir, "keep.txt"))) missing = true;
     }, 0);
     for (let i = 0; i < 20; i++) {
       await writeBuild(
-        output({ [i % 2 ? "a.txt" : "b.txt"]: { content: "x" } }),
+        output({
+          "keep.txt": { content: "" },
+          [i % 2 ? "a.txt" : "b.txt"]: { content: "x" },
+        }),
         {
           buildDir,
           store,
