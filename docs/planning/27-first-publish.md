@@ -6,6 +6,9 @@
 > provenance, makes `getdonn/donn` public at the same time, and ships the result as release
 > **0.14.0**. It unblocks the agents and GUI track (specs 23–26).
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
+> *2026-10-24: built and released.* 0.14.0 is on npm: all 13 packages published from
+> `release.yml` with provenance (`npm audit signatures` verifies them). Left with the maintainer:
+> runbook step 7 and deprecating the `0.0.0` placeholders. See "Amendments from the release".
 
 ## Intent
 
@@ -265,3 +268,21 @@ None.
 - Every job has `timeout-minutes: 30`.
 - `smoke` runs `donn` by absolute path inside its prefix, so a `donn` elsewhere on PATH (a pnpm
   link) can never stand in; the stub `claude` stays first on PATH.
+
+## Amendments from the release (2026-10-24)
+
+- npm's website and CLI cannot attach a trusted publisher to a package that does not exist yet:
+  `npm trust github` answers 404 on `POST /-/package/<name>/trust`, and `npm trust list` 404s
+  too. The fallback in §4 step 3 was used: `claim` published the `0.0.0` placeholders, then
+  `npm trust github <name> --file release.yml --repo getdonn/donn --env npm --allow-publish`
+  worked for all 13 (permissions shown: publish, stage publish).
+- npm's 2FA publish flow also created an untagged `0.0.0-stage` version of each package
+  ("Temporary package placeholder for staged publishing"); `latest` was `0.0.0`, then the real
+  version. It stays.
+- `claim --deprecate --yes` run seconds after the claim found no `0.0.0` (registry read lag) and
+  printed nothing; it has to be run again later. A listing or empty result should say so.
+- After the publish, `dist-tags.latest` took a few minutes to move for some packages, while
+  `npm view <name>@<version>` already answered for others; verification waits for all 13.
+- The first CI runs found two things the local runs could not: a fresh pnpm 12 install fails
+  with `ERR_PNPM_IGNORED_BUILDS` for esbuild (fixed with `allowBuilds: { esbuild: false }`), and
+  the executor's atomic-swap test raced on Linux (fixed in the test, PR #180).

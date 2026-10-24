@@ -115,6 +115,10 @@ Reserved 2026-10-23:
 - **GitHub org `getdonn`.** `donn` and `donn-dev` are unrelated users. The repo moves into the
   org when it goes public (GitHub redirects the old URL).
 
+**2026-10-24: first published (spec 27).** Release 0.14.0 put the 13 runtime packages on npm under
+`@getdonn/*` (`npm i -g @getdonn/cli`), published from GitHub Actions with provenance, and
+`getdonn/donn` is public. Still open from this section: the USPTO search and the tagline.
+
 **2026-10-23: the rename landed (spec 22).** Run `donn migrate` once on a machine that ran
 zzpersona; the mapping below (the code said `zzpersona` until then) is kept as history:
 
