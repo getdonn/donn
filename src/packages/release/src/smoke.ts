@@ -53,16 +53,34 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
     JSON.stringify({ name: "donn-smoke", version: "0.0.0", private: true }),
   );
 
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    HOME: home,
-    DONN_HOME: donnHome,
-    PATH: [
-      stubBin,
-      join(prefix, "node_modules/.bin"),
-      process.env["PATH"] ?? "",
-    ].join(delimiter),
-  };
+  // Nothing of the caller's environment may steer the CLI: drop every DONN_*
+  // and the config/XDG locations, so defaults land under the throwaway HOME.
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("DONN_") || key.startsWith("XDG_")) delete env[key];
+  }
+  delete env["CLAUDE_CONFIG_DIR"];
+  env["HOME"] = home;
+  env["DONN_HOME"] = donnHome;
+  env["PATH"] = [
+    stubBin,
+    join(prefix, "node_modules/.bin"),
+    process.env["PATH"] ?? "",
+  ].join(delimiter);
+
+  // The version the workspace is about to publish; both modes check for it.
+  let expected: string;
+  try {
+    const manifest = JSON.parse(
+      await readFile(join(opts.root, "src/apps/cli/package.json"), "utf8"),
+    ) as { version: string };
+    expected = manifest.version;
+  } catch (err) {
+    return fail(
+      "version",
+      `cannot read the workspace ${CLI} version: ${(err as Error).message}`,
+    );
+  }
 
   // 1. install
   const installArgs =
@@ -73,7 +91,14 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
           prefix,
           ...source.tarballs.map((p) => p.tarball),
         ]
-      : ["install", "--prefix", prefix, CLI, "--registry", source.registry];
+      : [
+          "install",
+          "--prefix",
+          prefix,
+          `${CLI}@${expected}`,
+          "--registry",
+          source.registry,
+        ];
   const install = await run("npm", installArgs, { cwd: tmp, env });
   if (install.code !== 0) {
     fail(
@@ -83,32 +108,11 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
   }
 
   // 2. version
-  let expected: string;
-  if ("tarballs" in source) {
-    const cli = source.tarballs.find((p) => p.pkg.name === CLI);
-    if (!cli) fail("version", `no ${CLI} tarball to smoke`);
-    expected = cli.pkg.version;
-  } else {
-    try {
-      const manifest = JSON.parse(
-        await readFile(
-          join(prefix, "node_modules", CLI, "package.json"),
-          "utf8",
-        ),
-      ) as { version: string };
-      expected = manifest.version;
-    } catch (err) {
-      fail(
-        "version",
-        `cannot read the installed ${CLI}: ${(err as Error).message}`,
-      );
-    }
-  }
   const version = await donn(["--version"], "version");
   if (version.stdout.trim() !== expected) {
     fail(
       "version",
-      `donn --version printed "${version.stdout.trim()}", expected "${expected}"`,
+      `donn --version printed "${version.stdout.trim()}", expected "${expected}" (the workspace ${CLI} version)`,
     );
   }
 

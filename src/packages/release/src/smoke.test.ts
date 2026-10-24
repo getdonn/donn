@@ -1,10 +1,20 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Packed } from "./pack.js";
 import { smoke } from "./smoke.js";
 import { fakeRunner } from "./testing/fake-runner.js";
+
+async function rootWith(version: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "smoke-test-root-"));
+  await mkdir(join(root, "src/apps/cli"), { recursive: true });
+  await writeFile(
+    join(root, "src/apps/cli/package.json"),
+    JSON.stringify({ name: "@getdonn/cli", version }),
+  );
+  return root;
+}
 
 const ok = (stdout = "{}") => ({ code: 0, stdout, stderr: "" });
 
@@ -41,7 +51,7 @@ function handlers(opts: { version?: string; plugin?: boolean } = {}) {
 describe("smoke", () => {
   it("runs the steps in order with the throwaway home", async () => {
     const run = fakeRunner(handlers());
-    await smoke({ root: "/r", source: { tarballs }, run });
+    await smoke({ root: await rootWith("1.2.3"), source: { tarballs }, run });
     expect(run.calls.map((c) => [c.cmd, ...c.args].slice(0, 3))).toEqual([
       ["npm", "install", "--prefix"],
       ["donn", "--version"],
@@ -66,30 +76,74 @@ describe("smoke", () => {
   it("a version mismatch fails with the step name", async () => {
     const run = fakeRunner(handlers({ version: "9.9.9" }));
     await expect(
-      smoke({ root: "/r", source: { tarballs }, run }),
+      smoke({ root: await rootWith("1.2.3"), source: { tarballs }, run }),
     ).rejects.toMatchObject({ code: "smoke", message: /^version: / });
   });
 
-  it("registry mode installs @getdonn/cli from the registry", async () => {
+  it("registry mode installs the workspace version of @getdonn/cli", async () => {
     const run = fakeRunner(handlers());
-    // No tarballs, so the expected version comes from the installed package.
-    await expect(
-      smoke({ root: "/r", source: { registry: "http://localhost:4873" }, run }),
-    ).rejects.toMatchObject({ message: /^version: / });
+    await smoke({
+      root: await rootWith("1.2.3"),
+      source: { registry: "http://localhost:4873" },
+      run,
+    });
     expect(run.calls[0]?.args).toEqual([
       "install",
       "--prefix",
       expect.any(String),
-      "@getdonn/cli",
+      "@getdonn/cli@1.2.3",
       "--registry",
       "http://localhost:4873",
     ]);
   });
 
+  it("registry mode fails when donn prints another version", async () => {
+    const run = fakeRunner(handlers({ version: "1.2.2" }));
+    await expect(
+      smoke({
+        root: await rootWith("1.2.3"),
+        source: { registry: "http://localhost:4873" },
+        run,
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/^version: .*1\.2\.2.*1\.2\.3/),
+    });
+  });
+
+  it("does not leak the caller's DONN_*, XDG_* or CLAUDE_CONFIG_DIR", async () => {
+    const leaked = {
+      DONN_PERSONA: "x",
+      DONN_NO_DAEMON: "1",
+      DONN_REGISTRY_TOKEN: "secret",
+      CLAUDE_CONFIG_DIR: "/elsewhere",
+      XDG_CONFIG_HOME: "/elsewhere",
+      XDG_RUNTIME_DIR: "/elsewhere",
+    };
+    const saved = Object.fromEntries(
+      Object.keys(leaked).map((k) => [k, process.env[k]]),
+    );
+    Object.assign(process.env, leaked);
+    try {
+      const run = fakeRunner(handlers());
+      await smoke({ root: await rootWith("1.2.3"), source: { tarballs }, run });
+      for (const c of run.calls) {
+        for (const k of Object.keys(leaked)) {
+          expect(c.opts?.env?.[k]).toBeUndefined();
+        }
+        expect(c.opts?.env?.["DONN_HOME"]).toBeDefined();
+      }
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
   it("a missing plugin.json fails", async () => {
     const run = fakeRunner(handlers({ plugin: false }));
     await expect(
-      smoke({ root: "/r", source: { tarballs }, run }),
+      smoke({ root: await rootWith("1.2.3"), source: { tarballs }, run }),
     ).rejects.toMatchObject({ message: /^mod install: .*plugin\.json/ });
   });
 });

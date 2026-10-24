@@ -63,6 +63,7 @@ async function smokeCommand(flags: Flags): Promise<void> {
   const run = realRunner;
   if (flags.registry) {
     await smoke({ root: ROOT, source: { registry: flags.registry }, run });
+    process.stdout.write("smoke ok\n");
     return;
   }
   const all = await listWorkspaces(ROOT, run);
