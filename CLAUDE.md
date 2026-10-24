@@ -42,6 +42,7 @@ overrides them.
 19. `docs/planning/19-publish-engine.md` — the publish rules as a storage-independent engine (`publishLayer` over a `LayerStore`) shared by the mock and the control plane; a harder conformance kit
 20. `docs/planning/20-registry-identity.md` — registry identity: browser sign-in (`zzpersona login <url>`), server-issued sessions, roles in `whoami`, tolerant reading of registry answers; the OSS half of C
 21. `docs/planning/21-managed-settings.md` — Claude Code enforcement (open-source half of E): org/area/team locks compiled to a managed policy bundle, `policy` block, `zzpersona managed build|install|uninstall|check`, `/v1/managed/bundle`
+22. `docs/planning/22-rename-donn.md` — the rename to donn: the full name mapping, the one-off rename script, `donn migrate` for existing installs, the move to the `getdonn` GitHub org, release 0.13.0
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
