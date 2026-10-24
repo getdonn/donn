@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { claim, type ClaimOptions } from "./claim.js";
+import { claim, claimLines, type ClaimOptions } from "./claim.js";
 import { ReleaseError } from "./errors.js";
 import { fakeRunner } from "./testing/fake-runner.js";
 
@@ -114,6 +114,9 @@ describe("claim", () => {
       claimed: ["@getdonn/b"],
       existing: ["@getdonn/a"],
       deprecated: [],
+      alreadyDeprecated: [],
+      noPlaceholder: [],
+      failed: [],
     });
     expect(published.map((p) => p.pkg["name"])).toEqual(["@getdonn/b"]);
   });
@@ -164,6 +167,9 @@ describe("claim", () => {
       claimed: ["@getdonn/b"],
       existing: ["@getdonn/a"],
       deprecated: [],
+      alreadyDeprecated: [],
+      noPlaceholder: [],
+      failed: [],
     });
     expect(calls(run, "publish")).toHaveLength(0);
   });
@@ -221,8 +227,16 @@ describe("claim", () => {
 });
 
 describe("claim --deprecate", () => {
+  // Real npm: `npm view <name>@0.0.0 version deprecated --json` prints an
+  // object when `deprecated` is set and a bare JSON string when it is not.
+  const live = '"0.0.0"\n';
+  const dead = JSON.stringify(
+    { version: "0.0.0", deprecated: "placeholder; use the latest version" },
+    null,
+    2,
+  );
   const has = (spec: string) =>
-    spec === "@getdonn/a@0.0.0" ? ok("0.0.0\n") : ok("");
+    spec === "@getdonn/a@0.0.0" ? ok(live) : ok("");
 
   it("deprecates only 0.0.0 with the exact message", async () => {
     const { root, ls } = repo();
@@ -232,6 +246,9 @@ describe("claim --deprecate", () => {
       claimed: [],
       existing: [],
       deprecated: ["@getdonn/a"],
+      alreadyDeprecated: [],
+      noPlaceholder: ["@getdonn/b"],
+      failed: [],
     });
     const dep = calls(run, "deprecate");
     expect(dep.map((c) => c.args)).toEqual([
@@ -241,10 +258,53 @@ describe("claim --deprecate", () => {
     expect(calls(run, "publish")).toHaveLength(0);
   });
 
-  it("skips a package whose 0.0.0 is E404", async () => {
+  it("asks npm view once per package for version and deprecated", async () => {
     const { root, ls } = repo(["@getdonn/a"]);
-    const { run } = setup({ ls, view: () => e404 });
+    const { run } = setup({ ls, view: has });
+    await claim(base(root, run, { deprecate: true }));
+    expect(calls(run, "view").map((c) => c.args)).toEqual([
+      ["view", "@getdonn/a@0.0.0", "version", "deprecated", "--json"],
+    ]);
+  });
+
+  it("skips an already deprecated placeholder without calling deprecate", async () => {
+    const { root, ls } = repo();
+    const { run } = setup({ ls, view: () => ok(dead) });
     const res = await claim(base(root, run, { deprecate: true }));
+    expect(res.alreadyDeprecated).toEqual(["@getdonn/a", "@getdonn/b"]);
+    expect(res.deprecated).toEqual([]);
+    expect(res.failed).toEqual([]);
+    expect(calls(run, "deprecate")).toHaveLength(0);
+  });
+
+  it("a deprecate failure continues with the next package", async () => {
+    const { root, ls } = repo();
+    const run = fakeRunner([
+      [(c) => c === "pnpm", ok(ls)],
+      [(_c, a) => a[0] === "config", ok("https://registry.npmjs.org/\n")],
+      [(_c, a) => a[0] === "view", ok(live)],
+      [
+        (_c, a) => a[0] === "deprecate" && a[1] === "@getdonn/a@0.0.0",
+        { code: 1, stdout: "", stderr: "npm error code E422\n" },
+      ],
+      [(_c, a) => a[0] === "deprecate", ok()],
+    ]);
+    const res = await claim(base(root, run, { deprecate: true }));
+    expect(res.deprecated).toEqual(["@getdonn/b"]);
+    expect(res.failed).toEqual([
+      { name: "@getdonn/a", error: "npm deprecate @getdonn/a@0.0.0 exited 1" },
+    ]);
+    expect(calls(run, "deprecate")).toHaveLength(2);
+  });
+
+  it("reports a package with no 0.0.0 (E404 or empty output)", async () => {
+    const { root, ls } = repo();
+    const { run } = setup({
+      ls,
+      view: (spec) => (spec === "@getdonn/a@0.0.0" ? e404 : ok("")),
+    });
+    const res = await claim(base(root, run, { deprecate: true }));
+    expect(res.noPlaceholder).toEqual(["@getdonn/a", "@getdonn/b"]);
     expect(res.deprecated).toEqual([]);
     expect(calls(run, "deprecate")).toHaveLength(0);
   });
@@ -271,5 +331,61 @@ describe("claim --deprecate", () => {
     await expect(
       claim(base(root, run, { deprecate: true, env: { CI: "1" } })),
     ).rejects.toMatchObject({ code: "ci" });
+  });
+});
+
+describe("claimLines", () => {
+  const empty = {
+    claimed: [],
+    existing: [],
+    deprecated: [],
+    alreadyDeprecated: [],
+    noPlaceholder: [],
+    failed: [],
+  };
+
+  it("prints one line per package in deprecate mode", () => {
+    const res = {
+      ...empty,
+      deprecated: ["a"],
+      alreadyDeprecated: ["b"],
+      noPlaceholder: ["c"],
+      failed: [{ name: "d", error: "boom" }],
+    };
+    expect(claimLines(res, { deprecate: true, yes: true })).toEqual([
+      "deprecated a",
+      "already deprecated b",
+      "no placeholder c",
+      "failed d: boom",
+    ]);
+    expect(claimLines(res, { deprecate: true, yes: false })).toEqual([
+      "would deprecate a",
+      "already deprecated b",
+      "no placeholder c",
+      "failed d: boom",
+      "nothing changed; pass --yes to do it",
+    ]);
+  });
+
+  it("prints one line per package in claim mode", () => {
+    const res = { ...empty, claimed: ["a"], existing: ["b"] };
+    expect(claimLines(res, { deprecate: false, yes: true })).toEqual([
+      "claimed a",
+      "exists b",
+    ]);
+    expect(claimLines(res, { deprecate: false, yes: false })).toEqual([
+      "would claim a",
+      "exists b",
+      "nothing changed; pass --yes to do it",
+    ]);
+  });
+
+  it("says so when there is nothing to do", () => {
+    expect(claimLines(empty, { deprecate: true, yes: false })).toEqual([
+      "nothing to deprecate",
+    ]);
+    expect(claimLines(empty, { deprecate: false, yes: true })).toEqual([
+      "nothing to claim",
+    ]);
   });
 });
