@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
 import { cliVersion } from "./commands/daemon.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
+import { serviceManager } from "./daemon/service.js";
 import type { ManagedEnv } from "./managed/env.js";
 import { planMigration, runMigration } from "./migrate/plan.js";
 import { moveHome, rewriteApiVersion } from "./migrate/steps.js";
@@ -30,11 +31,12 @@ import { installedProbe, safeManaged, seed, zz } from "./test/seed.js";
 
 const STEPS = [
   "service-stop",
+  "mod-remove",
   "move-home",
   "drop-state",
   "api-version",
   "keychain",
-  "mod",
+  "mod-install",
   "service-start",
 ];
 const REGISTRY = "http://127.0.0.1:9";
@@ -105,6 +107,12 @@ interface Machine {
   loaded: Set<string>;
   plugins: Set<string>;
   marketplaces: Map<string, string>;
+  /** When set, every keychain call fails with this message (a locked keychain). */
+  keychainError?: string;
+  /** When set, `claude plugin uninstall` exits 1 with this and keeps the plugin. */
+  uninstallError?: string;
+  /** claude is not on PATH: every call exits 127. */
+  noClaude?: boolean;
 }
 
 /**
@@ -137,7 +145,16 @@ function machine(
       }),
     );
   };
-  const probe: Probe = {
+  const m: Machine = {
+    log,
+    keychain,
+    loaded,
+    plugins,
+    marketplaces,
+    probe: undefined as unknown as Probe,
+    runInput: undefined as unknown as Machine["runInput"],
+  };
+  m.probe = {
     platform,
     readFile: installedProbe.readFile,
     listDir: installedProbe.listDir,
@@ -172,13 +189,24 @@ function machine(
         }
         return ok();
       }
+      if (command === "claude" && m.noClaude) return no(127);
       if (command === "claude" && args[0] === "plugin") {
         log.push([command, ...args].join(" "));
         const [, a, b, c] = args;
-        if (a === "uninstall")
+        if (a === "list")
+          return ok(JSON.stringify([...plugins].map((id) => ({ id }))));
+        if (a === "marketplace" && b === "list")
+          return ok(
+            JSON.stringify(
+              [...marketplaces].map(([name, path]) => ({ name, path })),
+            ),
+          );
+        if (a === "uninstall") {
+          if (m.uninstallError) return no(1, m.uninstallError);
           return plugins.delete(b!)
             ? ok()
             : no(1, `Plugin "${b}" is not installed\n`);
+        }
         if (a === "install") {
           plugins.add(b!);
           return ok();
@@ -199,11 +227,15 @@ function machine(
       return installedProbe.run(command, args);
     },
   };
-  const runInput: Machine["runInput"] = async (command, args, input) => {
+  m.runInput = async (command, args, input) => {
     if (command !== "security") return no(127);
+    if (m.keychainError) {
+      log.push(`security failed ${args[0]}`);
+      return no(51, m.keychainError);
+    }
     if (args[0] === "-i") {
       const [service, account, value] = [...input!.matchAll(/"([^"]*)"/g)].map(
-        (m) => m[1]!,
+        (match) => match[1]!,
       );
       log.push(`security add ${service} ${account}`);
       keychain.set(`${service} ${account}`, value!);
@@ -212,11 +244,12 @@ function machine(
     const flag = (name: string) => args[args.indexOf(name) + 1]!;
     const key = `${flag("-s")} ${flag("-a")}`;
     if (args[0] === "find-generic-password") {
-      log.push(`security find ${key}`);
+      // With -w the secret is read (and could prompt); without, only the attributes.
+      const secret = args.includes("-w");
+      log.push(`security ${secret ? "read" : "find"} ${key}`);
       const value = keychain.get(key);
-      return value === undefined
-        ? no(44, "could not be found")
-        : ok(`${value}\n`);
+      if (value === undefined) return no(44, "could not be found");
+      return ok(secret ? `${value}\n` : 'keychain: "login.keychain-db"\n');
     }
     if (args[0] === "delete-generic-password") {
       log.push(`security delete ${key}`);
@@ -224,15 +257,17 @@ function machine(
     }
     return no(1, "unexpected security call");
   };
-  return { probe, runInput, log, keychain, loaded, plugins, marketplaces };
+  return m;
 }
 
-/** The calls that change something: not launchctl print, not keychain reads. */
+/** The calls that change something: not launchctl print, keychain lookups or claude lists. */
 const changes = (m: Machine) =>
   m.log.filter(
     (call) =>
       !call.startsWith("launchctl print") &&
       !call.startsWith("security find") &&
+      !call.startsWith("security read") &&
+      !/^claude plugin (marketplace )?list/.test(call) &&
       !call.includes(" is-enabled "),
   );
 
@@ -345,7 +380,7 @@ function expectMigrated(m: Machine) {
 const json = (r: { stdout: string }) => JSON.parse(r.stdout);
 
 describe("donn migrate", () => {
-  it("performs spec 22 §3 steps 1–7 in order and ends with doctor", async () => {
+  it("performs spec 22 §3's steps in order, the mod removed before the move, and ends with doctor", async () => {
     const m = machine();
     oldInstall(m);
     const r = await donn(m, ["migrate", "--yes", "--json"]);
@@ -360,10 +395,10 @@ describe("donn migrate", () => {
     expect(checks.find((c) => c.id === "mod")?.status).toBe("ok");
     expect(changes(m)).toEqual([
       `launchctl bootout gui/${uid}/zzpersona.daemon`,
-      `security add donn-registry ${ACCOUNT}`,
-      `security delete zzpersona-registry ${ACCOUNT}`,
       "claude plugin uninstall zzpersona@zzpersona",
       "claude plugin marketplace remove zzpersona",
+      `security add donn-registry ${ACCOUNT}`,
+      `security delete zzpersona-registry ${ACCOUNT}`,
       `claude plugin marketplace add ${join(newHome(), "mod")}`,
       "claude plugin install donn@donn --scope user",
       `launchctl bootout gui/${uid}/dev.getdonn.daemon`,
@@ -383,11 +418,12 @@ describe("donn migrate", () => {
       const home = existsSync(oldHome()) ? oldHome() : newHome();
       return [
         existsSync(oldPlist()),
+        m.plugins.has("zzpersona@zzpersona"),
         existsSync(oldHome()),
         existsSync(join(home, "build")),
         read(join(home, "layers/org/acme.yaml")) === ACME,
         m.keychain.has(`zzpersona-registry ${ACCOUNT}`),
-        m.plugins.has("zzpersona@zzpersona"),
+        !m.plugins.has("donn@donn"),
         !existsSync(newPlist()),
       ];
     };
@@ -539,7 +575,7 @@ describe("donn migrate", () => {
     mkdirSync(user(), { recursive: true });
     const managedRoot = join(root, "ClaudeCode");
     put(join(managedRoot, "zzpersona/manifest.json"), "{}");
-    const env = { ZZPERSONA_HOME: "/x", ZZP_E2E: "1", DONN_E2E: "" };
+    const env = { ZZPERSONA_PERSONA: "x", ZZP_E2E: "1", DONN_E2E: "" };
     const r = await donn(m, ["migrate", "--json"], {
       env,
       managed: { root: managedRoot },
@@ -547,7 +583,7 @@ describe("donn migrate", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(json(r)).toMatchObject({
       env: [
-        { name: "ZZPERSONA_HOME", rename: "DONN_HOME" },
+        { name: "ZZPERSONA_PERSONA", rename: "DONN_PERSONA" },
         { name: "ZZP_E2E", rename: "DONN_E2E" },
       ],
       managed: {
@@ -563,7 +599,7 @@ describe("donn migrate", () => {
       env,
       managed: { root: managedRoot },
     });
-    expect(text.stdout).toContain("ZZPERSONA_HOME");
+    expect(text.stdout).toContain("ZZPERSONA_PERSONA");
     expect(text.stdout).toContain("ZZP_E2E");
     expect(text.stdout).toContain("sudo donn migrate --managed");
     expect(existsSync(join(managedRoot, "zzpersona/manifest.json"))).toBe(true);
@@ -581,6 +617,13 @@ describe("donn migrate", () => {
           expect(changes(m)).toEqual([]);
           expect(existsSync(oldPlist())).toBe(true);
           expect(read(join(oldHome(), "layers/org/acme.yaml"))).toBe(ACME);
+          // The plan looked for the old token without reading its secret.
+          expect(m.log).toContain(
+            `security find zzpersona-registry ${ACCOUNT}`,
+          );
+          expect(m.log.filter((c) => c.startsWith("security read"))).toEqual(
+            [],
+          );
           return false;
         },
       },
@@ -645,6 +688,246 @@ describe("donn migrate", () => {
         "systemctl --user disable --now zzpersona-daemon.service",
         "systemctl --user enable --now donn-daemon.service",
       ]),
+    );
+  });
+});
+
+type Step = { id: string; status: string; notes?: string[] };
+const stepOf = (r: { stdout: string }, id: string) =>
+  (json(r).steps as Step[]).find((step) => step.id === id);
+
+describe("donn migrate: resuming and safety", () => {
+  it("resumes a cross-filesystem move interrupted after the old home was set aside", async () => {
+    const m = machine();
+    oldInstall(m);
+    const io = ioFor(m);
+    const src = oldHome();
+    const target = newHome();
+    const steps = await planMigration(io, {
+      move: {
+        rename: async (from, to) => {
+          if (from === src && to === target)
+            throw Object.assign(new Error("cross-device"), { code: "EXDEV" });
+          if (from === `${target}.migrating` && to === target)
+            throw new Error("interrupted");
+          await rename(from, to);
+        },
+      },
+    });
+    await expect(runMigration(io, steps, { yes: true })).rejects.toThrow(
+      "interrupted",
+    );
+    // The window: neither home is in place; the verified copy waits next to the target.
+    expect(existsSync(src)).toBe(false);
+    expect(existsSync(target)).toBe(false);
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).steps).toEqual(
+      STEPS.map((id) => ({
+        id,
+        status: ["service-stop", "mod-remove"].includes(id) ? "done" : "ran",
+      })),
+    );
+    expectMigrated(m);
+  });
+
+  it("checks each step again just before it runs", async () => {
+    const m = machine();
+    oldInstall(m);
+    const io = ioFor(m);
+    const steps = await planMigration(io);
+    expect(steps.find((step) => step.id === "keychain")?.status).toBe(
+      "pending",
+    );
+    // Done by someone else between the plan and the run.
+    m.keychain.delete(`zzpersona-registry ${ACCOUNT}`);
+    const result = await runMigration(io, steps, { yes: true });
+    expect(result?.find((step) => step.id === "keychain")?.status).toBe("done");
+    expect(changes(m)).not.toContain(
+      `security delete zzpersona-registry ${ACCOUNT}`,
+    );
+  });
+
+  it("leaves the old mod's removal pending with claude's message while claude still lists it", async () => {
+    for (const said of [
+      "Error: settings.json is read-only\n",
+      // Exit 1 and a not-found message, yet still listed: not taken for success.
+      'Plugin "zzpersona@zzpersona" is not installed\n',
+    ]) {
+      await Promise.all(daemons.splice(0).map((d) => d.close()));
+      rmSync(user(), { recursive: true, force: true });
+      const m = machine();
+      oldInstall(m);
+      m.uninstallError = said;
+      const r = await donn(m, ["migrate", "--yes", "--json"]);
+      expect(r.code).toBe(1);
+      expect(json(r).error).toMatchObject({
+        code: "mod-uninstall",
+        message: expect.stringContaining(said.trim()),
+      });
+      // Stopped before the move: the old mod still reads from the old home.
+      expect(existsSync(oldHome())).toBe(true);
+      m.uninstallError = undefined;
+      const again = await donn(m, ["migrate", "--yes", "--json"]);
+      expect(again.code, again.stdout + again.stderr).toBe(0);
+      expect(stepOf(again, "mod-remove")).toEqual({
+        id: "mod-remove",
+        status: "ran",
+      });
+      expectMigrated(m);
+    }
+  });
+
+  it("refuses before any change when the bundled mod is not built", async () => {
+    const m = machine();
+    oldInstall(m);
+    const unbuilt = join(root, "unbuilt");
+    mkdirSync(unbuilt);
+    await expect(
+      planMigration(ioFor(m), { modDir: unbuilt }),
+    ).rejects.toMatchObject({
+      code: "mod-install",
+      message: expect.stringContaining("the mod is not built"),
+    });
+    expect(changes(m)).toEqual([]);
+  });
+
+  it("refuses before any change when claude is not on PATH but the old mod is installed", async () => {
+    const m = machine();
+    oldInstall(m);
+    m.noClaude = true;
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code).toBe(1);
+    expect(json(r).error).toMatchObject({
+      code: "claude-not-on-path",
+      message: expect.stringContaining("the old mod cannot be unregistered"),
+    });
+    expect(changes(m)).toEqual([]);
+    expect(existsSync(oldPlist())).toBe(true);
+  });
+
+  it("leaves the keychain step pending with a note when the keychain does not answer", async () => {
+    const m = machine();
+    oldInstall(m);
+    m.keychainError = "User interaction is not allowed.";
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(stepOf(r, "keychain")).toEqual({
+      id: "keychain",
+      status: "pending",
+      notes: [expect.stringContaining("User interaction is not allowed.")],
+    });
+    // Every other step finished.
+    expect(
+      (json(r).steps as Step[])
+        .filter((step) => step.id !== "keychain")
+        .every((step) => step.status === "ran"),
+    ).toBe(true);
+    m.keychainError = undefined;
+    const again = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(stepOf(again, "keychain")).toEqual({
+      id: "keychain",
+      status: "ran",
+    });
+    expectMigrated(m);
+  });
+
+  it("keeps a newer sign-in under the new name and deletes the old item", async () => {
+    const m = machine();
+    oldInstall(m);
+    m.keychain.set(`donn-registry ${ACCOUNT}`, "donn_newer-sign-in");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(stepOf(r, "keychain")).toEqual({
+      id: "keychain",
+      status: "ran",
+      notes: [expect.stringContaining("kept the newer sign-in")],
+    });
+    expect([...m.keychain]).toEqual([
+      [`donn-registry ${ACCOUNT}`, "donn_newer-sign-in"],
+    ]);
+  });
+
+  it("warns in the plan about sessions the old CLI started", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(
+      join(oldHome(), "sessions/abc/launched.json"),
+      JSON.stringify({
+        persona: "user/me",
+        source: "default",
+        pid: process.pid,
+      }),
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    const warning = `1 session started by zzpersona is still running (pid ${process.pid}); it loses its plugin and build folders: restart it after the migration`;
+    expect(r.stderr).toContain(`warning: ${warning}`);
+    expect(json(r).warnings).toEqual([warning]);
+  });
+
+  it("refuses while ZZPERSONA_HOME names another old home", async () => {
+    const m = machine();
+    oldInstall(m);
+    const fromEnv = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { ZZPERSONA_HOME: "/elsewhere/zz" },
+    });
+    expect(fromEnv.code).toBe(1);
+    expect(json(fromEnv).error).toMatchObject({
+      code: "migrate-old-home",
+      message:
+        "ZZPERSONA_HOME is set in your environment (/elsewhere/zz); donn migrate moves only ~/.zzpersona: unset it, or move that home by hand",
+    });
+    const old = serviceManager(
+      { env: { HOME: user() }, probe: m.probe },
+      { label: "zzpersona.daemon" },
+    )!;
+    writeFileSync(
+      oldPlist(),
+      old.render({
+        command: ["/u/bin/zzpersona", "daemon", "run"],
+        env: { ZZPERSONA_HOME: "/elsewhere/zz", ZZPERSONA_SERVICE: "1" },
+        log: "/elsewhere/zz/daemon/daemon.log",
+      }),
+    );
+    const fromService = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(fromService.code).toBe(1);
+    expect(json(fromService).error).toMatchObject({
+      code: "migrate-old-home",
+      message: `ZZPERSONA_HOME is set in ${oldPlist()} (/elsewhere/zz); donn migrate moves only ~/.zzpersona: unset it, or move that home by hand`,
+    });
+    expect(changes(m)).toEqual([]);
+    expect(existsSync(newHome())).toBe(false);
+  });
+
+  it("resumes when the target holds only a migration's progress", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(
+      join(newHome(), "migrating.json"),
+      `${JSON.stringify({ service: true })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expectMigrated(m);
+  });
+
+  it("suggests removing the old global CLI", async () => {
+    const m = machine();
+    oldInstall(m);
+    const pnpmBin = join(root, "Library/pnpm/bin");
+    put(join(pnpmBin, "zzpersona"), "#!/bin/sh\n");
+    chmodSync(join(pnpmBin, "zzpersona"), 0o755);
+    const env = { PATH: `${bin()}:${pnpmBin}:/usr/bin:/bin` };
+    const r = await donn(m, ["migrate", "--yes", "--json"], { env });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).oldCli).toEqual({
+      path: join(pnpmBin, "zzpersona"),
+      remove: "pnpm remove --global @zzpersona/cli",
+    });
+    const text = await donn(m, ["migrate"], { env });
+    expect(text.stdout).toContain(
+      `the old CLI is still on PATH (${join(pnpmBin, "zzpersona")}); remove it: pnpm remove --global @zzpersona/cli`,
     );
   });
 });
@@ -967,6 +1250,8 @@ describe("donn migrate --project", () => {
     });
     expect(existsSync(join(s.repo, ".zzpersona/persona.yaml"))).toBe(true);
     rmSync(join(s.repo, ".donn"), { recursive: true });
+    const ignore = "node_modules\n.zzpersona/build\n";
+    writeFileSync(join(s.repo, ".gitignore"), ignore);
     const r = await zz(["migrate", "--project", s.repo, "--yes", "--json"], {
       cwd: root,
       home: s.home,
@@ -975,6 +1260,11 @@ describe("donn migrate --project", () => {
     });
     expect(r.code, r.stdout + r.stderr).toBe(0);
     expect(existsSync(join(s.repo, ".donn/persona.yaml"))).toBe(true);
+    // A .gitignore that names the old folder is reported, never changed.
+    expect(json(r).gitignore).toEqual([
+      { file: join(s.repo, ".gitignore"), line: 2, text: ".zzpersona/build" },
+    ]);
+    expect(read(join(s.repo, ".gitignore"))).toBe(ignore);
   });
 
   it("says nothing to migrate outside an old project", async () => {
@@ -1061,6 +1351,76 @@ describe("donn migrate --managed", () => {
     });
     expect(again.code).toBe(0);
     expect(json(again)).toMatchObject({ removed: [] });
+  });
+
+  it("keeps files the new donn install owns, managed-mcp.json among them", async () => {
+    const home = join(root, "home");
+    const personas = join(root, "personas");
+    put(join(home, "config.yaml"), `personas: ${personas}\n`);
+    put(
+      join(personas, "org/acme.yaml"),
+      [
+        "apiVersion: donn/v0",
+        "kind: Persona",
+        "metadata: { name: acme }",
+        "permissions:",
+        '  deny: ["Bash(rm -rf:*)"]',
+        "locks:",
+        "  - permissions.deny",
+        "policy:",
+        "  mcp: exclusive",
+        "",
+      ].join("\n"),
+    );
+    const seam = admin({
+      os: "linux",
+      strict: () => false,
+      mdmPolicy: async () => undefined,
+      remoteSettingsFile: join(root, "remote-settings.json"),
+      confirm: async () => true,
+    });
+    const run = (argv: string[]) =>
+      zz(argv, { cwd: root, home, env: { HOME: user() }, managed: seam });
+    const built = await run([
+      "managed",
+      "build",
+      "--os",
+      "linux",
+      "--out",
+      "bundle",
+    ]);
+    expect(built.code, built.stderr).toBe(0);
+    const installed = await run([
+      "managed",
+      "install",
+      join(root, "bundle"),
+      "--yes",
+    ]);
+    expect(installed.code, installed.stderr).toBe(0);
+    const mcp = join(managedRoot(), "managed-mcp.json");
+    const before = read(mcp);
+    // The old install listed the same file.
+    put(
+      join(managedRoot(), "zzpersona/manifest.json"),
+      JSON.stringify({
+        format: 1,
+        zzpersona: "0.12.0",
+        files: {
+          "managed-mcp.json": "sha256:a",
+          "managed-settings.d/50-zzpersona.json": "sha256:b",
+        },
+      }),
+    );
+    put(join(managedRoot(), "managed-settings.d/50-zzpersona.json"), "{}");
+    const r = await run(["migrate", "--managed", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).removed).toEqual([
+      "managed-settings.d/50-zzpersona.json",
+      "zzpersona/manifest.json",
+    ]);
+    expect(read(mcp)).toBe(before);
+    const check = await run(["managed", "check", "--json"]);
+    expect(json(check).state, check.stdout).toBe("current");
   });
 
   it("needs administrator rights, asks first and refuses unsafe folders", async () => {

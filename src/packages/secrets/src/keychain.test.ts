@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteKeychainItem,
+  hasKeychainItem,
   keychainParts,
   keychainSupported,
   setKeychainItem,
@@ -175,13 +176,18 @@ describe("keychain failures that are not a missing item", () => {
 });
 
 describe("keychain writes", () => {
-  const recorder = (platform: string, exitCode = 0, stderr = "") => {
+  const recorder = (
+    platform: string,
+    exitCode = 0,
+    stderr = "",
+    stdout = "",
+  ) => {
     const calls: { command: string; args: string[]; input?: string }[] = [];
     const ctx: KeychainContext = {
       platform,
       run: async (command: string, args: string[], input?: string) => {
         calls.push({ command, args, input });
-        return { exitCode, stdout: "", stderr };
+        return { exitCode, stdout, stderr };
       },
     };
     return { ctx, calls };
@@ -257,6 +263,35 @@ describe("keychain writes", () => {
       "account",
       "a",
     ]);
+  });
+
+  it("tells whether an item exists without reading its secret on macOS", async () => {
+    const found = recorder("darwin", 0, "", 'keychain: "login"\n');
+    expect(await hasKeychainItem(found.ctx, "s", "a")).toBe(true);
+    // No -w: security prints the attributes only, so no access prompt and no secret.
+    expect(found.calls[0]!.args).toEqual([
+      "find-generic-password",
+      "-s",
+      "s",
+      "-a",
+      "a",
+    ]);
+    expect(
+      await hasKeychainItem(recorder("darwin", 44, REAL44).ctx, "s", "a"),
+    ).toBe(false);
+    await expect(
+      hasKeychainItem(
+        recorder("darwin", 51, "User interaction is not allowed.").ctx,
+        "s",
+        "a",
+      ),
+    ).rejects.toThrow("security exited 51: User interaction is not allowed.");
+    expect(
+      await hasKeychainItem(recorder("linux", 0, "", "v").ctx, "s", "a"),
+    ).toBe(true);
+    expect(await hasKeychainItem(recorder("linux", 1).ctx, "s", "a")).toBe(
+      false,
+    );
   });
 
   it("reports unsupported platforms and a missing command", async () => {

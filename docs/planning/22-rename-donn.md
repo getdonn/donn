@@ -115,6 +115,19 @@ migration; re-runs and recovery after an interruption at each step; an existing 
 migration with markers and `git mv`; the managed notice and `--managed` against a temp root. No
 test touches the real home, keychain, LaunchAgents or system folders.
 
+*Amended 2026-10-23 (implementation review):* step 6 is split in two. The old mod's removal
+(`mod-remove`) runs right after step 1 and before the home moves, because Claude Code reads the
+old plugin from `~/.zzpersona/mod` and its marketplace points there: unregistering it once that
+folder is gone relies on Claude tolerating a missing folder. It counts as done only when
+`claude plugin list --json` and `claude plugin marketplace list --json` no longer show the old
+names, so a failure stays pending with Claude's message. Installing the donn mod (`mod-install`)
+stays at step 6. The order is now: stop the old service, remove the old mod, move the home, drop
+regenerable state, rewrite `apiVersion`, move the keychain token, install the new mod, install the
+new service. Every step is also checked again just before it runs, so the printed plan is an
+estimate. Before anything changes, `donn migrate` refuses when `ZZPERSONA_HOME` names another home
+(in the environment or the old service file), when the mod is not built, or when `donn` is not
+on PATH for the new service.
+
 ## 4. GitHub and release
 
 - Release **0.13.0** from `develop` (all packages minor under their new names; still

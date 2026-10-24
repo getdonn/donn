@@ -2,8 +2,10 @@
 // file in src/ that holds them; nothing else reads an old name.
 
 export const LEGACY = {
-  /** The product's old name, as messages show it. */
+  /** The product's old name, as messages show it, and its command. */
   name: "zzpersona",
+  /** The old CLI's package, for removing a global install. */
+  cliPackage: "@zzpersona/cli",
   /** The home folder under $HOME, and a project's folder. */
   home: ".zzpersona",
   apiVersion: "zzpersona/v0",

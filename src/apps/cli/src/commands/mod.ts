@@ -26,6 +26,16 @@ export function bundledMod(): { dir: string; version: string } {
   return { dir: join(dirname(pkg), "dist/mod"), version };
 }
 
+/** Refuse a mod folder that has not been built. */
+export function checkModBuilt(dir: string = bundledMod().dir): void {
+  if (!existsSync(join(dir, "hooks/register.js"))) {
+    throw new CliError(
+      "mod-install",
+      `the mod is not built (${dir} is missing); build @getdonn/mod-claude-code first`,
+    );
+  }
+}
+
 /** The installed mod's version, or undefined when it is not installed. */
 export async function installedModVersion(
   home: string,
@@ -81,12 +91,7 @@ export async function registerMod(io: CliIo): Promise<RegisteredMod> {
   const modDir = join(home, "mod");
   const plugin = join(modDir, "plugin");
   const source = bundledMod();
-  if (!existsSync(join(source.dir, "hooks/register.js"))) {
-    throw new CliError(
-      "mod-install",
-      `the mod is not built (${source.dir} is missing); build @getdonn/mod-claude-code first`,
-    );
-  }
+  checkModBuilt(source.dir);
   await fsStep(plugin, async () => {
     await rm(plugin, { recursive: true, force: true });
     await cp(source.dir, plugin, { recursive: true });
@@ -151,25 +156,18 @@ export async function modInstall(
   return 0;
 }
 
-/** A mod's names in Claude Code: its plugin id and its marketplace. */
-export interface ModNames {
-  plugin: string;
-  marketplace: string;
-}
-
 /**
- * Unregister a mod from claude; its folder stays. `missing` when claude is not installed (then
- * there was nothing to unregister). `donn migrate` passes the old name's mod.
+ * Unregister the mod from claude; its folder stays. `missing` when claude is not installed (then
+ * there was nothing to unregister).
  */
-export async function unregisterMod(
+async function unregisterMod(
   io: CliIo,
-  names: ModNames = { plugin: MOD_ID, marketplace: MARKETPLACE },
 ): Promise<{ ran: string[][]; missing: boolean }> {
   // Claude's own answers for a plugin or marketplace that is already gone.
   const gone = /not (?:be )?(?:found|installed)/i;
   const first = await claude(
     io,
-    ["plugin", "uninstall", names.plugin],
+    ["plugin", "uninstall", MOD_ID],
     gone,
     "mod-uninstall",
     true,
@@ -177,7 +175,7 @@ export async function unregisterMod(
   if (first.missing) return { ran: [], missing: true };
   const second = await claude(
     io,
-    ["plugin", "marketplace", "remove", names.marketplace],
+    ["plugin", "marketplace", "remove", MARKETPLACE],
     gone,
     "mod-uninstall",
   );

@@ -8,7 +8,9 @@ import {
   MANAGED_NEXT,
   migrateManaged,
   migrateProject,
+  migrationWarnings,
   NOTHING,
+  oldCli,
   planMigration,
   runMigration,
   type StepResult,
@@ -65,17 +67,21 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
   const steps = await planMigration(io);
   const env = legacyEnv(io);
   const managed = await legacyPolicy(io);
-  const results = await runMigration(io, steps, options);
+  const warnings = await migrationWarnings(io);
+  const results = await runMigration(io, steps, { ...options, warnings });
   if (results === undefined) return 1;
   const nothing = results.every((r) => r.status === "done");
   const checks = nothing ? undefined : await doctor(io);
+  const cli = oldCli(io);
   if (options.json) {
     io.stdout.write(
       `${JSON.stringify(
         {
           steps: stepsJson(results),
           env,
+          ...(warnings.length > 0 && { warnings }),
           ...(managed !== undefined && { managed }),
+          ...(cli !== undefined && { oldCli: cli }),
           ...(checks === undefined
             ? { message: NOTHING }
             : { doctor: { checks } }),
@@ -101,6 +107,11 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
         .join("")}`,
     );
   }
+  if (cli !== undefined) {
+    io.stdout.write(
+      `the old CLI is still on PATH (${cli.path}); remove it: ${cli.remove}\n`,
+    );
+  }
   if (checks !== undefined) printDoctor(io, checks);
   return 0;
 }
@@ -110,7 +121,11 @@ async function projectForm(
   dir: string | undefined,
   options: MigrateOptions,
 ): Promise<number> {
-  const { start, root, results } = await migrateProject(io, dir, options);
+  const { start, root, results, gitignore } = await migrateProject(
+    io,
+    dir,
+    options,
+  );
   if (root === undefined) {
     const message = `nothing to migrate: no ${LEGACY.home} project found from ${start}`;
     io.stdout.write(
@@ -130,6 +145,7 @@ async function projectForm(
         {
           project: root,
           steps: stepsJson(results),
+          ...(gitignore !== undefined && { gitignore }),
           ...(checks === undefined ? { message } : { doctor: { checks } }),
         },
         null,
@@ -137,6 +153,11 @@ async function projectForm(
       )}\n`,
     );
     return 0;
+  }
+  for (const hit of gitignore ?? []) {
+    io.stdout.write(
+      `${hit.file}:${hit.line} names ${LEGACY.home} (${hit.text}); change it to .donn if it should still apply\n`,
+    );
   }
   if (checks === undefined) io.stdout.write(`${message}\n`);
   else {
@@ -150,7 +171,7 @@ async function managedForm(
   io: CliIo,
   options: MigrateOptions,
 ): Promise<number> {
-  const { root, removed } = await migrateManaged(io, options);
+  const { root, removed, kept } = await migrateManaged(io, options);
   if (removed === undefined) return 1;
   const message =
     removed.length === 0
@@ -158,7 +179,7 @@ async function managedForm(
       : `removed ${removed.length} file(s) from ${root}`;
   if (options.json) {
     io.stdout.write(
-      `${JSON.stringify({ root, removed, message, next: MANAGED_NEXT }, null, 2)}\n`,
+      `${JSON.stringify({ root, removed, ...(kept && { kept }), message, next: MANAGED_NEXT }, null, 2)}\n`,
     );
     return 0;
   }

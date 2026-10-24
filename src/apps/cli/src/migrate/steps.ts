@@ -339,7 +339,13 @@ export interface Progress {
   mod?: boolean;
 }
 
-const PROGRESS = "migrating.json";
+export const PROGRESS = "migrating.json";
+
+/** A folder holding nothing but a migration's progress note: a migration under way, not a home. */
+export async function onlyProgress(dir: string): Promise<boolean> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  return names.length === 1 && names[0] === PROGRESS;
+}
 
 export async function readProgress(home: string): Promise<Progress> {
   try {
