@@ -253,9 +253,9 @@ an interruption finishes the job. In order, it:
 
 It runs `donn doctor` at the end, unless every step was already done (this holds for
 `--project` too). Exit codes: 0 when the migration succeeded, even if `doctor`
-reports findings (read them), and also when a step is left pending (for example a locked
-keychain): the output lists it, and a re-run finishes it. Declining the prompt exits 1, and so
-does a refusal or a failed step (any non-zero).
+reports findings (read them). It exits 1 when a step is left pending (for example a locked
+keychain): the output and the `--json` `pending` list name it, and a re-run finishes it. Declining
+the prompt exits 1, and so does a refusal or a failed step (any non-zero).
 
 It refuses, before changing anything, when:
 
@@ -267,7 +267,12 @@ It refuses, before changing anything, when:
 - `DONN_HOME` sits inside the old home;
 - the target (`~/.donn`) already exists and is not empty. When it holds only what donn makes
   itself (donn ran before the migration: its daemon, sessions, builds, the donn mod), it says so
-  and what to remove; it never removes it for you.
+  and what to remove; it never removes it for you. When it holds only what `donn init` and
+  `donn login` wrote (a `config.yaml` with `personas` and/or `registry`, a `registry-token`),
+  the refusal names those files, and so does `donn doctor`: remove `~/.donn`, run `donn migrate`
+  (it moves the old home's settings), then `donn login` again if you had signed in. A
+  `ZZPERSONA_HOME=~/.zzpersona` that was never expanded (a launchd plist, an env file) counts as
+  the default old home.
 
 `donn doctor` reports an old home that has not been migrated before anything else. Beyond the
 steps above, `migrate` reports what it leaves to you, and has two other forms:
@@ -287,6 +292,12 @@ steps above, `migrate` reports what it leaves to you, and has two other forms:
   shell profile.
 - The old CLI is not removed for you. Remove it when `migrate` says so:
   `npm uninstall --global @zzpersona/cli` (or `pnpm remove --global @zzpersona/cli`).
+  `pnpm remove --global` can leave a dangling `zzpersona` shim in pnpm's global bin folder (the
+  one `pnpm bin --global` prints: `~/Library/pnpm/bin` with pnpm 12 on macOS, `~/Library/pnpm`
+  with older pnpm, `~/.local/share/pnpm` on Linux). Deleting that file is safe.
+- `donn doctor` lists projects whose switch is saved but whose `.zzpersona/` is still there
+  ("not migrated yet"), with the `donn migrate --project` command for each; `--fix` never
+  removes their switches.
 
 ## What each harness can carry
 
