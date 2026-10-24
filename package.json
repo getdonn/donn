@@ -11,7 +11,9 @@
     "changeset": "changeset",
     "format:check": "prettier --check .",
     "donn": "node src/apps/cli/dist/bin.js",
-    "docs:capabilities": "turbo run build --filter=@getdonn/cli && node src/apps/cli/scripts/capabilities-doc.mjs"
+    "docs:capabilities": "turbo run build --filter=@getdonn/cli && node src/apps/cli/scripts/capabilities-doc.mjs",
+    "pack:check": "turbo run build && node src/packages/release/dist/bin.js pack --check",
+    "release:smoke": "turbo run build && node src/packages/release/dist/bin.js smoke"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
