@@ -48,6 +48,7 @@ overrides them.
 24. `docs/planning/24-adapter-eve.md` — `AgentAdapter` and `adapters/eve`: a persona compiled into an eve extension inside a template's project, the ownership manifest, the portability report
 25. `docs/planning/25-agent-runner.md` — `donn agent create|sync|run|build|deploy|env|exec`; local, self-host and Vercel targets; secrets; driving the project-local eve CLI; a GitHub Actions spike
 26. `docs/planning/26-gui.md` — the GUI: one React app served by the daemon (`donn ui`) and a Tauri desktop shell, the loopback bridge, the screens, the agent builder
+27. `docs/planning/27-first-publish.md` — the first npm publish: 13 runtime packages public under Apache-2.0, `getdonn/donn` public, trusted publishing with provenance from a tag-triggered `release.yml`, a Verdaccio rehearsal, release 0.14.0
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
