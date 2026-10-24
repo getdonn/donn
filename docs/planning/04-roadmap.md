@@ -27,7 +27,8 @@ Work:
   else: bootstrap and build under the `zzpersona` placeholder with every package
   `"private": true` (see `00-handoff.md` → "Naming"). Hatrack is taken (2026-10-20).
   *2026-10-23: named **donn**; npm org `@getdonn`, GitHub org `getdonn` and `getdonn.dev` are
-  registered. The rename and first publish remain.*
+  registered. The rename and first publish remain.* *2026-10-24: both done; release 0.14.0 is on npm
+  (spec 27).*
 - Repo bootstrap: turborepo, pnpm, vitest, changesets, CI. Once named, publish the scope to npm
   (even at 0.0.x) so the enterprise boundary is real before the private repo exists.
 
@@ -119,7 +120,7 @@ and let us watch?*
 
 ## Track: agents and the GUI (added 2026-10-24)
 
-Starts after the first `npm publish`; runs beside Phase 3 and does not block the control plane.
+Starts after the first `npm publish` (done 2026-10-24, release 0.14.0); runs beside Phase 3 and does not block the control plane.
 Specs `23`–`26`.
 
 Work, in order:
