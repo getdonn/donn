@@ -1,5 +1,16 @@
 # @getdonn/secrets
 
+## 0.3.0
+
+### Minor Changes
+
+- 035af67: Renamed from zzpersona to donn. Run `donn migrate` once on a machine that ran zzpersona.
+
+### Patch Changes
+
+- Updated dependencies [035af67]
+  - @getdonn/spec@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes
