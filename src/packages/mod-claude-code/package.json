@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/mod-claude-code",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "The Claude Code mod: the active persona above the prompt, a folder-mismatch nudge, /persona",
   "license": "Apache-2.0",
   "repository": {

@@ -1,5 +1,13 @@
 # @getdonn/resolver
 
+## 0.5.1
+
+### Patch Changes
+
+- 14c7f82: First npm release.
+- Updated dependencies [14c7f82]
+  - @getdonn/spec@0.3.1
+
 ## 0.5.0
 
 ### Minor Changes
