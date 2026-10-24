@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/spec",
   "version": "0.3.0",
-  "private": true,
   "description": "Persona schema, resolved IR types, and validation",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/spec"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "schema",
+    "zod"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -30,5 +43,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

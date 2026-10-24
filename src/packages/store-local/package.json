@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/store-local",
   "version": "0.2.0",
-  "private": true,
   "description": "Personas from a personas folder, the project's .donn/ and ~/.donn/, mounted onto one root",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/store-local"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "store",
+    "personas"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -32,5 +45,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

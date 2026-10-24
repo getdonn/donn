@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/adapter-agents-md",
   "version": "0.3.0",
-  "private": true,
   "description": "Renders a persona into a marked block of a repo's AGENTS.md",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/adapters/agents-md"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "agents-md",
+    "adapter"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -31,5 +44,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
