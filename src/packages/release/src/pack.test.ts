@@ -1,13 +1,21 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
 import { packAll } from "./pack.js";
 import type { PublicPackage } from "./packages.js";
 import { fakeRunner } from "./testing/fake-runner.js";
 
+const cleanup: string[] = [];
+afterEach(() => {
+  for (const d of cleanup.splice(0))
+    rmSync(d, { recursive: true, force: true });
+});
+
 function repo() {
   const root = mkdtempSync(join(tmpdir(), "release-pack-"));
+  cleanup.push(root);
   writeFileSync(join(root, "LICENSE"), "license text");
   writeFileSync(join(root, "NOTICE"), "notice text");
   const dir = join(root, "pkg");

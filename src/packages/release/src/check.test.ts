@@ -1,13 +1,20 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { existsSync, rmSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
 import { checkTarball, REPOSITORY_URL } from "./check.js";
 import type { PublicPackage, Workspace } from "./packages.js";
 import { realRunner } from "./run.js";
-import { readTarball } from "./tarball.js";
+import { withTarball } from "./tarball.js";
 
 type Json = Record<string, unknown>;
+
+const cleanup: string[] = [];
+afterEach(() => {
+  for (const d of cleanup.splice(0))
+    rmSync(d, { recursive: true, force: true });
+});
 
 /** Builds a real tarball with `package/<file>` entries and reads it back. */
 async function pack(
@@ -17,6 +24,7 @@ async function pack(
   all: Workspace[] = [],
 ) {
   const root = mkdtempSync(join(tmpdir(), "release-check-"));
+  cleanup.push(root);
   const base = join(root, "src");
   const entries: Record<string, string> = {
     "package.json": JSON.stringify(manifest),
@@ -34,7 +42,6 @@ async function pack(
   const tgz = join(root, "p.tgz");
   const res = await realRunner("tar", ["-czf", tgz, "-C", base, "package"]);
   expect(res.code).toBe(0);
-  const contents = await readTarball(tgz, realRunner);
   const pkg: PublicPackage = {
     name: "@getdonn/pkg",
     version: "1.0.0",
@@ -43,7 +50,7 @@ async function pack(
     manifest: source,
     deps: [],
   };
-  return checkTarball(contents, pkg, all);
+  return withTarball(tgz, realRunner, (c) => checkTarball(c, pkg, all));
 }
 
 const good: Json = {
@@ -62,6 +69,30 @@ const dist = {
   "dist/index.d.ts": "1",
   "dist/bin.js": "1",
 };
+
+describe("withTarball", () => {
+  it("removes the extraction directory afterwards, even on error", async () => {
+    const root = mkdtempSync(join(tmpdir(), "release-check-"));
+    cleanup.push(root);
+    mkdirSync(join(root, "package"));
+    writeFileSync(join(root, "package", "package.json"), "{}");
+    const tgz = join(root, "p.tgz");
+    await realRunner("tar", ["-czf", tgz, "-C", root, "package"]);
+    let dir = "";
+    await withTarball(tgz, realRunner, (c) => {
+      dir = c.dir;
+      expect(existsSync(dir)).toBe(true);
+    });
+    expect(existsSync(dir)).toBe(false);
+    await expect(
+      withTarball(tgz, realRunner, (c) => {
+        dir = c.dir;
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    expect(existsSync(dir)).toBe(false);
+  });
+});
 
 describe("checkTarball", () => {
   it("a good tarball has no problems", async () => {

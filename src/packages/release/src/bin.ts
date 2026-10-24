@@ -6,7 +6,7 @@ import { ReleaseError } from "./errors.js";
 import { packAll } from "./pack.js";
 import { listWorkspaces, publicPackages } from "./packages.js";
 import { realRunner } from "./run.js";
-import { readTarball } from "./tarball.js";
+import { withTarball } from "./tarball.js";
 
 const USAGE = `usage: donn-release <command> [options]
 
@@ -38,10 +38,8 @@ async function pack(flags: Flags): Promise<void> {
       process.stdout.write(`packed ${label} ${tarball}\n`);
       continue;
     }
-    const problems = checkTarball(
-      await readTarball(tarball, realRunner),
-      pkg,
-      all,
+    const problems = await withTarball(tarball, realRunner, (contents) =>
+      checkTarball(contents, pkg, all),
     );
     if (problems.length === 0) process.stdout.write(`ok ${label}\n`);
     for (const p of problems) {
