@@ -125,8 +125,11 @@ stays at step 6. The order is now: stop the old service, remove the old mod, mov
 regenerable state, rewrite `apiVersion`, move the keychain token, install the new mod, install the
 new service. Every step is also checked again just before it runs, so the printed plan is an
 estimate. Before anything changes, `donn migrate` refuses when `ZZPERSONA_HOME` names another home
-(in the environment or the old service file), when the mod is not built, or when `donn` is not
-on PATH for the new service.
+(in the environment or the old service file), when the mod is not built, when `claude` is not on
+PATH while the old mod is installed (naming the shell's alias and the `export PATH=…` fix, as
+`donn claude` does), when `claude plugin list --json` does not have the expected shape, or when
+`donn` is not on PATH for the new service. claude is asked only when an old mod folder (or a
+mod swap in progress) exists.
 
 ## 4. GitHub and release
 

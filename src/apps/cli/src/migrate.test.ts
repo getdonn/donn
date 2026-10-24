@@ -113,6 +113,10 @@ interface Machine {
   uninstallError?: string;
   /** claude is not on PATH: every call exits 127. */
   noClaude?: boolean;
+  /** What `claude plugin list --json` answers instead of the plugins. */
+  listReply?: { exitCode: number; stdout: string; stderr: string };
+  /** What the user's shell (/bin/zsh) answers to `type claude`. */
+  shellSays?: string;
 }
 
 /**
@@ -189,12 +193,17 @@ function machine(
         }
         return ok();
       }
+      if (command === "/bin/zsh" && m.shellSays !== undefined)
+        return ok(m.shellSays);
       if (command === "claude" && m.noClaude) return no(127);
       if (command === "claude" && args[0] === "plugin") {
         log.push([command, ...args].join(" "));
         const [, a, b, c] = args;
         if (a === "list")
-          return ok(JSON.stringify([...plugins].map((id) => ({ id }))));
+          return (
+            m.listReply ??
+            ok(JSON.stringify([...plugins].map((id) => ({ id }))))
+          );
         if (a === "marketplace" && b === "list")
           return ok(
             JSON.stringify(
@@ -804,6 +813,69 @@ describe("donn migrate: resuming and safety", () => {
     });
     expect(changes(m)).toEqual([]);
     expect(existsSync(oldPlist())).toBe(true);
+  });
+
+  it("refuses a claude plugin list of an unexpected shape rather than taking it for done", async () => {
+    for (const stdout of [
+      JSON.stringify(["zzpersona@zzpersona"]),
+      JSON.stringify([{ pluginId: "zzpersona@zzpersona" }]),
+      JSON.stringify([null]),
+      JSON.stringify({ plugins: [] }),
+    ]) {
+      rmSync(user(), { recursive: true, force: true });
+      const m = machine();
+      oldInstall(m);
+      m.listReply = { exitCode: 0, stdout, stderr: "" };
+      const r = await donn(m, ["migrate", "--yes", "--json"]);
+      expect(r.code, stdout).toBe(1);
+      expect(json(r).error).toMatchObject({
+        code: "mod-uninstall",
+        message: expect.stringContaining("unexpected shape"),
+      });
+      expect(changes(m)).toEqual([]);
+      expect(m.plugins.has("zzpersona@zzpersona")).toBe(true);
+    }
+  });
+
+  it("names the shell's claude alias and its PATH fix when claude is not on PATH", async () => {
+    const m = machine();
+    oldInstall(m);
+    m.noClaude = true;
+    m.shellSays = "claude is an alias for /opt/claude/claude\n";
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { SHELL: "/bin/zsh" },
+    });
+    expect(r.code).toBe(1);
+    expect(json(r).error.message).toBe(
+      `claude is not on PATH, so the old mod cannot be unregistered; your shell has claude as an alias for /opt/claude/claude; donn runs the claude on PATH, which aliases don't change: export PATH="/opt/claude:$PATH" in your shell's startup file; or, if Claude Code is gone, remove ${join(oldHome(), "mod")}; then run donn migrate again`,
+    );
+    // Once the old mod is unregistered, removing its folder would not help: not suggested.
+    put(
+      join(oldHome(), "migrating.json"),
+      `${JSON.stringify({ mod: true })}\n`,
+    );
+    m.plugins.clear();
+    m.marketplaces.clear();
+    const later = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { SHELL: "/bin/zsh" },
+    });
+    expect(later.code).toBe(1);
+    expect(json(later).error.message).toBe(
+      `claude is not on PATH, so the donn mod cannot be installed (the old one is already unregistered); your shell has claude as an alias for /opt/claude/claude; donn runs the claude on PATH, which aliases don't change: export PATH="/opt/claude:$PATH" in your shell's startup file; then run donn migrate again`,
+    );
+    expect(changes(m)).toEqual([]);
+  });
+
+  it("does not ask claude when there is no old mod to remove", async () => {
+    const m = machine();
+    mkdirSync(user(), { recursive: true });
+    m.listReply = { exitCode: 1, stdout: "", stderr: "boom\n" };
+    const r = await donn(m, ["migrate", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).message).toBe(
+      "nothing to migrate: no zzpersona install found",
+    );
+    expect(m.log.filter((call) => call.startsWith("claude"))).toEqual([]);
   });
 
   it("leaves the keychain step pending with a note when the keychain does not answer", async () => {

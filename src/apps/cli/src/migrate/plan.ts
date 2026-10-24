@@ -37,6 +37,7 @@ import {
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { keychainContext, TOKEN_SERVICE } from "../registry.js";
 import { listSessions } from "../session.js";
+import { missingHint } from "../shell.js";
 import { LEGACY } from "./legacy.js";
 import {
   clearEmpty,
@@ -297,13 +298,30 @@ async function registrations(
         `${said} exited ${result.exitCode}: ${firstLine(result)}`,
       );
     }
+    let parsed: unknown;
     try {
-      return (JSON.parse(result.stdout) as Record<string, unknown>[]).map(
-        (entry) => String(entry[key]),
-      );
+      parsed = JSON.parse(result.stdout);
     } catch {
-      throw new CliError("mod-uninstall", `${said} printed no JSON list`);
+      parsed = undefined;
     }
+    // Only a list of objects, each with a string `key`: anything else could hide the old mod.
+    const entries = Array.isArray(parsed) ? (parsed as unknown[]) : undefined;
+    if (
+      entries === undefined ||
+      !entries.every(
+        (entry) =>
+          entry !== null &&
+          typeof entry === "object" &&
+          !Array.isArray(entry) &&
+          typeof (entry as Record<string, unknown>)[key] === "string",
+      )
+    ) {
+      throw new CliError(
+        "mod-uninstall",
+        `${said} printed an unexpected shape (not a list of objects with a string "${key}"); claude's plugin list may have changed: update donn, or remove the ${LEGACY.plugin} plugin with claude by hand`,
+      );
+    }
+    return entries.map((entry) => (entry as Record<string, string>)[key]!);
   };
   const plugins = await list(["plugin", "list", "--json"], "id");
   if (plugins === undefined) return undefined;
@@ -452,13 +470,16 @@ export async function planMigration(
     await step(
       "mod-remove",
       `unregister the old Claude Code mod (${LEGACY.plugin}) while its folder is in place`,
+      // claude is asked only when there is an old mod (or one being replaced); its answer must
+      // be readable, or nothing runs.
       async () => {
-        try {
-          const registered = await registrations(io);
-          return yes(registered !== undefined && oldRegistered(registered));
-        } catch (error) {
-          return { pending: true, notes: [messageOf(error)] };
-        }
+        if (
+          !(await legacyMod(w.live())) &&
+          (await readProgress(w.live())).mod !== true
+        )
+          return yes(false);
+        const registered = await registrations(io);
+        return yes(registered !== undefined && oldRegistered(registered));
       },
       () => removeOldMod(io, w),
     ),
@@ -564,9 +585,17 @@ export async function planMigration(
     // No claude to ask: the old mod would be dropped unregistered. claude is often an alias
     // (~/.claude/local/claude) that a spawn without a shell cannot see.
     if ((await registrations(io).catch(() => null)) === undefined) {
+      const hint =
+        (await missingHint("claude", findOnPath("claude", io.env), io)) ??
+        "put claude on PATH";
+      // Once the old mod is unregistered, its folder no longer stands in the way.
+      const removed = (await readProgress(w.live())).mod === true;
       throw new CliError(
         "claude-not-on-path",
-        `claude is not on PATH, so the old mod cannot be unregistered; put claude on PATH, or remove ${join(w.live(), "mod")} if Claude Code is gone, then run donn migrate again`,
+        removed
+          ? `claude is not on PATH, so the donn mod cannot be installed (the old one is already unregistered); ${hint}; then run donn migrate again`
+          : `claude is not on PATH, so the old mod cannot be unregistered; ${hint}; or, if Claude Code is gone, remove ${join(w.live(), "mod")}; then run donn migrate again`,
+        { hint },
       );
     }
   }
