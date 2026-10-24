@@ -4,6 +4,7 @@
 > `agents` and `models` fields, the eve facts), `24` (the compile, the manifest, the portability
 > report), `06` (secrets, the plan executor), `14`–`16` (the daemon) and `07` (`doctor`). The GUI
 > (`26`) calls every operation here through the daemon. Built as a `gh stack` after `24`.
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -112,7 +113,7 @@ reach `localhost`.
   Docker-in-Docker sidecar); the report says so, and `24` selects the Docker sandbox explicitly
   because the build cannot detect one.
 - Route auth is the user's: the portability report names Basic, JWT or OIDC. Once the identity work
-  (spec 20 and the private spec) has an issuer the agent can trust, a later spec can generate it.
+  (spec 20 and the control plane) has an issuer the agent can trust, a later spec can generate it.
 
 **`vercel`** uses eve's deploy.
 

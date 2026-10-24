@@ -1,17 +1,18 @@
 # 27 — First npm publish
 
 > Status: design, 2026-10-24. The rename is done (spec 22, release 0.13.0; repos in the `getdonn`
-> org; control plane 0.5.0) and nothing is on npm yet. This spec makes the 13 runtime packages
+> org) and nothing is on npm yet. This spec makes the 13 runtime packages
 > public on npm under Apache-2.0, published from GitHub Actions with trusted publishing and
 > provenance, makes `getdonn/donn` public at the same time, and ships the result as release
 > **0.14.0**. It unblocks the agents and GUI track (specs 23–26).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
 After this spec, `npm i -g @getdonn/cli` is the install path, every `@getdonn/*` runtime package is
 on npm with a provenance attestation linking it to the public `getdonn/donn` source, and the open
 core boundary (`01`, `03` → "Enterprise") is real: the private control plane can depend on
-published packages instead of a submodule. Every release from 0.14.0 on goes out the same way: a
+the published packages. Every release from 0.14.0 on goes out the same way: a
 tag on `main`, an approval, a CI publish that has been rehearsed against a local registry first.
 
 ## Facts this design rests on
@@ -79,7 +80,7 @@ From this repo (2026-10-24):
     CLI's README is the user-facing install page.
 - `.changeset/config.json`: `"access": "public"`.
 - Root files: `LICENSE` (full Apache-2.0 text, "Copyright 2026 The donn Authors"), `NOTICE`
-  ("donn / Copyright 2026 The donn Authors"), `AUTHORS` (Jacob Johnson), `CONTRIBUTING.md` (DCO
+  ("donn / Copyright 2026 The donn Authors"), `AUTHORS`, `CONTRIBUTING.md` (DCO
   `Signed-off-by`, the gitflow rules from `CLAUDE.md`, the release checklist from §5),
   `SECURITY.md` (report through GitHub private vulnerability reporting).
 - `LICENSE` and `NOTICE` are copied into each tarball by the pack step (§2), not committed per
@@ -156,7 +157,7 @@ runner so tests use a fake `npm`/`pnpm`.
 **Audit** (on a feature branch, before the flip):
 
 - `gitleaks` over the full history. A finding is rotated; rewriting history is a last resort (it
-  breaks the control plane's submodule pins and every tag).
+  breaks every tag and any downstream pin).
 - Read `docs/`, `spikes/`, `examples/`, `CLAUDE.md`, `AGENTS.md` and the READMEs for personal or
   employer details, and for private control-plane details beyond "a private repo exists and
   depends on the published packages". Edit in place with dated notes where a planning doc changes.
@@ -217,8 +218,7 @@ skipped). If a published version is broken: `npm deprecate` it and release a pat
 
 ## Non-goals
 
-Moving the control plane from `vendor/donn` to npm dependencies (a private spec); rulesets for
-`develop` and `main` (free once the repo is public; a follow-up); usedonn.com and the USPTO check; a
+Rulesets for `develop` and `main` (free once the repo is public; a follow-up); usedonn.com and the USPTO check; a
 Homebrew formula or an unscoped `donn` alias; moving the developer's Mac from the pnpm link to the
 npm package (optional, afterwards); publishing `eslint-config` or `typescript-config`.
 

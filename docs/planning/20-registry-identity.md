@@ -1,10 +1,11 @@
 # 20 — Registry identity
 
 > Status: design, 2026-10-22. Phase 3, the open-source half of sub-project C (identity: OIDC and
-> roles; see `18-registry-contract.md` → "Phase 3 decomposition"). The server half is the private
-> repo's spec 02. Builds on `18-registry-contract.md` and `19-publish-engine.md`. Built as a
+> roles; see `18-registry-contract.md` → "Phase 3 decomposition"). The server half is in the private
+> repo. Builds on `18-registry-contract.md` and `19-publish-engine.md`. Built as a
 > `gh stack`: layer 0 is this spec and its plan.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -58,7 +59,7 @@ All under `/v1/auth`, no bearer token required.
   checking servers strictly (`ConformanceSchemas`, strict copies), so servers stay exact while
   clients stay forgiving.
 - **Compatibility:** CLIs before this release reject the new `whoami` fields and codes, so a
-  registry with identity (control plane 0.2) needs this CLI or later. Said in the README and the
+  registry with identity needs this CLI or later. Said in the README and the
   changeset.
 
 ## 3. CLI
@@ -106,7 +107,7 @@ All under `/v1/auth`, no bearer token required.
 
 ## Non-goals
 
-The server's OIDC client, pages, sessions and grants (private spec 02); view restrictions; SCIM;
+The server's OIDC client, pages, sessions and grants (the private repo); view restrictions; SCIM;
 SAML; refreshing groups between logins.
 
 ## Open questions
@@ -140,10 +141,10 @@ Rulings made while building, each changing or settling what is written above.
 - **The sign-in link must have the registry's own protocol and origin, or it is refused** with
   `registry-protocol` (a `blob:` link has a matching origin, so the protocol is checked too). Only
   the parsed `href` is printed or opened.
-- **A 401 on `POST /v1/auth/logins` is read as no sign-in** (registries before control plane 0.2
+- **A 401 on `POST /v1/auth/logins` is read as no sign-in** (registries from before identity
   check auth before routing, and a route that takes no token cannot answer 401 on purpose). The
   CLI treats it like 404 and prints the no-sign-in message.
-- **Order of checks on `POST /v1/layers/{ref}/versions`** (the mock's order; private spec 02 must
+- **Order of checks on `POST /v1/layers/{ref}/versions`** (the mock's order; the control plane must
   match): token, then body parse, then (a dry run skips grants) the `publish` grant, then the
   `lock` grant, then the engine. A body that does not parse skips the grant checks, and the
   engine reports `invalid`.

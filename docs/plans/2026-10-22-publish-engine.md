@@ -112,7 +112,7 @@ export function memoryStore(): LayerStore & { versions(ref: string): LayerVersio
 
 **Files:** Modify `docs/planning/18-registry-contract.md` (dated note: the rules now live in
 `publishLayer`, spec 19), `docs/planning/03-architecture.md` (dated note under "Control plane": the
-server runs the shared engine; the private repo pins this repo as a submodule),
+server runs the shared engine; the private repo consumes this repo's packages),
 `docs/planning/19-publish-engine.md` (amendments from Tasks 1–2), `CLAUDE.md` (reading list item 19;
 status line). Create `.changeset/publish-engine.md` (minor `@zzpersona/registry-api`).
 

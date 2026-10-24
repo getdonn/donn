@@ -32,8 +32,7 @@ legacy names live in one file the leftover check exempts; Task 3 is docs and cha
   exists and is not empty: `<target> already exists and is not empty; move it aside or set DONN_HOME`;
   nothing to do: `nothing to migrate: no zzpersona install found`.
 - Every layer passes `pnpm turbo run build check-types lint test` and `pnpm format:check`; commits end
-  with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and
-  `Claude-Session: https://claude.ai/code/session_01KtnoumVTbTBed2oTps5DEp`. Tests never touch the
+  with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Tests never touch the
   real `~/.zzpersona`, `~/.donn`, `~/.claude`, keychain, LaunchAgents, systemd or system folders.
 
 ## Review Focus

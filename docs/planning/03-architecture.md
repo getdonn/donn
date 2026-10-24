@@ -7,6 +7,7 @@
 > Amended 2026-10-23: the name is **donn**; the placeholder becomes `@getdonn/*`, `donn` and
 > `donnd` at the rename (`00-handoff.md` → "Naming").
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Principles
 
@@ -64,7 +65,7 @@
                              ▼
    ┌──────────────── control plane (private repo) ───────────────────────────────┐
    │ persona registry · versions · RBAC/OIDC · policy engine · audit · drift     │
-   │ gateway integration · web console · Postgres · Docker + Helm                │
+   │ gateway integration · web console · self-hosted                          │
    └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -100,7 +101,7 @@
 | `console` | Web admin UI over the control plane |
 | `policy` | Org/area/team policy authoring; what may be locked, who may publish at which layer |
 | `gateway-integrations` | Deeper integrations than the OSS adapter: sync allowed-tool sets from Bifrost etc. into persona policy |
-| `deploy` | Dockerfile, Helm chart, reference Terraform |
+| `deploy` | Packaging for self-hosting |
 
 The enterprise repo depends on **published** `@getdonn/spec`, `@getdonn/resolver`, `@getdonn/store`
 packages. That dependency direction is the boundary and is non-negotiable.
@@ -266,9 +267,8 @@ cwd walk-up finds .donn/persona.yaml → compare to state.current → nudge in-s
 
 > 2026-10-22: the publish rules live in `@getdonn/registry-api` as `publishLayer` over a
 > `LayerStore` (spec 19, `19-publish-engine.md`). The mock and the control plane are each a store
-> plus HTTP; the server runs the engine in a transaction holding an org-wide lock. Until a
-> name and a GitHub org exist, the private repo consumes this one as a git submodule pinned to a
-> release tag, through package `exports` only.
+> plus HTTP; the server runs the engine in a transaction holding an org-wide lock. The private repo
+> consumes the open-source packages, through package `exports` only.
 
 > 2026-10-22: identity is brokered by the server (an OIDC confidential client); the CLI never
 > talks to the identity provider. Sessions are server-issued `donn_` tokens, and grants are
@@ -277,18 +277,17 @@ cwd walk-up finds .donn/persona.yaml → compare to state.current → nudge in-s
 - **API:** REST + JSON; OpenAPI published; the OSS `store-remote` is the only client the CLI needs.
 - **Tenancy:** single-tenant per deployment in v1 (self-hosted). Multi-tenant SaaS is a later
   decision, not an architectural assumption — keep `org_id` on every row from day one anyway.
-- **Identity:** OIDC (Okta, Entra, Google). Service tokens for CI publishing.
+- **Identity:** OIDC single sign-on. Service tokens for CI publishing.
 - **RBAC:** roles scoped to a layer path (`org`, `area/fintech`, `team/payments`): *view*,
   *publish*, *lock*. Locking is a separate privilege from publishing.
-- **Storage:** Postgres. Personas stored as content-addressed blobs + version rows; audit log
+- **Storage:** a server with a database. Personas stored as content-addressed blobs + version rows; audit log
   append-only.
 - **Policy engine:** evaluates publish requests against layer rules (who may publish where, what
   must be locked at org level, allowed gateway set). Start as code; consider OPA/Rego only if
   customers ask for custom policy.
 - *Note (2026-10-22):* the registry contract the server must meet, its publish rules, the mock and
   the conformance kit are specified in `18-registry-contract.md` (`@getdonn/registry-api`).
-- **Deployment:** single container + Postgres; Helm chart with external-DB option; air-gapped OK
-  (no outbound calls required).
+- **Deployment:** self-hosted; no outbound calls required.
 
 ## Security model
 
@@ -305,7 +304,7 @@ cwd walk-up finds .donn/persona.yaml → compare to state.current → nudge in-s
 
 **OSS monorepo (turborepo, pnpm, TypeScript):**
 
-> Amended 2026-10-20: `apps/` and `packages/` moved under `src/` (founder preference; keeps the
+> Amended 2026-10-20: `apps/` and `packages/` moved under `src/` (maintainer preference; keeps the
 > root to config + docs). `src/packages/adapters/` is a grouping directory and must never get its
 > own `package.json` (Turborepo forbids nested packages). Shared `typescript-config` and
 > `eslint-config` packages are internal and never published.
@@ -340,8 +339,6 @@ docs/planning/       (these documents)
   *Amended 2026-10-20: was "Node 22+". 22 is maintenance-only (EOL 2027-04) and would be the
   floor for a product that will not ship before 26 is the active LTS.*
 - CLI: `clipanion` or `commander`; output machine-readable with `--json` on every command.
-- Control plane: Hono or Fastify; Drizzle + Postgres; OpenAPI generated.
-- Console: Next.js or Vite + React; talks only to the public API.
 - Distribution: npm (`npx donn`), Homebrew tap, single-binary via `bun build --compile` later.
 
 ## Open questions (architecture-level)

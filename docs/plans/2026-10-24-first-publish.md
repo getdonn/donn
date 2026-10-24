@@ -69,8 +69,8 @@ dependencies; tarballs are read with the system `tar`.
 **Files:** Modify the 13 public `package.json` files; `.changeset/config.json` (`"access":
 "public"`); `.gitignore` (add `dist-release/`, `src/**/LICENSE`, `src/**/NOTICE`). Create
 `LICENSE` (the full Apache-2.0 text from https://www.apache.org/licenses/LICENSE-2.0.txt, with the
-appendix's copyright line filled in as the Global Constraints line), `NOTICE`, `AUTHORS`
-(`Jacob Johnson`), `CONTRIBUTING.md`, `SECURITY.md`, a `README.md` in each of the 13 packages, and
+appendix's copyright line filled in as the Global Constraints line), `NOTICE`, `AUTHORS`,
+`CONTRIBUTING.md`, `SECURITY.md`, a `README.md` in each of the 13 packages, and
 `.changeset/first-npm-release.md`.
 
 - [ ] **Step 1:** Edit the 13 `package.json` files per Global Constraints (field order: after

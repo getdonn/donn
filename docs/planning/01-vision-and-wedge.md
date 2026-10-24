@@ -7,6 +7,7 @@
 > `00-handoff.md` → "Naming".
 > Status: brainstorm, 2026-10-20. Nothing here is decided.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Problem and mission
 
@@ -140,9 +141,9 @@ The OSS tool must be **fully useful for the solo developer** or there is no adop
 - web admin console
 - gateway adapters (Bifrost first) — resolve MCP servers by name through an allowed set
 - drift detection: local persona vs. published persona
-- Docker image + Helm chart (table stakes for the buyer)
+- packaged for self-hosting (table stakes for the buyer)
 - *(2026-10-24)* agent governance: who may create or deploy which agents, against which gateway,
-  with an inventory of running agents (a private-repo spec; `23` → Non-goals)
+  with an inventory of running agents (a private-repo item; `23` → Non-goals)
 
 **Later phases (sequencing, not scope cuts — see `04-roadmap.md`):**
 - Desktop presence — reframed: the valuable part is a **local daemon** (sync, pre-build, watchers,

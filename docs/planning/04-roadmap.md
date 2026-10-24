@@ -5,6 +5,7 @@
 > not commitments. Each phase ends with an **exit question** — if the answer is no, stop and
 > rethink before spending the next phase.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Phase 0 — Spikes and the IR (serial, 1 person)
 
@@ -92,7 +93,7 @@ Goal: a team lead can publish a persona, an org can lock parts of it, and a plat
 who is running what. Build only the slice a design-partner asks for.
 
 Work:
-- `control-plane`: Postgres, persona registry + versions, publish API with server-side lock
+- `control-plane`: persona registry + versions, publish API with server-side lock
   enforcement, OIDC, RBAC (view / publish / lock per layer path), append-only audit.
 - `packages/store-remote` (OSS client) + `donn login|publish|pull`.
 - Drift: daemon reports local-vs-published; console shows it per team.
@@ -101,16 +102,17 @@ Work:
   surface is, or "advisory only" in the report.)
 - Gateway adapter v1: Bifrost (2026-10-22: renamed "Gateway adapter v1: Bifrost and LiteLLM", see spec 18) — resolve `gateway://` refs, pull allowed-tool sets into policy.
 - `console`: minimal — personas, versions, locks, drift, audit. Ugly is fine.
-- `deploy`: Dockerfile, Helm chart, air-gapped install doc.
+- `deploy`: packaging for self-hosting, install doc.
 - Licensing: pick the mechanism (license key checked offline, seat count) — keep it boring.
 
 *Amended 2026-10-22:* Phase 3 is built ahead of a design partner, aimed at one known organisation
 once most of it is complete, replacing "build only the slice a design-partner asks for". Spec
-`18-registry-contract.md` splits it into A-H (registry contract and client, control plane core,
-identity, drift, Claude Code enforcement, gateway adapter, deploy, console); A is built first.
+`18-registry-contract.md` splits it into parts (registry contract and client, control plane core,
+identity, drift, Claude Code enforcement, gateway adapter, deploy, console); the registry contract
+and client are built first.
 
-Parallel seam: A control-plane + policy, B console + deploy, C stays on OSS (adapters, daemon,
-community) so the funnel does not stall while the paid tier is built.
+Parallel seam: the paid tier is built in the private repo while the open-source work (adapters,
+daemon, community) continues, so the funnel does not stall.
 
 Exit question: *Is there one organization (even a friend's 10-person team) that would deploy this
 and let us watch?*
@@ -169,7 +171,7 @@ worth doing slowly. Everything to the right of `adapter-sdk` fans out.
 - Whoever owns `spec`/`resolver` also owns the fixture suite and the `irVersion` bump policy.
   That is the de facto architect role.
 - Community/docs is a real job from Phase 1 on; rotate it rather than letting it default to the
-  founder.
+  maintainer.
 
 ## What we are explicitly *not* doing before Phase 3 has a partner
 
