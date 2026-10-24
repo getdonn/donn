@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/adapter-sdk",
   "version": "0.4.0",
-  "private": true,
   "description": "The harness adapter contract, compile-report helpers and conformance kit",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/adapter-sdk"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "adapter",
+    "conformance"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -48,5 +61,11 @@
     "vitest": {
       "optional": true
     }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
