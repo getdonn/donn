@@ -35,7 +35,7 @@ export interface PublishSummary {
 
 const MIN_NPM = [11, 5, 1] as const;
 
-function isNpmjs(registry: string): boolean {
+export function isNpmjs(registry: string): boolean {
   try {
     return new URL(registry).hostname.toLowerCase() === "registry.npmjs.org";
   } catch {

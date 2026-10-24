@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReleaseError } from "./errors.js";
 import { listWorkspaces, publicPackages } from "./packages.js";
+import { isNpmjs } from "./publish.js";
 import type { RunResult, Runner } from "./run.js";
 
 export interface ClaimOptions {
@@ -43,8 +44,9 @@ function viewFailed(spec: string, res: RunResult): ReleaseError {
 /**
  * Local fallback for reserving the package names on npm: publishes a `0.0.0`
  * placeholder for each public package npm does not have, or (`deprecate`)
- * deprecates the placeholders. Always targets npm's default registry, and
- * npm prompts for the 2FA code on the terminal.
+ * deprecates the placeholders. It targets whatever registry npm is configured
+ * for and refuses unless that is npmjs (an env var or .npmrc can redirect it),
+ * and npm prompts for the 2FA code on the terminal.
  */
 export async function claim(opts: ClaimOptions): Promise<ClaimResult> {
   const { root, run, yes } = opts;
@@ -52,6 +54,14 @@ export async function claim(opts: ClaimOptions): Promise<ClaimResult> {
     throw new ReleaseError(
       "ci",
       "claim runs only on the maintainer's machine (npm asks for a 2FA code); CI is set",
+    );
+  }
+  const reg = await run("npm", ["config", "get", "registry"], { cwd: root });
+  const registry = reg.stdout.trim();
+  if (reg.code !== 0 || !isNpmjs(registry)) {
+    throw new ReleaseError(
+      "registry",
+      `claim publishes to npmjs only; npm's registry is ${registry || `unknown (npm config exited ${reg.code})`}`,
     );
   }
   const pkgs = publicPackages(await listWorkspaces(root, run));

@@ -49,6 +49,8 @@ function repo(names = ["@getdonn/a", "@getdonn/b"]) {
 
 interface Script {
   ls: string;
+  /** Answer for `npm config get registry`. */
+  registry?: string;
   /** Answer for `npm view <spec> <field>`. */
   view?: (spec: string) => { code: number; stdout: string; stderr: string };
 }
@@ -59,6 +61,10 @@ function setup(s: Script) {
   const published: Seen[] = [];
   const run = fakeRunner([
     [(c, a) => c === "pnpm" && a[0] === "ls", ok(s.ls)],
+    [
+      (c, a) => c === "npm" && a[0] === "config",
+      ok(s.registry ?? "https://registry.npmjs.org/\n"),
+    ],
     [
       (c, a) => c === "npm" && a[0] === "view",
       (_c, a) => (s.view ?? (() => e404))(a[1] ?? ""),
@@ -162,6 +168,25 @@ describe("claim", () => {
     expect(calls(run, "publish")).toHaveLength(0);
   });
 
+  it("refuses a non-npmjs registry before any npm view", async () => {
+    const { root, ls } = repo();
+    for (const deprecate of [false, true]) {
+      const { run } = setup({ ls, registry: "http://localhost:4873/\n" });
+      await expect(
+        claim(base(root, run, { deprecate, yes: false })),
+      ).rejects.toMatchObject({ code: "registry" });
+      expect(calls(run, "view")).toHaveLength(0);
+      expect(calls(run, "publish")).toHaveLength(0);
+    }
+  });
+
+  it("proceeds when npm's registry is npmjs", async () => {
+    const { root, ls } = repo(["@getdonn/a"]);
+    const { run } = setup({ ls, registry: "https://registry.npmjs.org/\n" });
+    const res = await claim(base(root, run, { yes: false }));
+    expect(res.claimed).toEqual(["@getdonn/a"]);
+  });
+
   it("refuses when CI is set", async () => {
     const { root, ls } = repo();
     const { run } = setup({ ls });
@@ -184,6 +209,7 @@ describe("claim", () => {
     const { root, ls } = repo();
     const run = fakeRunner([
       [(c) => c === "pnpm", ok(ls)],
+      [(_c, a) => a[0] === "config", ok("https://registry.npmjs.org/\n")],
       [(_c, a) => a[0] === "view", e404],
       [(_c, a) => a[0] === "publish", boom],
     ]);
