@@ -12,6 +12,7 @@ const pass = () => Promise.resolve<string[]>([]);
 const publish = (o: PublishOptions) => publishReal({ check: pass, ...o });
 const cleanup: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const d of cleanup.splice(0))
     rmSync(d, { recursive: true, force: true });
 });
@@ -253,6 +254,7 @@ describe("publish", () => {
 
   it("stops at the first failure and reports it", async () => {
     const { root, ls } = repo();
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const run = runner({
       ls,
       publish: () => ({ code: 1, stdout: "", stderr: "E403 forbidden\n" }),

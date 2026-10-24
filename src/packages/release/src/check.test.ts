@@ -1,7 +1,12 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { existsSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkTarball, REPOSITORY_URL } from "./check.js";
 import type { PublicPackage, Workspace } from "./packages.js";

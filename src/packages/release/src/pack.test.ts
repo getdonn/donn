@@ -1,7 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rmSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { packAll } from "./pack.js";
 import type { PublicPackage } from "./packages.js";
