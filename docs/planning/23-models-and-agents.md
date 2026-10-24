@@ -7,6 +7,7 @@
 > `25-agent-runner.md` (`donn agent`: create, run, build, deploy) and `26-gui.md` (the GUI).
 > Builds on `02` (merge semantics, locks), `05` (adapter SDK), `13` (capability matrix) and
 > `14`–`16` (daemon). Built as a `gh stack`: layer 0 is specs 23–26 and their amendments.
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -17,7 +18,7 @@ lets a user build such an agent from a template, wired to the persona, and run i
 self-host it, or deploy it to Vercel, with every model call going through the organisation's
 gateway when there is one.
 
-The founder's constraints (2026-10-24):
+The maintainer's constraints (2026-10-24):
 
 - **Agents are an option.** Nothing else in donn requires eve or an agent; a user who never
   creates one sees two optional fields and one command group.

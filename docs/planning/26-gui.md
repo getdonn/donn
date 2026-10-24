@@ -6,6 +6,7 @@
 > Builds on `14`–`16` (the daemon, its socket and service), `15` (`POST /run`), `17` (the switch
 > report), `13` (capabilities), `18`–`20` (registry and identity) and `25` (`donn agent`). Built as
 > a `gh stack` of its own.
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -22,7 +23,7 @@ whatever the GUI does, `donn … --json` does too (the rule in `03`).
 ## The revised decision
 
 `00-handoff.md` rejected "an Electron desktop app as a primary surface" in favour of a thin tray
-client, later: "a third UI with no new user is cost without benefit". The founder revised it on
+client, later: "a third UI with no new user is cost without benefit". The maintainer revised it on
 2026-10-24: a GUI is how a team adopts donn fully, beyond the one person who set it up, and the
 agent builder gives it a workflow the CLI cannot make discoverable. What survives from the old
 decision: no logic in the UI, the daemon is the only backend, Tauri over Electron.

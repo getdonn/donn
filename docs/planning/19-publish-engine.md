@@ -4,6 +4,7 @@
 > private repo). Builds on `18-registry-contract.md`. Built as a `gh stack`: layer 0 is this spec
 > and its plan.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -18,9 +19,9 @@ is built against it.
 | Decision | Rejected | Why |
 |---|---|---|
 | One publish engine in OSS, over a `LayerStore` interface; the mock and the server are a store plus HTTP | The server reimplements the rules; the server wraps the mock | One implementation of the subtle parts (check order, descendant sweep, digest); the enterprise value is a server enforcing the rules with identity and audit, not the algorithm, and the client already enforces locks in OSS |
-| The engine does not serialise; the caller runs it under its own lock or transaction | The engine takes a lock | Locking belongs to the storage (an advisory lock in Postgres, nothing in memory) |
+| The engine does not serialise; the caller runs it under its own lock or transaction | The engine takes a lock | Locking belongs to the storage (an advisory lock in a database, nothing in memory) |
 | Kit hardening ships before the server | After | The server is built against the stricter kit, not changed afterwards |
-| The private repo consumes this repo as a git submodule pinned to a release tag, through package `exports` only | A GitHub org for the product with GitHub Packages; publishing under `@jbjsoftware/*` | The scope is a placeholder and both of those are redone at the rename; `exports` maps already block deep imports, so the boundary matches a published package (decided 2026-10-22; revisit when the name and org exist) |
+| The private repo consumes this repo's packages through package `exports` only | A GitHub org for the product with GitHub Packages; publishing under `@jbjsoftware/*` | The scope is a placeholder and both of those are redone at the rename; `exports` maps already block deep imports, so the boundary matches a published package (decided 2026-10-22; revisit when the name and org exist) |
 
 ## 1. The engine
 
@@ -55,7 +56,7 @@ export function publishLayer(
   problems instead of throwing; an unexpected error (a store failure) is thrown to the caller.
 - `inserted.publishedBy` is `context.subject`, `inserted.publishedAt` is `context.now`.
 - The engine never serialises. Two concurrent calls on one store can both pass `stale-base`; the
-  caller must run each call under a lock (in memory: one at a time; in Postgres: a transaction
+  caller must run each call under a lock (in memory: one at a time; in a database: a transaction
   holding an org-wide advisory lock).
 - `getVersion` and `listLayers` stay with the caller; they are reads of the store.
 
@@ -120,7 +121,7 @@ None.
   **org-wide** lock (a per-ref lock is not enough: an `org/base` lock and a `team/web` change touch
   different rows). The engine memoises reads, so each ref is read at most once and `refs()` once
   per publish. `insert` comes last, with `version` = the latest read + 1, and **must reject** a
-  `(ref, version)` that exists (a unique constraint in Postgres); `memoryStore` does. `refs()`
+  `(ref, version)` that exists (a unique constraint in a database); `memoryStore` does. `refs()`
   returns the publishing org's refs only. The kit's race case fires five publishes at once and
   expects exactly one 201 and four `409 stale-base`; a race can show a missing lock, never prove
   there is none, so the unique-version rule is the real guard.

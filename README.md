@@ -173,7 +173,7 @@ with `forbidden`, the hint names the grant to ask a registry admin for.
 
 A registry with sign-in needs `@getdonn/cli` 0.9.0 or later, which is this release (product
 0.11.0): older CLIs reject the new fields in its answers. A 401 on `POST /v1/auth/logins` is read as no
-sign-in (registries before control plane 0.2), so the CLI points you to `--token-stdin`.
+sign-in (registries from before identity), so the CLI points you to `--token-stdin`.
 
 ## Managed policy
 

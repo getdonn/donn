@@ -2,10 +2,11 @@
 
 > Status: design, 2026-10-23. Phase 3, the open-source half of sub-project E (Claude Code
 > enforcement; see `18-registry-contract.md` → "Phase 3 decomposition"). The server half, which
-> serves bundles and builds MDM packages, is the private repo's spec 04. Builds on `02` (locks),
+> serves bundles and builds MDM packages, is in the private repo. Builds on `02` (locks),
 > `03` Appendix A ("Enterprise enforcement maps onto managed settings"), `05` (adapter SDK) and
 > `18`–`20` (registry). Built as a `gh stack`: layer 0 is this spec and its plan.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -15,7 +16,7 @@ compiles the locks of the org layer (optionally down to a business area or team)
 policy bundle**, installs it on one machine with an explicit `sudo`, and checks that what is
 installed is what was compiled and is current. An organisation without MDM or a gateway gets real
 enforcement from the open-source CLI alone; an organisation with MDM gets the same bundle packaged
-for its MDM by the control plane (private spec 04).
+for its MDM by the control plane.
 
 ## Facts this design rests on
 
