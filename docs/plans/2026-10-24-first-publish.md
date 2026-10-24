@@ -317,8 +317,9 @@ uplink for everything but `@getdonn/*`; the smoke test installs into a local pre
 ## Runbook (controller, with the user)
 
 Spec §4 steps 1–8, in order. Each ⚑ step is asked for at that step. In short: open the stack's PRs
-and, when CI is green, run the rehearsal by `workflow_dispatch` on layer 3; merge bottom-up
-(squash); ⚑ flip the repo public, private vulnerability reporting, environment `npm`; ⚑ npm org 2FA,
+and, when CI is green, merge bottom-up (squash) and run the rehearsal by `workflow_dispatch` on
+`develop` *(amended 2026-10-24: dispatch needs `release.yml` on the default branch, so not on
+layer 3)*; ⚑ flip the repo public, private vulnerability reporting, environment `npm`; ⚑ npm org 2FA,
 trusted publishers (or `donn-release claim` then `claim --deprecate`); `release/0.14.0` with
 `changeset version` and a green rehearsal; ⚑ PR to `main`, sync, tag `v0.14.0`, approve `npm`;
 verify (`npm view`, `npm audit signatures`, a clean `npm i -g`); ⚑ "Require two-factor
