@@ -1,5 +1,11 @@
 # @getdonn/spec
 
+## 0.3.1
+
+### Patch Changes
+
+- 14c7f82: First npm release.
+
 ## 0.3.0
 
 ### Minor Changes

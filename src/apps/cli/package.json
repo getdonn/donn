@@ -1,12 +1,28 @@
 {
   "name": "@getdonn/cli",
-  "version": "0.11.0",
-  "private": true,
+  "version": "0.11.1",
   "description": "The donn command line",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/apps/cli"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "claude-code",
+    "codex",
+    "cli"
+  ],
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "NOTICE",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -41,5 +57,11 @@
   },
   "bin": {
     "donn": "dist/bin.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

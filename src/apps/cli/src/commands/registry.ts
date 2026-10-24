@@ -226,8 +226,8 @@ async function browserLogin(
     try {
       login = await startLogin(url, { signal });
     } catch (error) {
-      // A route that takes no token cannot answer 401 on purpose: registries before
-      // control plane 0.2 check auth before routing, so 401 here means no sign-in.
+      // A route that takes no token cannot answer 401 on purpose: older registries
+      // check auth before routing, so 401 here means no sign-in.
       if (signal.aborted) return cancelled(io);
       if (
         error instanceof RegistryError &&

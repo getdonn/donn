@@ -148,7 +148,7 @@ sleep?: (ms: number) => Promise<void>;
 ### Task 3: Docs (`feature/identity-3-docs`)
 
 **Files:** Modify `README.md` (Registry: sign-in, `--no-browser`, roles, the CLI ≥ 0.11 note),
-`CLAUDE.md` (item 20; status; replace "next is B" with B shipped as the private control plane and C
+`CLAUDE.md` (item 20; status; replace "next is B" with B shipped in the private repo and C
 in progress), `docs/planning/03-architecture.md` (dated note under Control plane: identity),
 `docs/planning/18-registry-contract.md` (dated note: tolerant reading, identity in spec 20),
 `docs/planning/20-registry-identity.md` (amendments). Create `.changeset/registry-identity.md`

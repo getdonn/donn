@@ -1,15 +1,30 @@
 {
   "name": "@getdonn/mod-claude-code",
-  "version": "0.4.0",
-  "private": true,
+  "version": "0.4.1",
   "description": "The Claude Code mod: the active persona above the prompt, a folder-mismatch nudge, /persona",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/mod-claude-code"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "claude-code",
+    "mod"
+  ],
   "type": "module",
   "exports": {
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -25,5 +40,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

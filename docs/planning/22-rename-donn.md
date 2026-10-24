@@ -2,9 +2,10 @@
 
 > Status: design, 2026-10-23. The product is named **donn** (`00-handoff.md` → "Naming"). This
 > spec renames the code from the placeholder `zzpersona` (and the docs from `hatrack`), adds
-> `donn migrate` for existing installs, and ships the result as 0.13.0. The control plane's half
-> is the private repo's spec 05. Built as a `gh stack`: layer 0 is this spec and its plan, written
+> `donn migrate` for existing installs, and ships the result as 0.13.0. The private control-plane
+> repo is renamed separately. Built as a `gh stack`: layer 0 is this spec and its plan, written
 > before the rename and therefore still using the old names.
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Intent
 
@@ -19,8 +20,8 @@ old name is read after the rename.
 |---|---|---|
 | A clean break plus a one-time `donn migrate` | Manual steps; a one-release compatibility window reading both names | No outside users; compatibility code would be removed a release later; one command moves the only real install safely |
 | One scripted rename layer per repo, the script deleted in the same PR | Renaming by hand, package by package; package aliases | ~3,500 occurrences: a script applies the approved mapping exactly and is reviewable; aliases contradict the clean break |
-| Both repos move into the `getdonn` GitHub org now (`donn`, `donn-control-plane`, private); images publish under `ghcr.io/getdonn` | Renaming in place and moving later; renaming only the code | One move instead of two; GHCR packages are owner-scoped |
-| Local folders keep their names (`~/Repos/persona-ai`, `~/Repos/persona-ai-control-plane`) | Renaming them | Tooling state keyed on those paths survives; only remotes change |
+| Both repos move into the `getdonn` GitHub org now (private); published artifacts use the new org | Renaming in place and moving later; renaming only the code | One move instead of two; packages are owner-scoped |
+| Local folders keep their names | Renaming them | Tooling state keyed on those paths survives; only remotes change |
 
 ## 1. The mapping
 
@@ -65,12 +66,11 @@ only reports leftovers and exits non-zero when any exist.
    7. `__Host-zzp_` → `__Host-donn_`; `zzp_` → `donn_`; `zzpd-` → `donnd-`; `zzp-` → `donn-`
    8. `zzpersona` → `donn`
    9. docs only: `hatrackd` → `donnd`, `Hatrack` → `Donn`, `hatrack` → `donn`
-   10. (control plane only, spec 05) `@persona-ai/` → `@getdonn/`, `vendor/persona-ai` → `vendor/donn`, `persona-ai-control-plane` → `donn-control-plane`
 3. **Length-sensitive lines.** `zzp_` (4) becomes `donn_` (5): the script prints every changed
    line that is a regular expression or a length check (token formats such as `/^zzp_[0-9a-f]{48}$/`,
    minimum lengths), and each gets a hand review in the PR.
 4. **Untouched:** `CHANGELOG.md` files; every dated amendment or history block in `docs/planning/`;
-   `00-handoff.md`'s naming history; this spec and spec 05 (they need both names); `docs/plans/`
+   `00-handoff.md`'s naming history; this spec (it needs both names); `docs/plans/`
    (implementation plans are records of what was done); `spikes/` (throwaway findings); git history.
    Each other planning doc gains one dated note: `2026-10-23: renamed zzpersona/hatrack → donn`.
 5. **Verification:** `--check` reports zero leftovers outside the untouched set; golden and
@@ -169,7 +169,7 @@ Smoke before the final review: `donn claude` in a herdr pane with a temp home an
 ## Non-goals
 
 Publishing to npm; making the repos public; deleting the `jbjsoftware` GHCR packages; a trademark
-search; the open-source follow-ups from control-plane spec 04 (`managed-unrepresentable` in
+search; the open-source follow-ups from the control plane's managed bundles (`managed-unrepresentable` in
 `PROBLEM_CODES`, the manifest's "delivered by another channel" field) — a later small spec.
 
 ## Open questions

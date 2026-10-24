@@ -19,3 +19,8 @@ npm-debug.log*
 # OS and keys
 .DS_Store
 *.pem
+
+# Release tooling copies (LICENSE/NOTICE are copied in at pack time)
+dist-release/
+src/**/LICENSE
+src/**/NOTICE

@@ -5,28 +5,27 @@
 > (`store-local`, secrets), `08-cli-reach.md` (the keychain provider) and `16-daemon-service.md`.
 > Built as a `gh stack`: layer 0 is this spec and its plan.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## Phase 3 decomposition
 
 Phase 3 is built ahead of any design partner: the target is one known organisation once most of
-it is complete, and that organisation's needs are where the Bifrost gateway, Docker, Helm and
-air-gapped items come from (amends `04`'s "build only the slice a design partner asks for").
+it is complete, and that organisation's needs are where the gateway and self-hosting
+items come from (amends `04`'s "build only the slice a design partner asks for").
 Each sub-project gets its own spec.
 
 | # | Sub-project | Repo | Depends on |
 |---|---|---|---|
 | A | Registry contract and client: the OpenAPI contract, `store-remote`, `login`, `publish`, `pull`, a mock server and a conformance kit | OSS | — |
-| B | Control plane core: Postgres, versions, publish API with server-side lock enforcement, service tokens, append-only audit | private | A |
+| B | Control plane core: versions, publish API with server-side lock enforcement, service tokens, append-only audit | private | A |
 | C | Identity: OIDC, RBAC (view / publish / lock) per layer path | private | B |
 | D | Drift: the daemon reports local vs published | OSS | A |
 | E | Claude Code enforcement: org locks → `managed-settings.d` + `managed-mcp.json` bundle for MDM | OSS compile, private packaging | — |
 | F | Gateway adapter v1: Bifrost and LiteLLM | OSS interface, private admin sync | B |
-| G | Deploy: Docker, Helm, air-gapped, licensing | private | B, C |
+| G | Deploy: self-hosting packaging, licensing | private | B, C |
 | H | Minimal console | private | B, C |
 
-Before B: the private repo needs the OSS packages published. GitHub Packages scopes npm packages
-to the repository owner, so `@getdonn/*` needs a `getdonn` GitHub org.
-Decided when B starts.
+Before B: the private repo needs the OSS packages published, under a `getdonn` GitHub org.
 
 > Amended 2026-10-22: F is now "Gateway adapter v1: Bifrost and LiteLLM": an OSS `list`/`resolve`
 > interface (`gateway://name` becomes an HTTP MCP entry, the credential a `secret://` ref), with the
@@ -187,7 +186,7 @@ All support `--json`.
 
 ## Non-goals
 
-OIDC and RBAC (C); the real server, Postgres and audit (B); yanking or deleting versions;
+OIDC and RBAC (C); the real server and audit (B); yanking or deleting versions;
 `registry://` skills; version pinning; several registries; background sync in the daemon; drift
 (D).
 
@@ -267,7 +266,7 @@ None.
 
 The §2 publish rules now live in `publishLayer` (`@getdonn/registry-api`, spec 19,
 `19-publish-engine.md`); the mock is an in-memory `LayerStore` on it, and the control plane will be
-a Postgres one. The wire contract above is unchanged.
+a database-backed one. The wire contract above is unchanged.
 
 ## Note (2026-10-22, identity)
 

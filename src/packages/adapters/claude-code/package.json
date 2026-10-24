@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/adapter-claude-code",
-  "version": "0.3.0",
-  "private": true,
+  "version": "0.3.1",
   "description": "Claude Code harness adapter: compiles a resolved persona for the relaunch path",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/adapters/claude-code"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "claude-code",
+    "adapter"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -12,7 +25,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -31,5 +46,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

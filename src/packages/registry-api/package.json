@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/registry-api",
-  "version": "0.6.0",
-  "private": true,
+  "version": "0.6.1",
   "description": "The registry contract: schemas, routes, OpenAPI, a mock server and a conformance kit",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/registry-api"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "registry",
+    "openapi"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -21,7 +34,9 @@
   },
   "files": [
     "dist",
-    "openapi.json"
+    "openapi.json",
+    "NOTICE",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -46,5 +61,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

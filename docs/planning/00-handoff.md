@@ -4,19 +4,20 @@
 > the reasoning and the rejected alternatives that the numbered docs state only as conclusions.
 > Written 2026-10-20 from the original brainstorming session. Update it when decisions change.
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
+> *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 
 ## How this started
 
-The founder (Jacob) works in a large enterprise where many orgs, business areas and teams each
-use some AI harness, and every repo/team has its own `.claude/` (skills, permissions, MCPs) plus
-knowledge and data sources *outside* the repo that are referenced while working in it. Some of
-that crosses project boundaries, some doesn't. The original idea: a Claude Code plugin + mod that
+In large organizations, many orgs, business areas and teams each use some AI harness, and every
+repo/team has its own `.claude/` (skills, permissions, MCPs) plus knowledge and data sources
+*outside* the repo that are referenced while working in it. Some of that crosses project
+boundaries, some doesn't. The original idea: a Claude Code plugin + mod that
 lets you "switch to a persona" and have everything relevant become available.
 
 Initial instincts also included: a free/OSS core plus a paid tier (multi-user, a vector database
 for persona knowledge graphs, user management/admin), web and desktop (Electron) clients, VS Code
-and other IDE plugins, loading allowed MCP servers from a gateway like Bifrost, self-hosting via
-Docker + Helm, and a turborepo monorepo with the enterprise piece possibly living outside it.
+and other IDE plugins, loading allowed MCP servers from a gateway like Bifrost, self-hosting
+as a container, and a turborepo monorepo with the enterprise piece possibly living outside it.
 
 This is a **personal project**, built only on personal machines and time, with a possible team
 of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
@@ -32,7 +33,7 @@ of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
    machine (gateways govern tools, nobody governs the whole bundle); (c) multi-harness
    compilation, which no harness vendor will build because each only cares about itself.
 3. Therefore: **the product is a persona compiler + control plane. Claude Code is the first
-   adapter, not the product.** The founder explicitly confirmed Claude Code was an example and a
+   adapter, not the product.** The maintainer explicitly confirmed Claude Code was an example and a
    natural starting point, and that Codex, Antigravity, etc. must be first-class.
 
 ## Decisions and the alternatives rejected
@@ -43,13 +44,23 @@ of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
 | Adapters emit a `CompileReport` of dropped/weakened fields | Silent best-effort mapping | Policy owners must know where enforcement is advisory; also a marketing asset |
 | Open core with a **separate private enterprise repo** depending on published OSS packages | Private packages inside the monorepo excluded from the OSS mirror | Forces a clean boundary; monorepo-with-exclusions always leaks |
 | Knowledge = pointers to MCP-reachable sources | Ship/own a vector database | Every enterprise already has RAG + data-residency review; owning vectors makes this a data vendor, a worse business than config/governance |
-| Local daemon (`donnd`) is core; tray app is a thin client, later | Electron desktop app as a primary surface | Founder's real need was "something running locally for sync/agent pod"; that's a daemon. A third UI with no new user is cost without benefit. Tauri preferred over Electron for footprint |
+| Local daemon (`donnd`) is core; tray app is a thin client, later | Electron desktop app as a primary surface | The maintainer's real need was "something running locally for sync/agent pod"; that's a daemon. A third UI with no new user is cost without benefit. Tauri preferred over Electron for footprint |
 | IDE support = compile to that IDE's config; extensions later as daemon clients | VS Code extension early | Large surface area for a status indicator; wait for the daemon |
 | `locks` as the policy primitive; enforced server-side at publish, client-side advisory, drift as compensating control | Client-side enforcement only | Client is trivially editable; the gap *is* the enterprise upsell |
 | Replace (not deep-merge) opaque objects like MCP server defs; `deny` always beats `allow`; absence never deletes | Deep-merge everything | Deep-merged `args` arrays produce nonsense; security sets should only grow without explicit `remove` |
 | Relaunch wrapper is the deterministic Claude Code switch; mod is status/nudge | Mod performs the switch | Verified: mods have read-only `$.settings`, no API to toggle plugins or run `/reload-plugins` |
 | Apache-2.0 leaning for OSS | MIT | Patent grant matters to enterprise buyers (not final) |
-| Postgres, TypeScript everywhere, pnpm + turborepo, zod → JSON Schema | — | Boring defaults; change with reason |
+| TypeScript everywhere, pnpm + turborepo, zod → JSON Schema | — | Boring defaults; change with reason |
+| *(2026-10-24)* Personas also power **project agents**; eve is the first agent framework, optional (`23`) | eve as a later third-party plugin adapter (2026-10-22); no agents | A persona already holds what a PR reviewer needs; the GUI needs a workflow that makes donn worth opening |
+| *(2026-10-24)* The persona compiles to an eve **extension** in a thin generated agent; donn owns only its files (`24`) | Compile the whole eve project; scaffold once and hand over | Repo automation needs custom tools; a one-off scaffold drifts from the persona |
+| *(2026-10-24)* Agents run locally, self-hosted or on Vercel; model calls go through the org's gateway when there is one (`models`, lockable) | Vercel only; require a gateway | Enterprises host their own; OSS users mostly have no gateway |
+| *(2026-10-24)* A web and desktop **GUI** over the daemon, with the agent builder (`26`) | The thin tray client only (the daemon row above) | Revised by the maintainer: a GUI drives full adoption. Kept from the old row: no logic in the UI, Tauri |
+
+> *Amended 2026-10-24:* the row "Local daemon (`donnd`) is core; tray app is a thin client,
+> later" is revised by specs 23–26. The daemon stays the only backend and the UI holds no logic;
+> what changed is that a GUI (`donn ui` on loopback, and a Tauri desktop app) is now a planned
+> surface, not an optional later tray. The maintainer's first instinct ("web and desktop clients",
+> under "How this started") comes back with the daemon underneath it.
 
 ## Research findings that shaped the design (verified 2026-10-20 against code.claude.com docs)
 
@@ -134,7 +145,7 @@ Rejected on the way, 2026-10-23:
 
 Still open: a USPTO search for DONN in software classes 9 and 42 before the first public
 release; a tagline (candidate: "Define it once. Don it anywhere."); the rename itself, including
-golden files, fixtures and the private control-plane repo's `@zzpersona/*` dependencies
+golden files, fixtures and the private control-plane repo's dependencies on the old package scope
 (superseded 2026-10-23: the rename landed, spec 22).
 
 The placeholder rules below (2026-10-20) hold until the rename lands (superseded 2026-10-23: it landed).
@@ -176,9 +187,9 @@ daemon in v0 or not; "persona as MCP endpoint" parked for phase 3/4.
 
 ## Validation thesis (the thing that decides if this is a business)
 
-Not "does it work." It is: **does anyone besides the founder switch personas more than once a
+Not "does it work." It is: **does anyone besides the maintainer switch personas more than once a
 day, and does a team lead want to *publish* one for their team?** First yes = useful OSS tool.
-Second yes = the enterprise tier has a buyer. Can't be dogfooded at the founder's employer, so:
+Second yes = the enterprise tier has a buyer. There is no enterprise to dogfood in yet, so:
 ship OSS early, watch for team-shaped issues, recruit 2–3 friends who lead small teams elsewhere.
 
 ## Glossary
@@ -194,6 +205,9 @@ ship OSS early, watch for team-shaped issues, recruit 2–3 friends who lead sma
 - **Gateway** — an MCP gateway (e.g. Bifrost) that governs which tools exist; personas reference servers by `gateway://name`.
 - **`donnd`** — the local daemon: sync, cache, pre-build, watchers, local API.
 - **Mod** — a Claude Code plugin with in-process JS/TS hooks; our in-session UX for that harness.
+- **Agent** *(2026-10-24)* — a project agent (a PR reviewer, a triage bot) declared in a persona's `agents` and built on that persona by an agent adapter; eve is the first (`23`–`25`).
+- **Agent adapter** *(2026-10-24)* — like a harness adapter, but compiles one agent for an agent framework (`AgentAdapter`, `24`).
+- **Model gateway** *(2026-10-24)* — an LLM gateway (LiteLLM, Bifrost) that model calls route through; `models.gateway`. Not the MCP gateway above.
 
 ## If you are a fresh session starting work
 

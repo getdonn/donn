@@ -1,9 +1,22 @@
 {
   "name": "@getdonn/executor",
-  "version": "0.3.0",
-  "private": true,
+  "version": "0.3.1",
   "description": "Carries out adapter plans: the real probe, atomic builds with containment, and launch steps",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdonn/donn.git",
+    "directory": "src/packages/executor"
+  },
+  "homepage": "https://getdonn.dev",
+  "bugs": "https://github.com/getdonn/donn/issues",
+  "keywords": [
+    "donn",
+    "persona",
+    "ai-coding",
+    "executor",
+    "claude-code"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -12,7 +25,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -32,5 +47,11 @@
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

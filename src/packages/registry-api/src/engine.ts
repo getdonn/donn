@@ -25,11 +25,11 @@ import {
 
 // The publish rules of docs/planning/18-registry-contract.md §2 (as amended), over any storage.
 // See docs/planning/19-publish-engine.md. The engine never serialises: the caller must hold an
-// org-wide lock for the whole publish (in Postgres, a transaction holding an org-wide advisory
-// lock, or SERIALIZABLE isolation). A per-ref lock is not enough: publishing org/base (adding a
+// org-wide lock for the whole publish (in a SQL store, a transaction holding an org-wide
+// advisory lock, or serializable isolation). A per-ref lock is not enough: publishing org/base (adding a
 // lock) and team/web (setting the locked path) at once touch different rows, and both would pass.
 
-/** Where published layers live: memory in the mock, Postgres in the control plane. */
+/** Where published layers live: memory in the mock, a database in a real registry. */
 export interface LayerStore {
   /**
    * The latest version of `ref`, or undefined when it was never published. A publish reads each
@@ -42,7 +42,7 @@ export interface LayerStore {
    * Store a new version. Called at most once per publish, last, only after every check passed,
    * with `version` = the latest version read in this publish + 1; no read follows it, so
    * read-your-writes is not needed. Must reject when `(ref, version)` already exists (a unique
-   * constraint in Postgres), so a missing lock can never store two versions with one number.
+   * constraint in a SQL store), so a missing lock can never store two versions with one number.
    */
   insert(version: LayerVersion): Promise<void>;
 }

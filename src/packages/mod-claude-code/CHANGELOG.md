@@ -1,5 +1,11 @@
 # @getdonn/mod-claude-code
 
+## 0.4.1
+
+### Patch Changes
+
+- 14c7f82: First npm release.
+
 ## 0.4.0
 
 ### Minor Changes
