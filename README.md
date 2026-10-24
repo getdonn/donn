@@ -257,8 +257,8 @@ an interruption finishes the job. In order, it:
 7. installs the new mod, then installs and starts the new background service if the old one was
    installed.
 
-It runs `donn doctor` at the end, but only when a step ran (not when everything was already
-done), and not for `--project`. Exit codes: 0 when the migration succeeded, even if `doctor`
+It runs `donn doctor` at the end, unless every step was already done (this holds for
+`--project` too). Exit codes: 0 when the migration succeeded, even if `doctor`
 reports findings (read them), and also when a step is left pending (for example a locked
 keychain): the output lists it, and a re-run finishes it. Declining the prompt exits 1, and so
 does a refusal or a failed step (any non-zero).
