@@ -1,6 +1,12 @@
 #!/usr/bin/env node
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { checkTarball } from "./check.js";
 import { ReleaseError } from "./errors.js";
+import { packAll } from "./pack.js";
+import { listWorkspaces, publicPackages } from "./packages.js";
+import { realRunner } from "./run.js";
+import { readTarball } from "./tarball.js";
 
 const USAGE = `usage: donn-release <command> [options]
 
@@ -20,6 +26,32 @@ interface Flags {
 
 type Command = (flags: Flags) => Promise<void>;
 
+const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+
+async function pack(flags: Flags): Promise<void> {
+  const all = await listWorkspaces(ROOT, realRunner);
+  const packed = await packAll(ROOT, publicPackages(all), realRunner);
+  let failed = false;
+  for (const { pkg, tarball } of packed) {
+    const label = `${pkg.name}@${pkg.version}`;
+    if (!flags.check) {
+      process.stdout.write(`packed ${label} ${tarball}\n`);
+      continue;
+    }
+    const problems = checkTarball(
+      await readTarball(tarball, realRunner),
+      pkg,
+      all,
+    );
+    if (problems.length === 0) process.stdout.write(`ok ${label}\n`);
+    for (const p of problems) {
+      failed = true;
+      process.stdout.write(`FAIL ${label}: ${p}\n`);
+    }
+  }
+  if (failed) throw new ReleaseError("check", "tarball check failed");
+}
+
 const stub =
   (name: string): Command =>
   () =>
@@ -28,7 +60,7 @@ const stub =
     );
 
 const commands: Record<string, Command> = {
-  pack: stub("pack"),
+  pack,
   smoke: stub("smoke"),
   publish: stub("publish"),
   claim: stub("claim"),

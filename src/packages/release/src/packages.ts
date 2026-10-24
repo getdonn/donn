@@ -45,9 +45,19 @@ export async function listWorkspaces(
   }
   return Promise.all(
     entries.map(async (e) => {
-      const manifest = JSON.parse(
-        await readFile(join(e.path, "package.json"), "utf8"),
-      ) as Record<string, unknown>;
+      const file = join(e.path, "package.json");
+      let manifest: Record<string, unknown>;
+      try {
+        manifest = JSON.parse(await readFile(file, "utf8")) as Record<
+          string,
+          unknown
+        >;
+      } catch (err) {
+        throw new ReleaseError(
+          "workspaces",
+          `${file}: ${(err as Error).message}`,
+        );
+      }
       return {
         name: e.name ?? String(manifest["name"] ?? e.path),
         version: e.version ?? String(manifest["version"] ?? "0.0.0"),

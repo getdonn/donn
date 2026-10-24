@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 export type RunResult = { code: number; stdout: string; stderr: string };
 
+/** `opts.env` replaces `process.env`; spread `process.env` to inherit it. */
 export type Runner = (
   cmd: string,
   args: string[],
@@ -21,10 +22,12 @@ export const realRunner: Runner = (cmd, args, opts = {}) =>
       env: opts.env ?? process.env,
       stdio: inherit ? "inherit" : ["ignore", "pipe", "pipe"],
     });
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk));
-    child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk));
+    child.stdout?.on("data", (chunk: string) => (stdout += chunk));
+    child.stderr?.on("data", (chunk: string) => (stderr += chunk));
     child.on("error", (err) =>
       resolve({ code: 127, stdout, stderr: stderr + err.message }),
     );

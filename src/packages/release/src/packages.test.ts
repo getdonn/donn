@@ -129,6 +129,23 @@ describe("listWorkspaces", () => {
     expect(run2.calls[0]?.opts?.cwd).toBe(root);
   });
 
+  it("names the package.json that cannot be read", async () => {
+    const run = fakeRunner([
+      [
+        () => true,
+        {
+          code: 0,
+          stdout: JSON.stringify([{ name: "x", path: "/nonexistent-ws" }]),
+          stderr: "",
+        },
+      ],
+    ]);
+    await expect(listWorkspaces("/x", run)).rejects.toMatchObject({
+      code: "workspaces",
+      message: expect.stringContaining("/nonexistent-ws/package.json"),
+    });
+  });
+
   it("fails with a ReleaseError when pnpm fails", async () => {
     const run = fakeRunner([
       [() => true, { code: 1, stdout: "", stderr: "boom" }],
