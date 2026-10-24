@@ -1,0 +1,164 @@
+# Publishes the public @getdonn/* packages to npm with trusted publishing
+# (OIDC, provenance), and rehearses that against a local Verdaccio.
+# docs/planning/27-first-publish.md §3. npm's trusted publisher for every
+# package names this file (release.yml) and the environment `npm`.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Where to rehearse the publish
+        type: choice
+        options: [verdaccio]
+        default: verdaccio
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The tag is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::the tag is not on main"
+            exit 1
+          fi
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      # Never `registry-url`: it writes an .npmrc that references
+      # NODE_AUTH_TOKEN, and even an empty one blocks OIDC.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build check-types lint test
+      - run: pnpm format:check
+      - run: pnpm pack:check
+      - run: pnpm release:smoke
+
+  publish:
+    if: github.event_name == 'push'
+    needs: verify
+    runs-on: ubuntu-latest
+    # Required reviewer: the maintainer.
+    environment: npm
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build
+      # No NODE_AUTH_TOKEN anywhere: npm authenticates with the job's OIDC
+      # token. Outside the checkout, so the tree stays clean.
+      - name: Publish to npm
+        run: |
+          status=0
+          node src/packages/release/dist/bin.js publish \
+            --registry https://registry.npmjs.org --json \
+            > "$RUNNER_TEMP/summary.json" || status=$?
+          cat "$RUNNER_TEMP/summary.json"
+          exit "$status"
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          notes="$RUNNER_TEMP/notes.md"
+          pnpm ls -r --json --depth -1 > "$RUNNER_TEMP/workspaces.json"
+          jq -r --arg tag "$GITHUB_REF_NAME" --arg root "$GITHUB_WORKSPACE/" \
+            --slurpfile ws "$RUNNER_TEMP/workspaces.json" '
+            .published[] as $id
+            | ($id | sub("@[^@]+$"; "")) as $name
+            | ($ws[0][] | select(.name == $name) | .path | ltrimstr($root)) as $dir
+            | "- [\($id)](https://github.com/getdonn/donn/blob/\($tag)/\($dir)/CHANGELOG.md)"
+          ' "$RUNNER_TEMP/summary.json" > "$notes"
+          if [ ! -s "$notes" ]; then
+            echo "No package versions were published by this run." > "$notes"
+          fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes-file "$notes"
+
+  rehearse:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'verdaccio'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build
+      # A step, not a service container: services start before the checkout
+      # and could not mount the config.
+      - name: Start Verdaccio
+        run: |
+          docker run -d --name verdaccio -p 4873:4873 \
+            -v "$PWD/src/packages/release/verdaccio/config.yaml:/verdaccio/conf/config.yaml:ro" \
+            verdaccio/verdaccio:6.10.7
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:4873/-/ping > /dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::Verdaccio did not start"
+          exit 1
+      - name: Throwaway token
+        run: |
+          token=$(curl -sf -X PUT \
+            http://localhost:4873/-/user/org.couchdb.user:ci \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"ci","password":"rehearsal-only"}' | jq -er .token)
+          echo "::add-mask::$token"
+          printf '//localhost:4873/:_authToken=%s\n' "$token" > "$RUNNER_TEMP/npmrc"
+          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
+      - name: Publish
+        run: |
+          status=0
+          node src/packages/release/dist/bin.js publish \
+            --registry http://localhost:4873 --json \
+            > "$RUNNER_TEMP/summary.json" || status=$?
+          cat "$RUNNER_TEMP/summary.json"
+          [ "$status" -eq 0 ] || exit "$status"
+          jq -e '.published | length == 13' "$RUNNER_TEMP/summary.json"
+      - name: Smoke
+        run: node src/packages/release/dist/bin.js smoke --registry http://localhost:4873
+      - name: Publish again skips everything
+        run: |
+          status=0
+          node src/packages/release/dist/bin.js publish \
+            --registry http://localhost:4873 --json \
+            > "$RUNNER_TEMP/summary-again.json" || status=$?
+          cat "$RUNNER_TEMP/summary-again.json"
+          [ "$status" -eq 0 ] || exit "$status"
+          jq -e '(.published | length == 0) and (.skipped | length == 13)' \
+            "$RUNNER_TEMP/summary-again.json"
+      - name: Verdaccio log
+        if: failure()
+        run: docker logs verdaccio
