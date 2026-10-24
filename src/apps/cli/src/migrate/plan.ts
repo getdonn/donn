@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   deleteKeychainItem,
   getKeychainItem,
@@ -37,6 +37,7 @@ import {
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { keychainContext, TOKEN_SERVICE } from "../registry.js";
 import { listSessions } from "../session.js";
+import { readState, updateState } from "../state.js";
 import { missingHint } from "../shell.js";
 import { LEGACY } from "./legacy.js";
 import {
@@ -45,8 +46,10 @@ import {
   findProjectRoot,
   legacyDaemonPid,
   legacyMod,
+  madeByDonn,
   moveHome,
   occupied,
+  oldHomeValues,
   onlyProgress,
   present,
   PROGRESS,
@@ -62,8 +65,10 @@ import {
   staleFiles,
   stopLegacyDaemon,
   targetExists,
+  targetMadeByDonn,
   updateProgress,
   writeThrough,
+  yamlFiles,
   type MoveOptions,
 } from "./steps.js";
 
@@ -170,19 +175,17 @@ async function configRewrite(
   return next === text ? undefined : { file, text: next };
 }
 
-/** Persona files with the old apiVersion: under the home and the personas folder config names. */
-async function personaFiles(
+/** The personas folder config.yaml names, its old-home paths read as the home is now. */
+async function personasFolder(
   io: CliIo,
   w: ReturnType<typeof where>,
-): Promise<string[]> {
+): Promise<string | undefined> {
   const home = w.live();
-  const files = new Set(await staleFiles(home));
   const text = await readFile(join(home, "config.yaml"), "utf8").catch(
     () => undefined,
   );
   let personas: unknown;
   try {
-    // Read with its old-home paths pointing at the home as it is now.
     personas = (
       parse(rewriteConfigPaths(text ?? "", { ...w, target: home })) as {
         personas?: unknown;
@@ -191,11 +194,48 @@ async function personaFiles(
   } catch {
     personas = undefined; // a broken config.yaml: doctor says so afterwards
   }
-  if (typeof personas === "string" && personas !== "") {
-    for (const file of await staleFiles(expandPath(personas, home, io.env)))
-      files.add(file);
-  }
+  return typeof personas === "string" && personas !== ""
+    ? expandPath(personas, home, io.env)
+    : undefined;
+}
+
+/** Persona files with the old apiVersion: under the home and the personas folder config names. */
+async function personaFiles(
+  io: CliIo,
+  w: ReturnType<typeof where>,
+): Promise<string[]> {
+  const files = new Set(await staleFiles(w.live()));
+  const personas = await personasFolder(io, w);
+  if (personas !== undefined)
+    for (const file of await staleFiles(personas)) files.add(file);
   return [...files].sort();
+}
+
+/** What donn makes again in a home, and the mod it installs: never the user's to edit. */
+const MADE = ["build", "sessions", "daemon", "mod", "cache"];
+
+/**
+ * Values in the home's YAML files (personas, overrides.yaml, config.yaml) and the personas
+ * folder that still name the old home, which is gone once moved. Reported, never changed:
+ * which new path each should name is the user's call.
+ */
+export async function oldHomePaths(
+  io: CliIo,
+): Promise<{ file: string; field: string; value: string }[]> {
+  const w = where(io);
+  const files = new Set(await yamlFiles(w.live(), MADE));
+  const personas = await personasFolder(io, w);
+  if (personas !== undefined)
+    for (const file of await yamlFiles(personas)) files.add(file);
+  const hits: { file: string; field: string; value: string }[] = [];
+  for (const file of [...files].sort()) {
+    const text = await readFile(file, "utf8").catch(() => "");
+    for (const hit of oldHomeValues(text, w.src).sort((a, b) =>
+      a.field < b.field ? -1 : a.field > b.field ? 1 : 0,
+    ))
+      hits.push({ file, ...hit });
+  }
+  return hits;
 }
 
 /** The registry accounts (normalised URLs) a token may be stored under. */
@@ -214,6 +254,53 @@ async function registryAccounts(io: CliIo, home: string): Promise<string[]> {
     }
   }
   return [...accounts];
+}
+
+/**
+ * state.json's switches keyed by a project's old folder: they point at `<project>/.donn` once
+ * moved, which is where donn looks, whether or not the project itself is migrated yet. A
+ * state.json that cannot be read is left alone (doctor reports it).
+ */
+async function oldSwitches(
+  w: ReturnType<typeof where>,
+): Promise<{ keys: string[]; note?: string }> {
+  try {
+    const state = await readState(w.live());
+    return {
+      keys: Object.keys(state.projects).filter(
+        (key) => basename(key) === LEGACY.home,
+      ),
+    };
+  } catch (error) {
+    return {
+      keys: [],
+      note: `${messageOf(error)}; its project switches are left as they are`,
+    };
+  }
+}
+
+/** A POSIX-shell word: as is when plainly safe, otherwise single-quoted. */
+const shellWord = (value: string) =>
+  /^[\w./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+
+/**
+ * Projects with a switch in state.json whose old project folder is still there, each with the
+ * command that migrates it. Its switch already names `.donn/`, so it matches once moved.
+ */
+export async function pendingProjects(
+  io: CliIo,
+): Promise<{ dir: string; next: string }[]> {
+  const w = where(io);
+  const state = await readState(w.live()).catch(() => undefined);
+  const dirs = new Set<string>();
+  for (const key of Object.keys(state?.projects ?? {})) {
+    if (![LEGACY.home, ".donn"].includes(basename(key))) continue;
+    const dir = dirname(key);
+    if (existsSync(join(dir, LEGACY.home))) dirs.add(dir);
+  }
+  return [...dirs]
+    .sort()
+    .map((dir) => ({ dir, next: `donn migrate --project ${shellWord(dir)}` }));
 }
 
 const messageOf = (error: unknown) =>
@@ -350,7 +437,13 @@ async function removeOldMod(
   w: ReturnType<typeof where>,
 ): Promise<void> {
   const before = await registrations(io);
-  if (before === undefined) return;
+  // The plan saw claude; without it now, nothing can say the old mod is gone.
+  if (before === undefined) {
+    throw new CliError(
+      "mod-uninstall",
+      `claude is not on PATH, so the old mod (${LEGACY.plugin}) cannot be unregistered; put claude back on PATH and run donn migrate again`,
+    );
+  }
   // Step 7 (mod-install) puts the new mod in; remember it is due.
   await updateProgress(w.live(), { mod: true });
   const failures: string[] = [];
@@ -446,7 +539,9 @@ export async function planMigration(
     (await occupied(w.target)) &&
     !(await onlyProgress(w.target))
   ) {
-    throw targetExists(w.target);
+    throw (await madeByDonn(w.target))
+      ? await targetMadeByDonn(w.target)
+      : targetExists(w.target);
   }
   const oldInstalled = async () =>
     old !== undefined && (existsSync(old.path) || (await old.loaded()));
@@ -478,8 +573,9 @@ export async function planMigration(
           (await readProgress(w.live())).mod !== true
         )
           return yes(false);
+        // No claude to ask is not done: the run says so (the plan refuses before that).
         const registered = await registrations(io);
-        return yes(registered !== undefined && oldRegistered(registered));
+        return yes(registered === undefined || oldRegistered(registered));
       },
       () => removeOldMod(io, w),
     ),
@@ -536,6 +632,28 @@ export async function planMigration(
       },
     ),
     await step(
+      "state",
+      "point project switches in state.json at .donn/ folders",
+      async () => {
+        const { keys, note } = await oldSwitches(w);
+        return {
+          pending: keys.length > 0,
+          ...(note !== undefined && { notes: [note] }),
+        };
+      },
+      async () => {
+        await updateState(w.live(), (state) => {
+          for (const key of Object.keys(state.projects)) {
+            if (basename(key) !== LEGACY.home) continue;
+            const now = join(dirname(key), ".donn");
+            // A switch made since the rename, for the same project, is the newer choice.
+            state.projects[now] ??= state.projects[key]!;
+            delete state.projects[key];
+          }
+        });
+      },
+    ),
+    await step(
       "keychain",
       `move the registry token from ${LEGACY.keychainService} to ${TOKEN_SERVICE} in the keychain`,
       () => checkKeychain(io, w),
@@ -572,7 +690,10 @@ export async function planMigration(
             (await readProgress(w.live())).service === true,
         ),
       async () => {
-        if (!(await serviceFor(io, w.target))) await installService(io);
+        // Done only once loaded: a service file alone may be from a run that stopped half way.
+        const service = await serviceFor(io, w.target);
+        if (!service || !(await service.manager.loaded()))
+          await installService(io);
         await updateProgress(w.live(), { service: false });
       },
     ),

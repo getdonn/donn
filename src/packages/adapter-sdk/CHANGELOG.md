@@ -1,4 +1,4 @@
-# @zzpersona/adapter-sdk
+# @getdonn/adapter-sdk
 
 ## 0.3.0
 

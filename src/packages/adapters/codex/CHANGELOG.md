@@ -1,4 +1,4 @@
-# @zzpersona/adapter-codex
+# @getdonn/adapter-codex
 
 ## 0.2.0
 

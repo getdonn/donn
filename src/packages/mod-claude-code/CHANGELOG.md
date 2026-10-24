@@ -1,4 +1,4 @@
-# @zzpersona/mod-claude-code
+# @getdonn/mod-claude-code
 
 ## 0.3.1
 

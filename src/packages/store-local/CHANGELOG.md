@@ -1,4 +1,4 @@
-# @zzpersona/store-local
+# @getdonn/store-local
 
 ## 0.1.2
 

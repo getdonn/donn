@@ -1,4 +1,4 @@
-# @zzpersona/adapter-claude-code
+# @getdonn/adapter-claude-code
 
 ## 0.2.0
 

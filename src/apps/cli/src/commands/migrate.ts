@@ -11,6 +11,8 @@ import {
   migrationWarnings,
   NOTHING,
   oldCli,
+  oldHomePaths,
+  pendingProjects,
   planMigration,
   runMigration,
   type StepResult,
@@ -73,6 +75,8 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
   const nothing = results.every((r) => r.status === "done");
   const checks = nothing ? undefined : await doctor(io);
   const cli = oldCli(io);
+  const projects = await pendingProjects(io);
+  const oldPaths = await oldHomePaths(io);
   if (options.json) {
     io.stdout.write(
       `${JSON.stringify(
@@ -80,6 +84,8 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
           steps: stepsJson(results),
           env,
           ...(warnings.length > 0 && { warnings }),
+          ...(projects.length > 0 && { projects }),
+          ...(oldPaths.length > 0 && { oldPaths }),
           ...(managed !== undefined && { managed }),
           ...(cli !== undefined && { oldCli: cli }),
           ...(checks === undefined
@@ -104,6 +110,20 @@ async function userForm(io: CliIo, options: MigrateOptions): Promise<number> {
     io.stdout.write(
       `an old ${LEGACY.name} managed policy is installed in ${managed.root}; to replace it:\n${managed.next
         .map((command) => `  ${command}\n`)
+        .join("")}`,
+    );
+  }
+  if (oldPaths.length > 0) {
+    io.stdout.write(
+      `these values still name ~/${LEGACY.home}, which is gone once migrated; change them by hand:\n${oldPaths
+        .map((p) => `  ${p.file}: ${p.field}: ${p.value}\n`)
+        .join("")}`,
+    );
+  }
+  if (projects.length > 0) {
+    io.stdout.write(
+      `projects whose ${LEGACY.home}/ is still there (their switches carry over once moved):\n${projects
+        .map((p) => `  ${p.next}\n`)
         .join("")}`,
     );
   }

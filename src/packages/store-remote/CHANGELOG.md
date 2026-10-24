@@ -1,4 +1,4 @@
-# @zzpersona/store-remote
+# @getdonn/store-remote
 
 ## 0.4.0
 

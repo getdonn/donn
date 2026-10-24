@@ -13,6 +13,9 @@ published to npm yet, so you run it from a checkout.
 Requires pnpm (it downloads the Node version the repo develops on) and, for the Claude Code
 pieces, Claude Code itself.
 
+Upgrading from zzpersona? Run `donn migrate` right after linking donn, before any other donn
+command (see [Upgrading from zzpersona](#upgrading-from-zzpersona)).
+
 ```sh
 pnpm install
 pnpm build
@@ -253,8 +256,9 @@ an interruption finishes the job. In order, it:
 4. drops state that is made again (`build/`, `sessions/`, daemon sockets);
 5. rewrites `apiVersion: zzpersona/v0` to `donn/v0` in your persona files, and updates the paths
    in `config.yaml`;
-6. moves the registry login (the keychain item) to its new name;
-7. installs the new mod, then installs and starts the new background service if the old one was
+6. points the `switch` choices in `state.json` at each project's `.donn/` folder;
+7. moves the registry login (the keychain item) to its new name;
+8. installs the new mod, then installs and starts the new background service if the old one was
    installed.
 
 It runs `donn doctor` at the end, unless every step was already done (this holds for
@@ -271,8 +275,18 @@ It refuses, before changing anything, when:
 - the mod has not been built;
 - `ZZPERSONA_HOME` points at another home (in your environment or the old service file);
 - `DONN_HOME` sits inside the old home;
-- the target (`~/.donn`) already exists and is not empty.
+- the target (`~/.donn`) already exists and is not empty. When it holds only what donn makes
+  itself (donn ran before the migration: its daemon, sessions, builds, the donn mod), it says so
+  and what to remove; it never removes it for you.
 
+`donn doctor` reports an old home that has not been migrated before anything else. Beyond the
+steps above, `migrate` reports what it leaves to you, and has two other forms:
+
+- Projects with a saved `switch` whose `.zzpersona/` is still there are listed, each with its
+  `donn migrate --project <dir>` command; the switch applies again once the project has moved.
+- Values in persona files, `overrides.yaml` or `config.yaml` that still name `~/.zzpersona` (an
+  instruction `file:`, a hook's `run:`, a skill's `source`) are listed by file and field, not
+  changed.
 - `donn migrate --project [dir]` moves a project's `.zzpersona/` to `.donn/` (with `git mv` when
   tracked), its persona's `apiVersion`, and the `AGENTS.md` markers. It never commits. Lines
   in `.gitignore` that name `.zzpersona` are reported, not changed.

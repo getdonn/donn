@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,6 +16,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Platform, Probe } from "@getdonn/adapter-sdk";
 import { isAlive, nodeProbe } from "@getdonn/executor";
+import { findProject } from "@getdonn/store-local";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
 import { cliVersion } from "./commands/daemon.js";
@@ -23,6 +25,7 @@ import { serviceManager } from "./daemon/service.js";
 import type { ManagedEnv } from "./managed/env.js";
 import { planMigration, runMigration } from "./migrate/plan.js";
 import { moveHome, rewriteApiVersion } from "./migrate/steps.js";
+import { projectKey } from "./state.js";
 import { installedProbe, safeManaged, seed, zz } from "./test/seed.js";
 
 // donn migrate: an old zzpersona install moved to donn (spec 22 §3). Every test runs against a
@@ -35,6 +38,7 @@ const STEPS = [
   "move-home",
   "drop-state",
   "api-version",
+  "state",
   "keychain",
   "mod-install",
   "service-start",
@@ -94,7 +98,9 @@ instructions:
     inline: Be concise; the text zzpersona/v0 stays as it is.
 `;
 const OVERRIDES = "apiVersion: zzpersona/v0\nkind: PersonaOverlay\n";
-const STATE = `${JSON.stringify({ version: 1, default: "user/me", projects: {} }, null, 2)}\n`;
+/** state.json with one project switch, keyed by the project's folder (old or new name). */
+const stateText = (folder: ".zzpersona" | ".donn") =>
+  `${JSON.stringify({ version: 1, default: "user/me", projects: { [join(root, "gone", folder)]: "user/me" } }, null, 2)}\n`;
 const migrated = (text: string) =>
   text.replace(/^apiVersion: zzpersona\/v0$/m, "apiVersion: donn/v0");
 
@@ -299,7 +305,7 @@ function oldInstall(m: Machine) {
   put(join(old, "layers/org/acme.yaml"), ACME);
   put(join(old, "personas/me.yaml"), ME);
   put(join(old, "overrides.yaml"), OVERRIDES);
-  put(join(old, "state.json"), STATE);
+  put(join(old, "state.json"), stateText(".zzpersona"));
   put(join(old, "build/claude-code/user-me/settings.json"), "{}\n");
   put(join(old, "sessions/s1/session.json"), "{}\n");
   for (const file of ["sock", "pid", "token", "daemon.lock", "where"])
@@ -365,7 +371,7 @@ function expectMigrated(m: Machine) {
   expect(read(join(home, "layers/org/acme.yaml"))).toBe(migrated(ACME));
   expect(read(join(home, "personas/me.yaml"))).toBe(migrated(ME));
   expect(read(join(home, "overrides.yaml"))).toBe(migrated(OVERRIDES));
-  expect(read(join(home, "state.json"))).toBe(STATE);
+  expect(read(join(home, "state.json"))).toBe(stateText(".donn"));
   expect(existsSync(join(home, "build"))).toBe(false);
   // The new daemon makes sessions/ again; the old session is gone.
   expect(existsSync(join(home, "sessions/s1"))).toBe(false);
@@ -401,6 +407,8 @@ describe("donn migrate", () => {
     });
     const checks = json(r).doctor.checks as { id: string; status: string }[];
     expect(checks.filter((c) => c.status === "error")).toEqual([]);
+    // The old home is gone: doctor has nothing to say about migrating.
+    expect(checks.find((c) => c.id === "migrate")).toBeUndefined();
     expect(checks.find((c) => c.id === "mod")?.status).toBe("ok");
     expect(changes(m)).toEqual([
       `launchctl bootout gui/${uid}/zzpersona.daemon`,
@@ -431,6 +439,7 @@ describe("donn migrate", () => {
         existsSync(oldHome()),
         existsSync(join(home, "build")),
         read(join(home, "layers/org/acme.yaml")) === ACME,
+        read(join(home, "state.json")).includes("/.zzpersona"),
         m.keychain.has(`zzpersona-registry ${ACCOUNT}`),
         !m.plugins.has("donn@donn"),
         !existsSync(newPlist()),
@@ -1001,6 +1010,383 @@ describe("donn migrate: resuming and safety", () => {
     expect(text.stdout).toContain(
       `the old CLI is still on PATH (${join(pnpmBin, "zzpersona")}); remove it: pnpm remove --global @zzpersona/cli`,
     );
+  });
+});
+
+/** What running donn before migrating leaves in ~/.donn: its daemon, sessions, builds and mod. */
+function madeByDonn() {
+  const home = newHome();
+  for (const file of ["sock", "pid", "token", "where", "daemon.lock"])
+    put(join(home, "daemon", file), "");
+  put(join(home, "daemon/daemon.log"), "a donn daemon ran here\n");
+  put(join(home, "sessions/s9/launched.json"), "{}\n");
+  put(join(home, "build/claude-code/user-me/settings.json"), "{}\n");
+  mkdirSync(join(home, "personas"), { recursive: true });
+  put(
+    join(home, "mod/.claude-plugin/marketplace.json"),
+    `${JSON.stringify({ name: "donn", plugins: [{ name: "donn", source: "./plugin" }] })}\n`,
+  );
+  put(join(home, "mod/plugin/.claude-plugin/plugin.json"), '{"name":"donn"}\n');
+  put(
+    join(home, "state.json"),
+    `${JSON.stringify({ version: 1, projects: {} }, null, 2)}\n`,
+  );
+  put(join(home, "state.lock"), "");
+}
+
+const madeMessage = (daemon = "") =>
+  `${newHome()} was made by running donn before migrating; ${daemon}run \`donn mod uninstall\` if the donn mod is installed, then remove ${newHome()} and run \`donn migrate\` again`;
+
+describe("donn migrate: a target donn made before the migration", () => {
+  it("names the cause when the target holds only what donn makes itself, and deletes nothing", async () => {
+    const m = machine();
+    oldInstall(m);
+    madeByDonn();
+    const before = readdirSync(newHome()).sort();
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code).toBe(1);
+    expect(json(r).error).toMatchObject({
+      code: "migrate-target-exists",
+      message: madeMessage(),
+    });
+    expect(json(r).error.message).not.toContain("DONN_HOME");
+    expect(changes(m)).toEqual([]);
+    expect(readdirSync(newHome()).sort()).toEqual(before);
+    expect(read(join(oldHome(), "layers/org/acme.yaml"))).toBe(ACME);
+  });
+
+  it("asks for the daemon to be stopped first when one runs for the target", async () => {
+    const m = machine();
+    oldInstall(m);
+    madeByDonn();
+    const child = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)", "daemon", "run"],
+      { stdio: "ignore" },
+    );
+    children.push(child);
+    await new Promise((resolve) => child.once("spawn", resolve));
+    put(join(newHome(), "daemon/pid"), `${child.pid}\n`);
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code).toBe(1);
+    expect(json(r).error.message).toBe(
+      madeMessage("stop its daemon (`donn daemon stop`), "),
+    );
+    expect(isAlive(child.pid!)).toBe(true);
+  });
+
+  it("keeps the plain refusal when the target holds anything the user wrote", async () => {
+    const plain = `${newHome()} already exists and is not empty; move it aside or set DONN_HOME`;
+    const authored: [string, string][] = [
+      [
+        "state.json",
+        `${JSON.stringify({ version: 1, default: "user/me", projects: {} })}\n`,
+      ],
+      [
+        "state.json",
+        `${JSON.stringify({ version: 1, projects: { "/p/.donn": "user/me" } })}\n`,
+      ],
+      ["config.yaml", "personas: ~/personas\n"],
+      ["personas/me.yaml", ME],
+      ["overrides.yaml", OVERRIDES],
+      ["registry-token", "t\n"],
+      ["cache/registry/index.json", "{}\n"],
+      [
+        "mod/.claude-plugin/marketplace.json",
+        `${JSON.stringify({ name: "someone-else" })}\n`,
+      ],
+      ["notes.txt", "mine\n"],
+    ];
+    for (const [path, content] of authored) {
+      rmSync(user(), { recursive: true, force: true });
+      const m = machine();
+      oldInstall(m);
+      madeByDonn();
+      put(join(newHome(), path), content);
+      const r = await donn(m, ["migrate", "--yes", "--json"]);
+      expect(r.code, path).toBe(1);
+      expect(json(r).error.message, path).toBe(plain);
+      expect(changes(m)).toEqual([]);
+    }
+  });
+});
+
+describe("donn doctor before the migration", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+  const checksOf = (r: { stdout: string }) => json(r).checks as Check[];
+
+  it("reports the old home first, as an error, its fix before init's and mod install's", async () => {
+    const m = machine();
+    oldInstall(m);
+    const r = await donn(m, ["doctor", "--json"]);
+    expect(r.code).toBe(1);
+    expect(checksOf(r)[0]).toEqual({
+      id: "migrate",
+      status: "error",
+      message: `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+      fix: "donn migrate",
+    });
+    const text = await donn(m, ["doctor"]);
+    const at = (fix: string) => text.stdout.indexOf(`fix: ${fix}`);
+    expect(at("donn migrate")).toBeGreaterThan(-1);
+    expect(at("donn init")).toBeGreaterThan(at("donn migrate"));
+    expect(at("donn mod install")).toBeGreaterThan(at("donn migrate"));
+    // doctor changes nothing: the new home is still not there.
+    expect(existsSync(newHome())).toBe(false);
+  });
+
+  it("names a new home that donn made itself, with the same advice as migrate", async () => {
+    const m = machine();
+    oldInstall(m);
+    madeByDonn();
+    const r = await donn(m, ["doctor", "--json"]);
+    expect(r.code).toBe(1);
+    expect(checksOf(r)[0]).toEqual({
+      id: "migrate",
+      status: "error",
+      message: `${oldHome()} is from before the rename, and ${newHome()} was made by running donn before migrating`,
+      fix: `run \`donn mod uninstall\` if the donn mod is installed, then remove ${newHome()} and run \`donn migrate\` again`,
+    });
+  });
+
+  it("says nothing about migrating once the old home is gone", async () => {
+    const m = machine();
+    madeByDonn();
+    const r = await donn(m, ["doctor", "--json"]);
+    expect(checksOf(r).find((c) => c.id === "migrate")).toBeUndefined();
+  });
+});
+
+describe("donn migrate: project switches in state.json", () => {
+  const PROJECT = (version: string) =>
+    `apiVersion: ${version}\nkind: Persona\nmetadata:\n  name: project\n`;
+
+  /** One project moved to .donn/ already, one still on the old folder, one switched since. */
+  function projects() {
+    const dir = (name: string) => {
+      mkdirSync(join(root, name), { recursive: true });
+      return realpathSync(join(root, name));
+    };
+    const moved = dir("moved");
+    const waiting = dir("waiting");
+    const fresh = dir("fresh");
+    put(join(moved, ".donn/persona.yaml"), PROJECT("donn/v0"));
+    put(join(waiting, ".zzpersona/persona.yaml"), PROJECT("zzpersona/v0"));
+    put(join(fresh, ".donn/persona.yaml"), PROJECT("donn/v0"));
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          default: "user/me",
+          projects: {
+            [join(moved, ".zzpersona")]: "team/a",
+            [join(waiting, ".zzpersona")]: "team/b",
+            [join(fresh, ".donn")]: "team/c",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return { moved, waiting, fresh };
+  }
+
+  /** The switch donn finds for a project folder, as `donn claude` would look it up. */
+  const switchFor = async (dir: string) => {
+    const state = JSON.parse(read(join(newHome(), "state.json"))) as {
+      projects: Record<string, string>;
+    };
+    const project = findProject(dir);
+    return project && state.projects[await projectKey(project)];
+  };
+
+  it("points each switch at the project's .donn/ folder and names projects still to migrate", async () => {
+    const m = machine();
+    oldInstall(m);
+    const { moved, waiting, fresh } = projects();
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(stepOf(r, "state")).toEqual({ id: "state", status: "ran" });
+    expect(JSON.parse(read(join(newHome(), "state.json")))).toEqual({
+      version: 1,
+      default: "user/me",
+      projects: {
+        [join(moved, ".donn")]: "team/a",
+        [join(waiting, ".donn")]: "team/b",
+        [join(fresh, ".donn")]: "team/c",
+      },
+    });
+    expect(json(r).projects).toEqual([
+      { dir: waiting, next: `donn migrate --project ${waiting}` },
+    ]);
+    expect(await switchFor(moved)).toBe("team/a");
+    expect(await switchFor(fresh)).toBe("team/c");
+    const text = await donn(m, ["migrate"]);
+    expect(text.stdout).toContain(`  donn migrate --project ${waiting}\n`);
+    // Once the project moves, its switch matches; nothing is left to name.
+    const p = await donn(m, [
+      "migrate",
+      "--project",
+      waiting,
+      "--yes",
+      "--json",
+    ]);
+    expect(p.code, p.stdout + p.stderr).toBe(0);
+    expect(await switchFor(waiting)).toBe("team/b");
+    const again = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(stepOf(again, "state")).toEqual({ id: "state", status: "done" });
+    expect(json(again).projects).toBeUndefined();
+  });
+
+  it("ends with a working switch when the project migrates first", async () => {
+    const m = machine();
+    oldInstall(m);
+    const { waiting } = projects();
+    const p = await donn(m, [
+      "migrate",
+      "--project",
+      waiting,
+      "--yes",
+      "--json",
+    ]);
+    expect(p.code, p.stdout + p.stderr).toBe(0);
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(await switchFor(waiting)).toBe("team/b");
+    expect(json(r).projects).toBeUndefined();
+  });
+
+  it("keeps a switch made since the rename over the old one for the same project", async () => {
+    const m = machine();
+    oldInstall(m);
+    const { moved } = projects();
+    const file = join(oldHome(), "state.json");
+    const state = JSON.parse(read(file));
+    state.projects[join(moved, ".donn")] = "team/newer";
+    writeFileSync(file, JSON.stringify(state));
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(await switchFor(moved)).toBe("team/newer");
+    expect(
+      Object.keys(JSON.parse(read(join(newHome(), "state.json"))).projects),
+    ).not.toContain(join(moved, ".zzpersona"));
+  });
+
+  it("leaves a state.json it cannot read for doctor to report", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(join(oldHome(), "state.json"), "{");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(stepOf(r, "state")).toEqual({ id: "state", status: "done" });
+    expect(read(join(newHome(), "state.json"))).toBe("{");
+  });
+});
+
+describe("donn migrate: what it reports and re-checks", () => {
+  it("names persona and overrides values that point into the old home, changing none", async () => {
+    const m = machine();
+    oldInstall(m);
+    const paths = [
+      "apiVersion: zzpersona/v0",
+      "kind: Persona",
+      "metadata:",
+      "  name: paths",
+      "instructions:",
+      "  - id: notes",
+      "    file: ~/.zzpersona/notes/a.md",
+      "  - id: words",
+      "    inline: zzpersona and ~/.zzpersona-other/x are not the home",
+      "hooks:",
+      "  PreToolUse:",
+      "    - id: guard",
+      '      run: "bash $HOME/.zzpersona/hooks/guard.sh"',
+      "skills:",
+      "  - name: s",
+      `    source: ${oldHome()}/skills/s`,
+      "",
+    ].join("\n");
+    put(join(oldHome(), "personas/paths.yaml"), paths);
+    const overrides = `apiVersion: zzpersona/v0\nkind: PersonaOverlay\ninstructions:\n  - id: o\n    file: ~/.zzpersona\n`;
+    put(join(oldHome(), "overrides.yaml"), overrides);
+    const team = `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: t\nmcpServers:\n  x:\n    command: ${oldHome()}/bin/x\n`;
+    put(join(oldHome(), "layers/team/t.yaml"), team);
+    // Not the user's to change: a build of the old home.
+    put(join(oldHome(), "build/x.yaml"), "file: ~/.zzpersona/build-only\n");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    const home = newHome();
+    expect(json(r).oldPaths).toEqual([
+      {
+        file: join(home, "layers/team/t.yaml"),
+        field: "mcpServers.x.command",
+        value: `${oldHome()}/bin/x`,
+      },
+      {
+        file: join(home, "overrides.yaml"),
+        field: "instructions[0].file",
+        value: "~/.zzpersona",
+      },
+      {
+        file: join(home, "personas/paths.yaml"),
+        field: "hooks.PreToolUse[0].run",
+        value: "bash $HOME/.zzpersona/hooks/guard.sh",
+      },
+      {
+        file: join(home, "personas/paths.yaml"),
+        field: "instructions[0].file",
+        value: "~/.zzpersona/notes/a.md",
+      },
+      {
+        file: join(home, "personas/paths.yaml"),
+        field: "skills[0].source",
+        value: `${oldHome()}/skills/s`,
+      },
+    ]);
+    // Reported, not changed (only the apiVersion line moved on).
+    expect(read(join(home, "personas/paths.yaml"))).toBe(migrated(paths));
+    expect(read(join(home, "overrides.yaml"))).toBe(migrated(overrides));
+    const text = await donn(m, ["migrate"]);
+    expect(text.stdout).toContain(
+      `  ${join(home, "personas/paths.yaml")}: skills[0].source: ${oldHome()}/skills/s\n`,
+    );
+  });
+
+  it("starts the new service on a re-run when its file is written but it is not loaded", async () => {
+    const m = machine();
+    oldInstall(m);
+    expect((await donn(m, ["migrate", "--yes", "--json"])).code).toBe(0);
+    // Interrupted after the new service file was written, before it loaded.
+    await Promise.all(daemons.splice(0).map((d) => d.close()));
+    m.loaded.delete("dev.getdonn.daemon");
+    put(
+      join(newHome(), "migrating.json"),
+      `${JSON.stringify({ service: true })}\n`,
+    );
+    expect(existsSync(newPlist())).toBe(true);
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(stepOf(r, "service-start")).toEqual({
+      id: "service-start",
+      status: "ran",
+    });
+    expect(m.loaded.has("dev.getdonn.daemon")).toBe(true);
+  });
+
+  it("does not take the old mod for removed when claude disappears before its step runs", async () => {
+    const m = machine();
+    oldInstall(m);
+    const io = ioFor(m);
+    const steps = await planMigration(io);
+    m.noClaude = true;
+    await expect(runMigration(io, steps, { yes: true })).rejects.toMatchObject({
+      code: "mod-uninstall",
+      message: expect.stringContaining("claude is not on PATH"),
+    });
+    // Stopped before the move: the old mod still reads from the old home.
+    expect(existsSync(join(oldHome(), "mod"))).toBe(true);
+    expect(existsSync(newHome())).toBe(false);
   });
 });
 

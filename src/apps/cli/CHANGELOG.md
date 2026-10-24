@@ -1,4 +1,4 @@
-# @zzpersona/cli
+# @getdonn/cli
 
 ## 0.10.0
 

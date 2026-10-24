@@ -1,4 +1,4 @@
-# @zzpersona/registry-api
+# @getdonn/registry-api
 
 ## 0.5.0
 
