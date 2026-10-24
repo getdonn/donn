@@ -269,12 +269,15 @@ It refuses, before changing anything, when:
   itself (donn ran before the migration: its daemon, sessions, builds, the donn mod), it says so
   and what to remove; it never removes it for you. When it holds only what `donn init` and
   `donn login` wrote (a `config.yaml` with `personas` and/or `registry`, a `registry-token`),
-  the refusal names those files, and so does `donn doctor`: remove `~/.donn`, run `donn migrate`
-  (it moves the old home's settings), then `donn login` again if you had signed in. A
+  the refusal names those files and their values, and so does `donn doctor`: remove `~/.donn`,
+  run `donn migrate` (it moves the old home's settings), then `donn login <url>` again if you had
+  signed in. A
   `ZZPERSONA_HOME=~/.zzpersona` that was never expanded (a launchd plist, an env file) counts as
   the default old home.
 
-`donn doctor` reports an old home that has not been migrated before anything else. Beyond the
+`donn doctor` reports an old home that has not been migrated before anything else. It also lists
+projects whose switch is saved but whose `.zzpersona/` is still there ("not migrated yet"), with
+the `donn migrate --project` command for each; `--fix` never removes their switches. Beyond the
 steps above, `migrate` reports what it leaves to you, and has two other forms:
 
 - Projects with a saved `switch` whose `.zzpersona/` is still there are listed, each with its
@@ -295,9 +298,6 @@ steps above, `migrate` reports what it leaves to you, and has two other forms:
   `pnpm remove --global` can leave a dangling `zzpersona` shim in pnpm's global bin folder (the
   one `pnpm bin --global` prints: `~/Library/pnpm/bin` with pnpm 12 on macOS, `~/Library/pnpm`
   with older pnpm, `~/.local/share/pnpm` on Linux). Deleting that file is safe.
-- `donn doctor` lists projects whose switch is saved but whose `.zzpersona/` is still there
-  ("not migrated yet"), with the `donn migrate --project` command for each; `--fix` never
-  removes their switches.
 
 ## What each harness can carry
 

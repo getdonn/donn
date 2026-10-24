@@ -2036,16 +2036,19 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
   });
 
   const REGISTRY_CONFIG = `registry:\n  url: ${REGISTRY}\n`;
-  const advice = (login: boolean) =>
-    `remove ${newHome()}, run \`donn migrate\`${login ? ", then run `donn login` again" : ""}`;
+  const MOD = "run `donn mod uninstall` if the donn mod is installed, ";
+  /** `sets` is what the home holds that remove would discard: the personas folder, the url. */
+  const advice = (sets: string, login: boolean, mod = true) =>
+    `${mod ? MOD : ""}remove ${newHome()} (it sets ${sets}), run \`donn migrate\`${login ? `, then run \`donn login ${REGISTRY}\` again` : ""}`;
   const what = (files: string) =>
     `${newHome()} holds only what donn init or donn login wrote (${files}); donn migrate moves the old home's settings`;
 
-  const cases: [string, [string, string][], string, boolean][] = [
+  const cases: [string, [string, string][], string, string, boolean][] = [
     [
       "init only",
       [["config.yaml", "personas: /p\n"]],
       "config.yaml (personas)",
+      "personas: /p",
       false,
     ],
     [
@@ -2055,12 +2058,14 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         ["registry-token", "t\n"],
       ],
       "config.yaml (registry), registry-token",
+      `registry: ${REGISTRY}`,
       true,
     ],
     [
       "login through the keychain",
       [["config.yaml", REGISTRY_CONFIG]],
       "config.yaml (registry)",
+      `registry: ${REGISTRY}`,
       true,
     ],
     [
@@ -2070,13 +2075,14 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         ["registry-token", "t\n"],
       ],
       "config.yaml (personas, registry), registry-token",
+      `personas: /p, registry: ${REGISTRY}`,
       true,
     ],
   ];
 
   it.each(cases)(
     "names what %s wrote, in migrate and in doctor",
-    async (_name, files, listed, login) => {
+    async (_name, files, listed, sets, login) => {
       const m = machine();
       oldInstall(m);
       madeByDonn();
@@ -2087,7 +2093,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
       expect(r.code).toBe(1);
       expect(json(r).error).toMatchObject({
         code: "migrate-target-exists",
-        message: `${what(listed)}; ${advice(login)}`,
+        message: `${what(listed)}; ${advice(sets, login)}`,
       });
       expect(changes(m)).toEqual([]);
       expect(readdirSync(newHome()).sort()).toEqual(before);
@@ -2096,10 +2102,20 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         id: "migrate",
         status: "error",
         message: `${oldHome()} is from before the rename, and ${what(listed)}`,
-        fix: advice(login),
+        fix: advice(sets, login),
       });
     },
   );
+
+  it("leaves out the mod clause when the target has no mod folder", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(join(newHome(), "config.yaml"), "personas: /p\n");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(json(r).error.message).toBe(
+      `${what("config.yaml (personas)")}; ${advice("personas: /p", false, false)}`,
+    );
+  });
 
   it("keeps the generic refusal with one unrelated file beside them", async () => {
     const m = machine();
@@ -2132,7 +2148,7 @@ describe("rename leftovers: a linked old home", () => {
     expect(r.code, r.stdout + r.stderr).toBe(0);
     expect(existsSync(oldHome())).toBe(false);
     expect((await lstat(target)).isSymbolicLink()).toBe(true);
-    expect(await readlink(target)).toBe(real);
+    expect(await readlink(target)).toBe(realpathSync(real));
     expect(read(join(target, "layers/org/acme.yaml"))).toBe(migrated(ACME));
     expect(read(join(real, "layers/org/acme.yaml"))).toBe(migrated(ACME));
   });
@@ -2150,6 +2166,71 @@ describe("rename leftovers: a linked old home", () => {
     expect(r.code, r.stdout + r.stderr).toBe(0);
     expect(await readlink(target)).toBe(real);
     expect(existsSync(oldHome())).toBe(false);
+  });
+});
+
+describe("rename leftovers: a relative link seen through a linked user folder", () => {
+  it("builds the new link from where the old one physically lives", async () => {
+    // <tmp>/home/u -> ../data/u; ~/.zzpersona -> ../shared/zz is <tmp>/data/shared/zz.
+    const data = join(root, "data");
+    mkdirSync(join(data, "u"), { recursive: true });
+    put(join(data, "shared/zz/config.yaml"), "x: 1\n");
+    mkdirSync(join(root, "home"), { recursive: true });
+    symlinkSync("../data/u", join(root, "home/u"));
+    symlinkSync("../shared/zz", join(data, "u/.zzpersona"));
+    const src = join(root, "home/u/.zzpersona");
+    const target = join(root, "other/donn");
+    await moveHome(src, target);
+    expect(await readlink(target)).toBe(realpathSync(join(data, "shared/zz")));
+    expect(read(join(target, "config.yaml"))).toBe("x: 1\n");
+    expect(existsSync(src)).toBe(false);
+    expect(existsSync(join(data, "shared/zz/config.yaml"))).toBe(true);
+  });
+
+  it("keeps the plain rename when the link and its new place share a folder", async () => {
+    mkdirSync(join(root, "u/real-home"), { recursive: true });
+    put(join(root, "u/real-home/config.yaml"), "x: 1\n");
+    symlinkSync("real-home", join(root, "u/.zzpersona"));
+    await moveHome(join(root, "u/.zzpersona"), join(root, "u/.donn"));
+    expect(await readlink(join(root, "u/.donn"))).toBe("real-home");
+    expect(existsSync(join(root, "u/.zzpersona"))).toBe(false);
+  });
+
+  it("refuses, touching nothing, when the new link would not reach the same folder", async () => {
+    mkdirSync(join(root, "u"), { recursive: true });
+    symlinkSync("missing", join(root, "u/.zzpersona"));
+    await expect(
+      moveHome(join(root, "u/.zzpersona"), join(root, "other/donn")),
+    ).rejects.toMatchObject({ code: "migrate-copy" });
+    expect(await readlink(join(root, "u/.zzpersona"))).toBe("missing");
+    expect(existsSync(join(root, "other/donn"))).toBe(false);
+  });
+});
+
+describe("rename leftovers: projects the migrate command would refuse", () => {
+  it("names only projects whose switch carries over and whose old folder can move", async () => {
+    const m = machine();
+    oldInstall(m);
+    const dir = (name: string) => {
+      mkdirSync(join(root, name), { recursive: true });
+      return realpathSync(join(root, name));
+    };
+    const both = dir("both");
+    const bare = dir("bare");
+    const ok = dir("ok");
+    put(join(both, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    put(join(both, ".donn/persona.yaml"), "kind: Persona\n");
+    put(join(bare, ".zzpersona/notes.md"), "no persona here\n");
+    put(join(ok, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects: { [join(both, ".zzpersona")]: "a/b", [join(bare, ".zzpersona")]: "a/b", [join(ok, ".zzpersona")]: "a/b" } })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).projects).toEqual([
+      { dir: ok, next: `donn migrate --project ${ok}` },
+    ]);
   });
 });
 

@@ -62,7 +62,15 @@ export const shellWord = (value: string) =>
 export function unmigratedRepo(key: string): string | undefined {
   if (![LEGACY.home, ".donn"].includes(basename(key))) return undefined;
   const repo = dirname(key);
-  return existsSync(join(repo, LEGACY.home)) ? repo : undefined;
+  // `migrate --project` needs the old folder's persona.yaml, and refuses when the project has a
+  // .donn/persona.yaml of its own already (a switch keyed by that folder is not waiting).
+  if (!existsSync(join(repo, LEGACY.home, "persona.yaml"))) return undefined;
+  if (
+    basename(key) === ".donn" &&
+    existsSync(join(repo, ".donn", "persona.yaml"))
+  )
+    return undefined;
+  return repo;
 }
 
 /** Whether anything is at `path`, a dangling symbolic link included. */
@@ -126,7 +134,10 @@ export async function targetMadeByDonn(target: string): Promise<CliError> {
 export const initOrLoginWhat = (target: string, files: string[]) =>
   `${target} holds only what donn init or donn login wrote (${files.join(", ")}); donn migrate moves the old home's settings`;
 
-/** What to do about it. Never done for the user: the home could be in use (its daemon). */
+/**
+ * What to do about it: remove the home, with the values that go with it (the personas folder,
+ * the registry url) so they can be set again. Never done for the user: the home could be in use.
+ */
 export async function initOrLoginAdvice(
   target: string,
   files: string[],
@@ -135,10 +146,24 @@ export async function initOrLoginAdvice(
     (await legacyDaemonPid(target)) === undefined
       ? ""
       : "stop its daemon (`donn daemon stop`), ";
-  const login = files.some((file) => file.includes("registry"))
-    ? ", then run `donn login` again"
+  const mod = (await present(join(target, "mod")))
+    ? "run `donn mod uninstall` if the donn mod is installed, "
     : "";
-  return `${daemon}remove ${target}, run \`donn migrate\`${login}`;
+  const config = parsed(
+    await readFile(join(target, "config.yaml"), "utf8").catch(() => ""),
+    parseYaml,
+  )?.value as
+    { personas?: string; registry?: { url?: string } } | null | undefined;
+  const sets = [
+    ...(config?.personas === undefined ? [] : [`personas: ${config.personas}`]),
+    ...(config?.registry?.url === undefined
+      ? []
+      : [`registry: ${config.registry.url}`]),
+  ];
+  const login = files.some((file) => file.includes("registry"))
+    ? `, then run \`donn login${config?.registry?.url === undefined ? "" : ` ${config.registry.url}`}\` again`
+    : "";
+  return `${daemon}${mod}remove ${target}${sets.length > 0 ? ` (it sets ${sets.join(", ")})` : ""}, run \`donn migrate\`${login}`;
 }
 
 /** The refusal when the target holds only what `donn init` and `donn login` wrote. */
@@ -380,18 +405,33 @@ export async function moveHome(
   await rm(staging, { recursive: true, force: true });
   await mkdir(dirname(target), { recursive: true });
   await clearEmpty(target);
-  // A link with a relative target would point somewhere else from the new place: the new link
-  // is absolute, made next to the target and put in place the way a copy is.
-  const info = await lstat(src);
-  if (info.isSymbolicLink()) {
-    const link = await readlink(src);
-    if (!isAbsolute(link)) {
-      await symlink(resolve(dirname(src), link), staging);
-      await move(src, aside);
-      await move(staging, target);
-      await rm(aside, { recursive: true, force: true });
-      return;
+  // A link with a relative target points somewhere else from another folder. In the same folder
+  // the plain rename is right; otherwise the new link is absolute, built from where the old
+  // one physically lives (the kernel reads a relative link from there, not from the path it was
+  // reached by), made next to the target and put in place the way a copy is.
+  if (
+    (await lstat(src)).isSymbolicLink() &&
+    !isAbsolute(await readlink(src)) &&
+    (await realpath(dirname(src)).catch(() => dirname(src))) !==
+      (await realpath(dirname(target)))
+  ) {
+    const reach = await realpath(src).catch(() => undefined);
+    if (reach !== undefined) await symlink(reach, staging);
+    if (
+      reach === undefined ||
+      (await realpath(staging).catch(() => "")) !== reach
+    ) {
+      await rm(staging, { recursive: true, force: true });
+      throw new CliError(
+        "migrate-copy",
+        `${src} is a link that could not be reproduced at ${target}; nothing was moved: point ${src} at its folder by an absolute path, then run donn migrate again`,
+        { src, target },
+      );
     }
+    await move(src, aside);
+    await move(staging, target);
+    await rm(aside, { recursive: true, force: true });
+    return;
   }
   try {
     await move(src, target);
