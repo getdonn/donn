@@ -127,14 +127,13 @@ async function build(m: Machine, os: ManagedOs = "linux", out = "bundle") {
 const read = (path: string) => readFileSync(path, "utf8");
 const PENDING = "donn/pending.json";
 
-/** Install `bundle`, stopping as a crash would right after the settings file is written. */
+/** Install `bundle`, stopping as a crash would between its first and second file. */
 const crash = (m: Machine, bundle: string) => {
-  let settingsWritten = false;
+  let writes = 0;
   return expect(
     cli(m, ["managed", "install", bundle, "--yes"], {
       onWrite: (path) => {
-        if (settingsWritten) throw new Error(`simulated crash before ${path}`);
-        if (path === SETTINGS) settingsWritten = true;
+        if (++writes === 2) throw new Error(`simulated crash before ${path}`);
       },
     }),
   ).rejects.toThrow("simulated crash");
@@ -234,19 +233,18 @@ describe("donn managed install", () => {
     const m = machine();
     const first = await build(m, "linux", "first");
     await crash(m, first);
-    // The settings file (and the hook written before it) was; the manifest never was; pending.json
-    // claims both bundles' files.
-    expect(tree(m.system)).toEqual(
-      [...Object.keys(manifestOf(first).files), PENDING].sort(),
-    );
-    expect(tree(m.system)).toContain(SETTINGS);
+    // One file was written, the rest and the manifest never were; pending.json claims all of them.
+    const written = tree(m.system).filter((p) => p !== PENDING);
+    expect(written).toHaveLength(1);
+    expect(Object.keys(manifestOf(first).files)).toContain(written[0]);
+    expect(tree(m.system)).toContain(PENDING);
     const pending = JSON.parse(read(join(m.system, PENDING))) as {
       paths: string[];
     };
     expect(pending.paths).toEqual(
       [...Object.keys(manifestOf(first).files), MANIFEST].sort(),
     );
-    // A different bundle now: the half-written settings file differs, but pending.json owns it.
+    // A different bundle now (its settings differ): pending.json owns what the crash left.
     put(
       join(m.personas, "org/acme.yaml"),
       ORG.replace("Bash(rm -rf:*)", "Bash(sudo:*)"),

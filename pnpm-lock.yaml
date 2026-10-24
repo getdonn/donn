@@ -233,15 +233,15 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -258,15 +258,15 @@ importers:
         specifier: workspace:*
         version: link:../spec
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -289,15 +289,15 @@ importers:
         specifier: workspace:*
         version: link:../../spec
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -317,15 +317,15 @@ importers:
         specifier: workspace:*
         version: link:../../spec
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -345,15 +345,15 @@ importers:
         specifier: workspace:*
         version: link:../../spec
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -409,15 +409,15 @@ importers:
         specifier: workspace:*
         version: link:../store-local
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -430,15 +430,15 @@ importers:
 
   src/packages/mod-claude-code:
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -470,15 +470,15 @@ importers:
         specifier: ^4.1.0
         version: 4.6.7
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -495,15 +495,15 @@ importers:
         specifier: workspace:*
         version: link:../spec
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -523,15 +523,15 @@ importers:
         specifier: workspace:*
         version: link:../spec
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -548,15 +548,15 @@ importers:
         specifier: ^4.1.0
         version: 4.6.7
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -579,15 +579,15 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
@@ -619,15 +619,15 @@ importers:
         specifier: ^4.1.0
         version: 4.6.7
     devDependencies:
-      '@types/node':
-        specifier: ^24.0.0
-        version: 24.19.2
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       eslint:
         specifier: 10.13.0
         version: 10.13.0
