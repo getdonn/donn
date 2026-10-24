@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { checkTarball } from "./check.js";
 import { ReleaseError } from "./errors.js";
 import { packAll } from "./pack.js";
+import { publish } from "./publish.js";
 
 import { listWorkspaces, publicPackages } from "./packages.js";
 import { realRunner } from "./run.js";
@@ -26,7 +27,8 @@ interface Flags {
   deprecate?: boolean;
 }
 
-type Command = (flags: Flags) => Promise<void>;
+/** Resolves with an exit code, or nothing for success. */
+type Command = (flags: Flags) => Promise<number | void>;
 
 const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -72,10 +74,38 @@ async function smokeCommand(flags: Flags): Promise<void> {
   process.stdout.write("smoke ok\n");
 }
 
+async function publishCommand(flags: Flags): Promise<number> {
+  const summary = await publish({
+    root: ROOT,
+    registry: flags.registry ?? "https://registry.npmjs.org",
+    dryRun: flags["dry-run"] === true,
+    env: { ...process.env },
+    run: realRunner,
+  });
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  } else {
+    for (const name of summary.published) {
+      process.stdout.write(`published ${name}\n`);
+    }
+    for (const name of summary.skipped) {
+      process.stdout.write(
+        `${name} skipped (already on ${summary.registry})\n`,
+      );
+    }
+    if (summary.failed) {
+      process.stdout.write(
+        `failed: ${summary.failed.name}: ${summary.failed.error}\n`,
+      );
+    }
+  }
+  return summary.failed ? 1 : 0;
+}
+
 const commands: Record<string, Command> = {
   pack,
   smoke: smokeCommand,
-  publish: stub("publish"),
+  publish: publishCommand,
   claim: stub("claim"),
 };
 
@@ -104,8 +134,7 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
   try {
-    await command(parsed.values);
-    return 0;
+    return (await command(parsed.values)) ?? 0;
   } catch (err) {
     if (err instanceof ReleaseError) {
       process.stderr.write(`${err.message}\n`);
