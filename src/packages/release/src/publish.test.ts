@@ -1,12 +1,15 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReleaseError } from "./errors.js";
-import { publish } from "./publish.js";
+import { publish as publishReal, type PublishOptions } from "./publish.js";
 import { fakeRunner } from "./testing/fake-runner.js";
 
 const NPMJS = "https://registry.npmjs.org";
+const LOCAL = "http://localhost:4873";
+const pass = () => Promise.resolve<string[]>([]);
+const publish = (o: PublishOptions) => publishReal({ check: pass, ...o });
 const cleanup: string[] = [];
 afterEach(() => {
   for (const d of cleanup.splice(0))
@@ -86,13 +89,13 @@ describe("publish", () => {
     const run = runner({ ls });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: {},
       run,
     });
     expect(out).toEqual({
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       published: ["@getdonn/lib@1.0.0", "@getdonn/cli@1.0.0"],
       skipped: [],
@@ -105,7 +108,7 @@ describe("publish", () => {
       "--access",
       "public",
       "--registry",
-      NPMJS,
+      LOCAL,
     ]);
   });
 
@@ -117,7 +120,7 @@ describe("publish", () => {
     });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: {},
       run,
@@ -130,8 +133,109 @@ describe("publish", () => {
       "@getdonn/a@1.0.0",
       "version",
       "--registry",
-      NPMJS,
+      LOCAL,
     ]);
+  });
+
+  it("forwards npm's stderr and caps a failure's text", async () => {
+    const { root, ls } = repo([{ name: "@getdonn/a" }]);
+    const seen: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((c) => (seen.push(String(c)), true));
+    try {
+      const run = runner({
+        ls,
+        publish: () => ({ code: 1, stdout: "", stderr: "x".repeat(2000) }),
+      });
+      const out = await publish({
+        root,
+        registry: LOCAL,
+        dryRun: false,
+        env: {},
+        run,
+      });
+      expect(seen.join("")).toContain("xxxx");
+      expect(out.failed?.error.length).toBeLessThan(600);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("a tarball that fails the check is not published", async () => {
+    const { root, ls } = repo();
+    const run = runner({ ls });
+    const out = await publishReal({
+      root,
+      registry: LOCAL,
+      dryRun: false,
+      env: {},
+      run,
+      check: () => Promise.resolve(["missing README.md"]),
+    });
+    expect(out.failed?.error).toContain("missing README.md");
+    expect(npmCalls(run, "publish")).toHaveLength(0);
+  });
+
+  it("the default check runs on the tarball (tar failure stops)", async () => {
+    const { root, ls } = repo([{ name: "@getdonn/a" }]);
+    const run = fakeRunner([
+      [(c, a) => c === "git" && a[0] === "status", ok()],
+      [(c, a) => c === "pnpm" && a[0] === "ls", ok(ls)],
+      [(c, a) => c === "pnpm" && a[0] === "pack", ok("/x/out.tgz\n")],
+      [(c) => c === "npm", e404],
+      [(c) => c === "tar", { code: 2, stdout: "", stderr: "bad" }],
+    ]);
+    const out = await publishReal({
+      root,
+      registry: LOCAL,
+      dryRun: false,
+      env: {},
+      run,
+    });
+    expect(out.failed?.error).toContain("tarball check failed");
+    expect(npmCalls(run, "publish")).toHaveLength(0);
+  });
+
+  it("a real publish to npmjs outside CI is refused before any call", async () => {
+    const { root, ls } = repo();
+    for (const registry of [
+      NPMJS,
+      "HTTPS://REGISTRY.NPMJS.ORG/",
+      `${NPMJS}//`,
+    ]) {
+      const run = runner({ ls });
+      await expect(
+        publish({ root, registry, dryRun: false, env: {}, run }),
+      ).rejects.toMatchObject({ code: "not-ci" });
+      expect(run.calls).toEqual([]);
+    }
+  });
+
+  it("a dry run to npmjs outside CI is allowed", async () => {
+    const { root, ls } = repo([{ name: "@getdonn/a" }]);
+    const run = runner({ ls });
+    const out = await publish({
+      root,
+      registry: NPMJS,
+      dryRun: true,
+      env: {},
+      run,
+    });
+    expect(out.published).toHaveLength(1);
+  });
+
+  it("an unparseable registry is refused", async () => {
+    const { root, ls } = repo();
+    await expect(
+      publish({
+        root,
+        registry: "nope",
+        dryRun: false,
+        env: {},
+        run: runner({ ls }),
+      }),
+    ).rejects.toMatchObject({ code: "registry" });
   });
 
   it("publishes when the package exists but not this version (empty output)", async () => {
@@ -139,7 +243,7 @@ describe("publish", () => {
     const run = runner({ ls, view: () => ok("") });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: {},
       run,
@@ -155,7 +259,7 @@ describe("publish", () => {
     });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: {},
       run,
@@ -174,7 +278,7 @@ describe("publish", () => {
     });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: {},
       run,
@@ -189,7 +293,7 @@ describe("publish", () => {
     const run = runner({ ls, view: () => ok("2.0.0\n") });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: {},
       run,
@@ -203,7 +307,7 @@ describe("publish", () => {
     const run = runner({ ls });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: true,
       env: {},
       run,
@@ -216,7 +320,7 @@ describe("publish", () => {
     const { root, ls } = repo([{ name: "@getdonn/a" }]);
     const run = runner({ ls });
     const env = { NPM_CONFIG_USERCONFIG: "/x/npmrc" };
-    await publish({ root, registry: NPMJS, dryRun: false, env, run });
+    await publish({ root, registry: LOCAL, dryRun: false, env, run });
     for (const c of run.calls.filter((c) => c.cmd === "npm")) {
       expect(c.opts?.env).toEqual(env);
     }
@@ -226,7 +330,7 @@ describe("publish", () => {
     const { root, ls } = repo();
     const run = runner({ ls, status: " M file.ts\n" });
     await expect(
-      publish({ root, registry: NPMJS, dryRun: false, env: {}, run }),
+      publish({ root, registry: LOCAL, dryRun: false, env: {}, run }),
     ).rejects.toMatchObject({ code: "dirty" });
     expect(run.calls.filter((c) => c.cmd === "npm")).toEqual([]);
     expect(run.calls.filter((c) => c.cmd === "pnpm")).toEqual([]);
@@ -238,7 +342,7 @@ describe("publish", () => {
     const old = runner({ ls, npmVersion: "11.5.0\n" });
     const err = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env,
       run: old,
@@ -250,7 +354,7 @@ describe("publish", () => {
     const good = runner({ ls, npmVersion: "11.5.1\n" });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env,
       run: good,
@@ -263,7 +367,7 @@ describe("publish", () => {
     const run = runner({ ls, npmVersion: "11.20.0\n" });
     const out = await publish({
       root,
-      registry: NPMJS,
+      registry: LOCAL,
       dryRun: false,
       env: { CI: "1" },
       run,
@@ -274,13 +378,17 @@ describe("publish", () => {
   it("does not check the npm version outside CI", async () => {
     const { root, ls } = repo([{ name: "@getdonn/a" }]);
     const run = runner({ ls, npmVersion: "10.0.0\n" });
-    await publish({ root, registry: NPMJS, dryRun: false, env: {}, run });
+    await publish({ root, registry: LOCAL, dryRun: false, env: {}, run });
     expect(npmCalls(run, "--version")).toHaveLength(0);
   });
 
   it("an empty NODE_AUTH_TOKEN is refused", async () => {
     const { root, ls } = repo();
-    for (const registry of [NPMJS, `${NPMJS}/`]) {
+    for (const registry of [
+      NPMJS,
+      `${NPMJS}/`,
+      "HTTPS://REGISTRY.NPMJS.ORG//",
+    ]) {
       const run = runner({ ls });
       await expect(
         publish({

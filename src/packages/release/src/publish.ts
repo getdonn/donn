@@ -1,7 +1,14 @@
+import { checkTarball } from "./check.js";
 import { ReleaseError } from "./errors.js";
 import { packAll } from "./pack.js";
-import { listWorkspaces, publicPackages } from "./packages.js";
+import {
+  listWorkspaces,
+  publicPackages,
+  type PublicPackage,
+  type Workspace,
+} from "./packages.js";
 import type { Runner } from "./run.js";
+import { withTarball } from "./tarball.js";
 
 export interface PublishOptions {
   root: string;
@@ -9,6 +16,12 @@ export interface PublishOptions {
   dryRun: boolean;
   env: NodeJS.ProcessEnv;
   run: Runner;
+  /** Problems with a packed tarball; defaults to Task 3's `checkTarball`. */
+  check?: (
+    tarball: string,
+    pkg: PublicPackage,
+    all: Workspace[],
+  ) => Promise<string[]>;
 }
 
 /** Entries are `name@version`. */
@@ -21,7 +34,14 @@ export interface PublishSummary {
 }
 
 const MIN_NPM = [11, 5, 1] as const;
-const NPMJS = "https://registry.npmjs.org";
+
+function isNpmjs(registry: string): boolean {
+  try {
+    return new URL(registry).hostname.toLowerCase() === "registry.npmjs.org";
+  } catch {
+    throw new ReleaseError("registry", `not a valid registry URL: ${registry}`);
+  }
+}
 
 /** True when `version` (major.minor.patch, numerically) is at least `min`. */
 function atLeast(version: string, min: readonly number[]): boolean {
@@ -37,6 +57,13 @@ function atLeast(version: string, min: readonly number[]): boolean {
 
 async function guards(opts: PublishOptions): Promise<void> {
   const { root, registry, env, run } = opts;
+  const npmjs = isNpmjs(registry);
+  if (npmjs && !env["CI"] && !opts.dryRun) {
+    throw new ReleaseError(
+      "not-ci",
+      "real publishes to npmjs.org run only from the release workflow (CI); use --dry-run or another --registry",
+    );
+  }
   const status = await run("git", ["status", "--porcelain"], { cwd: root });
   if (status.code !== 0 || status.stdout.trim() !== "") {
     throw new ReleaseError(
@@ -55,7 +82,7 @@ async function guards(opts: PublishOptions): Promise<void> {
       `npm ${MIN_NPM.join(".")} or newer is needed for trusted publishing, found "${npm.stdout.trim()}"`,
     );
   }
-  if (registry.replace(/\/$/, "") === NPMJS && "NODE_AUTH_TOKEN" in env) {
+  if (npmjs && "NODE_AUTH_TOKEN" in env) {
     throw new ReleaseError(
       "token-set",
       "NODE_AUTH_TOKEN is set (even empty, it blocks OIDC trusted publishing); unset it",
@@ -77,7 +104,12 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
     published: [],
     skipped: [],
   };
-  const pkgs = publicPackages(await listWorkspaces(root, run));
+  const all = await listWorkspaces(root, run);
+  const pkgs = publicPackages(all);
+  const check =
+    opts.check ??
+    ((tarball, pkg, ws) =>
+      withTarball(tarball, run, (contents) => checkTarball(contents, pkg, ws)));
   for (const pkg of pkgs) {
     const label = `${pkg.name}@${pkg.version}`;
     const stop = (error: string): PublishSummary => {
@@ -113,6 +145,14 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
     } catch (err) {
       return stop((err as Error).message);
     }
+    try {
+      const problems = await check(tarball, pkg, all);
+      if (problems.length > 0) {
+        return stop(`tarball check failed: ${problems.join("; ")}`);
+      }
+    } catch (err) {
+      return stop(`tarball check failed: ${(err as Error).message}`);
+    }
     const res = await run(
       "npm",
       [
@@ -126,8 +166,12 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
       ],
       { cwd: root, env },
     );
+    // Keep npm's own account (provenance / transparency-log URL) in the log.
+    if (res.stderr) process.stderr.write(res.stderr);
     if (res.code !== 0) {
-      return stop(`npm publish exited ${res.code}: ${res.stderr.trim()}`);
+      return stop(
+        `npm publish exited ${res.code}: ${res.stderr.trim().slice(0, 500)}`,
+      );
     }
     summary.published.push(label);
   }

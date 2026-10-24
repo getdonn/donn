@@ -15,7 +15,7 @@ const USAGE = `usage: donn-release <command> [options]
 
   pack [--check]
   smoke [--registry <url>]
-  publish [--registry <url>] [--dry-run] [--json]
+  publish --registry <url> [--dry-run] [--json]
   claim [--deprecate]
 `;
 
@@ -77,7 +77,7 @@ async function smokeCommand(flags: Flags): Promise<void> {
 async function publishCommand(flags: Flags): Promise<number> {
   const summary = await publish({
     root: ROOT,
-    registry: flags.registry ?? "https://registry.npmjs.org",
+    registry: flags.registry ?? "",
     dryRun: flags["dry-run"] === true,
     env: { ...process.env },
     run: realRunner,
@@ -86,7 +86,11 @@ async function publishCommand(flags: Flags): Promise<number> {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     for (const name of summary.published) {
-      process.stdout.write(`published ${name}\n`);
+      process.stdout.write(
+        summary.dryRun
+          ? `would publish ${name} (dry run)\n`
+          : `published ${name}\n`,
+      );
     }
     for (const name of summary.skipped) {
       process.stdout.write(
@@ -128,6 +132,10 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
   const [name] = parsed.positionals;
+  if (name === "publish" && !parsed.values.registry) {
+    process.stderr.write(`publish needs --registry <url>\n${USAGE}`);
+    return 2;
+  }
   const command = name === undefined ? undefined : commands[name];
   if (!command) {
     process.stderr.write(USAGE);
