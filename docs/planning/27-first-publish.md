@@ -168,6 +168,9 @@ runner so tests use a fake `npm`/`pnpm`.
 1. Merge §1–§3 and the audit fixes into `develop`. CI is green on both runners.
 2. ⚑ Make `getdonn/donn` public. Turn on private vulnerability reporting. Create environment `npm`
    with the maintainer as required reviewer. `delete_branch_on_merge` stays off.
+   *(amended 2026-10-24)* Restrict environment `npm` deployments to tags matching `v*`; add a tag
+   ruleset on `v*` limiting create, update and delete to the maintainer; disallow admin bypass of
+   the environment.
 3. ⚑ npm: require 2FA for the `getdonn` org. For each of the 13 names, try adding the trusted
    publisher (`getdonn/donn`, `release.yml`, `npm`) before the package exists. If npm refuses, run
    `claim` locally, configure each trusted publisher, run `claim --deprecate`. Steps 3 to 5 finish
@@ -216,3 +219,27 @@ npm package (optional, afterwards); publishing `eslint-config` or `typescript-co
 ## Open questions
 
 None.
+
+## Amendments from planning (2026-10-24)
+
+- Verdaccio runs as a `docker run` step (a service container starts before checkout and cannot
+  mount the config), with an npmjs uplink for everything except `@getdonn/*` (with none,
+  third-party dependencies cannot install).
+- The smoke test installs into a local `--prefix` with `npm install`, not `npm i -g` (a global
+  install resolves each package's `@getdonn/*` dependencies from npm, where they are not yet).
+- `@getdonn/release` is a private workspace.
+- Each public package's `files` adds `NOTICE` (npm auto-includes only LICENSE) and
+  `!dist/**/*.map` (declaration maps stay for in-repo use).
+- `publish` requires `--registry`, refuses npmjs outside CI unless `--dry-run`, matches npmjs by
+  URL hostname, and re-checks each tarball before publishing; `claim` lists without `--yes`,
+  refuses under CI, and refuses unless npm's configured registry is npmjs.
+- The smoke test compares `donn --version` to the workspace's `@getdonn/cli` version, installs
+  exactly that version in registry mode, and scrubs inherited `DONN_*`, `XDG_*` and
+  `CLAUDE_CONFIG_DIR`.
+- No npm upgrade step in `release.yml`: Node 26.12.0 bundles npm 11.20.0; `publish` enforces
+  ≥ 11.5.1.
+- Runbook step 2 also: restrict environment `npm` deployments to tags matching `v*`; add a tag
+  ruleset on `v*` limiting create, update and delete to the maintainer; disallow admin bypass of
+  the environment. Reason: a `workflow_dispatch` on any branch, or a tag on a non-main commit, runs
+  that ref's `release.yml`, and npm's trusted publisher matches the repo, workflow file and
+  environment regardless of ref, so the environment's settings are the real gate.
