@@ -104,7 +104,10 @@ Reserved 2026-10-23:
 - **GitHub org `getdonn`.** `donn` and `donn-dev` are unrelated users. The repo moves into the
   org when it goes public (GitHub redirects the old URL).
 
-Mapping for the rename, which has **not** happened yet (the code still says `zzpersona`):
+**2026-10-23: the rename landed (spec 22).** Run `donn migrate` once on a machine that ran
+zzpersona. The table below is kept as history:
+
+Mapping for the rename (the code said `zzpersona` until then):
 
 | Placeholder | Becomes |
 |---|---|

@@ -1,4 +1,4 @@
-# donn (name TBD)
+# donn
 
 A persona compiler and control plane for AI coding harnesses. A **persona** is a declarative,
 composable bundle (instructions, skills, MCP servers, permissions, hooks, knowledge pointers,
@@ -239,6 +239,41 @@ last pulled (run `donn pull` first for the latest).
 `check` run under `sudo`, or by an MDM, reads root's `~/.claude/remote-settings.json`, not the
 developer's. `doctor` and `status` show the result. The design is
 `docs/planning/21-managed-settings.md`.
+
+## Upgrading from zzpersona
+
+donn was called zzpersona until 2026-10-23. On a machine that ran zzpersona, run `donn migrate`
+once. It prints its plan, asks (or `--yes`), and every step is safe to repeat, so a re-run after
+an interruption finishes the job. In order, it:
+
+1. stops and removes the old background service;
+2. removes the old Claude Code mod (before the home moves, because Claude Code reads the old mod
+   from the old home);
+3. moves `~/.zzpersona` to `~/.donn` (or `DONN_HOME`);
+4. drops state that is made again (`build/`, `sessions/`, daemon sockets);
+5. rewrites `apiVersion: zzpersona/v0` to `donn/v0` in your persona files, and updates the paths
+   in `config.yaml`;
+6. moves the registry login (the keychain item) to its new name;
+7. installs the new mod, then installs and starts the new background service if the old one was
+   installed.
+
+It runs `donn doctor` at the end. It exits 0 when the migration succeeded, even if `doctor`
+reports findings; read them.
+
+It refuses, before changing anything, when `donn` is not on `PATH` (the new service needs it),
+when `claude` is not on `PATH` while the old mod is installed, when the mod has not been built,
+when `ZZPERSONA_HOME` points at another home (in your environment or the old service file), or
+when the target (`~/.donn`) already exists and is not empty.
+
+- `donn migrate --project [dir]` moves a project's `.zzpersona/` to `.donn/` (with `git mv` when
+  tracked), its persona's `apiVersion`, and the `AGENTS.md` markers. It never commits.
+- An old machine-wide managed policy is reported, not changed. `sudo donn migrate --managed`
+  removes exactly the files the old policy installed; then `donn managed build` and
+  `sudo donn managed install donn-managed` put it back under the new name.
+- Any set `ZZPERSONA_*` or `ZZP_*` environment variables are named in the output; rename them in your
+  shell profile.
+- The old CLI is not removed for you. Remove it when `migrate` says so:
+  `npm uninstall --global @zzpersona/cli` (or `pnpm remove --global @zzpersona/cli`).
 
 ## What each harness can carry
 

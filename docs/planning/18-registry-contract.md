@@ -25,7 +25,7 @@ Each sub-project gets its own spec.
 | H | Minimal console | private | B, C |
 
 Before B: the private repo needs the OSS packages published. GitHub Packages scopes npm packages
-to the repository owner, so `@getdonn/*` needs a `donn` GitHub org (or the chosen name's).
+to the repository owner, so `@getdonn/*` needs a `getdonn` GitHub org.
 Decided when B starts.
 
 > Amended 2026-10-22: F is now "Gateway adapter v1: Bifrost and LiteLLM": an OSS `list`/`resolve`

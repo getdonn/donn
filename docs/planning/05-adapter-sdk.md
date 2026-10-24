@@ -2,8 +2,8 @@
 
 > Status: design, 2026-10-21. Phase 1, first spec. Covers `@getdonn/adapter-sdk` and
 > `@getdonn/adapter-claude-code`. The CLI's plan executor gets its own spec next. Agreed in
-> conversation section by section; this document is the reviewable record. Placeholder name
-> `donn` per `00-handoff.md` → "Naming".
+> conversation section by section; this document is the reviewable record. Written under a
+> placeholder name; see `00-handoff.md` → "Naming".
 > 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent

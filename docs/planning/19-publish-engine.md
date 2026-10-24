@@ -20,7 +20,7 @@ is built against it.
 | One publish engine in OSS, over a `LayerStore` interface; the mock and the server are a store plus HTTP | The server reimplements the rules; the server wraps the mock | One implementation of the subtle parts (check order, descendant sweep, digest); the enterprise value is a server enforcing the rules with identity and audit, not the algorithm, and the client already enforces locks in OSS |
 | The engine does not serialise; the caller runs it under its own lock or transaction | The engine takes a lock | Locking belongs to the storage (an advisory lock in Postgres, nothing in memory) |
 | Kit hardening ships before the server | After | The server is built against the stricter kit, not changed afterwards |
-| The private repo consumes this repo as a git submodule pinned to a release tag, through package `exports` only | A `donn` GitHub org with GitHub Packages; publishing under `@jbjsoftware/*` | The scope is a placeholder and both of those are redone at the rename; `exports` maps already block deep imports, so the boundary matches a published package (decided 2026-10-22; revisit when the name and org exist) |
+| The private repo consumes this repo as a git submodule pinned to a release tag, through package `exports` only | A GitHub org for the product with GitHub Packages; publishing under `@jbjsoftware/*` | The scope is a placeholder and both of those are redone at the rename; `exports` maps already block deep imports, so the boundary matches a published package (decided 2026-10-22; revisit when the name and org exist) |
 
 ## 1. The engine
 
