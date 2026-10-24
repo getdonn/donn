@@ -2,6 +2,7 @@
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { checkTarball } from "./check.js";
+import { claim } from "./claim.js";
 import { ReleaseError } from "./errors.js";
 import { packAll } from "./pack.js";
 import { publish } from "./publish.js";
@@ -16,7 +17,7 @@ const USAGE = `usage: donn-release <command> [options]
   pack [--check]
   smoke [--registry <url>]
   publish --registry <url> [--dry-run] [--json]
-  claim [--deprecate]
+  claim [--deprecate] [--yes]
 `;
 
 interface Flags {
@@ -25,6 +26,7 @@ interface Flags {
   "dry-run"?: boolean;
   json?: boolean;
   deprecate?: boolean;
+  yes?: boolean;
 }
 
 /** Resolves with an exit code, or nothing for success. */
@@ -54,12 +56,28 @@ async function pack(flags: Flags): Promise<void> {
   if (failed) throw new ReleaseError("check", "tarball check failed");
 }
 
-const stub =
-  (name: string): Command =>
-  () =>
-    Promise.reject(
-      new ReleaseError("not-implemented", `${name} is not implemented yet`),
+async function claimCommand(flags: Flags): Promise<void> {
+  const yes = flags.yes === true;
+  const res = await claim({
+    root: ROOT,
+    deprecate: flags.deprecate === true,
+    yes,
+    run: realRunner,
+  });
+  const verb = (done: string, would: string) => (yes ? done : would);
+  for (const name of res.existing) {
+    process.stdout.write(`${name} is already on npm\n`);
+  }
+  for (const name of res.claimed) {
+    process.stdout.write(`${verb("claimed", "would claim")} ${name}\n`);
+  }
+  for (const name of res.deprecated) {
+    process.stdout.write(
+      `${verb("deprecated", "would deprecate")} ${name}@0.0.0\n`,
     );
+  }
+  if (!yes) process.stdout.write("nothing changed; pass --yes to do it\n");
+}
 
 async function smokeCommand(flags: Flags): Promise<void> {
   const run = realRunner;
@@ -110,7 +128,7 @@ const commands: Record<string, Command> = {
   pack,
   smoke: smokeCommand,
   publish: publishCommand,
-  claim: stub("claim"),
+  claim: claimCommand,
 };
 
 async function main(argv: string[]): Promise<number> {
@@ -125,6 +143,7 @@ async function main(argv: string[]): Promise<number> {
         "dry-run": { type: "boolean" },
         json: { type: "boolean" },
         deprecate: { type: "boolean" },
+        yes: { type: "boolean" },
       },
     });
   } catch (err) {
