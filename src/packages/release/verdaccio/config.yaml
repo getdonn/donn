@@ -1,0 +1,23 @@
+# The release rehearsal's registry (release.yml, job `rehearse`). @getdonn/*
+# has no proxy, so it can only come from what the rehearsal publishes here;
+# everything else (zod and the other third-party dependencies) comes from npmjs.
+storage: /verdaccio/storage
+
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    max_users: 10
+
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+packages:
+  "@getdonn/*":
+    access: $all
+    publish: $authenticated
+  "**":
+    access: $all
+    proxy: npmjs
+
+log: { type: stdout, format: pretty, level: warn }

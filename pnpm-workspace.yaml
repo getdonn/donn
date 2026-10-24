@@ -2,6 +2,8 @@ packages:
   - "src/apps/*"
   - "src/packages/*"
   - "src/packages/adapters/*"
+allowBuilds:
+  esbuild: false
 minimumReleaseAgeExclude:
   - "@turbo/darwin-64@2.11.10"
   - "@turbo/darwin-arm64@2.11.10"
