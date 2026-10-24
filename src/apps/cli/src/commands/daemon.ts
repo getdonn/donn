@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { isAlive } from "@zzpersona/executor";
+import { isAlive } from "@getdonn/executor";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon } from "../daemon/client.js";
@@ -23,7 +23,7 @@ import { CliError } from "../errors.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { NOT_RUNNING } from "./status.js";
 
-// zzpersona daemon run|start|stop|status: the daemon's lifecycle. `run` is the daemon in the
+// donn daemon run|start|stop|status: the daemon's lifecycle. `run` is the daemon in the
 // foreground; `start` spawns it detached, or starts the login service when it is installed;
 // `install` and `uninstall` manage that service. See docs/planning/14-daemon.md §1 and
 // 16-daemon-service.md §1.
@@ -42,7 +42,7 @@ export function cliVersion(): string {
   ).version;
 }
 
-/** Spawn `zzpersona daemon run` detached, its output appended to daemon.log. */
+/** Spawn `donn daemon run` detached, its output appended to daemon.log. */
 async function spawnDetached(io: CliIo, home: string): Promise<void> {
   const paths = daemonPaths(home);
   mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
@@ -54,7 +54,7 @@ async function spawnDetached(io: CliIo, home: string): Promise<void> {
       // Not the caller's folder: the daemon must not hold a directory the user may remove.
       cwd: home,
       stdio: ["ignore", out, out],
-      env: { ...io.env, ZZPERSONA_HOME: home },
+      env: { ...io.env, DONN_HOME: home },
     }).unref();
   } finally {
     closeSync(out);
@@ -119,7 +119,7 @@ export async function daemonRun(
     if (
       error instanceof CliError &&
       error.code === "daemon-running" &&
-      io.env.ZZPERSONA_SERVICE === "1"
+      io.env.DONN_SERVICE === "1"
     ) {
       io.stdout.write(
         options.json
@@ -289,11 +289,11 @@ export async function daemonInstall(
   options: DaemonCommandOptions,
 ): Promise<number> {
   const service = requireService(io);
-  const cli = findOnPath("zzpersona", io.env);
+  const cli = findOnPath("donn", io.env);
   if (!cli) {
     throw new CliError(
       "cli-not-on-path",
-      `zzpersona is not on PATH, so the service cannot run it; ${CLI_ON_PATH_FIX}`,
+      `donn is not on PATH, so the service cannot run it; ${CLI_ON_PATH_FIX}`,
     );
   }
   // Absolute: the service manager runs the daemon from another folder.
@@ -310,8 +310,8 @@ export async function daemonInstall(
     command: [cli, "daemon", "run"],
     env: {
       PATH: io.env.PATH ?? "",
-      ...(io.env.ZZPERSONA_HOME && { ZZPERSONA_HOME: home }),
-      ZZPERSONA_SERVICE: "1",
+      ...(io.env.DONN_HOME && { DONN_HOME: home }),
+      DONN_SERVICE: "1",
     },
     log: paths.log,
   });

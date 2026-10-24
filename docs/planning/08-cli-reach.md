@@ -4,6 +4,7 @@
 > Builds on `05-adapter-sdk.md`, `06-cli-core-loop.md` and `07-cli-daily-use.md`. The Claude
 > Code mod (status line, nudge, in-session switch) gets its own spec next. Built as a
 > `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
@@ -14,7 +15,7 @@ the deferred minors that matter now that other people's code can plug in.
 
 Done means: a `secret://keychain/...` ref resolves at launch with nothing to install; an
 adapter written outside this repo loads from config and passes the conformance kit; and
-`zzpersona diff` answers "what changes if I switch to b?" field by field, with provenance.
+`donn diff` answers "what changes if I switch to b?" field by field, with provenance.
 
 ## Decisions (and the alternatives rejected)
 
@@ -22,32 +23,32 @@ adapter written outside this repo loads from config and passes the conformance k
 |---|---|---|
 | Built-in providers are `env` and the OS `keychain`; everything else is a provider package | 1Password CLI built in (as `04` planned) | A built-in vendor provider favours one commercial product and ships code most users don't want. The OS store needs nothing installed |
 | Secret providers are plugins, loaded exactly like adapters | Built-ins only; a fixed list of vendor backends | One mechanism, one trust model; third parties write their own; 1Password, Vault and AWS SM become packages |
-| Plugin packages resolve from `~/.zzpersona/adapters/` | From the personas folder's `package.json`; local paths only | Predictable, kept apart from the CLI's own dependencies, survives CLI upgrades; a personas repo stays plain YAML |
+| Plugin packages resolve from `~/.donn/adapters/` | From the personas folder's `package.json`; local paths only | Predictable, kept apart from the CLI's own dependencies, survives CLI upgrades; a personas repo stays plain YAML |
 | Plugins load lazily: only when a command needs one that isn't built in | Load every listed plugin at start-up | A broken plugin breaks only the commands that use it; `doctor` loads them all |
 | `diff` compares two resolved personas | Compare one persona across git revisions (`--against`) | Answers the daily question (switching); the revision form is a review tool that matters with shared repos and needs git plumbing — open question |
 | Windows `keychain` (Credential Manager) waits for Windows support | PowerShell `CredRead` now; a native keyring library | The CLI doesn't run on Windows yet; a native dependency cuts against keeping dependencies light |
 
 ## 1. Plugins: third-party adapters and secret providers
 
-`~/.zzpersona/config.yaml` gains two optional lists:
+`~/.donn/config.yaml` gains two optional lists:
 
 ```yaml
 personas: ~/personas
-adapters: [acme-zzp-cursor, ~/src/my-adapter]
-secretProviders: [zzp-provider-1password]
+adapters: [acme-donn-cursor, ~/src/my-adapter]
+secretProviders: [donn-provider-1password]
 ```
 
 **Entries.** An entry starting with `.`, `/` or `~` is a **path**, resolved against the folder
 that holds `config.yaml`. Anything else is a **package name**, resolved as Node resolves an
 import from `<home>/adapters/` (both lists share that folder). Installing:
-`npm install --prefix ~/.zzpersona/adapters <package>`. Nothing is discovered by scanning; only
+`npm install --prefix ~/.donn/adapters <package>`. Nothing is discovered by scanning; only
 listed entries are ever imported (`05` §4).
 
 **Adapter contract.** The default export is a `defineAdapter({...})` (`05`). Refused when its
 `apiVersion` is not `ADAPTER_API_VERSION`, when its id is a built-in id (`claude-code`), or when
 two listed adapters declare the same id.
 
-**Provider contract.** `@zzpersona/secrets` exports `defineSecretProvider({ type, resolve })`,
+**Provider contract.** `@getdonn/secrets` exports `defineSecretProvider({ type, resolve })`,
 which validates the declaration and stamps `apiVersion: 1` (`SECRET_PROVIDER_API_VERSION`). The
 default export of a provider package is one. Refused on another `apiVersion`, a built-in `type`
 (`env`, `keychain`) or a duplicate `type`.
@@ -79,8 +80,8 @@ the error's message, never its stack.
 - `apiVersion` mismatch, built-in id/type, duplicate id/type;
 - `--harness <id>` names no loaded adapter → `unknown-harness` listing built-in and loaded ids.
 
-**What a third-party adapter can do.** `zzpersona compile --harness <id>` works with any loaded
-adapter. `zzpersona claude` stays Claude Code only; a general launcher is an open question.
+**What a third-party adapter can do.** `donn compile --harness <id>` works with any loaded
+adapter. `donn claude` stays Claude Code only; a general launcher is an open question.
 
 **Trust.** A listed plugin runs with your permissions inside the CLI, like any npm package you
 install. `doctor` shows exactly what each entry resolved to.
@@ -103,7 +104,7 @@ values): `not found in the keychain`; `secret-tool is not installed (install lib
 on exit 127; otherwise `<command> exited <code>: <first stderr line>`. A ref with fewer than two
 path segments is `keychain refs are secret://<provider>/<service>/<account>`.
 
-`zzpersona` never writes secrets. For a missing keychain secret, `doctor`'s fix is the command
+`donn` never writes secrets. For a missing keychain secret, `doctor`'s fix is the command
 that stores it, which prompts for the value so it stays out of shell history:
 
 - macOS: `security add-generic-password -s <service> -a <account> -w`
@@ -116,17 +117,17 @@ recurring. `doctor`'s fix text says so.
 secret. When Windows support lands, `keychain` gains a `win32` branch using PowerShell and
 `CredRead`, with the same ref shape, so persona files work unchanged.
 
-## 3. `zzpersona diff`
+## 3. `donn diff`
 
 ```
-zzpersona diff <a> <b>      what changes from a to b
-zzpersona diff <b>          from the persona `zzpersona claude` would use here (07 §1) to b
+donn diff <a> <b>      what changes from a to b
+donn diff <b>          from the persona `donn claude` would use here (07 §1) to b
 ```
 
 Both are resolved as a launch would resolve them, user overlay included. No provider is called:
 the resolved persona holds secret refs, never values, so `diff` works with no secrets set up.
 
-**Comparison** is a pure `diff(a, b)` in `@zzpersona/resolver`, next to `explain()`, over the
+**Comparison** is a pure `diff(a, b)` in `@getdonn/resolver`, next to `explain()`, over the
 paths provenance already uses (`mcp.gateway`, `permissions.deny[Bash(rm -rf:*)]`,
 `instructions[conduct]`): the union of both personas' provenance paths, each value compared
 structurally. Each difference is `added` (only in b), `removed` (only in a) or `changed`, with
@@ -162,14 +163,14 @@ Fixed (one failing-first test each):
 | Concurrent `switch` commands can lose an entry | Re-read `state.json` immediately before writing |
 | `switch --default project/persona` is accepted, then stale outside projects | Refused: `invalid-default` |
 | `switch --default` without a persona shows the project switch; `switch --clear <persona>` ignores the persona | Shows the default; the extra argument is refused (`usage`) |
-| `doctor --fix` removes switches for unmounted volumes or branches without `.zzpersona` | Removes an entry only when its repo folder is gone; otherwise warns |
+| `doctor --fix` removes switches for unmounted volumes or branches without `.donn` | Removes an entry only when its repo folder is gone; otherwise warns |
 | A combined `init` that half fails doesn't report the half that succeeded | The error's details carry `created`/`updated` so far |
 | A quoted `~/p/` keeps its trailing slash, so re-running `init` is refused | `expandPath` strips trailing slashes |
 | `init --force` cannot repair an unparseable `config.yaml` | With `--force`, an unparseable config is replaced |
-| A project file symlinked to `../AGENTS.md` is refused by `readText` containment | The project mount's containment root is the repo root (the parent of `.zzpersona`) |
+| A project file symlinked to `../AGENTS.md` is refused by `readText` containment | The project mount's containment root is the repo root (the parent of `.donn`) |
 | `--json` envelopes of `CliError` have no message | Every envelope carries `message` |
 | An old `claude` hides doctor's managed-settings degraded-mode warning | Version and mode reported independently |
-| An empty `ZZPERSONA_HOME` skips doctor's writability check of the fallback home | The fallback home is checked |
+| An empty `DONN_HOME` skips doctor's writability check of the fallback home | The fallback home is checked |
 | `switch` on a read-only home shows a stack trace | A `filesystem` envelope, as `init` gives |
 
 Not fixed, with the reason:
@@ -191,7 +192,7 @@ Not fixed, with the reason:
 | 2 `claude-code-hardening` | `strictMcp`, `managed-settings.d` order, no empty `env` |
 | 3 `secrets` | `SecretContext`, `defineSecretProvider`, `keychain` |
 | 4 `plugins` | config lists, path and package resolution, lazy loading, `plugin-load`, `compile --harness <third-party>` |
-| 5 `diff` | `diff()` with fixtures; `zzpersona diff` |
+| 5 `diff` | `diff()` with fixtures; `donn diff` |
 | 6 `cli-hardening` | the CLI rows of section 4 |
 | 7 `doctor-e2e` | doctor's `plugins` check and keychain fix hints; e2e; changeset; CLAUDE.md |
 
@@ -201,10 +202,10 @@ Testing:
   `runConformance`; a fixture package in a temporary `<home>/adapters/node_modules` loads by
   name; a missing package gets the exact install hint; `apiVersion` mismatch, built-in id,
   duplicate id and unknown provider type each fail; a broken listed adapter does not affect
-  `zzpersona claude`.
+  `donn claude`.
 - **Keychain:** a fake `run` covers every exit code on both platforms and the bad-ref case;
-  opt-in `ZZP_E2E=1` on macOS stores a throwaway item, resolves it through
-  `zzpersona claude --dry-run`, then deletes it.
+  opt-in `DONN_E2E=1` on macOS stores a throwaway item, resolves it through
+  `donn claude --dry-run`, then deletes it.
 - **diff:** resolver fixture pairs (keyed-list entries, a lock, a target setting, identical
   personas); CLI tests for both forms, `--json`, and an unknown persona.
 - **Hardening:** one failing-first test per fixed row.
@@ -216,7 +217,7 @@ mod; `overlay` execution; publishing (blocked on the name).
 
 ## Open questions
 
-1. **A general launcher.** `zzpersona launch --harness <id>` running any adapter's activation
+1. **A general launcher.** `donn launch --harness <id>` running any adapter's activation
    plan, once a second adapter exists to prove the plan executor is general.
 2. **`diff --against <rev>`.** Compare a persona across git revisions of the personas folder,
    for reviewing changes to a shared personas repo.

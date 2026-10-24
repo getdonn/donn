@@ -1,4 +1,4 @@
-import type { Detection, Probe } from "@zzpersona/adapter-sdk";
+import type { Detection, Probe } from "@getdonn/adapter-sdk";
 
 // Whether `codex` is installed, and its version (`codex-cli 0.163.0`).
 

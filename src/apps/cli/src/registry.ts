@@ -7,8 +7,8 @@ import {
   keychainSupported,
   setKeychainItem,
   type KeychainContext,
-} from "@zzpersona/secrets";
-import type { LocalStore } from "@zzpersona/store-local";
+} from "@getdonn/secrets";
+import type { LocalStore } from "@getdonn/store-local";
 import {
   createClient,
   normaliseUrl,
@@ -17,8 +17,8 @@ import {
   RegistryError,
   type RegistryClient,
   type RegistryStore,
-} from "@zzpersona/store-remote";
-import type { Ref } from "@zzpersona/spec";
+} from "@getdonn/store-remote";
+import type { Ref } from "@getdonn/spec";
 import type { CliIo } from "./cli.js";
 import { loadConfig, type Config } from "./config.js";
 import { homeOf } from "./context.js";
@@ -28,7 +28,7 @@ import { writeFileAtomic } from "./fs.js";
 // Registry client plumbing for the CLI: where the token lives, the freshness pull, and which
 // published versions a resolve used. See docs/planning/18-registry-contract.md, sections 3 and 4.
 
-export const TOKEN_SERVICE = "zzpersona-registry";
+export const TOKEN_SERVICE = "donn-registry";
 export const DEFAULT_MAX_AGE_MINUTES = 15;
 const KEYCHAIN_TIMEOUT_MS = 300_000;
 
@@ -92,13 +92,13 @@ function keychainContext(io: CliIo): KeychainContext {
 
 const tokenFile = (home: string) => join(home, "registry-token");
 
-/** The token: `ZZPERSONA_REGISTRY_TOKEN`, then the keychain, then `<home>/registry-token`. */
+/** The token: `DONN_REGISTRY_TOKEN`, then the keychain, then `<home>/registry-token`. */
 export async function readToken(
   io: CliIo,
   home: string,
   url: string,
 ): Promise<string | undefined> {
-  const fromEnv = io.env.ZZPERSONA_REGISTRY_TOKEN;
+  const fromEnv = io.env.DONN_REGISTRY_TOKEN;
   if (fromEnv) return fromEnv.trim();
   const context = keychainContext(io);
   if (keychainSupported(context.platform)) {
@@ -221,7 +221,7 @@ export async function ensureFresh(
   } catch (error) {
     if (error instanceof RegistryError && error.code === "unauthorized") {
       io.stderr.write(
-        `registry refused the token for ${url}; using cached layers \u2014 zzpersona login ${url}\n`,
+        `registry refused the token for ${url}; using cached layers \u2014 donn login ${url}\n`,
       );
       return;
     }
@@ -273,8 +273,8 @@ export async function clientFor(
   if (config.registry === undefined) {
     throw new CliError(
       "no-registry",
-      "no registry configured; run `zzpersona login <url>`",
-      { hint: "zzpersona login <url> --token-stdin" },
+      "no registry configured; run `donn login <url>`",
+      { hint: "donn login <url> --token-stdin" },
     );
   }
   const url = checkedUrl(config.registry.url);
@@ -282,8 +282,8 @@ export async function clientFor(
   if (token === undefined) {
     throw new CliError(
       "not-logged-in",
-      `not logged in to ${url}; run \`zzpersona login ${url}\``,
-      { hint: `zzpersona login ${url} --token-stdin` },
+      `not logged in to ${url}; run \`donn login ${url}\``,
+      { hint: `donn login ${url} --token-stdin` },
     );
   }
   return { client: createClient({ url, token }), url };

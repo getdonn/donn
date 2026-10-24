@@ -1,6 +1,6 @@
 import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ActivationPlan } from "@zzpersona/adapter-sdk";
+import type { ActivationPlan } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
 import { workingDir } from "./startup.js";
@@ -59,11 +59,11 @@ describe("runtime hardening (spec 07)", () => {
     }
   });
 
-  it("treats an empty ZZPERSONA_HOME as unset", async () => {
-    symlinkSync(s.home, join(s.root, ".zzpersona"));
+  it("treats an empty DONN_HOME as unset", async () => {
+    symlinkSync(s.home, join(s.root, ".donn"));
     const r = await zz(["resolve"], {
       cwd: s.repo,
-      env: { ZZPERSONA_HOME: "", HOME: s.root },
+      env: { DONN_HOME: "", HOME: s.root },
     });
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toContain("checkout-api (project/persona)");

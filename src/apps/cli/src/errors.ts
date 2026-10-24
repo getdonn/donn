@@ -1,8 +1,8 @@
-import { AdapterInputError } from "@zzpersona/adapter-sdk";
-import { ExecutorError, OverlayMarkersError } from "@zzpersona/executor";
-import { ResolveError } from "@zzpersona/resolver";
-import { SecretResolutionError } from "@zzpersona/secrets";
-import { StoreError } from "@zzpersona/store-local";
+import { AdapterInputError } from "@getdonn/adapter-sdk";
+import { ExecutorError, OverlayMarkersError } from "@getdonn/executor";
+import { ResolveError } from "@getdonn/resolver";
+import { SecretResolutionError } from "@getdonn/secrets";
+import { StoreError } from "@getdonn/store-local";
 import type { CliIo } from "./cli.js";
 
 /** A problem with how the CLI was called or configured. */

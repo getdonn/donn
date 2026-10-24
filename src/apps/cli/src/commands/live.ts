@@ -7,7 +7,7 @@ import {
 } from "../live-apply.js";
 import { join } from "node:path";
 
-// zzpersona live: switch a running session's persona plugin and record what it now runs. MCP
+// donn live: switch a running session's persona plugin and record what it now runs. MCP
 // servers and permissions stay as launched; `held` says which differ. No secret is resolved.
 // See docs/planning/10-live-switching.md, section 2.
 

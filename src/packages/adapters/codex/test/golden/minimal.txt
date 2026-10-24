@@ -1,7 +1,7 @@
 mode: default
 files (2)
   instructions.md (0644)
-    ## zzpersona persona: team/solo
+    ## donn persona: team/solo
     
     Be concise.
     
@@ -21,4 +21,4 @@ files (2)
 report (1)
   approximated  permissions.allow[Read(./**)]  rendered as guidance; Codex enforces only its sandbox and approval policy
 plan (1)
-  launch codex -s workspace-write -a on-request -c developer_instructions="## zzpersona persona: team/solo\n\nBe concise.\n\n## Tool rules\n\nAllowed:\n- Read(./**)\n"
+  launch codex -s workspace-write -a on-request -c developer_instructions="## donn persona: team/solo\n\nBe concise.\n\n## Tool rules\n\nAllowed:\n- Read(./**)\n"

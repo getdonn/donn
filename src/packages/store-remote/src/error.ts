@@ -1,4 +1,4 @@
-import type { Problem, ProblemCode } from "@zzpersona/registry-api";
+import type { Problem, ProblemCode } from "@getdonn/registry-api";
 
 export type RegistryErrorCode =
   | ProblemCode

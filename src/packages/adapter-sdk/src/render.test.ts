@@ -13,7 +13,7 @@ const output: CompileOutput = {
     "settings.json": { content: '{\n  "a": 1\n}' },
     "plugin/hooks/run.sh": { copyFrom: "org/hooks/run.sh", mode: 0o755 },
   },
-  secretEnv: { ZZP_SECRET_1: "secret://vault/db" },
+  secretEnv: { DONN_SECRET_1: "secret://vault/db" },
   report: {
     adapter: "toy",
     irVersion: 0,
@@ -35,7 +35,7 @@ const plan: ActivationPlan = {
       kind: "launch",
       command: "toy",
       args: ["--settings", "/BUILD/settings.json"],
-      env: { ZZP_SECRET_1: "", A: "" },
+      env: { DONN_SECRET_1: "", A: "" },
     },
     { kind: "overlay", path: "AGENTS.md", content: "hello" },
   ],
@@ -53,12 +53,12 @@ describe("renderBuild", () => {
         '      "a": 1',
         "    }",
         "secretEnv (1)",
-        "  ZZP_SECRET_1 = secret://vault/db",
+        "  DONN_SECRET_1 = secret://vault/db",
         "report (1)",
         "  advisory  permissions.deny[Bash(curl:*)]  rendered as text  locked: permissions.deny by org/base",
         "plan (2)",
         "  launch toy --settings /BUILD/settings.json",
-        "    env: A, ZZP_SECRET_1",
+        "    env: A, DONN_SECRET_1",
         "  overlay AGENTS.md (5 chars)",
         "",
       ].join("\n"),
@@ -126,11 +126,11 @@ describe("renderCapabilities", () => {
               kind: "overlay",
               path: "AGENTS.md",
               content: "hi",
-              block: "zzpersona",
+              block: "donn",
             },
           ],
         },
       ),
-    ).toContain("  overlay AGENTS.md block zzpersona (2 chars)");
+    ).toContain("  overlay AGENTS.md block donn (2 chars)");
   });
 });

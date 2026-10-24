@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Ref, ResolveResult } from "@zzpersona/spec";
+import type { Ref, ResolveResult } from "@getdonn/spec";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { explain, resolve } from "./index.js";

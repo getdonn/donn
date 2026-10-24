@@ -1,0 +1,12 @@
+[Unit]
+Description=donn daemon
+
+[Service]
+ExecStart=/u/bin/donn daemon run
+Environment="PATH=/u/bin:/usr/bin"
+Environment="DONN_HOME=/h"
+Environment="DONN_SERVICE=1"
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

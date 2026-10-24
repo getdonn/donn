@@ -2,8 +2,8 @@
 
 > The name is **donn** (chosen 2026-10-23): npm org `@getdonn` (CLI package `@getdonn/cli`,
 > command `donn`), GitHub org `getdonn`, domain `getdonn.dev`. The rename has not happened yet:
-> code still uses the placeholder `zzpersona` (`@zzpersona/*`, `~/.zzpersona/`, etc.), and docs
-> still say `hatrack`; read both as donn. See `docs/planning/00-handoff.md` → "Naming".
+> code still uses the placeholder `donn` (`@getdonn/*`, `~/.donn/`, etc.), and docs
+> still say `donn`; read both as donn. See `docs/planning/00-handoff.md` → "Naming".
 
 A persona compiler and control plane for AI coding harnesses. A **persona** is a declarative,
 composable bundle (instructions, skills, MCP servers, permissions, hooks, knowledge pointers,
@@ -26,22 +26,22 @@ overrides them.
 3. `docs/planning/03-architecture.md` — full system: components, harness adapter contract + capability matrix, local daemon, control plane, security, repo layout. Appendix A has verified Claude Code facts and the activation strategy.
 4. `docs/planning/04-roadmap.md` — phases with exit questions, dependency graph, team-shape notes
 5. `docs/planning/05-adapter-sdk.md` — the adapter contract (pure compile + activation plan), compile report, conformance kit, and the Claude Code adapter
-6. `docs/planning/06-cli-core-loop.md` — store-local (mounts by layer), secrets, plan executor, and `zzpersona resolve|compile|claude`
+6. `docs/planning/06-cli-core-loop.md` — store-local (mounts by layer), secrets, plan executor, and `donn resolve|compile|claude`
 7. `docs/planning/07-cli-daily-use.md` — `switch` (+ `state.json`) and persona selection precedence, flags-only `init`, `doctor`, CLI hardening
 8. `docs/planning/08-cli-reach.md` — third-party adapter and secret provider plugins, the built-in OS `keychain` provider, `diff`, hardening
-9. `docs/planning/09-mod-claude-code.md` — the Claude Code mod: band with the active persona, folder-mismatch nudge, `/persona list|switch|clear`, `zzpersona mod install`
-10. `docs/planning/10-live-switching.md` — live in-session switching: session plugin folders, `zzpersona live`, `/persona use`, the superseding instructions section
-11. `docs/planning/11-agents-md.md` — Phase 2 starts: the `agents-md` adapter, a committed `AGENTS.md` block from the project persona, `zzpersona write [--check]`
-12. `docs/planning/12-codex.md` — the Codex adapter (relaunch model: `-c developer_instructions`, MCP with `env_vars`, sandbox defaults) and `zzpersona codex`
-13. `docs/planning/13-capability-matrix.md` — every adapter declares every field with reasons; `zzpersona capabilities` and the generated `docs/capabilities.md`
-14. `docs/planning/14-daemon.md` — the daemon, first slice: `zzpersona daemon`, a socket API, the session registry, live sessions refreshed on persona edits, `zzpersona status`
+9. `docs/planning/09-mod-claude-code.md` — the Claude Code mod: band with the active persona, folder-mismatch nudge, `/persona list|switch|clear`, `donn mod install`
+10. `docs/planning/10-live-switching.md` — live in-session switching: session plugin folders, `donn live`, `/persona use`, the superseding instructions section
+11. `docs/planning/11-agents-md.md` — Phase 2 starts: the `agents-md` adapter, a committed `AGENTS.md` block from the project persona, `donn write [--check]`
+12. `docs/planning/12-codex.md` — the Codex adapter (relaunch model: `-c developer_instructions`, MCP with `env_vars`, sandbox defaults) and `donn codex`
+13. `docs/planning/13-capability-matrix.md` — every adapter declares every field with reasons; `donn capabilities` and the generated `docs/capabilities.md`
+14. `docs/planning/14-daemon.md` — the daemon, first slice: `donn daemon`, a socket API, the session registry, live sessions refreshed on persona edits, `donn status`
 15. `docs/planning/15-mod-transport.md` — the mod talks to the daemon over its socket (`POST /run`), CLI fallback; `/persona` works under policy that blocks `process.run`
-16. `docs/planning/16-daemon-service.md` — the daemon as a login service (`zzpersona daemon install|uninstall`, launchd / systemd), auto-start in `claude` and `codex`, one daemon per home under a start race
-17. `docs/planning/17-switch-report.md` — `zzpersona switch` reports per harness: what each keeps and drops, sessions still on another persona, what `AGENTS.md` carries
-18. `docs/planning/18-registry-contract.md` — Phase 3 starts: the registry contract (`@zzpersona/registry-api`, mock, conformance kit), `store-remote`, `zzpersona login|logout|whoami|pull|publish`, `--local`
+16. `docs/planning/16-daemon-service.md` — the daemon as a login service (`donn daemon install|uninstall`, launchd / systemd), auto-start in `claude` and `codex`, one daemon per home under a start race
+17. `docs/planning/17-switch-report.md` — `donn switch` reports per harness: what each keeps and drops, sessions still on another persona, what `AGENTS.md` carries
+18. `docs/planning/18-registry-contract.md` — Phase 3 starts: the registry contract (`@getdonn/registry-api`, mock, conformance kit), `store-remote`, `donn login|logout|whoami|pull|publish`, `--local`
 19. `docs/planning/19-publish-engine.md` — the publish rules as a storage-independent engine (`publishLayer` over a `LayerStore`) shared by the mock and the control plane; a harder conformance kit
-20. `docs/planning/20-registry-identity.md` — registry identity: browser sign-in (`zzpersona login <url>`), server-issued sessions, roles in `whoami`, tolerant reading of registry answers; the OSS half of C
-21. `docs/planning/21-managed-settings.md` — Claude Code enforcement (open-source half of E): org/area/team locks compiled to a managed policy bundle, `policy` block, `zzpersona managed build|install|uninstall|check`, `/v1/managed/bundle`
+20. `docs/planning/20-registry-identity.md` — registry identity: browser sign-in (`donn login <url>`), server-issued sessions, roles in `whoami`, tolerant reading of registry answers; the OSS half of C
+21. `docs/planning/21-managed-settings.md` — Claude Code enforcement (open-source half of E): org/area/team locks compiled to a managed policy bundle, `policy` block, `donn managed build|install|uninstall|check`, `/v1/managed/bundle`
 22. `docs/planning/22-rename-donn.md` — the rename to donn: the full name mapping, the one-off rename script, `donn migrate` for existing installs, the move to the `getdonn` GitHub org, release 0.13.0
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
@@ -49,26 +49,26 @@ overrides them.
 - Harness-neutral core; adapters report what they drop (`CompileReport`). No silent loss.
 - Open core: spec/resolver/adapters/CLI/daemon/mod are OSS (likely Apache-2.0); control plane,
   console, policy, gateway integrations, deploy are a **separate private repo** that depends only
-  on published `@hatrack/*` packages.
+  on published `@getdonn/*` packages.
 - Secrets are `secret://` references in persona files; values only ever land in gitignored builds.
 - No vector DB / document ingestion. Knowledge = pointers to MCP-reachable sources.
 - Claude Code adapter: plugin + settings fragment + instructions via system-prompt/SessionStart;
   relaunch wrapper is the deterministic switch, mod is status/nudge only; org locks compile to
   managed settings. (See `03` Appendix A — a plugin cannot carry CLAUDE.md or permissions.)
-- Desktop presence = a local daemon (`hatrackd`) first; tray app is a thin client of it, later.
+- Desktop presence = a local daemon (`donnd`) first; tray app is a thin client of it, later.
 - Critical path is `spec → resolver → adapter-sdk → adapters/claude-code`; one person, serial.
 
 ## Current phase
 
-**Phase 1** (see roadmap). Phase 0 shipped as `v0.1.0`: `@zzpersona/spec`, the resolver with
+**Phase 1** (see roadmap). Phase 0 shipped as `v0.1.0`: `@getdonn/spec`, the resolver with
 its fixture suite (`src/packages/resolver/fixtures/`, the executable merge spec) and
 `explain()`, and the `spikes/claude-code` and `spikes/agents-md` findings. Phase 1 starts with
-`docs/planning/05-adapter-sdk.md`: `@zzpersona/adapter-sdk` and `adapters/claude-code` (relaunch
-path, conformance kit, golden builds in `test/golden/`, opt-in `ZZP_E2E=1` end-to-end test) are
+`docs/planning/05-adapter-sdk.md`: `@getdonn/adapter-sdk` and `adapters/claude-code` (relaunch
+path, conformance kit, golden builds in `test/golden/`, opt-in `DONN_E2E=1` end-to-end test) are
 built, and so is the core loop from `docs/planning/06-cli-core-loop.md`: `store-local`,
-`secrets`, `executor` and `zzpersona resolve|compile|claude` (opt-in `ZZP_E2E=1` runs the built
-binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `zzpersona mod install`). Spec 10 (live in-session switching: session plugin folders, `zzpersona live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `zzpersona write`), spec 12 (the Codex adapter, `zzpersona codex`), spec 13 (the capability matrix: `zzpersona capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `zzpersona daemon`, `zzpersona status`, live sessions refreshed on persona edits), spec 15 (mod transport: `/persona` through the daemon) and spec 16 (the daemon service: `zzpersona daemon install|uninstall`, auto-start in `claude`/`codex`, the race-safe lock) and spec 17 (`switch` reports per harness) are built; Phase 2's roadmap items are done; Phase 3 has started with spec 18 (registry contract and client, built ahead of a design partner); spec 21 (managed settings: `policy`, `zzpersona managed build|install|uninstall|check`, the registry's `/v1/managed/bundle`, a real Claude Code e2e) is built, E's open-source half, and the control plane's spec 04 is next; also open: the hardening pass on spec 16's deferred minors, or the rest of Phase 3 (spec 18 built the registry contract and client; spec 19 the shared publish engine; B is built as the private control plane, `~/Repos/persona-ai-control-plane`, v0.1.0; C, identity, has its open-source half in spec 20, and the server half follows). The name is chosen
-(donn); the `zzpersona` → donn rename runs in parallel and only blocks the first `npm publish`.
+`secrets`, `executor` and `donn resolve|compile|claude` (opt-in `DONN_E2E=1` runs the built
+binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardening) and spec 08 (plugin adapters and secret providers, the built-in `keychain` provider, `diff`, hardening) are built too, and so is spec 09 (the Claude Code mod: band, nudge, `/persona`, `donn mod install`). Spec 10 (live in-session switching: session plugin folders, `donn live`, `/persona use`) is built too; findings in `spikes/live-smoke/FINDINGS.md`. Phase 2 has started: spec 11 (`agents-md`, `donn write`), spec 12 (the Codex adapter, `donn codex`), spec 13 (the capability matrix: `donn capabilities`, `docs/capabilities.md`), spec 14 (the daemon's first slice: `donn daemon`, `donn status`, live sessions refreshed on persona edits), spec 15 (mod transport: `/persona` through the daemon) and spec 16 (the daemon service: `donn daemon install|uninstall`, auto-start in `claude`/`codex`, the race-safe lock) and spec 17 (`switch` reports per harness) are built; Phase 2's roadmap items are done; Phase 3 has started with spec 18 (registry contract and client, built ahead of a design partner); spec 21 (managed settings: `policy`, `donn managed build|install|uninstall|check`, the registry's `/v1/managed/bundle`, a real Claude Code e2e) is built, E's open-source half, and the control plane's spec 04 is next; also open: the hardening pass on spec 16's deferred minors, or the rest of Phase 3 (spec 18 built the registry contract and client; spec 19 the shared publish engine; B is built as the private control plane, `~/Repos/persona-ai-control-plane`, v0.1.0; C, identity, has its open-source half in spec 20, and the server half follows). The name is chosen
+(donn); the `donn` → donn rename runs in parallel and only blocks the first `npm publish`.
 
 ## Conventions (once code exists)
 

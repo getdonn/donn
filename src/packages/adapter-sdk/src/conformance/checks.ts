@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { parsePath, type ResolvedPersona } from "@zzpersona/spec";
+import { parsePath, type ResolvedPersona } from "@getdonn/spec";
 import { defineAdapter } from "../define.js";
 import { isContainedPath, secretRefsIn, serverSecretRefs } from "../paths.js";
 import { annotateLocks, capabilityFields, requiredEntries } from "../report.js";
@@ -271,7 +271,7 @@ export async function runConformance(
   );
 
   const before = process.cwd();
-  const sandbox = mkdtempSync(join(tmpdir(), "zzp-conformance-"));
+  const sandbox = mkdtempSync(join(tmpdir(), "donn-conformance-"));
   let chdirError: Error | undefined;
   try {
     process.chdir(sandbox);

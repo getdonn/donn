@@ -1,4 +1,4 @@
-import type { Ref, ResolveResult } from "@zzpersona/spec";
+import type { Ref, ResolveResult } from "@getdonn/spec";
 import { ResolveError } from "./errors.js";
 import {
   linearize,

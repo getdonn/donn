@@ -1,6 +1,6 @@
-import type { Detection } from "@zzpersona/adapter-sdk";
-import { corpus } from "@zzpersona/adapter-sdk/conformance";
-import type { ResolvedPersona } from "@zzpersona/spec";
+import type { Detection } from "@getdonn/adapter-sdk";
+import { corpus } from "@getdonn/adapter-sdk/conformance";
+import type { ResolvedPersona } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import adapter from "./index.js";
 

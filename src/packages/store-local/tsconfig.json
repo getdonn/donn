@@ -1,5 +1,5 @@
 {
-  "extends": "@zzpersona/typescript-config/base.json",
+  "extends": "@getdonn/typescript-config/base.json",
   "compilerOptions": {
     "types": ["node"]
   },

@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 
 // The real Probe adapters' detect() runs against. It never throws for a missing command
-// (exit code 127) or an absent path (undefined); see Probe in @zzpersona/adapter-sdk.
+// (exit code 127) or an absent path (undefined); see Probe in @getdonn/adapter-sdk.
 
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");

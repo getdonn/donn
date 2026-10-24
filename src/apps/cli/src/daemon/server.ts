@@ -19,8 +19,8 @@ import {
 } from "node:http";
 import { connect } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
-import { isAlive, nodeProbe } from "@zzpersona/executor";
+import type { Probe } from "@getdonn/adapter-sdk";
+import { isAlive, nodeProbe } from "@getdonn/executor";
 import type { CliIo } from "../cli.js";
 import { loadConfig } from "../config.js";
 import { CliError } from "../errors.js";
@@ -373,7 +373,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     },
   };
   const io: CliIo = {
-    env: { ...options.env, ZZPERSONA_HOME: options.home },
+    env: { ...options.env, DONN_HOME: options.home },
     cwd: options.home,
     stdout: toLog,
     stderr: toLog,
@@ -397,7 +397,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     version: options.version,
     pid: process.pid,
     startedAt,
-    service: options.env.ZZPERSONA_SERVICE === "1",
+    service: options.env.DONN_SERVICE === "1",
     watching: watcher?.paths ?? [],
     sessions: (await listSessions(options.home))
       .filter((s) => s.running)
@@ -443,7 +443,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         running.flatMap((s) =>
           s.launched.project === undefined
             ? []
-            : [join(s.launched.project, ".zzpersona")],
+            : [join(s.launched.project, ".donn")],
         ),
       ),
     ].filter((dir) => existsSync(dir));

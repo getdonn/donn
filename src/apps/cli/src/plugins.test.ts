@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ActivationPlan } from "@zzpersona/adapter-sdk";
-import { runConformance } from "@zzpersona/adapter-sdk/conformance";
+import type { ActivationPlan } from "@getdonn/adapter-sdk";
+import { runConformance } from "@getdonn/adapter-sdk/conformance";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createContext } from "./context.js";
 import { CliError } from "./errors.js";
@@ -73,11 +73,11 @@ describe("third-party adapters", () => {
   });
 
   it("loads an ESM-only package by name", async () => {
-    const entry = installEsmOnly("acme-zzp-fake");
-    configure("adapters: [acme-zzp-fake]");
+    const entry = installEsmOnly("acme-donn-fake");
+    configure("adapters: [acme-donn-fake]");
     const [loaded] = await loadAdapters(await context(), {});
     expect(loaded).toMatchObject({
-      entry: "acme-zzp-fake",
+      entry: "acme-donn-fake",
       resolved: entry,
       version: "1.2.3",
     });
@@ -131,7 +131,7 @@ describe("third-party adapters", () => {
     expect(error.message).toContain("claude-code");
   });
 
-  it("a broken adapter does not affect zzpersona claude", async () => {
+  it("a broken adapter does not affect donn claude", async () => {
     configure("adapters: [./missing]");
     const r = await zz(["claude", "--dry-run"], { cwd: s.repo, home: s.home });
     expect(r.code, r.stderr).toBe(0);
@@ -238,7 +238,7 @@ describe("package entry resolution", () => {
       { type: "module", main: "lib/index" },
     ];
     for (const [i, pkg] of shapes.entries()) {
-      const name = i === 2 ? "@acme/zzp-shape-2" : `zzp-shape-${i}`;
+      const name = i === 2 ? "@acme/donn-shape-2" : `donn-shape-${i}`;
       const dir = installProvider(name, pkg, {
         "lib/index.js": ESM,
         "lib/index.cjs": CJS,
@@ -250,9 +250,9 @@ describe("package entry resolution", () => {
   });
 
   it("reports a malformed package.json as a plugin-load error", async () => {
-    const dir = join(s.home, "adapters/node_modules/zzp-broken");
+    const dir = join(s.home, "adapters/node_modules/donn-broken");
     put(join(dir, "package.json"), "{ not json");
-    configure("secretProviders: [zzp-broken]");
+    configure("secretProviders: [donn-broken]");
     const error = await loadError(loadSecretProviders(await context(), {}));
     expect(error.details.reason).toBe("invalid-package-json");
   });

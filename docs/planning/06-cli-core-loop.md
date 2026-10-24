@@ -1,16 +1,17 @@
-# 06 — CLI core loop: store, secrets, executor, and `zzpersona claude`
+# 06 — CLI core loop: store, secrets, executor, and `donn claude`
 
 > Status: design, 2026-10-21. Phase 1, second spec. Agreed in conversation section by section.
-> Covers `@zzpersona/store-local`, `@zzpersona/secrets`, `@zzpersona/executor` and the first
-> commands of `@zzpersona/cli`. Spec 07 adds `init`, `switch` (+ `state.json`), `doctor`,
+> Covers `@getdonn/store-local`, `@getdonn/secrets`, `@getdonn/executor` and the first
+> commands of `@getdonn/cli`. Spec 07 adds `init`, `switch` (+ `state.json`), `doctor`,
 > `diff` and the 1Password provider. Built as a `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
 The Phase 1 exit question (`04`): *do I switch personas more than once a day without thinking
 about it?* That needs one command that turns personas on disk into a correctly configured
-Claude Code session. Success: in a repo whose `.zzpersona/persona.yaml` extends a team persona
-from your personas folder, `zzpersona claude` launches Claude Code with that persona's
+Claude Code session. Success: in a repo whose `.donn/persona.yaml` extends a team persona
+from your personas folder, `donn claude` launches Claude Code with that persona's
 instructions, skills, hooks, MCP servers and permissions, using the relaunch path verified in
 `spikes/claude-code` and built by the adapter from `05`.
 
@@ -19,15 +20,15 @@ instructions, skills, hooks, MCP servers and permissions, using the relaunch pat
 | Decision | Rejected | Why |
 |---|---|---|
 | Split the CLI into this core loop (06) and the remaining commands (07) | One CLI spec | Four mostly independent pieces; the loop is the "better than aliases" moment and should land first |
-| Personas live in one git personas folder, plus the project's `.zzpersona/`, plus `~/.zzpersona/` | Several registered folders; only `~/.zzpersona/` | One folder needs no cross-folder conflict rule and still models a team publishing a shared persona |
+| Personas live in one git personas folder, plus the project's `.donn/`, plus `~/.donn/` | Several registered folders; only `~/.donn/` | One folder needs no cross-folder conflict rule and still models a team publishing a shared persona |
 | One virtual root, **mounted by layer** (first path segment) | Absolute paths in the IR; copying sources into a staging folder per run | Resolver, IR and adapters stay unchanged and machine-independent; containment is checked per mount in one place |
 | No persona argument means the nearest project persona | Always require a name; remember the last one | Natural in a repo; "last used" can silently pick the wrong persona and belongs with `switch` in 07 |
 | Unresolvable secrets stop the launch | Launch anyway with a warning | A Claude Code session whose MCP server silently lacks its token is worse than no session |
 | Executor is its own package | Inside the CLI | The daemon (Phase 2) will run the same plans |
 
-## 1. Config and `@zzpersona/store-local`
+## 1. Config and `@getdonn/store-local`
 
-`~/.zzpersona/config.yaml` (the whole directory moves with `ZZPERSONA_HOME`), owned and
+`~/.donn/config.yaml` (the whole directory moves with `DONN_HOME`), owned and
 zod-validated by the CLI:
 
 ```yaml
@@ -39,8 +40,8 @@ personas: ~/personas   # the personas folder, a git checkout; needed for org/are
 ```ts
 interface Mounts {
   personas?: string;   // ~/personas
-  project?: string;    // <repo>/.zzpersona, when inside a project
-  user: string;        // ~/.zzpersona
+  project?: string;    // <repo>/.donn, when inside a project
+  user: string;        // ~/.donn
 }
 function createLocalStore(mounts: Mounts): LocalStore;
 
@@ -49,7 +50,7 @@ interface LocalStore extends PersonaSource {            // load(ref) feeds resol
   readText(virtualPath: string): Promise<string>;        // instruction files → compile's `texts`
   list(): Promise<Ref[]>;
 }
-function findProject(cwd: string): string | undefined;   // nearest .zzpersona/persona.yaml, walking up
+function findProject(cwd: string): string | undefined;   // nearest .donn/persona.yaml, walking up
 ```
 
 *Refined 2026-10-21 (implementation plan):* `physicalPath(virtualPath): string | undefined`
@@ -60,10 +61,10 @@ ignored `project/` and `user/` folders for the CLI's warning.
 | Virtual path | Physical location |
 |---|---|
 | `org/…`, `area/…`, `team/…` | `<personas>/org/…` etc. |
-| `project/persona` (the fixed project ref) | `<repo>/.zzpersona/persona.yaml` |
-| `project/…` (other files) | `<repo>/.zzpersona/…` |
-| `user/overrides` (the overlay) | `~/.zzpersona/overrides.yaml` |
-| `user/…` (other files) | `~/.zzpersona/personas/…` |
+| `project/persona` (the fixed project ref) | `<repo>/.donn/persona.yaml` |
+| `project/…` (other files) | `<repo>/.donn/…` |
+| `user/overrides` (the overlay) | `~/.donn/overrides.yaml` |
+| `user/…` (other files) | `~/.donn/personas/…` |
 
 A ref `R` is the file at the physical path of virtual path `R.yaml`. A missing file returns
 `undefined` (the resolver reports `missing-ref`); invalid YAML throws `StoreError` naming the
@@ -73,7 +74,7 @@ so a nested project wins. `list()` ignores `project/` and `user/` folders inside
 folder (they are mounted elsewhere) and the CLI warns about them. No git commands: keeping the
 personas folder current is `git pull` in Phase 1, the daemon's job later.
 
-## 2. `@zzpersona/secrets`
+## 2. `@getdonn/secrets`
 
 Refs are `secret://<provider>/<path>`. The provider name is looked up in the resolved
 `secrets.providers`; its `type` picks the backend.
@@ -105,7 +106,7 @@ variable, malformed ref) and throws one `SecretResolutionError` listing each ref
 Values only ever reach a `launch` step's env: never a file, a log, an error message or `--json`
 output (which shows refs and placeholder names only).
 
-## 3. `@zzpersona/executor`
+## 3. `@getdonn/executor`
 
 ```ts
 function nodeProbe(): Probe;
@@ -136,22 +137,22 @@ function runPlan(plan: ActivationPlan, options: { secretEnv: Record<string, stri
   resolved secrets, and the step's `cwd`; forwards `SIGINT`/`SIGTERM`; resolves to the child's
   exit code.
 
-## 4. `@zzpersona/cli` (`src/apps/cli`)
+## 4. `@getdonn/cli` (`src/apps/cli`)
 
-The `zzpersona` binary, built on `commander`. Every command runs through
+The `donn` binary, built on `commander`. Every command runs through
 `createCli({ env, cwd, stdout, stderr, probe })` so tests run in-process.
 
 **Choosing a persona.** No argument → `project/persona` from `findProject(cwd)`, or an error
 listing available personas. A full ref (`team/payments`) is used as is. A bare name
 (`payments`) resolves if exactly one listed ref ends with `/payments`; otherwise an error lists
-the candidates. The overlay `~/.zzpersona/overrides.yaml` applies when present; `--no-overlay`
+the candidates. The overlay `~/.donn/overrides.yaml` applies when present; `--no-overlay`
 skips it.
 
 | Command | Does | `--json` |
 |---|---|---|
-| `zzpersona resolve [persona] [--explain]` | Prints a summary (name, layers, warning count); `--explain` prints `explain()` | the `ResolveResult` |
-| `zzpersona compile [persona] [--harness claude-code] [--dry-run]` | Detects, compiles, writes the build; prints its directory and the compile report. `--dry-run` writes nothing | `{ buildDir, report, secretRefs, plan }` |
-| `zzpersona claude [persona] [--mode partial\|relaunch-no-mcp] [--dry-run] [-- args…]` | Resolve → detect → compile → write → resolve secrets → launch `claude`; args after `--` pass through | implies `--dry-run`; prints the plan as JSON |
+| `donn resolve [persona] [--explain]` | Prints a summary (name, layers, warning count); `--explain` prints `explain()` | the `ResolveResult` |
+| `donn compile [persona] [--harness claude-code] [--dry-run]` | Detects, compiles, writes the build; prints its directory and the compile report. `--dry-run` writes nothing | `{ buildDir, report, secretRefs, plan }` |
+| `donn claude [persona] [--mode partial\|relaunch-no-mcp] [--dry-run] [-- args…]` | Resolve → detect → compile → write → resolve secrets → launch `claude`; args after `--` pass through | implies `--dry-run`; prints the plan as JSON |
 
 - `--harness` accepts only `claude-code` in Phase 1 (the first-party adapter map; third-party
   loading from config is spec 07).
@@ -164,8 +165,8 @@ skips it.
   is launched, its exit code is ours. With `--json`, errors are `{ "error": { "code", … } }` on
   stdout. Resolver warnings and compile-report entries go to stderr, so piped `--json` stays
   clean. Plain text, no colors.
-- Dogfooding while packages are private: `pnpm --filter @zzpersona/cli link --global`, or a
-  root `zzpersona` script.
+- Dogfooding while packages are private: `pnpm --filter @getdonn/cli link --global`, or a
+  root `donn` script.
 
 ## Testing
 
@@ -176,9 +177,9 @@ skips it.
   projects; atomic replacement; containment rejects an escaping `copyFrom` and an escaping
   symlink inside a copied directory; `runPlan` passes env and returns the exit code (run against
   `node -e`).
-- `cli`: commands in-process against a temporary `ZZPERSONA_HOME` and a personas folder seeded
+- `cli`: commands in-process against a temporary `DONN_HOME` and a personas folder seeded
   from resolver fixture `002`, with a fake probe; persona selection rules; `--json` shapes and
-  error envelopes. Opt-in `ZZP_E2E=1`: the built binary runs `zzpersona claude --dry-run`, then
+  error envelopes. Opt-in `DONN_E2E=1`: the built binary runs `donn claude --dry-run`, then
   a one-turn `-p` launch against real `claude`.
 
 ## Non-goals (this spec)

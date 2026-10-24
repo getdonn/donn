@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 // `check` asks which later files replace our values; `install` and `check` which earlier values
 // ours replace. See docs/planning/21-managed-settings.md, section 3, and amendment 16.
 
-export const SETTINGS_PATH = "managed-settings.d/50-zzpersona.json";
+export const SETTINGS_PATH = "managed-settings.d/50-donn.json";
 const DROP_INS = "managed-settings.d";
 const OUR_NAME = SETTINGS_PATH.split("/")[1]!;
 

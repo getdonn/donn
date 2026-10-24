@@ -61,7 +61,7 @@ export interface RunResult {
   stderr: string;
 }
 
-/** Run `zzpersona <argv>` in `cwd` with the daemon's io, capturing what it prints. */
+/** Run `donn <argv>` in `cwd` with the daemon's io, capturing what it prints. */
 export async function runInProcess(
   io: Omit<CliIo, "cwd" | "stdout" | "stderr">,
   argv: string[],

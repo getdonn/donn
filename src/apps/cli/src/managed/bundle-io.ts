@@ -16,13 +16,13 @@ import {
   posix,
   relative,
 } from "node:path";
-import type { ManagedManifest } from "@zzpersona/adapter-sdk";
+import type { ManagedManifest } from "@getdonn/adapter-sdk";
 import { CliError } from "../errors.js";
 
-// A bundle is a folder: the policy root's files plus zzpersona/manifest.json, which lists the
+// A bundle is a folder: the policy root's files plus donn/manifest.json, which lists the
 // sha256 of every other file. See docs/planning/21-managed-settings.md, section 2.
 
-export const MANIFEST_PATH = "zzpersona/manifest.json";
+export const MANIFEST_PATH = "donn/manifest.json";
 
 export const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -94,7 +94,7 @@ export async function refuseManagedRoot(
       if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
         throw new CliError(
           "managed-out-is-policy",
-          `${out} is inside the managed policy folder ${root}; build elsewhere and use zzpersona managed install`,
+          `${out} is inside the managed policy folder ${root}; build elsewhere and use donn managed install`,
           { out, root },
         );
       }
@@ -115,7 +115,7 @@ async function listFiles(dir: string, prefix = ""): Promise<string[]> {
 }
 
 /**
- * True when `dir` holds a zzpersona bundle and nothing else: a format 1 manifest and exactly the
+ * True when `dir` holds a donn bundle and nothing else: a format 1 manifest and exactly the
  * files it lists. A policy folder (with the org's own files beside ours) never qualifies.
  */
 async function isBundle(dir: string): Promise<boolean> {
@@ -163,7 +163,7 @@ export async function writeBundle(
   if (replacing && !(await isBundle(dir))) {
     throw new CliError(
       "managed-out-not-a-bundle",
-      `${dir} exists and is not a zzpersona bundle; choose another --out or remove it`,
+      `${dir} exists and is not a donn bundle; choose another --out or remove it`,
       { out: dir },
     );
   }
@@ -204,7 +204,7 @@ export async function readBundle(dir: string): Promise<{
     if (isMissing(error)) {
       throw new CliError(
         "managed-not-a-bundle",
-        `${dir} is not a zzpersona bundle: ${MANIFEST_PATH} is missing`,
+        `${dir} is not a donn bundle: ${MANIFEST_PATH} is missing`,
         { dir },
       );
     }

@@ -22,7 +22,7 @@ let root: string;
 let daemons: Daemon[];
 let children: ChildProcess[];
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-lock-"));
+  root = mkdtempSync(join(tmpdir(), "donn-lock-"));
   daemons = [];
   children = [];
 });
@@ -321,7 +321,7 @@ describe("isDaemonProcess", () => {
 
   it("reads the whole command line, however long", async () => {
     // Like a ps that cuts its output at the terminal's width unless told -ww.
-    const long = `${"/very/long/path".repeat(20)}/zzpersona daemon run`;
+    const long = `${"/very/long/path".repeat(20)}/donn daemon run`;
     const ps = ((_: string, args: string[]) => ({
       status: 0,
       stdout: `${args.includes("-ww") ? long : long.slice(0, 80)}\n`,

@@ -24,12 +24,12 @@ await build({
 });
 
 const manifest = {
-  name: "zzpersona",
+  name: "donn",
   version,
-  author: { name: "zzpersona" },
+  author: { name: "donn" },
   license: "Apache-2.0",
   description:
-    "Shows the active zzpersona persona above the prompt, nudges when this folder uses another, and adds /persona",
+    "Shows the active donn persona above the prompt, nudges when this folder uses another, and adds /persona",
   userConfig: {
     nudge: {
       type: "boolean",

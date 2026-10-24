@@ -4,8 +4,8 @@ import {
   type ManagedInput,
   type ManagedOs,
   type ManagedResult,
-} from "@zzpersona/adapter-sdk";
-import { ResolvedPersona } from "@zzpersona/spec";
+} from "@getdonn/adapter-sdk";
+import { ResolvedPersona } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import adapter, {
   compileManaged,
@@ -65,7 +65,7 @@ const input = (
     { ref: "team/payments", version: 1, digest: `sha256:${"c".repeat(64)}` },
   ],
   os: "macos",
-  zzpersona: "0.12.0",
+  donn: "0.12.0",
   texts: TEXTS,
   scripts: SCRIPTS,
   ...overrides,
@@ -85,10 +85,7 @@ const json = (result: ManagedResult, path: string): unknown => {
 };
 
 const settings = (result: ManagedResult) =>
-  json(result, "managed-settings.d/50-zzpersona.json") as Record<
-    string,
-    unknown
-  >;
+  json(result, "managed-settings.d/50-donn.json") as Record<string, unknown>;
 
 /** Compiles `persona` for every OS and compares each file with its golden. */
 async function goldens(name: string, persona: ResolvedPersona, extra = {}) {
@@ -237,7 +234,7 @@ describe("compileManaged: hooks", () => {
     },
     locks: [{ path: "hooks.pre-tool-use[block-prod-db]", layer: "org/acme" }],
   });
-  const script = "zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh";
+  const script = "donn/hooks/pre-tool-use-block-prod-db-block-prod-db.sh";
 
   it("locked hooks are copied and referenced by quoted absolute path", async () => {
     const result = compileManaged(input(persona));
@@ -250,7 +247,7 @@ describe("compileManaged: hooks", () => {
               {
                 type: "command",
                 command:
-                  "'/Library/Application Support/ClaudeCode/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
+                  "'/Library/Application Support/ClaudeCode/donn/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
               },
             ],
           },
@@ -268,10 +265,10 @@ describe("compileManaged: hooks", () => {
         }
       ).PreToolUse[0]!.hooks[0]!.command;
     expect(command("linux")).toBe(
-      "'/etc/claude-code/zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
+      "'/etc/claude-code/donn/hooks/pre-tool-use-block-prod-db-block-prod-db.sh'",
     );
     expect(command("windows")).toBe(
-      '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\pre-tool-use-block-prod-db-block-prod-db.sh"',
+      '"C:\\Program Files\\ClaudeCode\\donn\\hooks\\pre-tool-use-block-prod-db-block-prod-db.sh"',
     );
     await goldens("hooks", persona);
   });
@@ -291,16 +288,16 @@ describe("compileManaged: hooks", () => {
         ).hooks as { Stop: { hooks: { command: string }[] }[] }
       ).Stop[0]!.hooks[0]!.command;
     expect(command("org/hooks/a$(id)`id`.sh", "macos")).toBe(
-      "'/Library/Application Support/ClaudeCode/zzpersona/hooks/stop-odd-a$(id)`id`.sh'",
+      "'/Library/Application Support/ClaudeCode/donn/hooks/stop-odd-a$(id)`id`.sh'",
     );
     expect(command("org/hooks/it's.sh", "linux")).toBe(
-      "'/etc/claude-code/zzpersona/hooks/stop-odd-it'\\''s.sh'",
+      "'/etc/claude-code/donn/hooks/stop-odd-it'\\''s.sh'",
     );
     expect(command("org/hooks/a-b.sh", "windows")).toBe(
-      '"C:\\Program Files\\ClaudeCode\\zzpersona\\hooks\\stop-odd-a-b.sh"',
+      '"C:\\Program Files\\ClaudeCode\\donn\\hooks\\stop-odd-a-b.sh"',
     );
     expect(command("org/hooks/a$b.sh", "linux")).toBe(
-      "'/etc/claude-code/zzpersona/hooks/stop-odd-a$b.sh'",
+      "'/etc/claude-code/donn/hooks/stop-odd-a$b.sh'",
     );
   });
 
@@ -1172,7 +1169,7 @@ describe("compileManaged: report", () => {
   const codes = (result: ManagedResult) =>
     result.report.warnings.map((w) => w.code);
 
-  it("warns when the policy weakens zzpersona launches", () => {
+  it("warns when the policy weakens donn launches", () => {
     expect(codes(compileManaged(input(ir())))).toEqual([]);
     expect(
       codes(
@@ -1272,14 +1269,14 @@ describe("compileManaged: report", () => {
 
     const { manifest, files } = first;
     expect(Object.keys(files).sort()).toEqual([
+      "donn/hooks/pre-tool-use-block-prod-db-block-prod-db.sh",
+      "donn/manifest.json",
       "managed-mcp.json",
-      "managed-settings.d/50-zzpersona.json",
-      "zzpersona/hooks/pre-tool-use-block-prod-db-block-prod-db.sh",
-      "zzpersona/manifest.json",
+      "managed-settings.d/50-donn.json",
     ]);
     expect(Object.keys(manifest.files).sort()).toEqual(
       Object.keys(files)
-        .filter((path) => path !== "zzpersona/manifest.json")
+        .filter((path) => path !== "donn/manifest.json")
         .sort(),
     );
     for (const [path, hash] of Object.entries(manifest.files)) {
@@ -1287,12 +1284,10 @@ describe("compileManaged: report", () => {
         createHash("sha256").update(files[path]!).digest("hex"),
       );
     }
-    expect(JSON.parse(decode(files["zzpersona/manifest.json"]!))).toEqual(
-      manifest,
-    );
+    expect(JSON.parse(decode(files["donn/manifest.json"]!))).toEqual(manifest);
     expect(manifest).toMatchObject({
       format: 1,
-      zzpersona: "0.12.0",
+      donn: "0.12.0",
       os: "macos",
       layers: input(persona).layers,
     });
@@ -1314,7 +1309,7 @@ describe("compileManaged: report", () => {
       ),
     );
     expect(
-      decode(bundleOf(result).files["managed-settings.d/50-zzpersona.json"]!),
+      decode(bundleOf(result).files["managed-settings.d/50-donn.json"]!),
     ).toBe(
       '{\n  "deniedModels": [\n    "b",\n    "a"\n  ],\n  "strictKnownMarketplaces": []\n}\n',
     );
@@ -1324,7 +1319,7 @@ describe("compileManaged: report", () => {
     const result = compileManaged(input(ir()));
     expect(result.report).toEqual({ entries: [], warnings: [] });
     expect(
-      decode(bundleOf(result).files["managed-settings.d/50-zzpersona.json"]!),
+      decode(bundleOf(result).files["managed-settings.d/50-donn.json"]!),
     ).toBe("{}\n");
   });
 });

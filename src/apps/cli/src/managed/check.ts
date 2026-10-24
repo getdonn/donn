@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { KNOWN_MANAGED_KEYS } from "@zzpersona/adapter-claude-code";
-import type { ManagedManifest } from "@zzpersona/adapter-sdk";
+import { KNOWN_MANAGED_KEYS } from "@getdonn/adapter-claude-code";
+import type { ManagedManifest } from "@getdonn/adapter-sdk";
 import type { Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { buildBundle } from "./build.js";
@@ -16,7 +16,7 @@ import {
 import { MACOS_PROFILE, WINDOWS_KEY, type ManagedEnv } from "./env.js";
 import { readInstalled, readPending, under } from "./install.js";
 
-// zzpersona managed check: is what the policy folder holds what zzpersona installed, is it what
+// donn managed check: is what the policy folder holds what donn installed, is it what
 // the layers compile to today, and does Claude Code read it? See
 // docs/planning/21-managed-settings.md, section 3 ("check states").
 
@@ -167,7 +167,7 @@ async function overriddenBy(
 }
 
 const PULLED_NOTE =
-  "compared with the layers pulled locally; run zzpersona pull for the latest";
+  "compared with the layers pulled locally; run donn pull for the latest";
 
 /** `stale`: the installed files differ from a fresh compile of the manifest's deepest layer. */
 async function staleness(
@@ -204,7 +204,7 @@ async function staleness(
       );
       return {
         state: "stale",
-        detail: `${ref} no longer compiles to a bundle (${refused.length} refused: ${refused.map((e) => e.path).join(", ")}); run zzpersona managed build`,
+        detail: `${ref} no longer compiles to a bundle (${refused.length} refused: ${refused.map((e) => e.path).join(", ")}); run donn managed build`,
       };
     }
     fresh = result.bundle.manifest.files;
@@ -230,7 +230,7 @@ async function staleness(
 
 /**
  * The state of the managed policy on this machine. Throws `managed-newer-format` when a newer
- * zzpersona installed it. `context` is only created when something is installed.
+ * donn installed it. `context` is only created when something is installed.
  */
 export async function checkManaged(
   context: Context | (() => Promise<Context>),
@@ -265,7 +265,7 @@ export async function checkManaged(
           {
             state: "edited",
             detail:
-              "an interrupted install; re-run zzpersona managed install or uninstall",
+              "an interrupted install; re-run donn managed install or uninstall",
           },
         ];
   if (installed === undefined && pending !== undefined) {

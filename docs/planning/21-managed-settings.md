@@ -5,6 +5,7 @@
 > serves bundles and builds MDM packages, is the private repo's spec 04. Builds on `02` (locks),
 > `03` Appendix A ("Enterprise enforcement maps onto managed settings"), `05` (adapter SDK) and
 > `18`–`20` (registry). Built as a `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
@@ -56,7 +57,7 @@ From the Claude Code docs (`managed-settings`, `server-managed-settings`, `setti
 
 ## 1. The `policy` block and the passthrough
 
-New in `@zzpersona/spec`, persona files only (not the user overlay):
+New in `@getdonn/spec`, persona files only (not the user overlay):
 
 ```yaml
 policy:
@@ -85,14 +86,14 @@ targets:
 
 ## 2. Compiling a bundle
 
-`compileManaged(chain, { os })` in `@zzpersona/adapter-claude-code`, pure: it takes the resolved
+`compileManaged(chain, { os })` in `@getdonn/adapter-claude-code`, pure: it takes the resolved
 chain (the IR of the deepest layer plus the locks each layer declared) and returns
 `{ files: Record<string, Uint8Array>, manifest, report }`. Only locks declared in the chain count.
 
 | Locked path | Managed setting | Notes |
 |---|---|---|
 | `permissions.deny`, `ask`, `allow`, or rules in them | `permissions.deny`, `ask`, `allow` | Lower scopes may add, never remove |
-| `hooks.<event>`, `hooks.<event>[id]` | managed `hooks` (`pre-tool-use` → `PreToolUse`, as the adapter maps today) | A `run` that names a file in the personas root is copied to `zzpersona/hooks/<id>` and referenced by its installed absolute path for `os`; a command `run` is used as is |
+| `hooks.<event>`, `hooks.<event>[id]` | managed `hooks` (`pre-tool-use` → `PreToolUse`, as the adapter maps today) | A `run` that names a file in the personas root is copied to `donn/hooks/<id>` and referenced by its installed absolute path for `os`; a command `run` is used as is |
 | `mcp.servers[name]`, `http`/`sse` on `https://`, no `env`/headers | `managedMcpServers` | Non-exclusive |
 | `mcp.servers[name]`, stdio, or with `env`/headers | `managed-mcp.json` | Only with `policy.mcp: exclusive`; otherwise **refused** (`managed-mcp-needs-exclusive`) |
 | Any value containing `secret://` | — | **Refused** (`managed-secret`): managed files are readable by every user |
@@ -104,20 +105,20 @@ chain (the IR of the deepest layer plus the locks each layer declared) and retur
 | `policy.bypassPermissions: disabled` | `permissions.disableBypassPermissionsMode: "disable"` | |
 | `targets.claude-code.managed.<key>` | `<key>`, applied last | Checked against a known-key list in the adapter; an unknown key is **refused** (`managed-unknown-key`) |
 
-- **Files.** `managed-settings.d/50-zzpersona.json` (always), `managed-mcp.json` (only as above),
-  `zzpersona/hooks/<id>` (locked script hooks), `zzpersona/manifest.json`.
+- **Files.** `managed-settings.d/50-donn.json` (always), `managed-mcp.json` (only as above),
+  `donn/hooks/<id>` (locked script hooks), `donn/manifest.json`.
 - **Deterministic.** Keys sorted, no timestamps: the same inputs give the same bytes and digest.
-- **Manifest.** `{ format: 1, zzpersona: <cli version>, os, layers: [{ ref, version?, digest }],
+- **Manifest.** `{ format: 1, donn: <cli version>, os, layers: [{ ref, version?, digest }],
   files: { <path>: <sha256> }, minClaudeCode: <version>, report }`. `minClaudeCode` is the highest
   version any used key needs (a table in the adapter: `managedMcpServers` 2.1.259, `deniedModels`
   2.1.283, …; unknown → no floor).
 - **Report.** Every lock gets one entry, `enforced`, `advisory` (with the reason) or `refused`
-  (which fails the build). Warnings when the policy weakens zzpersona's own launches:
+  (which fails the build). Warnings when the policy weakens donn's own launches:
   `disableSideloadFlags` or a `managed-mcp.json` → relaunch runs in partial mode;
   `allowManagedHooksOnly` → persona plugin hooks are dropped; console delivery of hooks needs each
   developer's approval.
 - **Adapter SDK.** An optional `managed?` capability on the adapter contract (`compileManaged`),
-  and a `managed enforcement` row in the capability matrix (`zzpersona capabilities`,
+  and a `managed enforcement` row in the capability matrix (`donn capabilities`,
   `docs/capabilities.md`): Claude Code yes, others "advisory only".
 
 ## 3. CLI
@@ -126,14 +127,14 @@ All support `--json`.
 
 | Command | Does |
 |---|---|
-| `zzpersona managed build [--layer <ref>] [--os macos\|linux\|windows] [--out <dir>] [--from-registry]` | Resolves `--layer` (an `org/`, `area/` or `team/` ref; default: the only `org/` layer in the store, else `--layer` is required) with its ancestors and writes the bundle folder (default `./zzpersona-managed/`). `--os` defaults to the current OS. `--from-registry` downloads the bundle from the registry route (§4) instead of compiling locally. Prints the report; exits non-zero on any refusal |
-| `sudo zzpersona managed install <dir> [--yes]` | Verifies the manifest digests and that `os` matches; prints the plan (files written, replaced, removed); asks unless `--yes`; writes each file atomically (temp then rename), owner root (Administrators on Windows), 0644, hooks 0755. Removes files a previous zzpersona install owned that the new bundle lacks (from the installed manifest) |
-| `sudo zzpersona managed uninstall [--yes]` | Removes exactly the files the installed manifest lists |
-| `zzpersona managed check` | Reports one state (below); exit 0 only for `current`. No privileges needed |
+| `donn managed build [--layer <ref>] [--os macos\|linux\|windows] [--out <dir>] [--from-registry]` | Resolves `--layer` (an `org/`, `area/` or `team/` ref; default: the only `org/` layer in the store, else `--layer` is required) with its ancestors and writes the bundle folder (default `./donn-managed/`). `--os` defaults to the current OS. `--from-registry` downloads the bundle from the registry route (§4) instead of compiling locally. Prints the report; exits non-zero on any refusal |
+| `sudo donn managed install <dir> [--yes]` | Verifies the manifest digests and that `os` matches; prints the plan (files written, replaced, removed); asks unless `--yes`; writes each file atomically (temp then rename), owner root (Administrators on Windows), 0644, hooks 0755. Removes files a previous donn install owned that the new bundle lacks (from the installed manifest) |
+| `sudo donn managed uninstall [--yes]` | Removes exactly the files the installed manifest lists |
+| `donn managed check` | Reports one state (below); exit 0 only for `current`. No privileges needed |
 
 - Without admin rights, `install`/`uninstall` exit with the exact command to re-run.
 - `install` never touches `managed-settings.json`, other drop-ins, or a `managed-mcp.json` that
-  zzpersona did not install; if one blocks the install it refuses and names the file.
+  donn did not install; if one blocks the install it refuses and names the file.
 - **`check` states:** `current` (files match the manifest; the manifest matches a fresh compile of
   the latest layers — from the registry when configured, else the local store), `stale` (newer
   layers exist), `edited` (a file's digest differs), `missing` (nothing installed), `ignored` (a
@@ -149,7 +150,7 @@ All support `--json`.
 ## 4. Registry contract
 
 `GET /v1/managed/bundle?layer=<ref>&os=<os>&format=<format>[&include=all|files]` in
-`@zzpersona/registry-api`, bearer token, any principal that may view the layer. `include` applies to
+`@getdonn/registry-api`, bearer token, any principal that may view the layer. `include` applies to
 the script formats only (`files` leaves out the settings drop-in, for use beside a profile or
 registry value).
 
@@ -168,11 +169,11 @@ registry value).
 | Layer | Contents |
 |---|---|
 | 0 `spec` | this spec and its plan |
-| 1 `policy` | `policy` and `targets.claude-code.managed` in `@zzpersona/spec`; the resolver's layer-kind rule and lock semantics; fixtures |
+| 1 `policy` | `policy` and `targets.claude-code.managed` in `@getdonn/spec`; the resolver's layer-kind rule and lock semantics; fixtures |
 | 2 `compile` | `compileManaged`, the known-key and version tables, the report, the manifest; adapter SDK `managed?`; capability matrix row |
-| 3 `build` | `zzpersona managed build` (local and `--from-registry` against the mock) |
+| 3 `build` | `donn managed build` (local and `--from-registry` against the mock) |
 | 4 `install` | `install`, `uninstall`, `check`; `doctor` and `status` lines |
-| 5 `registry` | the route in `@zzpersona/registry-api`, the mock, the conformance kit, OpenAPI; real Claude Code e2e; docs; changesets |
+| 5 `registry` | the route in `@getdonn/registry-api`, the mock, the conformance kit, OpenAPI; real Claude Code e2e; docs; changesets |
 
 - **Compile:** golden bundles per OS in `test/golden/managed/`, one case per table row; refusals
   (`managed-secret`, `managed-mcp-needs-exclusive`, `managed-unknown-key`,
@@ -181,7 +182,7 @@ registry value).
 - **Install and check:** against temp roots — replacing an earlier bundle removes only its own
   files; org files are never touched; no admin rights → the exact command; every `check` state from
   planted fixtures.
-- **Real Claude Code (`ZZP_E2E_MANAGED=1`):** a Linux container with Claude Code installed; `managed
+- **Real Claude Code (`DONN_E2E_MANAGED=1`):** a Linux container with Claude Code installed; `managed
   install` a bundle; `claude doctor` reports no invalid managed entries and `claude mcp list` shows
   the locked servers (neither needs a login); the container is removed.
 - **Smoke before the final review:** on the developer's Mac in a herdr pane, with permission first

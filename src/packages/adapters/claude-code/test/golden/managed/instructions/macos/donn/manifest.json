@@ -1,0 +1,42 @@
+{
+  "donn": "0.12.0",
+  "files": {
+    "managed-settings.d/50-donn.json": "44b8b2cc2fae38819a6366b1d3739c9ecc74fcd35c8f960643974bb93d06ab99"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "minClaudeCode": "2.1.260",
+  "os": "macos",
+  "report": {
+    "entries": [
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "instructions[org-conduct]",
+        "reason": "delivered as claudeMd: guidance after the system prompt that users cannot exclude, not part of the system prompt"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "instructions[org-security]",
+        "reason": "delivered as claudeMd: guidance after the system prompt that users cannot exclude, not part of the system prompt"
+      }
+    ],
+    "warnings": []
+  }
+}

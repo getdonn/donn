@@ -1,4 +1,4 @@
-import { PersonaDocument, type Persona, type Ref } from "@zzpersona/spec";
+import { PersonaDocument, type Persona, type Ref } from "@getdonn/spec";
 import { ResolveError } from "./errors.js";
 
 /** Where persona documents come from: a directory, git, or the control plane. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PersonaDocument, type Persona } from "@zzpersona/spec";
+import { PersonaDocument, type Persona } from "@getdonn/spec";
 import { bundleDigest, referencedPaths } from "./bundle.js";
 
 const file = (path: string, text: string) => ({
@@ -21,7 +21,7 @@ describe("bundleDigest", () => {
       file("a.md", "first"),
     ]);
     expect(digest).toBe(
-      "sha256:2b3770ebba08dd4664f7c76998039437f6de0c69f225df36ed188fbc1d767844",
+      "sha256:d287e7e84313ced7e76a4ed6571e2e61baaa8cf583f8816eb30186c28f3fbb38",
     );
   });
 
@@ -42,7 +42,7 @@ describe("bundleDigest", () => {
 describe("referencedPaths", () => {
   it("referencedPaths lists instruction files, local skill folders and hook scripts", () => {
     const doc = PersonaDocument.parse({
-      apiVersion: "zzpersona/v0",
+      apiVersion: "donn/v0",
       kind: "Persona",
       metadata: { name: "web" },
       instructions: [
@@ -64,7 +64,7 @@ describe("referencedPaths", () => {
 
   it("lists a hook script without ./ and skips any :// skill", () => {
     const doc = PersonaDocument.parse({
-      apiVersion: "zzpersona/v0",
+      apiVersion: "donn/v0",
       kind: "Persona",
       metadata: { name: "web" },
       skills: { include: ["registry://x", "https://example.com/s"] },

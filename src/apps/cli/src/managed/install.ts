@@ -12,26 +12,26 @@ import {
   stat,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { ManagedManifest } from "@zzpersona/adapter-sdk";
+import type { ManagedManifest } from "@getdonn/adapter-sdk";
 import { CliError } from "../errors.js";
 import { checkedPath, MANIFEST_PATH, readBundle } from "./bundle-io.js";
 import { asObject, earlierReplaced, SETTINGS_PATH } from "./drop-ins.js";
 import type { ManagedEnv } from "./env.js";
 
-// Put a bundle into the policy folder, or take it out again. Only files zzpersona owns (listed
+// Put a bundle into the policy folder, or take it out again. Only files donn owns (listed
 // in the installed manifest, or in pending.json after an interrupted install) are ever replaced
 // or removed; anything else that is in the way is refused, by name, before the first write.
 // See docs/planning/21-managed-settings.md, section 3.
 
-const HOOKS_DIR = "zzpersona/hooks";
+const HOOKS_DIR = "donn/hooks";
 /** Written before an install's first write, removed after its manifest: what it may have written. */
-export const PENDING_PATH = "zzpersona/pending.json";
+export const PENDING_PATH = "donn/pending.json";
 /** Every folder an OWN_PATH lives in, below the root. */
-const OWN_FOLDERS = ["managed-settings.d", "zzpersona", HOOKS_DIR];
+const OWN_FOLDERS = ["managed-settings.d", "donn", HOOKS_DIR];
 
-/** The only paths zzpersona ever writes or removes under the root. */
+/** The only paths donn ever writes or removes under the root. */
 const OWN_PATH =
-  /^(?:managed-settings\.d\/50-zzpersona\.json|managed-mcp\.json|zzpersona\/manifest\.json|zzpersona\/hooks\/[^/]+)$/;
+  /^(?:managed-settings\.d\/50-donn\.json|managed-mcp\.json|donn\/manifest\.json|donn\/hooks\/[^/]+)$/;
 
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");
@@ -54,22 +54,20 @@ function ownPath(path: string, listedIn: string): string {
   if (!OWN_PATH.test(path)) {
     throw new CliError(
       "managed-foreign-path",
-      `${listedIn} lists ${path}, which is not a file zzpersona installs`,
+      `${listedIn} lists ${path}, which is not a file donn installs`,
       { path },
     );
   }
   return path;
 }
 
-/** Thrown when an installed manifest comes from a newer zzpersona: touch nothing. */
+/** Thrown when an installed manifest comes from a newer donn: touch nothing. */
 function newerFormat(manifest: Record<string, unknown>, path: string) {
   const version =
-    typeof manifest.zzpersona === "string"
-      ? manifest.zzpersona
-      : "an unknown version";
+    typeof manifest.donn === "string" ? manifest.donn : "an unknown version";
   return new CliError(
     "managed-newer-format",
-    `installed by a newer zzpersona (${version}); upgrade zzpersona`,
+    `installed by a newer donn (${version}); upgrade donn`,
     { path, format: manifest.format },
   );
 }
@@ -77,7 +75,7 @@ function newerFormat(manifest: Record<string, unknown>, path: string) {
 /**
  * The manifest a previous install left in `root`, or undefined when there is none. Throws
  * `managed-newer-format` for a newer format and `managed-bad-installed` when it cannot be read,
- * since then nobody can tell which files zzpersona owns.
+ * since then nobody can tell which files donn owns.
  */
 export async function readInstalled(
   root: string,
@@ -93,7 +91,7 @@ export async function readInstalled(
   const bad = (why: string) =>
     new CliError(
       "managed-bad-installed",
-      `${path} ${why}; zzpersona cannot tell which files it installed`,
+      `${path} ${why}; donn cannot tell which files it installed`,
       { path },
     );
   let parsed: unknown;
@@ -120,8 +118,7 @@ export async function readInstalled(
     throw bad("is not a format 1 manifest");
   }
   for (const key of Object.keys(files)) {
-    if (!isOwnPath(key))
-      throw bad(`lists ${key}, which zzpersona never installs`);
+    if (!isOwnPath(key)) throw bad(`lists ${key}, which donn never installs`);
   }
   return manifest as unknown as ManagedManifest;
 }
@@ -168,7 +165,7 @@ export async function readPending(root: string): Promise<string[] | undefined> {
   ) {
     throw new CliError(
       "managed-bad-installed",
-      `${path} cannot be read; zzpersona cannot tell which files an interrupted install wrote`,
+      `${path} cannot be read; donn cannot tell which files an interrupted install wrote`,
       { path },
     );
   }
@@ -182,7 +179,7 @@ const unsafe = (path: string, reason: string) =>
   });
 
 /**
- * Before any write or removal: the root and zzpersona's folders must be real folders (never a
+ * Before any write or removal: the root and donn's folders must be real folders (never a
  * symbolic link, so nothing is written or removed through one), and its bookkeeping files real
  * files. Running as root, each must also be root's and not writable by group or others, or
  * someone else could change what root installs.
@@ -198,10 +195,7 @@ async function checkFolders(env: ManagedEnv): Promise<void> {
     const info = await env.inspect(path);
     if (info === undefined) continue;
     if (info.kind === "symlink") {
-      throw unsafe(
-        path,
-        "is a symbolic link; zzpersona never writes through one",
-      );
+      throw unsafe(path, "is a symbolic link; donn never writes through one");
     }
     if (info.kind !== want) {
       throw unsafe(path, want === "dir" ? "is not a folder" : "is not a file");
@@ -300,8 +294,8 @@ export async function planInstall(
     throw new CliError(
       "managed-not-owned",
       refused.length === 1
-        ? `${refused[0]} exists and zzpersona did not install it; refusing to replace it (nothing was written)`
-        : `${refused.join(", ")} exist and zzpersona did not install them; refusing to replace them (nothing was written)`,
+        ? `${refused[0]} exists and donn did not install it; refusing to replace it (nothing was written)`
+        : `${refused.join(", ")} exist and donn did not install them; refusing to replace them (nothing was written)`,
       { paths: refused },
     );
   }
@@ -499,5 +493,5 @@ export async function applyUninstall(
   }
   for (const path of bookkeeping) await remove(root, path);
   // Back to how the machine was before: empty folders go, the root too; others' files keep them.
-  await prune(root, [HOOKS_DIR, "zzpersona", "managed-settings.d", "."]);
+  await prune(root, [HOOKS_DIR, "donn", "managed-settings.d", "."]);
 }

@@ -14,7 +14,7 @@ const file = (path: string, text: string): BundleFile => ({
 });
 
 const layer = (name: string, extra = ""): string =>
-  `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
+  `apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
 
 const context = { subject: "alice", now: new Date("2026-10-22T12:00:00Z") };
 

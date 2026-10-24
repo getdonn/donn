@@ -9,19 +9,19 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { CompileOutput, Detection } from "@zzpersona/adapter-sdk";
-import type { ResolvedPersona } from "@zzpersona/spec";
+import type { CompileOutput, Detection } from "@getdonn/adapter-sdk";
+import type { ResolvedPersona } from "@getdonn/spec";
 import { afterAll, describe, expect, it } from "vitest";
 import adapter from "./index.js";
 
-// Opt-in (ZZP_E2E=1): compile a persona, write the build to disk, and launch the real
+// Opt-in (DONN_E2E=1): compile a persona, write the build to disk, and launch the real
 // `claude -p` with the plan's flags, as spikes/claude-code did by hand. One Haiku call.
 
 const PROBE_SERVER = join(
   import.meta.dirname,
   "../../../../../spikes/claude-code/build/mcp-server.mjs",
 );
-const work = mkdtempSync(join(tmpdir(), "zzp-e2e-"));
+const work = mkdtempSync(join(tmpdir(), "donn-e2e-"));
 const root = join(work, "personas");
 const buildDir = join(work, "build");
 const project = join(work, "project");
@@ -88,7 +88,7 @@ const PROMPT = `Configuration test. Report:
 
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
-describe.skipIf(process.env.ZZP_E2E !== "1")("e2e: real claude", () => {
+describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real claude", () => {
   it("delivers instructions, hook context, a skill and an MCP tool", () => {
     writePersonasRoot();
     const detection: Detection = { installed: true, facts: {} };

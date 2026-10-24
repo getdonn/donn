@@ -1,4 +1,4 @@
-import type { Ref } from "@zzpersona/spec";
+import type { Ref } from "@getdonn/spec";
 import type { Context } from "./context.js";
 import { CliError } from "./errors.js";
 import { projectKey } from "./state.js";
@@ -75,7 +75,7 @@ export async function selectPersona(
   const available = await ctx.store.list();
   throw new CliError(
     "no-persona",
-    `not in a project (no .zzpersona/persona.yaml here or above) and no default set; name a persona or run \`zzpersona switch <persona>\`. Available: ${available.join(", ") || "(none found)"}`,
+    `not in a project (no .donn/persona.yaml here or above) and no default set; name a persona or run \`donn switch <persona>\`. Available: ${available.join(", ") || "(none found)"}`,
     { available },
   );
 }

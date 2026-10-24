@@ -11,7 +11,7 @@ import {
   type PublishRequest,
   type PublishResult,
   type Whoami,
-} from "@zzpersona/registry-api";
+} from "@getdonn/registry-api";
 import { RegistryError, type RegistryErrorCode } from "./error.js";
 import { normaliseUrl, routeUrl } from "./url.js";
 

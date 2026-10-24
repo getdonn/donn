@@ -12,8 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { CompileOutput } from "@zzpersona/adapter-sdk";
-import { createLocalStore } from "@zzpersona/store-local";
+import type { CompileOutput } from "@getdonn/adapter-sdk";
+import { createLocalStore } from "@getdonn/store-local";
 import { afterEach, describe, expect, it } from "vitest";
 import { ExecutorError, writeBuild } from "./index.js";
 
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), "zzp-build-"));
+  const root = mkdtempSync(join(tmpdir(), "donn-build-"));
   dirs.push(root);
   const personas = join(root, "personas");
   const put = (path: string, content = "x") => {

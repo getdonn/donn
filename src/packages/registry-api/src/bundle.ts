@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
-import type { Hook, Persona } from "@zzpersona/spec";
+import type { Hook, Persona } from "@getdonn/spec";
 import type { BundleFile } from "./schemas.js";
 
 export const MAX_BUNDLE_BYTES = 10 * 1024 * 1024;
@@ -15,7 +15,7 @@ export const normalizeBundlePath = (path: string): string =>
 /**
  * The bundle digest, version 1: `sha256:` plus the hex sha256 of this UTF-8 text.
  *
- *     zzpersona-bundle/1\n
+ *     donn-bundle/1\n
  *     layer.yaml <sha256hex(UTF-8 bytes of source)>\n
  *     <path> <sha256hex(decoded file bytes)>\n        (one line per file)
  *
@@ -31,7 +31,7 @@ export function bundleDigest(source: string, files: BundleFile[]): string {
     }))
     .sort((a, b) => Buffer.compare(a.path, b.path))
     .map(({ path, hash }) => `${path.toString("utf8")} ${hash}\n`);
-  const text = `zzpersona-bundle/1\nlayer.yaml ${sha256(source)}\n${lines.join("")}`;
+  const text = `donn-bundle/1\nlayer.yaml ${sha256(source)}\n${lines.join("")}`;
   return `sha256:${sha256(text)}`;
 }
 

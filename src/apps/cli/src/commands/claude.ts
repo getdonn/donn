@@ -10,7 +10,7 @@ import {
   type Mode,
 } from "../session.js";
 
-// `zzpersona claude`: the shared launch path, plus the session folder that `zzpersona live` swaps
+// `donn claude`: the shared launch path, plus the session folder that `donn live` swaps
 // and the managed-settings hint. See docs/planning/06-cli-core-loop.md, section 4.
 
 export type { Mode };
@@ -48,7 +48,7 @@ export async function claudeCommand(
     },
     {
       // Relaunch mode passes the persona plugin with --plugin-dir: launch with a session folder
-      // of plugins instead, so `zzpersona live` can swap it mid-session (spec 10 §1).
+      // of plugins instead, so `donn live` can swap it mid-session (spec 10 §1).
       async beforeRun(build, ctx, selection) {
         const step = build.plan.steps.find((s) => s.kind === "launch");
         const pluginArg = step ? step.args.indexOf("--plugin-dir") : -1;
@@ -84,7 +84,7 @@ export async function claudeCommand(
               ? {
                   ...step,
                   args,
-                  env: { ...step.env, ZZPERSONA_SESSION: session },
+                  env: { ...step.env, DONN_SESSION: session },
                 }
               : s,
           ),

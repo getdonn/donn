@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
-import { isContainedPath, type Step } from "@zzpersona/adapter-sdk";
+import { isContainedPath, type Step } from "@getdonn/adapter-sdk";
 import { ExecutorError } from "./errors.js";
 
 // Writes an overlay step into a project: the whole file, or, with `block`, the text between
@@ -97,7 +97,7 @@ async function writeThrough(
   }
   const tmp = join(
     dirname(target),
-    `.zzpersona-${randomBytes(4).toString("hex")}.tmp`,
+    `.donn-${randomBytes(4).toString("hex")}.tmp`,
   );
   try {
     await writeFile(tmp, content);

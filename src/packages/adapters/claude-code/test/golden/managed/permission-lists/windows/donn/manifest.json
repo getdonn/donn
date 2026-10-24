@@ -1,0 +1,47 @@
+{
+  "donn": "0.12.0",
+  "files": {
+    "managed-settings.d/50-donn.json": "ab807459b9b8860a102e3ab5e0940c14e1daa4899b9bfa41370f1789b1055c52"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "os": "windows",
+  "report": {
+    "entries": [
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "permissions.deny[Bash(rm -rf:*)]",
+        "reason": "lower scopes may add rules, never remove this one"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "permissions.deny[Read(./.env)]",
+        "reason": "lower scopes may add rules, never remove this one"
+      },
+      {
+        "layer": "team/payments",
+        "outcome": "enforced",
+        "path": "permissions.ask[Bash(git push:*)]",
+        "reason": "lower scopes may add rules, never remove this one"
+      }
+    ],
+    "warnings": []
+  }
+}

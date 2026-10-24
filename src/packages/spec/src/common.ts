@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const API_VERSION = "zzpersona/v0";
+export const API_VERSION = "donn/v0";
 export const IR_VERSION = 0;
 
 export const LAYERS = ["org", "area", "team", "project", "user"] as const;

@@ -14,7 +14,7 @@ let root: string;
 let home: string;
 let daemons: Daemon[];
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-status-"));
+  root = mkdtempSync(join(tmpdir(), "donn-status-"));
   home = join(root, "home");
   daemons = [];
 });
@@ -29,7 +29,7 @@ async function start(version = cliVersion()) {
   return daemon;
 }
 
-/** A session this process owns, as `zzpersona claude` records it. */
+/** A session this process owns, as `donn claude` records it. */
 function session(name: string, extra: object = {}) {
   const dir = join(home, "sessions", name);
   mkdirSync(dir, { recursive: true });
@@ -47,9 +47,9 @@ function session(name: string, extra: object = {}) {
 }
 
 const NOT_RUNNING =
-  "daemon not running: sessions are not refreshed on edits; zzpersona daemon start";
+  "daemon not running: sessions are not refreshed on edits; donn daemon start";
 
-describe("zzpersona status", () => {
+describe("donn status", () => {
   it("prints the daemon's sessions", async () => {
     session("a");
     session("b", { persona: "org/base", project: undefined });
@@ -157,7 +157,7 @@ describe("zzpersona status", () => {
     await start("0.0.1");
     const r = await zz(["status"], { cwd: root, home });
     expect(r.code).toBe(0);
-    const warning = `daemon runs 0.0.1, CLI is ${cliVersion()}; zzpersona daemon stop && zzpersona daemon start`;
+    const warning = `daemon runs 0.0.1, CLI is ${cliVersion()}; donn daemon stop && donn daemon start`;
     expect(r.stderr).toBe(`${warning}\n`);
     expect(r.stdout.split("\n")[0]).toBe(
       "daemon 0.0.1 (pid " + process.pid + ")",
@@ -221,7 +221,7 @@ describe("a daemon that answers no one", () => {
     ).checks.find((c) => c.id === "daemon")!;
     expect(check.status).toBe("warn");
     expect(check.message).toContain("unresponsive");
-    expect(check.fix).toContain("zzpersona daemon stop");
+    expect(check.fix).toContain("donn daemon stop");
   });
 
   it("is reported by doctor as stale when its pid now runs something else", async () => {
@@ -239,12 +239,12 @@ describe("a daemon that answers no one", () => {
     expect(check).toMatchObject({
       status: "warn",
       message: `the daemon's socket or pid file is stale in ${paths.dir}`,
-      fix: "zzpersona daemon start",
+      fix: "donn daemon start",
     });
   });
 });
 
-describe("zzpersona daemon refresh", () => {
+describe("donn daemon refresh", () => {
   it("asks the daemon to refresh", async () => {
     await start();
     const r = await zz(["daemon", "refresh"], { cwd: root, home });

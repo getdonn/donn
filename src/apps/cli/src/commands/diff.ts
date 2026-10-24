@@ -1,9 +1,9 @@
-import { diff, type Change } from "@zzpersona/resolver";
+import { diff, type Change } from "@getdonn/resolver";
 import type { CliIo } from "../cli.js";
 import { createContext, resolvePersona } from "../context.js";
 import { selectPersona } from "../select.js";
 
-// zzpersona diff [a] <b>: what changes from a to b, or from the persona used here to b.
+// donn diff [a] <b>: what changes from a to b, or from the persona used here to b.
 // See docs/planning/08-cli-reach.md, section 3.
 
 export interface DiffOptions {

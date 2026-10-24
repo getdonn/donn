@@ -7,7 +7,7 @@ beforeEach(() => {
 });
 afterEach(() => s.cleanup());
 
-describe("zzpersona list", () => {
+describe("donn list", () => {
   it("lists every persona with its layer", async () => {
     const r = await zz(["list", "--json"], { cwd: s.repo, home: s.home });
     expect(r.code, r.stderr).toBe(0);

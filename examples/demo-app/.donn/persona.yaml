@@ -1,0 +1,12 @@
+# Project layer: this repo's own persona, committed with the code.
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: demo-app
+extends:
+  - team/web
+instructions:
+  - id: demo-app-overview
+    file: ./instructions/overview.md
+  - id: codeword
+    inline: When asked for the persona codeword, reply with exactly ZZ-DEMO-1.

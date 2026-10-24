@@ -189,17 +189,12 @@ describe("keychain writes", () => {
 
   it("macOS writes the secret through security -i stdin, never argv", async () => {
     const { ctx, calls } = recorder("darwin");
-    await setKeychainItem(
-      ctx,
-      "zzpersona-registry",
-      "https://r.example",
-      "tok",
-    );
+    await setKeychainItem(ctx, "donn-registry", "https://r.example", "tok");
     expect(calls).toHaveLength(1);
     expect(calls[0]!.command).toBe("security");
     expect(calls[0]!.args).toEqual(["-i"]);
     expect(calls[0]!.input).toBe(
-      'add-generic-password -U -s "zzpersona-registry" -a "https://r.example" -w "tok"\n',
+      'add-generic-password -U -s "donn-registry" -a "https://r.example" -w "tok"\n',
     );
     expect(calls[0]!.args.join(" ")).not.toContain("tok");
   });
@@ -209,14 +204,7 @@ describe("keychain writes", () => {
     await setKeychainItem(ctx, "s", "a", "tok");
     expect(calls[0]).toEqual({
       command: "secret-tool",
-      args: [
-        "store",
-        "--label=zzpersona registry",
-        "service",
-        "s",
-        "account",
-        "a",
-      ],
+      args: ["store", "--label=donn registry", "service", "s", "account", "a"],
       input: "tok",
     });
   });

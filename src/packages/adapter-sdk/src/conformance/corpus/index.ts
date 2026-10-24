@@ -1,4 +1,4 @@
-import type { Ref, ResolvedPersona } from "@zzpersona/spec";
+import type { Ref, ResolvedPersona } from "@getdonn/spec";
 import fullIr from "./full.json" with { type: "json" };
 import { kitchenSink } from "./kitchen-sink.js";
 import { minimal } from "./minimal.js";

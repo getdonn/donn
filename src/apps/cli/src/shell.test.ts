@@ -1,4 +1,4 @@
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import { missingHint, shellHint, shellLookup } from "./shell.js";
 
@@ -106,7 +106,7 @@ describe("shellHint", () => {
         undefined,
       ),
     ).toBe(
-      `your shell has claude as an alias for /Users/me/.claude/local/claude; zzpersona runs the claude on PATH, which aliases don't change: export PATH="/Users/me/.claude/local:$PATH" in your shell's startup file`,
+      `your shell has claude as an alias for /Users/me/.claude/local/claude; donn runs the claude on PATH, which aliases don't change: export PATH="/Users/me/.claude/local:$PATH" in your shell's startup file`,
     );
     expect(
       shellHint("claude", { kind: "alias", target: "npx claude" }, undefined),
@@ -141,7 +141,7 @@ describe("shellHint", () => {
         "/b/claude",
       ),
     ).toBe(
-      "your shell's claude alias runs /a/claude, but zzpersona runs /b/claude (PATH)",
+      "your shell's claude alias runs /a/claude, but donn runs /b/claude (PATH)",
     );
     expect(
       shellHint("claude", { kind: "alias", target: "/b/claude" }, "/b/claude"),
@@ -199,7 +199,7 @@ describe("shellHint: what an alias runs", () => {
         "/h",
       ),
     ).toBe(
-      "your shell's claude alias runs /h/x/claude, but zzpersona runs /b/claude (PATH)",
+      "your shell's claude alias runs /h/x/claude, but donn runs /b/claude (PATH)",
     );
   });
 

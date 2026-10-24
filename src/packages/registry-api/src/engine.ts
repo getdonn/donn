@@ -5,8 +5,8 @@ import {
   diff,
   resolve,
   type PersonaSource,
-} from "@zzpersona/resolver";
-import { PersonaDocument, type Persona } from "@zzpersona/spec";
+} from "@getdonn/resolver";
+import { PersonaDocument, type Persona } from "@getdonn/spec";
 import {
   MAX_BUNDLE_BYTES,
   bundleDigest,
@@ -94,7 +94,7 @@ const TITLES: Record<number, string> = {
 /** An `application/problem+json` body for these problems. */
 export function problemOf(status: number, problems: ProblemItem[]): Problem {
   return {
-    type: `urn:zzpersona:problem:${problems[0]!.code}`,
+    type: `urn:donn:problem:${problems[0]!.code}`,
     title: TITLES[status] ?? "Error",
     status,
     detail: problems.map((p) => p.message).join("; "),

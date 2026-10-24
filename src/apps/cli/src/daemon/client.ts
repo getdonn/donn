@@ -29,7 +29,7 @@ export interface DaemonStatus {
   version: string;
   pid: number;
   startedAt: string;
-  /** Whether this daemon runs under the login service (`ZZPERSONA_SERVICE=1`). */
+  /** Whether this daemon runs under the login service (`DONN_SERVICE=1`). */
   service: boolean;
   watching: string[];
   sessions: SessionStatus[];
@@ -132,7 +132,7 @@ function ok(res: DaemonResponse): unknown {
 }
 
 /** How a daemon is restarted when no installed service runs it. */
-export const RESTART = "zzpersona daemon stop && zzpersona daemon start";
+export const RESTART = "donn daemon stop && donn daemon start";
 
 /** The copy for a daemon that runs another version than this CLI; `fix` says what to run. */
 export const versionMismatch = (daemon: string, cli: string, fix = RESTART) =>

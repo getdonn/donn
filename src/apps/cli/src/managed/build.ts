@@ -1,8 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { realpath, readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
-import type { LocalStore } from "@zzpersona/store-local";
-import claudeCode from "@zzpersona/adapter-claude-code";
+import type { LocalStore } from "@getdonn/store-local";
+import claudeCode from "@getdonn/adapter-claude-code";
 import type {
   ManagedCode,
   ManagedEntry,
@@ -10,17 +10,17 @@ import type {
   ManagedManifest,
   ManagedOs,
   ManagedResult,
-} from "@zzpersona/adapter-sdk";
-import { bundleDigest, compileFromSource } from "@zzpersona/registry-api";
-import { resolve } from "@zzpersona/resolver";
-import type { Ref } from "@zzpersona/spec";
+} from "@getdonn/adapter-sdk";
+import { bundleDigest, compileFromSource } from "@getdonn/registry-api";
+import { resolve } from "@getdonn/resolver";
+import type { Ref } from "@getdonn/spec";
 import {
   cacheFolder,
   readIndex,
   bundleLayer,
   RegistryError,
   type RegistryStore,
-} from "@zzpersona/store-remote";
+} from "@getdonn/store-remote";
 import { fail as registryFailure } from "../commands/registry.js";
 import { cliVersion } from "../commands/daemon.js";
 import type { CliIo } from "../cli.js";
@@ -95,7 +95,7 @@ async function verifyCached(
   if (actual !== digest) {
     throw new CliError(
       "managed-cache-mismatch",
-      `the cached copy of ${ref} @${version} does not match the registry's digest; run \`zzpersona pull\` to refresh it`,
+      `the cached copy of ${ref} @${version} does not match the registry's digest; run \`donn pull\` to refresh it`,
       { ref, version },
     );
   }
@@ -310,7 +310,7 @@ export async function buildBundle(
     ref,
     os: options.os,
     layers,
-    zzpersona: cliVersion(),
+    donn: cliVersion(),
     readFile: storeReader(context),
   });
 }

@@ -4,13 +4,14 @@
 > Builds on spec 09 (the mod), `spikes/claude-code/FINDINGS.md`, `spikes/mod-smoke/FINDINGS.md`
 > (checks A and B) and a `prompt.compose` check run while designing this spec (section 5). Built
 > as a `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
 `/persona switch` and the new `/persona use` change the running session's persona without a
 restart, as far as Claude Code allows, and say exactly what did not change.
 
-Done means: in a session started by `zzpersona claude`, switching persona swaps the persona's
+Done means: in a session started by `donn claude`, switching persona swaps the persona's
 skills, hooks and agents immediately and makes the model follow the new persona's instructions,
 including after compaction; MCP servers and permissions stay as launched and the user is told so,
 with the stricter-rules case called out.
@@ -31,24 +32,24 @@ with the stricter-rules case called out.
 | Plugin and instructions switch live; permissions and MCP stay as launched, and the mod says so | Write permissions into the repo's `.claude/settings.local.json`; also move MCP into the plugin and use `/reload-plugins --force` | Nothing written into the user's repo; no block left behind by a crash; MCP servers with secrets could not switch anyway |
 | `/persona switch` saves and applies live; `/persona use` applies to this session only | `switch` live-only plus `/persona save`; no session-only form | One verb for the common case; trying a persona does not change the folder's choice |
 | Keep the launch instructions; on a switch add a `prompt.compose` section that supersedes them by name | Let the mod carry instructions from launch (no `--append-system-prompt-file`) | A disabled or refused mod would silently drop all instructions; the launch file keeps headless runs and mod-less sessions correct |
-| The CLI does the switch (`zzpersona live`); the mod stays a thin client | The mod copies plugins itself | One place for building and copying; the mod keeps calling only the CLI (spec 09) |
+| The CLI does the switch (`donn live`); the mod stays a thin client | The mod copies plugins itself | One place for building and copying; the mod keeps calling only the CLI (spec 09) |
 
 ## 1. Launch
 
-`zzpersona claude` in relaunch mode creates a **session folder** `<home>/sessions/<id>/` with
+`donn claude` in relaunch mode creates a **session folder** `<home>/sessions/<id>/` with
 `plugins/<plugin name>/`, a copy of the build's plugin (a copy, as check A verified), and launches
 with `--plugin-dir <home>/sessions/<id>/plugins` in place of the plugin itself. It writes
 `<home>/sessions/<id>/launched.json` (`{ "persona", "source", "pid" }`) and adds
-`ZZPERSONA_SESSION=<home>/sessions/<id>` to the launch environment (spec 09's variables stay). When
-`claude` exits, `zzpersona claude` removes the folder; `doctor --fix` removes session folders older
+`DONN_SESSION=<home>/sessions/<id>` to the launch environment (spec 09's variables stay). When
+`claude` exits, `donn claude` removes the folder; `doctor --fix` removes session folders older
 than a day whose `pid` is not alive.
 
-The Claude Code adapter starts `system-prompt.md` with `## zzpersona persona: <ref>`. Settings,
+The Claude Code adapter starts `system-prompt.md` with `## donn persona: <ref>`. Settings,
 MCP and the instructions file are passed as before. Partial mode (managed settings block
-`--plugin-dir`) launches as before, with no session folder. `zzpersona claude -- --continue` gets
+`--plugin-dir`) launches as before, with no session folder. `donn claude -- --continue` gets
 a new session folder with the current persona.
 
-## 2. `zzpersona live <persona> --session <dir> [--json]`
+## 2. `donn live <persona> --session <dir> [--json]`
 
 1. Resolve and compile `<persona>` for Claude Code (`prepareBuild`); no secrets are resolved.
 2. Write the build (atomic version swap, as a launch).
@@ -72,32 +73,32 @@ usual resolve and compile errors. On any error the old plugin stays in place.
 - **State.** After a live switch the mod keeps `live` from the CLI's answer; on `session.start` it
   reads `<session>/live.json`, so a reload keeps it.
 - **Instructions.** While the live persona differs from the launched one, a `prompt.compose` hook
-  adds one section, id `zzpersona:live-persona`, scope `session`, after what `next(e)` returns:
+  adds one section, id `donn:live-persona`, scope `session`, after what `next(e)` returns:
 
   ```
   The persona for this session is now <new>. Disregard the section headed
-  "## zzpersona persona: <launched>"; the instructions below replace it.
+  "## donn persona: <launched>"; the instructions below replace it.
 
-  <the new system-prompt.md text, which starts with "## zzpersona persona: <new>">
+  <the new system-prompt.md text, which starts with "## donn persona: <new>">
   ```
 
   Switching back to the launched persona removes the section.
 - **Band.** `persona <new> · live`, or `persona <new> · live · <held> from <launched>` (`MCP and
   permissions`, `MCP`, or `permissions`).
 - **Nudge.** Compares this folder's selection with the live persona.
-- **`/persona use <p>`** runs `zzpersona live`; **`/persona switch <p>`** runs `zzpersona switch`
-  (save) and then `zzpersona live`. Both print:
+- **`/persona use <p>`** runs `donn live`; **`/persona switch <p>`** runs `donn switch`
+  (save) and then `donn live`. Both print:
 
   ```
   team/platform is now live in this session (skills, hooks, agents, instructions).
   Still from team/payments until you relaunch: MCP servers, permissions.
-  To apply those too, exit and run: zzpersona claude
+  To apply those too, exit and run: donn claude
   ```
 
   with the "Still from" lines only for what is held, `team/platform denies more than
   team/payments; those rules apply after a relaunch.` when `stricter`, and, for `switch`, what was
-  saved. In a session without `ZZPERSONA_SESSION`, `use` says live switching needs a session started
-  by `zzpersona claude`, and `switch` saves as in spec 09.
+  saved. In a session without `DONN_SESSION`, `use` says live switching needs a session started
+  by `donn claude`, and `switch` saves as in spec 09.
 - The mod still never starts a turn, edits settings or repo files; only the CLI writes, under
   `<home>/sessions/`.
 
@@ -105,11 +106,11 @@ usual resolve and compile errors. On any error the old plugin stays in place.
 
 | Case | Result |
 |---|---|
-| No `ZZPERSONA_SESSION` | `use` explains; `switch` saves only |
+| No `DONN_SESSION` | `use` explains; `switch` saves only |
 | Partial-mode session | `live-unavailable: managed settings block --plugin-dir` |
 | The persona fails to resolve or compile | the CLI's error; old plugin and instructions stay |
 | Session folder gone | `live-unavailable: the session folder is gone; relaunch` |
-| CLI unreachable | `zzpersona unavailable: <reason>` (spec 09) |
+| CLI unreachable | `donn unavailable: <reason>` (spec 09) |
 
 ## 5. The `prompt.compose` check (2026-10-21, Claude Code 2.1.306)
 
@@ -126,8 +127,8 @@ quoted the added line, then the launch file's). Recorded again in `spikes/live-s
 |---|---|
 | 0 `spec` | this spec and its plan |
 | 1 `adapter` | the instructions heading; `activate` launching with a folder of plugins; golden builds |
-| 2 `session` | session folder create/copy/cleanup, `launched.json`, `ZZPERSONA_SESSION`; `doctor --fix` for orphaned session folders |
-| 3 `live` | `zzpersona live`: compile, swap, `held`/`stricter`, `live.json` |
+| 2 `session` | session folder create/copy/cleanup, `launched.json`, `DONN_SESSION`; `doctor --fix` for orphaned session folders |
+| 3 `live` | `donn live`: compile, swap, `held`/`stricter`, `live.json` |
 | 4 `mod-live` | `/persona use`, live `switch`, the compose section, band and nudge from live state, reload recovery |
 | 5 `smoke-e2e` | herdr smoke run, `spikes/live-smoke/FINDINGS.md`, changeset, docs |
 
@@ -135,7 +136,7 @@ quoted the added line, then the launch file's). Recorded again in `spikes/live-s
   launch; `live`'s copy-then-remove order, `held` for equal and differing personas, `stricter`, and
   every error leaving the old plugin; the mod's section text, no section after switching back, band
   and nudge with `held`, reload from `live.json`.
-- **Smoke (herdr pane):** `zzpersona claude` on A; `/persona use B` → B's skill listed, A's gone,
+- **Smoke (herdr pane):** `donn claude` on A; `/persona use B` → B's skill listed, A's gone,
   the model quotes B's instructions as current; `/compact`, quote again → still B; the band shows
   what is held; `/persona use A` → the section is gone; `/persona switch B` also saves.
 

@@ -1,5 +1,5 @@
-import type { CapabilityMatrix } from "@zzpersona/adapter-sdk";
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import type { CapabilityMatrix } from "@getdonn/adapter-sdk";
+import { HOOK_EVENTS } from "@getdonn/spec";
 
 // AGENTS.md is plain text that tools read as instructions: instructions are native, knowledge is
 // a list of pointers, permissions become guidance, and everything else has no place in it.

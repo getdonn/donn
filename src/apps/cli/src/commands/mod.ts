@@ -8,15 +8,15 @@ import { CliError } from "../errors.js";
 import { fsStep, writeFileAtomic } from "../fs.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 
-// zzpersona mod install|uninstall: the Claude Code mod, registered through a local folder
+// donn mod install|uninstall: the Claude Code mod, registered through a local folder
 // marketplace that Claude Code reads in place. See docs/planning/09-mod-claude-code.md §1.
 
-export const MOD_ID = "zzpersona@zzpersona";
+export const MOD_ID = "donn@donn";
 
 /** The built mod this CLI ships. */
 export function bundledMod(): { dir: string; version: string } {
   const pkg = createRequire(import.meta.url).resolve(
-    "@zzpersona/mod-claude-code/package.json",
+    "@getdonn/mod-claude-code/package.json",
   );
   const { version } = createRequire(import.meta.url)(pkg) as {
     version: string;
@@ -77,7 +77,7 @@ export async function modInstall(
   if (!existsSync(join(source.dir, "hooks/register.js"))) {
     throw new CliError(
       "mod-install",
-      `the mod is not built (${source.dir} is missing); build @zzpersona/mod-claude-code first`,
+      `the mod is not built (${source.dir} is missing); build @getdonn/mod-claude-code first`,
     );
   }
   await fsStep(plugin, async () => {
@@ -90,9 +90,9 @@ export async function modInstall(
       marketplace,
       `${JSON.stringify(
         {
-          name: "zzpersona",
-          owner: { name: "zzpersona" },
-          plugins: [{ name: "zzpersona", source: "./plugin" }],
+          name: "donn",
+          owner: { name: "donn" },
+          plugins: [{ name: "donn", source: "./plugin" }],
         },
         null,
         2,
@@ -118,12 +118,10 @@ export async function modInstall(
       )
     ).argv,
   ];
-  // The mod runs `zzpersona` from PATH, without a shell: an alias will not do.
-  const warnings = findOnPath("zzpersona", io.env)
+  // The mod runs `donn` from PATH, without a shell: an alias will not do.
+  const warnings = findOnPath("donn", io.env)
     ? []
-    : [
-        `zzpersona is not on PATH, so the mod cannot run it; ${CLI_ON_PATH_FIX}`,
-      ];
+    : [`donn is not on PATH, so the mod cannot run it; ${CLI_ON_PATH_FIX}`];
   io.stdout.write(
     options.json
       ? `${JSON.stringify({ installed: plugin, ran, warnings }, null, 2)}\n`
@@ -164,7 +162,7 @@ export async function modUninstall(
       (
         await claude(
           io,
-          ["plugin", "marketplace", "remove", "zzpersona"],
+          ["plugin", "marketplace", "remove", "donn"],
           gone,
           "mod-uninstall",
         )

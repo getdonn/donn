@@ -1,5 +1,5 @@
 {
-  "name": "@zzpersona/adapter-claude-code",
+  "name": "@getdonn/adapter-claude-code",
   "version": "0.2.0",
   "private": true,
   "description": "Claude Code harness adapter: compiles a resolved persona for the relaunch path",
@@ -21,13 +21,13 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@zzpersona/adapter-sdk": "workspace:*",
-    "@zzpersona/spec": "workspace:*"
+    "@getdonn/adapter-sdk": "workspace:*",
+    "@getdonn/spec": "workspace:*"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"

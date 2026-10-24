@@ -1,4 +1,4 @@
-import type { ErrorCode } from "@zzpersona/spec";
+import type { ErrorCode } from "@getdonn/spec";
 
 /** A persona stack that cannot be resolved. `details` names the refs and paths involved. */
 export class ResolveError extends Error {

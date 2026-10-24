@@ -17,7 +17,7 @@ afterEach(() => s.cleanup());
 
 const buildDirOf = (stdout: string) => /^build: (.+)$/m.exec(stdout)?.[1];
 
-describe("zzpersona compile", () => {
+describe("donn compile", () => {
   it("writes the Claude Code build for the project persona", async () => {
     const r = await zz(["compile"], { cwd: s.repo, home: s.home });
     expect(r.code, r.stderr).toBe(0);
@@ -66,7 +66,7 @@ describe("zzpersona compile", () => {
   });
 
   it("names a missing instruction file by its virtual and physical path", async () => {
-    const file = join(s.repo, ".zzpersona/instructions/checkout-overview.md");
+    const file = join(s.repo, ".donn/instructions/checkout-overview.md");
     rmSync(file);
     const r = await zz(["compile"], { cwd: s.repo, home: s.home });
     expect(r.code).toBe(1);

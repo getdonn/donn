@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolve, ResolveError } from "@zzpersona/resolver";
-import type { ResolveResult } from "@zzpersona/spec";
+import { resolve, ResolveError } from "@getdonn/resolver";
+import type { ResolveResult } from "@getdonn/spec";
 import {
   createLocalStore,
   findProject,
   type LocalStore,
-} from "@zzpersona/store-local";
-import { normaliseUrl, readIndex, withRegistry } from "@zzpersona/store-remote";
+} from "@getdonn/store-local";
+import { normaliseUrl, readIndex, withRegistry } from "@getdonn/store-remote";
 import type { CliIo } from "./cli.js";
 import { loadConfig, type Config } from "./config.js";
 import { CliError } from "./errors.js";
@@ -17,7 +17,7 @@ import { readState, type State } from "./state.js";
 
 export interface Context {
   home: string;
-  /** The project's .zzpersona directory, when inside a project. */
+  /** The project's .donn directory, when inside a project. */
   projectDir?: string;
   /** Local layers, with the registry cache in front when one is configured and pulled. */
   store: LocalStore;
@@ -27,9 +27,9 @@ export interface Context {
   config: Config;
 }
 
-/** ZZPERSONA_HOME, or ~/.zzpersona. An empty ZZPERSONA_HOME counts as unset. */
+/** DONN_HOME, or ~/.donn. An empty DONN_HOME counts as unset. */
 export function homeOf(io: CliIo): string {
-  return io.env.ZZPERSONA_HOME || join(io.env.HOME ?? homedir(), ".zzpersona");
+  return io.env.DONN_HOME || join(io.env.HOME ?? homedir(), ".donn");
 }
 
 export async function createContext(
@@ -104,7 +104,7 @@ export async function resolvePersona(
     ) {
       throw new CliError(
         "stale-switch",
-        `${selection.ref} (set by zzpersona switch) no longer exists; run \`zzpersona switch --clear${selection.source === "default" ? " --default" : ""}\` to remove it`,
+        `${selection.ref} (set by donn switch) no longer exists; run \`donn switch --clear${selection.source === "default" ? " --default" : ""}\` to remove it`,
         { ref: selection.ref, source: selection.source },
       );
     }

@@ -4,11 +4,12 @@
 > roles; see `18-registry-contract.md` → "Phase 3 decomposition"). The server half is the private
 > repo's spec 02. Builds on `18-registry-contract.md` and `19-publish-engine.md`. Built as a
 > `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
 Developers sign in to a registry with their company identity instead of pasting a token:
-`zzpersona login <url>` opens a browser, the person signs in with the organisation's identity
+`donn login <url>` opens a browser, the person signs in with the organisation's identity
 provider, and the CLI receives a session token that expires. Publishing becomes a privilege granted
 per layer path (`publish`, and `lock` for changing locks), so a registry can be shared by a whole
 organisation. This spec adds what the contract and the CLI need; the server enforces it.
@@ -17,7 +18,7 @@ organisation. This spec adds what the contract and the CLI need; the server enfo
 
 | Decision | Rejected | Why |
 |---|---|---|
-| The server brokers the login: the CLI starts a login, the person finishes it in a browser on the server, the CLI polls and receives a server-issued `zzp_` session token | The CLI runs OIDC against the identity provider itself; both | Works with every OIDC provider (no device-flow support needed); the CLI only needs the server URL; provider secrets stay on the server; revoking a person is one row |
+| The server brokers the login: the CLI starts a login, the person finishes it in a browser on the server, the CLI polls and receives a server-issued `donn_` session token | The CLI runs OIDC against the identity provider itself; both | Works with every OIDC provider (no device-flow support needed); the CLI only needs the server URL; provider secrets stay on the server; revoking a person is one row |
 | Role grants (`publish`, `lock` per layer path) live in the server, managed with its admin CLI, naming identity-provider groups, users or service tokens | Grants declared in the org persona; grants derived from group names | Explicit, auditable, no bootstrap circularity, no access list inside every build |
 | Every signed-in principal of the org may view every layer | Explicit view grants; view grants that include ancestors | Layers hold `secret://` references, never values; a layer whose ancestors are hidden cannot resolve |
 | Responses are read tolerantly from this release on: unknown fields are ignored and unknown problem codes kept | Strict response schemas | Spec 18's strict schemas make any added field a `registry-protocol` error in older CLIs; servers will keep adding fields |
@@ -40,7 +41,7 @@ All under `/v1/auth`, no bearer token required.
   forbidden` (the person finished but was refused, e.g. their domain is not allowed; `detail` says
   why).
 - A registry without an identity provider answers `404 not-found` on `POST /v1/auth/logins`; the
-  CLI then says `this registry has no sign-in; use zzpersona login <url> --token-stdin`.
+  CLI then says `this registry has no sign-in; use donn login <url> --token-stdin`.
 - A login is redeemed once; its token is returned once.
 
 ## 2. Contract changes
@@ -62,16 +63,16 @@ All under `/v1/auth`, no bearer token required.
 
 ## 3. CLI
 
-- `zzpersona login <url>` (no token): starts a login, prints `Open <verifyUrl> and confirm the code
+- `donn login <url>` (no token): starts a login, prints `Open <verifyUrl> and confirm the code
   <code>`, opens the browser (`open`, `xdg-open`, or `start`; never with `--no-browser` or when
   `CI` is set), polls at `interval` (adding 5 s on `slow-down`) until a token or `expiresIn`, then
   stores the token as today (keychain, file fallback) and prints `logged in to <url> as <subject>
   (session until <date>)`. Ctrl-C stops cleanly. `--token-stdin` is unchanged.
-- `zzpersona whoami` prints `<subject> at <url>` plus, when present, `session until <date>` and the
+- `donn whoami` prints `<subject> at <url>` plus, when present, `session until <date>` and the
   roles (`publish team/payments, lock org`); `--json` returns the whole answer.
 - `publish` shows `forbidden` with the hint `ask a registry admin for publish on <path>` (or `lock`).
 - Freshness: an expired session is `401 unauthorized`, already reported as `registry refused the
-  token …; zzpersona login <url>`.
+  token …; donn login <url>`.
 - `doctor` `registry-token` shows the session's expiry and warns within 2 days of it.
 
 ## 4. Mock and conformance kit

@@ -10,15 +10,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Opt-in (ZZP_E2E_SERVICE=1, macOS only; separate from ZZP_E2E because it touches the user's
-// launchd domain): the built `zzpersona` installed as a launchd agent under a scratch label, with
-// a temp HOME (so the plist lands in a temp folder) and a temp ZZPERSONA_HOME. The real
-// `zzpersona.daemon` service, ~/Library/LaunchAgents and ~/.zzpersona are never touched. See
+// Opt-in (DONN_E2E_SERVICE=1, macOS only; separate from DONN_E2E because it touches the user's
+// launchd domain): the built `donn` installed as a launchd agent under a scratch label, with
+// a temp HOME (so the plist lands in a temp folder) and a temp DONN_HOME. The real
+// `dev.getdonn.daemon` service, ~/Library/LaunchAgents and ~/.donn are never touched. See
 // docs/planning/16-daemon-service.md §4.
 
 const PACKAGE = join(import.meta.dirname, "..");
 const BIN = join(PACKAGE, "dist/bin.js");
-const LABEL = `zzpersona.daemon.e2e-${Math.random().toString(36).slice(2, 10)}`;
+const LABEL = `dev.getdonn.daemon.e2e-${Math.random().toString(36).slice(2, 10)}`;
 const UID = process.getuid?.() ?? -1;
 const TARGET = `gui/${UID}/${LABEL}`;
 
@@ -35,16 +35,16 @@ interface Status {
   service?: { installed: boolean; path: string; managed: boolean };
 }
 
-function zzpersona(args: string[]) {
+function donn(args: string[]) {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     HOME: home,
-    ZZPERSONA_HOME: zzhome,
-    ZZPERSONA_SERVICE_LABEL: LABEL,
+    DONN_HOME: zzhome,
+    DONN_SERVICE_LABEL: LABEL,
     PATH: `${bin}:${process.env.PATH ?? ""}`,
   };
-  delete env.ZZPERSONA_SERVICE;
-  const result = spawnSync("zzpersona", args, {
+  delete env.DONN_SERVICE;
+  const result = spawnSync("donn", args, {
     cwd: work,
     env,
     encoding: "utf8",
@@ -52,14 +52,13 @@ function zzpersona(args: string[]) {
   });
   if (result.status !== 0) {
     throw new Error(
-      `zzpersona ${args.join(" ")} exited ${result.status}: ${result.stderr}`,
+      `donn ${args.join(" ")} exited ${result.status}: ${result.stderr}`,
     );
   }
   return result.stdout;
 }
 
-const status = () =>
-  JSON.parse(zzpersona(["daemon", "status", "--json"])) as Status;
+const status = () => JSON.parse(donn(["daemon", "status", "--json"])) as Status;
 
 const loaded = () =>
   spawnSync("launchctl", ["print", TARGET], { stdio: "ignore" }).status === 0;
@@ -77,10 +76,10 @@ async function until<T>(
 }
 
 describe.skipIf(
-  process.env.ZZP_E2E_SERVICE !== "1" || process.platform !== "darwin",
-)("e2e: zzpersona daemon install (launchd)", () => {
+  process.env.DONN_E2E_SERVICE !== "1" || process.platform !== "darwin",
+)("e2e: donn daemon install (launchd)", () => {
   beforeAll(() => {
-    work = mkdtempSync(join(tmpdir(), "zzp-svc-"));
+    work = mkdtempSync(join(tmpdir(), "donn-svc-"));
     home = join(work, "h");
     zzhome = join(work, "z");
     bin = join(work, "bin");
@@ -89,7 +88,7 @@ describe.skipIf(
     mkdirSync(bin);
     execFileSync("pnpm", ["build"], { cwd: PACKAGE, stdio: "ignore" });
     writeFileSync(
-      join(bin, "zzpersona"),
+      join(bin, "donn"),
       `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(BIN)} "$@"\n`,
       { mode: 0o755 },
     );
@@ -104,9 +103,11 @@ describe.skipIf(
   it("installs, survives kill -9, stays stopped after stop, uninstalls", async () => {
     const plist = join(home, "Library/LaunchAgents", `${LABEL}.plist`);
 
-    const installed = JSON.parse(
-      zzpersona(["daemon", "install", "--json"]),
-    ) as { installed: boolean; path: string; pid: number };
+    const installed = JSON.parse(donn(["daemon", "install", "--json"])) as {
+      installed: boolean;
+      path: string;
+      pid: number;
+    };
     expect(installed.installed).toBe(true);
     expect(installed.path).toBe(plist);
     expect(existsSync(plist)).toBe(true);
@@ -134,13 +135,14 @@ describe.skipIf(
 
     // A clean stop exits 0, so launchd leaves it stopped. Longer than launchd's ~10 s respawn
     // throttle, which a wrongly restarted daemon would wait out first.
-    zzpersona(["daemon", "stop", "--json"]);
+    donn(["daemon", "stop", "--json"]);
     await new Promise((resolve) => setTimeout(resolve, 12_000));
     expect(status().running).toBe(false);
 
-    const removed = JSON.parse(
-      zzpersona(["daemon", "uninstall", "--json"]),
-    ) as { installed: boolean; removed: boolean };
+    const removed = JSON.parse(donn(["daemon", "uninstall", "--json"])) as {
+      installed: boolean;
+      removed: boolean;
+    };
     expect(removed).toMatchObject({ installed: false, removed: true });
     expect(existsSync(plist)).toBe(false);
     expect(await until(5_000, () => (loaded() ? undefined : true))).toBe(true);

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolve } from "@zzpersona/resolver";
-import { createLocalStore } from "@zzpersona/store-local";
+import { resolve } from "@getdonn/resolver";
+import { createLocalStore } from "@getdonn/store-local";
 import { cacheFolder, type CacheIndex } from "./cache.js";
 import { withRegistry } from "./mount.js";
 import { cleanupTemps, persona, put, temp } from "./testing/helpers.js";

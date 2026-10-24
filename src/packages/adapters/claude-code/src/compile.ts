@@ -11,8 +11,8 @@ import {
   isContainedPath,
   type ReportEntry,
   type SecretRef,
-} from "@zzpersona/adapter-sdk";
-import type { HookEvent, McpServer, ResolvedPersona } from "@zzpersona/spec";
+} from "@getdonn/adapter-sdk";
+import type { HookEvent, McpServer, ResolvedPersona } from "@getdonn/spec";
 import { capabilities } from "./capabilities.js";
 
 // A resolved persona as a Claude Code build for the relaunch path: a plugin (skills, hooks), a
@@ -43,7 +43,7 @@ const asJson = (value: unknown): FileEntry => ({
 
 /** `/` becomes `--`: one-to-one, since a ref segment never contains `--`. */
 export const pluginName = (personaId: string) =>
-  `zzp-${personaId.replaceAll("/", "--")}`;
+  `donn-${personaId.replaceAll("/", "--")}`;
 
 /**
  * The instructions, headed by the persona so a live switch can name the text it supersedes
@@ -69,7 +69,7 @@ function systemPrompt(
       `## Knowledge sources\n${ir.knowledge.map((k) => `- ${k.id}: ${k.source}`).join("\n")}`,
     );
   }
-  return `${[`## zzpersona persona: ${personaId}`, ...parts].join("\n\n")}\n`;
+  return `${[`## donn persona: ${personaId}`, ...parts].join("\n\n")}\n`;
 }
 
 /** Servers in Claude Code's .mcp.json shape, with secret refs swapped for env placeholders. */
@@ -80,7 +80,7 @@ function mcpConfig(ir: ResolvedPersona, dropped: ReportEntry[]) {
     if (!value.startsWith("secret://")) return value;
     let name = placeholder.get(value);
     if (name === undefined) {
-      name = `ZZP_SECRET_${placeholder.size + 1}`;
+      name = `DONN_SECRET_${placeholder.size + 1}`;
       placeholder.set(value, name);
       secretEnv[name] = value as SecretRef;
     }

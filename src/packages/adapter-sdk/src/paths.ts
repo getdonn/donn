@@ -1,4 +1,4 @@
-import type { ResolvedPersona } from "@zzpersona/spec";
+import type { ResolvedPersona } from "@getdonn/spec";
 
 /**
  * Whether a relative path stays inside its root: not empty, not absolute (POSIX, drive letter,

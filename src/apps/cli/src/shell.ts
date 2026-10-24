@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 
 // What the user's own shell runs for a command, to explain a harness that PATH does not find:
 // an alias (which a spawn without a shell ignores) or a PATH change this process predates.
@@ -72,7 +72,7 @@ const real = (path: string) => {
 };
 
 /**
- * Why the shell runs a different `binary` than PATH gives zzpersona, and how to fix it, or
+ * Why the shell runs a different `binary` than PATH gives donn, and how to fix it, or
  * undefined when there is nothing to explain. `onPath` is what PATH finds, if anything.
  */
 export function shellHint(
@@ -89,13 +89,13 @@ export function shellHint(
     if (onPath !== undefined) {
       return real(command) === real(onPath)
         ? undefined
-        : `your shell's ${binary} alias runs ${command}, but zzpersona runs ${onPath} (PATH)`;
+        : `your shell's ${binary} alias runs ${command}, but donn runs ${onPath} (PATH)`;
     }
     const fix =
       basename(command) === binary
         ? `export PATH="${dirname(command)}:$PATH" in your shell's startup file`
         : `put a ${binary} on PATH that runs ${command}`;
-    return `your shell has ${binary} as an alias for ${lookup.target}; zzpersona runs the ${binary} on PATH, which aliases don't change: ${fix}`;
+    return `your shell has ${binary} as an alias for ${lookup.target}; donn runs the ${binary} on PATH, which aliases don't change: ${fix}`;
   }
   if (lookup.kind === "path" && onPath === undefined) {
     const name = basename(shell) || "your shell";

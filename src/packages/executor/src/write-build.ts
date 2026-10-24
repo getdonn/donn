@@ -14,8 +14,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
-import type { CompileOutput } from "@zzpersona/adapter-sdk";
-import type { LocalStore } from "@zzpersona/store-local";
+import type { CompileOutput } from "@getdonn/adapter-sdk";
+import type { LocalStore } from "@getdonn/store-local";
 import { ExecutorError } from "./errors.js";
 import { isAlive } from "./process.js";
 

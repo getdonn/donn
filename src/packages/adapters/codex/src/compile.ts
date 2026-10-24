@@ -8,8 +8,8 @@ import {
   type HarnessAdapter,
   type ReportEntry,
   type SecretRef,
-} from "@zzpersona/adapter-sdk";
-import type { McpServer, ResolvedPersona } from "@zzpersona/spec";
+} from "@getdonn/adapter-sdk";
+import type { McpServer, ResolvedPersona } from "@getdonn/spec";
 import { capabilities } from "./capabilities.js";
 import type { TomlInput } from "./toml.js";
 
@@ -30,11 +30,11 @@ export interface LaunchSpec {
 
 const SANDBOXES = ["read-only", "workspace-write", "danger-full-access"];
 const APPROVALS = ["on-request", "never"];
-const LOOSER = "looser than zzpersona's default";
+const LOOSER = "looser than donn's default";
 
 // Secrets reach Codex's own environment under their names: these would change how it runs.
 const RESERVED =
-  /^(PATH|HOME|SHELL|USER|TMPDIR|NODE_OPTIONS|(HTTPS?|ALL|NO)_PROXY|(CODEX|OPENAI|ZZPERSONA|ZZP)_.*)$/i;
+  /^(PATH|HOME|SHELL|USER|TMPDIR|NODE_OPTIONS|(HTTPS?|ALL|NO)_PROXY|(CODEX|OPENAI|DONN)_.*)$/i;
 
 const isSecret = (value: string) => value.startsWith("secret://");
 
@@ -68,7 +68,7 @@ function instructions(
   ];
   if (toolRules.length > 0)
     parts.push(["## Tool rules", ...toolRules].join("\n\n"));
-  return `${[`## zzpersona persona: ${personaId}`, ...parts].join("\n\n")}\n`;
+  return `${[`## donn persona: ${personaId}`, ...parts].join("\n\n")}\n`;
 }
 
 function servers(ir: ResolvedPersona, entries: ReportEntry[]) {
@@ -119,7 +119,7 @@ function servers(ir: ResolvedPersona, entries: ReportEntry[]) {
     if (reserved) {
       drop(
         name,
-        `${reserved} is a variable Codex or zzpersona reads itself; Codex forwards secrets by name, so it would override it`,
+        `${reserved} is a variable Codex or donn reads itself; Codex forwards secrets by name, so it would override it`,
       );
       continue;
     }
@@ -208,8 +208,7 @@ export function compile(
       entries.push({
         path: `targets.codex.${key}`,
         outcome: "dropped",
-        reason:
-          "not a Codex setting zzpersona knows (sandbox, approval, model)",
+        reason: "not a Codex setting donn knows (sandbox, approval, model)",
       });
     }
   }

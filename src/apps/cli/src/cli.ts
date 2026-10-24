@@ -1,5 +1,5 @@
-import type { Probe } from "@zzpersona/adapter-sdk";
-import type { runPlan } from "@zzpersona/executor";
+import type { Probe } from "@getdonn/adapter-sdk";
+import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
@@ -42,7 +42,7 @@ import type { ServiceManager } from "./daemon/service.js";
 import type { ManagedEnv } from "./managed/env.js";
 import { CliError, report } from "./errors.js";
 
-// The zzpersona command line. Everything goes through createCli(io) so tests run commands
+// The donn command line. Everything goes through createCli(io) so tests run commands
 // in-process. See docs/planning/06-cli-core-loop.md, section 4.
 
 const LOCAL_HELP =
@@ -60,7 +60,7 @@ export interface CliIo {
   runPlan?: typeof runPlan;
   /** Injected in tests; defaults to Date.now. */
   now?: () => number;
-  /** Injected in tests; defaults to spawning `zzpersona daemon run` detached. */
+  /** Injected in tests; defaults to spawning `donn daemon run` detached. */
   spawnDaemon?: (home: string) => Promise<void>;
   /** Injected in tests; defaults to the platform's service manager (launchd, systemd). */
   service?: ServiceManager;
@@ -103,7 +103,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           if (passthrough.length > 0 && !options.passthrough) {
             throw new CliError(
               "unexpected-passthrough",
-              "arguments after `--` are only passed through by zzpersona claude and zzpersona codex",
+              "arguments after `--` are only passed through by donn claude and donn codex",
               { args: passthrough },
             );
           }
@@ -124,7 +124,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         return 0;
       }
 
-      const program = new Command("zzpersona")
+      const program = new Command("donn")
         .description("Compile personas to AI coding harnesses and launch them")
         .exitOverride()
         .configureOutput({
@@ -145,7 +145,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .option("--explain", "print every value with the layer that set it")
         .option("--json", "print the resolve result as JSON")
-        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--no-overlay", "skip ~/.donn/overrides.yaml")
         .option("--local", LOCAL_HELP)
         .action((persona: string | undefined, options) =>
           handle(options.json, () => resolveCommand(io, persona, options)),
@@ -162,7 +162,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .argument("[other]", "the persona to compare to, when two are given")
         .option("--json", "print the changes as JSON")
-        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--no-overlay", "skip ~/.donn/overrides.yaml")
         .option("--local", LOCAL_HELP)
         .action((persona: string, other: string | undefined, options) =>
           handle(options.json, () => diffCommand(io, persona, other, options)),
@@ -178,7 +178,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
 
       const mod = program
         .command("mod")
-        .description("Install or remove the zzpersona mod for Claude Code");
+        .description("Install or remove the donn mod for Claude Code");
       mod
         .command("install")
         .description("Register the mod with Claude Code (user scope)")
@@ -197,13 +197,10 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
       program
         .command("live")
         .description(
-          "Switch a running zzpersona claude session's persona (skills, hooks, agents, instructions)",
+          "Switch a running donn claude session's persona (skills, hooks, agents, instructions)",
         )
         .argument("[persona]", "the persona to switch to")
-        .requiredOption(
-          "--session <dir>",
-          "the session folder (ZZPERSONA_SESSION)",
-        )
+        .requiredOption("--session <dir>", "the session folder (DONN_SESSION)")
         .option("--show", "print the session's live state instead of switching")
         .option("--json", "print the live state as JSON")
         .action((persona: string | undefined, options) =>
@@ -238,7 +235,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           "--json",
           "print { buildDir, report, secretRefs, plan } as JSON",
         )
-        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--no-overlay", "skip ~/.donn/overrides.yaml")
         .option("--local", LOCAL_HELP)
         .action((persona: string | undefined, options) =>
           handle(options.json, () => compileCommand(io, persona, options)),
@@ -277,7 +274,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           "print the build and plan; write and launch nothing",
         )
         .option("--json", "print the plan as JSON; launches nothing")
-        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--no-overlay", "skip ~/.donn/overrides.yaml")
         .action((persona: string | undefined, options) =>
           handle(
             options.json,
@@ -298,7 +295,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           "print the build and plan; write and launch nothing",
         )
         .option("--json", "print the plan as JSON; launches nothing")
-        .option("--no-overlay", "skip ~/.zzpersona/overrides.yaml")
+        .option("--no-overlay", "skip ~/.donn/overrides.yaml")
         .action((persona: string | undefined, options) =>
           handle(
             options.json,
@@ -338,7 +335,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .option(
           "--extends <persona>",
-          "write .zzpersona/persona.yaml here extending it",
+          "write .donn/persona.yaml here extending it",
         )
         .option(
           "--force",
@@ -429,7 +426,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           "an org, area or team layer (default: the org)",
         )
         .option("--os <os>", "macos, linux or windows (default: this OS)")
-        .option("--out <dir>", "where to write the bundle", "zzpersona-managed")
+        .option("--out <dir>", "where to write the bundle", "donn-managed")
         .option("--from-registry", "download the bundle from the registry")
         .option("--json", "print { out, report } as JSON")
         .action((options) =>
@@ -440,7 +437,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .description(
           "Install a bundle into Claude Code's policy folder (needs administrator rights)",
         )
-        .argument("<dir>", "a bundle folder from zzpersona managed build")
+        .argument("<dir>", "a bundle folder from donn managed build")
         .option("--yes", "do not ask before writing")
         .option("--json", "print { root, written, replaced, removed } as JSON")
         .action((dir: string, options) =>

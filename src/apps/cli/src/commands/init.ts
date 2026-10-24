@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { createLocalStore } from "@zzpersona/store-local";
+import { createLocalStore } from "@getdonn/store-local";
 import { isMap, parseDocument, stringify } from "yaml";
 import type { CliIo } from "../cli.js";
 import { expandPath, loadConfig } from "../config.js";
@@ -10,7 +10,7 @@ import { CliError } from "../errors.js";
 import { fsStep, writeFileAtomic } from "../fs.js";
 import { selectPersona } from "../select.js";
 
-// zzpersona init, flags only: --personas sets up this machine, --extends sets up a project.
+// donn init, flags only: --personas sets up this machine, --extends sets up a project.
 // See docs/planning/07-cli-daily-use.md, section 2.
 
 export interface InitOptions {
@@ -21,8 +21,8 @@ export interface InitOptions {
 }
 
 const STARTER = `# A starter persona. Every persona in this folder can extend it with \`extends: [org/base]\`.
-# The persona format and how layers merge: docs/planning/02-persona-spec.md in zzpersona.
-apiVersion: zzpersona/v0
+# The persona format and how layers merge: docs/planning/02-persona-spec.md in donn.
+apiVersion: donn/v0
 kind: Persona
 metadata:
   name: base
@@ -133,7 +133,7 @@ async function initProject(
     );
   }
   await resolvePersona(ctx, selection, false);
-  const file = join(io.cwd, ".zzpersona/persona.yaml");
+  const file = join(io.cwd, ".donn/persona.yaml");
   const existed = existsSync(file);
   if (existed && !force) {
     throw new CliError(
@@ -146,7 +146,7 @@ async function initProject(
     writeFileAtomic(
       file,
       stringify({
-        apiVersion: "zzpersona/v0",
+        apiVersion: "donn/v0",
         kind: "Persona",
         metadata: { name: basename(io.cwd) },
         extends: [selection.ref],
@@ -165,8 +165,8 @@ export async function initCommand(
       "init-needs-flags",
       [
         "init needs --personas and/or --extends:",
-        "  zzpersona init --personas ~/personas     set up this machine's personas folder",
-        "  zzpersona init --extends team/payments   make this directory a project",
+        "  donn init --personas ~/personas     set up this machine's personas folder",
+        "  donn init --extends team/payments   make this directory a project",
       ].join("\n"),
     );
   }

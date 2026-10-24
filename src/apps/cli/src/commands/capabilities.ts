@@ -1,4 +1,4 @@
-import type { HarnessAdapter } from "@zzpersona/adapter-sdk";
+import type { HarnessAdapter } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import {
   capabilitiesDoc,
@@ -10,7 +10,7 @@ import {
 import { createContext } from "../context.js";
 import { allAdapters, findAdapter } from "../plugins.js";
 
-// `zzpersona capabilities`: what each harness can carry, from the adapters' own matrices.
+// `donn capabilities`: what each harness can carry, from the adapters' own matrices.
 // See docs/planning/13-capability-matrix.md.
 
 export interface CapabilitiesOptions {

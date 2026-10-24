@@ -2,9 +2,9 @@ import type {
   ActivationPlan,
   CompileOutput,
   Detection,
-} from "@zzpersona/adapter-sdk";
-import { buildDirFor } from "@zzpersona/executor";
-import type { ResolveResult } from "@zzpersona/spec";
+} from "@getdonn/adapter-sdk";
+import { buildDirFor } from "@getdonn/executor";
+import type { ResolveResult } from "@getdonn/spec";
 import type { CliIo } from "./cli.js";
 import { printWarnings, resolvePersona, type Context } from "./context.js";
 import { findAdapter } from "./plugins.js";

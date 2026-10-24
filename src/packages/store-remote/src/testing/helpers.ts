@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach } from "vitest";
-import type { BundleFile } from "@zzpersona/registry-api";
+import type { BundleFile } from "@getdonn/registry-api";
 
 const dirs: string[] = [];
 
@@ -15,7 +15,7 @@ export function cleanupTemps(): void {
 }
 
 export function temp(): string {
-  const dir = mkdtempSync(join(tmpdir(), "zzp-remote-"));
+  const dir = mkdtempSync(join(tmpdir(), "donn-remote-"));
   dirs.push(dir);
   return dir;
 }
@@ -26,7 +26,7 @@ export function put(path: string, content = ""): void {
 }
 
 export const persona = (name: string, extra = ""): string =>
-  `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
+  `apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: ${name}\n${extra}`;
 
 export const file = (path: string, text: string): BundleFile => ({
   path,
