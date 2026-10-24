@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -121,7 +122,7 @@ describe("smoke", () => {
     });
   });
 
-  it("does not leak the caller's DONN_*, XDG_* or CLAUDE_CONFIG_DIR", async () => {
+  it("does not leak the caller's DONN_*, XDG_*, npm config or NODE_OPTIONS", async () => {
     const leaked = {
       DONN_PERSONA: "x",
       DONN_NO_DAEMON: "1",
@@ -129,6 +130,9 @@ describe("smoke", () => {
       CLAUDE_CONFIG_DIR: "/elsewhere",
       XDG_CONFIG_HOME: "/elsewhere",
       XDG_RUNTIME_DIR: "/elsewhere",
+      npm_config_registry: "http://elsewhere/",
+      NPM_CONFIG_USERCONFIG: "/elsewhere/npmrc",
+      NODE_OPTIONS: "--require /elsewhere/x.js",
     };
     const saved = Object.fromEntries(
       Object.keys(leaked).map((k) => [k, process.env[k]]),
@@ -149,6 +153,57 @@ describe("smoke", () => {
         else process.env[k] = v;
       }
     }
+  });
+
+  it("--node runs every donn call as <node> <donn bin> ...", async () => {
+    const node = join(await mkdtemp(join(tmpdir(), "smoke-node-")), "node");
+    await writeFile(node, "");
+    const handled = fakeRunner([
+      [(c) => c === "npm", ok("")],
+      [(c, a) => c === node && a[1] === "--version", ok("1.2.3\n")],
+      [
+        (c, a) => c === node && a[1] === "mod",
+        (_c, _a, o) => {
+          const f = join(
+            o?.env?.["DONN_HOME"] ?? "",
+            "mod/plugin/.claude-plugin/plugin.json",
+          );
+          mkdirSync(dirname(f), { recursive: true });
+          writeFileSync(f, "{}");
+          return ok();
+        },
+      ],
+      [(c) => c === node, ok()],
+    ]);
+    await smoke({
+      root: await rootWith("1.2.3"),
+      source: { tarballs },
+      run: handled,
+      node,
+    });
+    const donnCalls = handled.calls.slice(1);
+    expect(donnCalls).toHaveLength(7);
+    for (const c of donnCalls) {
+      expect(c.cmd).toBe(node);
+      expect(c.args[0]?.endsWith("/node_modules/.bin/donn")).toBe(true);
+    }
+    expect(donnCalls[0]?.args.slice(1)).toEqual(["--version"]);
+  });
+
+  it("--node must exist", async () => {
+    const run = fakeRunner(handlers());
+    await expect(
+      smoke({
+        root: await rootWith("1.2.3"),
+        source: { tarballs },
+        run,
+        node: "/no/such/node",
+      }),
+    ).rejects.toMatchObject({
+      code: "smoke",
+      message: "node: /no/such/node not found",
+    });
+    expect(run.calls).toEqual([]);
   });
 
   it("a missing plugin.json fails", async () => {

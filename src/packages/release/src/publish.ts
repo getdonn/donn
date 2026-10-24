@@ -30,6 +30,8 @@ export interface PublishSummary {
   dryRun: boolean;
   published: string[];
   skipped: string[];
+  /** The part of `skipped` that npm refused as already published at publish time. */
+  conflicted?: string[];
   failed?: { name: string; error: string };
 }
 
@@ -41,7 +43,9 @@ const MIN_NPM = [11, 5, 1] as const;
 
 export function isNpmjs(registry: string): boolean {
   try {
-    return new URL(registry).hostname.toLowerCase() === "registry.npmjs.org";
+    // A trailing dot is the same host (`registry.npmjs.org.`).
+    const host = new URL(registry).hostname.toLowerCase().replace(/\.$/, "");
+    return host === "registry.npmjs.org";
   } catch {
     throw new ReleaseError("registry", `not a valid registry URL: ${registry}`);
   }
@@ -171,6 +175,17 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
     // Keep npm's own account (provenance / transparency-log URL) in the log.
     if (res.stderr) process.stderr.write(res.stderr);
     if (res.code !== 0) {
+      // Published meanwhile (a re-run racing, or npm's view lagging): not an error.
+      if (
+        res.stderr.includes("EPUBLISHCONFLICT") ||
+        res.stderr.includes(
+          "cannot publish over the previously published version",
+        )
+      ) {
+        summary.skipped.push(label);
+        (summary.conflicted ??= []).push(label);
+        continue;
+      }
       return stop(
         `npm publish exited ${res.code}: ${res.stderr.trim().slice(0, 500)}`,
       );

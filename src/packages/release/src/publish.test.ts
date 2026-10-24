@@ -204,6 +204,7 @@ describe("publish", () => {
       NPMJS,
       "HTTPS://REGISTRY.NPMJS.ORG/",
       `${NPMJS}//`,
+      "https://registry.npmjs.org./",
     ]) {
       const run = runner({ ls });
       await expect(
@@ -269,6 +270,55 @@ describe("publish", () => {
     expect(out.published).toEqual([]);
     expect(out.failed?.name).toBe("@getdonn/a@1.0.0");
     expect(out.failed?.error).toContain("E403");
+    expect(npmCalls(run, "publish")).toHaveLength(1);
+  });
+
+  it.each([
+    "npm error code EPUBLISHCONFLICT\nnpm error 403 Forbidden\n",
+    "npm error You cannot publish over the previously published versions: 1.0.0.\n",
+  ])(
+    "a publish npm refuses as already published is skipped: %s",
+    async (stderr) => {
+      const { root, ls } = repo();
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const run = runner({
+        ls,
+        publish: (tarball) =>
+          tarball.endsWith("/a/out.tgz")
+            ? { code: 1, stdout: "", stderr }
+            : ok(),
+      });
+      const out = await publish({
+        root,
+        registry: LOCAL,
+        dryRun: false,
+        env: {},
+        run,
+      });
+      expect(out.failed).toBeUndefined();
+      expect(out.skipped).toEqual(["@getdonn/a@1.0.0"]);
+      expect(out.conflicted).toEqual(["@getdonn/a@1.0.0"]);
+      expect(out.published).toEqual(["@getdonn/b@1.0.0"]);
+      expect(npmCalls(run, "publish")).toHaveLength(2);
+    },
+  );
+
+  it("any other publish failure still stops", async () => {
+    const { root, ls } = repo();
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const run = runner({
+      ls,
+      publish: () => ({ code: 1, stdout: "", stderr: "npm error E500\n" }),
+    });
+    const out = await publish({
+      root,
+      registry: LOCAL,
+      dryRun: false,
+      env: {},
+      run,
+    });
+    expect(out.failed?.error).toContain("E500");
+    expect(out.conflicted).toBeUndefined();
     expect(npmCalls(run, "publish")).toHaveLength(1);
   });
 

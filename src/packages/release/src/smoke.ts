@@ -17,6 +17,8 @@ export interface SmokeOptions {
   root: string;
   source: { tarballs: Packed[] } | { registry: string };
   run: Runner;
+  /** Run `donn` with this node (`<node> <donn bin> ...`) instead of its shebang's. */
+  node?: string;
 }
 
 const CLI = "@getdonn/cli";
@@ -39,7 +41,14 @@ export async function smoke(opts: SmokeOptions): Promise<void> {
 }
 
 async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
-  const { run, source } = opts;
+  const { run, source, node } = opts;
+  if (node !== undefined) {
+    try {
+      await stat(node);
+    } catch {
+      return fail("node", `${node} not found`);
+    }
+  }
   const prefix = join(tmp, "prefix");
   const home = join(tmp, "home");
   const donnHome = join(tmp, "donn-home");
@@ -57,9 +66,17 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
   // and the config/XDG locations, so defaults land under the throwaway HOME.
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (key.startsWith("DONN_") || key.startsWith("XDG_")) delete env[key];
+    if (
+      key.startsWith("DONN_") ||
+      key.startsWith("XDG_") ||
+      key.startsWith("npm_config_") ||
+      key.startsWith("NPM_CONFIG_")
+    ) {
+      delete env[key];
+    }
   }
   delete env["CLAUDE_CONFIG_DIR"];
+  delete env["NODE_OPTIONS"];
   env["HOME"] = home;
   env["DONN_HOME"] = donnHome;
   env["PATH"] = [stubBin, process.env["PATH"] ?? ""].join(delimiter);
@@ -135,7 +152,9 @@ async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
   }
 
   async function donn(args: string[], step: string, mustPass = true) {
-    const res = await run(donnBin, args, { cwd: tmp, env });
+    const res = node
+      ? await run(node, [donnBin, ...args], { cwd: tmp, env })
+      : await run(donnBin, args, { cwd: tmp, env });
     if (mustPass && res.code !== 0) {
       fail(
         step,
