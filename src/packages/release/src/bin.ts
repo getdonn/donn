@@ -109,7 +109,7 @@ async function publishCommand(flags: Flags): Promise<number> {
       process.stdout.write(
         summary.conflicted?.includes(name)
           ? `skipped ${name} (npm already has this version)\n`
-          : `${name} skipped (already on ${summary.registry})\n`,
+          : `skipped ${name} (already on ${summary.registry})\n`,
       );
     }
     if (summary.failed) {

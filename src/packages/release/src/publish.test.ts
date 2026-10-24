@@ -273,16 +273,28 @@ describe("publish", () => {
     expect(npmCalls(run, "publish")).toHaveLength(1);
   });
 
-  it.each([
-    "npm error code EPUBLISHCONFLICT\nnpm error 403 Forbidden\n",
-    "npm error You cannot publish over the previously published versions: 1.0.0.\n",
-  ])(
-    "a publish npm refuses as already published is skipped: %s",
-    async (stderr) => {
+  describe("a publish npm refuses as already published", () => {
+    const CONFLICT =
+      "npm error code EPUBLISHCONFLICT\nnpm error 403 Forbidden\n";
+    const PHRASE =
+      "npm error You cannot publish over the previously published versions: 1.0.0.\n";
+
+    /** `a` conflicts on publish; views of `a` after the first answer `after`. */
+    async function conflictRun(
+      stderr: string,
+      after: Array<ReturnType<typeof ok>>,
+    ) {
       const { root, ls } = repo();
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const seen: string[] = [];
+      const delays: number[] = [];
       const run = runner({
         ls,
+        view: (spec) => {
+          if (spec !== "@getdonn/a@1.0.0") return e404;
+          seen.push(spec);
+          return seen.length === 1 ? e404 : (after[seen.length - 2] ?? e404);
+        },
         publish: (tarball) =>
           tarball.endsWith("/a/out.tgz")
             ? { code: 1, stdout: "", stderr }
@@ -294,14 +306,68 @@ describe("publish", () => {
         dryRun: false,
         env: {},
         run,
+        sleep: (ms) => {
+          delays.push(ms);
+          return Promise.resolve();
+        },
       });
+      return { out, run, delays };
+    }
+
+    it.each([CONFLICT, PHRASE])(
+      "is skipped when the registry serves the version: %s",
+      async (stderr) => {
+        const { out, run } = await conflictRun(stderr, [ok("1.0.0\n")]);
+        expect(out.failed).toBeUndefined();
+        expect(out.skipped).toEqual(["@getdonn/a@1.0.0"]);
+        expect(out.conflicted).toEqual(["@getdonn/a@1.0.0"]);
+        expect(out.published).toEqual(["@getdonn/b@1.0.0"]);
+        expect(npmCalls(run, "publish")).toHaveLength(2);
+        const views = npmCalls(run, "view").filter(
+          (c) => c.args[1] === "@getdonn/a@1.0.0",
+        );
+        expect(views.at(-1)?.args).toEqual([
+          "view",
+          "@getdonn/a@1.0.0",
+          "version",
+          "--registry",
+          LOCAL,
+        ]);
+      },
+    );
+
+    it("waits out read lag", async () => {
+      const { out, delays } = await conflictRun(CONFLICT, [
+        e404,
+        ok("1.0.0\n"),
+      ]);
       expect(out.failed).toBeUndefined();
-      expect(out.skipped).toEqual(["@getdonn/a@1.0.0"]);
       expect(out.conflicted).toEqual(["@getdonn/a@1.0.0"]);
-      expect(out.published).toEqual(["@getdonn/b@1.0.0"]);
-      expect(npmCalls(run, "publish")).toHaveLength(2);
-    },
-  );
+      expect(delays).toEqual([2000]);
+    });
+
+    it("stops when the registry never serves the version (unpublished)", async () => {
+      const { out, run, delays } = await conflictRun(CONFLICT, []);
+      expect(out.failed?.name).toBe("@getdonn/a@1.0.0");
+      expect(out.failed?.error).toContain("EPUBLISHCONFLICT");
+      expect(out.failed?.error).toContain(
+        "the registry does not serve @getdonn/a@1.0.0",
+      );
+      expect(out.conflicted).toBeUndefined();
+      expect(out.skipped).toEqual([]);
+      expect(delays).toEqual([2000, 2000]);
+      expect(npmCalls(run, "publish")).toHaveLength(1);
+    });
+
+    it("the phrase must be a line of its own error, not any substring", async () => {
+      const { out } = await conflictRun(
+        "npm error E500 while handling EPUBLISHCONFLICT elsewhere\n",
+        [ok("1.0.0\n")],
+      );
+      expect(out.failed?.error).toContain("E500");
+      expect(out.conflicted).toBeUndefined();
+    });
+  });
 
   it("any other publish failure still stops", async () => {
     const { root, ls } = repo();

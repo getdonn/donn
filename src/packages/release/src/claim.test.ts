@@ -317,6 +317,17 @@ describe("claim --deprecate", () => {
     ).rejects.toMatchObject({ code: "view" });
   });
 
+  it.each(["null", '["0.0.0"]', '{"version":1}', "{}", "42"])(
+    "an unexpected view shape stops: %s",
+    async (out) => {
+      const { root, ls } = repo(["@getdonn/a"]);
+      const { run } = setup({ ls, view: () => ok(out) });
+      await expect(
+        claim(base(root, run, { deprecate: true })),
+      ).rejects.toMatchObject({ code: "view" });
+    },
+  );
+
   it("without --yes it only lists", async () => {
     const { root, ls } = repo();
     const { run } = setup({ ls, view: has });
@@ -377,6 +388,13 @@ describe("claimLines", () => {
       "would claim a",
       "exists b",
       "nothing changed; pass --yes to do it",
+    ]);
+  });
+
+  it("does not say nothing to deprecate after a failure", () => {
+    const res = { ...empty, failed: [{ name: "d", error: "boom" }] };
+    expect(claimLines(res, { deprecate: true, yes: true })).toEqual([
+      "failed d: boom",
     ]);
   });
 

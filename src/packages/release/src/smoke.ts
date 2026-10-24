@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { ReleaseError } from "./errors.js";
 import type { Packed } from "./pack.js";
 import type { Runner } from "./run.js";
@@ -41,12 +41,13 @@ export async function smoke(opts: SmokeOptions): Promise<void> {
 }
 
 async function runSteps(tmp: string, opts: SmokeOptions): Promise<void> {
-  const { run, source, node } = opts;
+  const { run, source } = opts;
+  const node = opts.node === undefined ? undefined : resolve(opts.node);
   if (node !== undefined) {
     try {
-      await stat(node);
+      if (!(await stat(node)).isFile()) throw new Error("not a file");
     } catch {
-      return fail("node", `${node} not found`);
+      return fail("node", `${opts.node} not found`);
     }
   }
   const prefix = join(tmp, "prefix");

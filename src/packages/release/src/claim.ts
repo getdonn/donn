@@ -62,12 +62,25 @@ function placeholderState(spec: string, view: RunResult): Placeholder {
   } catch {
     throw viewFailed(spec, view);
   }
-  const info =
-    typeof json === "string"
-      ? { version: json, deprecated: undefined }
-      : (json as { version?: unknown; deprecated?: unknown } | null);
-  if (info?.version !== "0.0.0") return "none";
-  return typeof info.deprecated === "string" && info.deprecated !== ""
+  let version: unknown;
+  let deprecated: unknown;
+  if (typeof json === "string") {
+    version = json;
+  } else if (
+    typeof json === "object" &&
+    json !== null &&
+    !Array.isArray(json) &&
+    typeof (json as { version?: unknown }).version === "string"
+  ) {
+    ({ version, deprecated } = json as {
+      version: string;
+      deprecated?: unknown;
+    });
+  } else {
+    throw viewFailed(spec, view);
+  }
+  if (version !== "0.0.0") return "none";
+  return typeof deprecated === "string" && deprecated !== ""
     ? "deprecated"
     : "live";
 }
@@ -91,9 +104,9 @@ export function claimLines(
     for (const n of res.claimed) lines.push(`${verb} ${n}`);
     for (const n of res.existing) lines.push(`exists ${n}`);
   }
-  if (work.length === 0) {
+  if (work.length === 0 && res.failed.length === 0) {
     lines.push(`nothing to ${mode.deprecate ? "deprecate" : "claim"}`);
-  } else if (!mode.yes) {
+  } else if (!mode.yes && work.length > 0) {
     lines.push("nothing changed; pass --yes to do it");
   }
   return lines;

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -204,6 +204,39 @@ describe("smoke", () => {
       message: "node: /no/such/node not found",
     });
     expect(run.calls).toEqual([]);
+  });
+
+  it("--node must be a file, not a folder", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "smoke-node-dir-"));
+    const run = fakeRunner(handlers());
+    await expect(
+      smoke({
+        root: await rootWith("1.2.3"),
+        source: { tarballs },
+        run,
+        node: dir,
+      }),
+    ).rejects.toMatchObject({ message: `node: ${dir} not found` });
+  });
+
+  it("--node is resolved to an absolute path before it is used", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "smoke-node-rel-"));
+    await writeFile(join(dir, "node"), "");
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const run = fakeRunner(handlers());
+      await smoke({
+        root: await rootWith("1.2.3"),
+        source: { tarballs },
+        run,
+        node: "./node",
+      }).catch(() => undefined);
+      const first = run.calls.find((c) => c.args[0]?.endsWith("/.bin/donn"));
+      expect(first?.cmd).toBe(join(realpathSync(dir), "node"));
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   it("a missing plugin.json fails", async () => {
