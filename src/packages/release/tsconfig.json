@@ -1,0 +1,7 @@
+{
+  "extends": "@getdonn/typescript-config/base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

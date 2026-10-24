@@ -34,7 +34,9 @@
   },
   "files": [
     "dist",
-    "openapi.json"
+    "openapi.json",
+    "NOTICE",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
