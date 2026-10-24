@@ -1,4 +1,4 @@
-# donn (name TBD)
+# donn
 
 A persona compiler and control plane for AI coding harnesses. A **persona** is a declarative,
 composable bundle (instructions, skills, MCP servers, permissions, hooks, knowledge pointers,
@@ -12,6 +12,9 @@ published to npm yet, so you run it from a checkout.
 
 Requires pnpm (it downloads the Node version the repo develops on) and, for the Claude Code
 pieces, Claude Code itself.
+
+Upgrading from zzpersona? Run `donn migrate` right after linking donn, before any other donn
+command (see [Upgrading from zzpersona](#upgrading-from-zzpersona)).
 
 ```sh
 pnpm install
@@ -239,6 +242,61 @@ last pulled (run `donn pull` first for the latest).
 `check` run under `sudo`, or by an MDM, reads root's `~/.claude/remote-settings.json`, not the
 developer's. `doctor` and `status` show the result. The design is
 `docs/planning/21-managed-settings.md`.
+
+## Upgrading from zzpersona
+
+donn was called zzpersona until 2026-10-23. On a machine that ran zzpersona, run `donn migrate`
+once. It prints its plan, asks (or `--yes`), and every step is safe to repeat, so a re-run after
+an interruption finishes the job. In order, it:
+
+1. stops and removes the old background service;
+2. removes the old Claude Code mod (before the home moves, because Claude Code reads the old mod
+   from the old home);
+3. moves `~/.zzpersona` to `~/.donn` (or `DONN_HOME`);
+4. drops state that is made again (`build/`, `sessions/`, daemon sockets);
+5. rewrites `apiVersion: zzpersona/v0` to `donn/v0` in your persona files, and updates the paths
+   in `config.yaml`;
+6. points the `switch` choices in `state.json` at each project's `.donn/` folder;
+7. moves the registry login (the keychain item) to its new name;
+8. installs the new mod, then installs and starts the new background service if the old one was
+   installed.
+
+It runs `donn doctor` at the end, unless every step was already done (this holds for
+`--project` too). Exit codes: 0 when the migration succeeded, even if `doctor`
+reports findings (read them), and also when a step is left pending (for example a locked
+keychain): the output lists it, and a re-run finishes it. Declining the prompt exits 1, and so
+does a refusal or a failed step (any non-zero).
+
+It refuses, before changing anything, when:
+
+- `donn` is not on `PATH`, but only if the old background service was installed (the new one
+  has to be started);
+- `claude` is not on `PATH`, but only while the old mod is installed or being swapped;
+- the mod has not been built;
+- `ZZPERSONA_HOME` points at another home (in your environment or the old service file);
+- `DONN_HOME` sits inside the old home;
+- the target (`~/.donn`) already exists and is not empty. When it holds only what donn makes
+  itself (donn ran before the migration: its daemon, sessions, builds, the donn mod), it says so
+  and what to remove; it never removes it for you.
+
+`donn doctor` reports an old home that has not been migrated before anything else. Beyond the
+steps above, `migrate` reports what it leaves to you, and has two other forms:
+
+- Projects with a saved `switch` whose `.zzpersona/` is still there are listed, each with its
+  `donn migrate --project <dir>` command; the switch applies again once the project has moved.
+- Values in persona files, `overrides.yaml` or `config.yaml` that still name `~/.zzpersona` (an
+  instruction `file:`, a hook's `run:`, a skill's `source`) are listed by file and field, not
+  changed.
+- `donn migrate --project [dir]` moves a project's `.zzpersona/` to `.donn/` (with `git mv` when
+  tracked), its persona's `apiVersion`, and the `AGENTS.md` markers. It never commits. Lines
+  in `.gitignore` that name `.zzpersona` are reported, not changed.
+- An old machine-wide managed policy is reported, not changed. `sudo donn migrate --managed`
+  removes exactly the files the old policy installed; then `donn managed build` and
+  `sudo donn managed install donn-managed` put it back under the new name.
+- Any set `ZZPERSONA_*` or `ZZP_*` environment variables are named in the output; rename them in your
+  shell profile.
+- The old CLI is not removed for you. Remove it when `migrate` says so:
+  `npm uninstall --global @zzpersona/cli` (or `pnpm remove --global @zzpersona/cli`).
 
 ## What each harness can carry
 

@@ -104,7 +104,8 @@ Reserved 2026-10-23:
 - **GitHub org `getdonn`.** `donn` and `donn-dev` are unrelated users. The repo moves into the
   org when it goes public (GitHub redirects the old URL).
 
-Mapping for the rename, which has **not** happened yet (the code still says `zzpersona`):
+**2026-10-23: the rename landed (spec 22).** Run `donn migrate` once on a machine that ran
+zzpersona; the mapping below (the code said `zzpersona` until then) is kept as history:
 
 | Placeholder | Becomes |
 |---|---|
@@ -133,9 +134,10 @@ Rejected on the way, 2026-10-23:
 
 Still open: a USPTO search for DONN in software classes 9 and 42 before the first public
 release; a tagline (candidate: "Define it once. Don it anywhere."); the rename itself, including
-golden files, fixtures and the private control-plane repo's `@zzpersona/*` dependencies.
+golden files, fixtures and the private control-plane repo's `@zzpersona/*` dependencies
+(superseded 2026-10-23: the rename landed, spec 22).
 
-The placeholder rules below (2026-10-20) hold until the rename lands.
+The placeholder rules below (2026-10-20) hold until the rename lands (superseded 2026-10-23: it landed).
 
 **Hatrack is out** — the name is already taken by an existing project. No replacement is chosen,
 and choosing one does **not** block Phase 0; it blocks only the first `npm publish`.

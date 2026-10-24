@@ -1,4 +1,4 @@
-# @zzpersona/spec
+# @getdonn/spec
 
 ## 0.2.0
 

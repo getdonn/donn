@@ -131,6 +131,20 @@ PATH while the old mod is installed (naming the shell's alias and the `export PA
 `donn` is not on PATH for the new service. claude is asked only when an old mod folder (or a
 mod swap in progress) exists.
 
+*Amended 2026-10-23 (final review):* a `state` step after the `apiVersion` rewrite points
+`state.json` switches keyed by a project's old folder at `<project>/.donn` (a switch already there
+for the same project wins); `--project` leaves `state.json` alone, since either order ends with a
+matching key. The output lists projects with a switch whose old folder is still there (with their
+`donn migrate --project` command) and values in the home's YAML files and the personas folder that
+still name the old home (file and field; not changed). When the target holds only what donn makes
+itself (the daemon's folder, `sessions/`, `build/`, an empty `personas/`, a `mod/` whose
+marketplace is `donn`, a `state.json` with no default or switch, an empty `config.yaml`,
+`state.lock`, `.DS_Store`), the refusal names donn running before the migration as the cause and
+what to remove, without the `DONN_HOME` hint; it never removes it. `donn doctor` reports an old home
+first, as an error, when the new one is missing or donn-made. `mod-remove` with no claude to ask is
+pending, and its run fails (`mod-uninstall`) rather than counting as done; `service-start` is done
+only when the new service is loaded, not just written.
+
 ## 4. GitHub and release
 
 - Release **0.13.0** from `develop` (all packages minor under their new names; still

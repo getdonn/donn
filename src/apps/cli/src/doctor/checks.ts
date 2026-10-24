@@ -38,6 +38,8 @@ import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { HARNESSES } from "../harness.js";
+import { LEGACY } from "../migrate/legacy.js";
+import { madeByDonn, madeByDonnAdvice } from "../migrate/steps.js";
 import {
   backendLoader,
   loadAdapters,
@@ -248,6 +250,28 @@ export async function runChecks(
     checks.push({ id, status, message, ...(fix !== undefined && { fix }) });
   const skip = (id: string, because: string) => add(id, "skipped", because);
   const home = homeOf(io);
+
+  // migrate: a home from before the rename, not migrated yet (spec 22 §3). First, because running
+  // other fixes (init, mod install) first would make the new home and stand in migrate's way.
+  // Only under $HOME as the environment gives it.
+  const legacyHome = io.env.HOME && join(io.env.HOME, LEGACY.home);
+  if (legacyHome && existsSync(legacyHome)) {
+    if (!existsSync(home)) {
+      add(
+        "migrate",
+        "error",
+        `${legacyHome} is from before the rename, and ${home} does not exist yet`,
+        "donn migrate",
+      );
+    } else if (await madeByDonn(home)) {
+      add(
+        "migrate",
+        "error",
+        `${legacyHome} is from before the rename, and ${home} was made by running donn before migrating`,
+        await madeByDonnAdvice(home),
+      );
+    }
+  }
 
   // home
   if (!(await writable(home))) {

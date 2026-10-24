@@ -1,4 +1,4 @@
-# @zzpersona/resolver
+# @getdonn/resolver
 
 ## 0.4.0
 

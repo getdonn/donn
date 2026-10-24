@@ -1,4 +1,4 @@
-# @zzpersona/adapter-agents-md
+# @getdonn/adapter-agents-md
 
 ## 0.2.0
 

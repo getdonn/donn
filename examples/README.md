@@ -14,7 +14,7 @@ Point donn at these personas. Either in your own config:
 
 ```sh
 # ~/.donn/config.yaml
-personas: /path/to/persona-ai/examples/personas
+personas: /path/to/donn/examples/personas
 ```
 
 or, to leave your setup alone, with a throwaway home:

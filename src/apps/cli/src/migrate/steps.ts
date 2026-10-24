@@ -15,6 +15,8 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import { isAlive } from "@getdonn/executor";
 import { API_VERSION } from "@getdonn/spec";
+import { parse as parseYaml } from "yaml";
+import { MARKETPLACE } from "../commands/mod.js";
 import { CliError } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { isDaemonProcess } from "../daemon/process.js";
@@ -64,6 +66,110 @@ export function targetExists(target: string, hint = true): CliError {
     `${target} already exists and is not empty; move it aside${hint ? " or set DONN_HOME" : ""}`,
     { target },
   );
+}
+
+/**
+ * What to do about a new home that donn made itself before the migration. Never done for the
+ * user: the home could be in use (its daemon, a session).
+ */
+export async function madeByDonnAdvice(target: string): Promise<string> {
+  const daemon =
+    (await legacyDaemonPid(target)) === undefined
+      ? ""
+      : "stop its daemon (`donn daemon stop`), ";
+  return `${daemon}run \`donn mod uninstall\` if the donn mod is installed, then remove ${target} and run \`donn migrate\` again`;
+}
+
+/** The refusal when the target holds only what donn made itself (see madeByDonn). */
+export async function targetMadeByDonn(target: string): Promise<CliError> {
+  return new CliError(
+    "migrate-target-exists",
+    `${target} was made by running donn before migrating; ${await madeByDonnAdvice(target)}`,
+    { target, madeByDonn: true },
+  );
+}
+
+const isDir = async (path: string) => (await lstat(path)).isDirectory();
+const isFile = async (path: string) => (await lstat(path)).isFile();
+
+/** Parsed JSON or YAML text, or undefined when it does not parse. */
+const parsed = (text: string, parse: (text: string) => unknown) => {
+  try {
+    return { value: parse(text) };
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Whether the home `dir` holds only what donn makes on its own, nothing the user wrote or chose:
+ * the daemon's folder, sessions/, build/, an empty personas/, a mod/ whose marketplace is donn's,
+ * a state.json with no default and no project switch, an empty config.yaml, state.lock and
+ * Finder's .DS_Store. Anything else (a link among them, a registry token or cache, overrides,
+ * a persona, a switch, a config value) is the user's, and so is anything this cannot read.
+ */
+export async function madeByDonn(dir: string): Promise<boolean> {
+  try {
+    if (!(await isDir(dir))) return false;
+    for (const name of await readdir(dir)) {
+      const path = join(dir, name);
+      if (!(await madeEntry(name, path))) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function madeEntry(name: string, path: string): Promise<boolean> {
+  switch (name) {
+    case "daemon":
+    case "sessions":
+    case "build":
+      return isDir(path);
+    case "personas":
+      return (await isDir(path)) && (await readdir(path)).length === 0;
+    case "mod":
+      return (await isDir(path)) && (await modName(path)) === MARKETPLACE;
+    case "state.json": {
+      if (!(await isFile(path))) return false;
+      const state = parsed(await readFile(path, "utf8"), JSON.parse)?.value as
+        Record<string, unknown> | undefined;
+      return (
+        state !== undefined &&
+        state !== null &&
+        typeof state === "object" &&
+        Object.keys(state).every((key) =>
+          ["version", "projects"].includes(key),
+        ) &&
+        state.version === 1 &&
+        typeof state.projects === "object" &&
+        state.projects !== null &&
+        Object.keys(state.projects).length === 0
+      );
+    }
+    case "config.yaml": {
+      if (!(await isFile(path))) return false;
+      const config = parsed(await readFile(path, "utf8"), parseYaml);
+      return config !== undefined && config.value == null;
+    }
+    case "state.lock":
+    case ".DS_Store":
+      return isFile(path);
+    default:
+      return false;
+  }
+}
+
+/** The name in `<mod>/.claude-plugin/marketplace.json`, if it has one. */
+async function modName(mod: string): Promise<unknown> {
+  const text = await readFile(
+    join(mod, ".claude-plugin/marketplace.json"),
+    "utf8",
+  ).catch(() => "");
+  const marketplace = parsed(text, JSON.parse)?.value as
+    { name?: unknown } | null | undefined;
+  return marketplace?.name;
 }
 
 // Moving the home
@@ -222,8 +328,14 @@ export function rewriteApiVersion(text: string): string {
 /** Folders a persona walk never enters. */
 const SKIP = new Set([".git", "node_modules"]);
 
-/** Every .yaml and .yml file under `dir` (links not followed) whose apiVersion is the old one. */
-export async function staleFiles(dir: string): Promise<string[]> {
+/**
+ * Every .yaml and .yml file under `dir`, links not followed, leaving out the folders named in
+ * `skipTop` directly under `dir`.
+ */
+export async function yamlFiles(
+  dir: string,
+  skipTop: readonly string[] = [],
+): Promise<string[]> {
   const found: string[] = [];
   const walk = async (at: string): Promise<void> => {
     let names: string[];
@@ -236,17 +348,61 @@ export async function staleFiles(dir: string): Promise<string[]> {
     for (const name of names.sort()) {
       const path = join(at, name);
       const info = await lstat(path);
-      if (info.isDirectory() && !SKIP.has(name)) await walk(path);
-      else if (info.isFile() && /\.ya?ml$/.test(name)) {
-        const text = await readFile(path, "utf8");
-        if (rewriteApiVersion(text) !== text) found.push(path);
-      }
+      if (info.isDirectory()) {
+        if (!SKIP.has(name) && !(at === dir && skipTop.includes(name)))
+          await walk(path);
+      } else if (info.isFile() && /\.ya?ml$/.test(name)) found.push(path);
     }
   };
   // The folder itself may be a link (a personas folder elsewhere); what is inside is not followed.
   const info = await stat(dir).catch(() => undefined);
   if (info?.isDirectory()) await walk(dir);
   return found;
+}
+
+/** Every .yaml and .yml file under `dir` (links not followed) whose apiVersion is the old one. */
+export async function staleFiles(dir: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const path of await yamlFiles(dir)) {
+    const text = await readFile(path, "utf8");
+    if (rewriteApiVersion(text) !== text) found.push(path);
+  }
+  return found;
+}
+
+/** A YAML file's string values that name the old home, each with its field (`a.b[0].c`). */
+export function oldHomeValues(
+  text: string,
+  src: string,
+): { field: string; value: string }[] {
+  let doc: unknown;
+  try {
+    doc = parseYaml(text);
+  } catch {
+    return []; // not readable YAML: nothing to point at
+  }
+  const names = [
+    `~/${LEGACY.home}`,
+    `$HOME/${LEGACY.home}`,
+    `\${HOME}/${LEGACY.home}`,
+    src,
+  ];
+  const named = new RegExp(
+    `(?<=^|[\\s"'=:(,;])(?:${names.map(escapeRegExp).join("|")})(?=$|[/\\s"'),;:])`,
+  );
+  const hits: { field: string; value: string }[] = [];
+  const walk = (value: unknown, field: string): void => {
+    if (typeof value === "string") {
+      if (named.test(value)) hits.push({ field, value });
+    } else if (Array.isArray(value)) {
+      value.forEach((item, i) => walk(item, `${field}[${i}]`));
+    } else if (value !== null && typeof value === "object") {
+      for (const [key, item] of Object.entries(value))
+        walk(item, field === "" ? key : `${field}.${key}`);
+    }
+  };
+  walk(doc, "");
+  return hits;
 }
 
 /** Rewrite one file's apiVersion in place (through a link to its target). */
@@ -412,14 +568,7 @@ export async function stopLegacyDaemon(home: string): Promise<void> {
 
 /** Whether `<home>/mod` is the old name's mod (its marketplace has the old name). */
 export async function legacyMod(home: string): Promise<boolean> {
-  try {
-    const marketplace = JSON.parse(
-      await readFile(join(home, "mod/.claude-plugin/marketplace.json"), "utf8"),
-    ) as { name?: unknown };
-    return marketplace.name === LEGACY.marketplace;
-  } catch {
-    return false;
-  }
+  return (await modName(join(home, "mod"))) === LEGACY.marketplace;
 }
 
 // A project

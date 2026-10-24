@@ -1,4 +1,4 @@
-# @zzpersona/secrets
+# @getdonn/secrets
 
 ## 0.2.1
 
