@@ -31,8 +31,8 @@ jobs:
       - run: pnpm pack:check
       - run: pnpm release:smoke
 
-  # The package floor is Node 24 (engines >=24), so the built CLI also runs
-  # under it, while the repo builds on 26.
+  # The engines floor is Node 24; the repo builds on 26. `24` here is the
+  # latest 24.x, which stands in for the floor and is not pinned.
   smoke-node24:
     runs-on: ubuntu-latest
     timeout-minutes: 30

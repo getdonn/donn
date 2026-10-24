@@ -288,10 +288,11 @@ None.
   the executor's atomic-swap test raced on Linux (fixed in the test, PR #180).
 - Hardening after the release (2026-10-24): `claim --deprecate` asks `npm view <name>@0.0.0 version
   deprecated --json` once per package, skips a placeholder that is already deprecated (npm answers
-  422 on a second deprecate), carries on after a failed deprecate and exits 1 naming it, and
-  prints one line per package (`nothing to deprecate` when empty). The GitHub Release lists every
-  public workspace package at its version (not only those published by the run). `smoke --node
-  <path>` runs `donn` under another Node, and CI's `smoke-node24` job proves the floor on Node 24.
-  Guards: `isNpmjs` ignores a trailing dot in the host, the smoke environment drops `npm_config_*`,
-  `NPM_CONFIG_*` and `NODE_OPTIONS`, an `EPUBLISHCONFLICT` publish counts as skipped, and the
-  `rehearse` job pins the Verdaccio image by digest.
+  422 on a second deprecate), carries on after a failed deprecate and exits 1 naming it, and prints
+  one line per package (`nothing to deprecate` when empty). The GitHub Release lists every public
+  workspace package at its version (not only those published by the run). `smoke --node <path>` runs
+  `donn` under another Node, and CI's `smoke-node24` job runs it on the latest Node 24.x (unpinned),
+  standing in for the `>=24` floor. Guards: `isNpmjs` ignores a trailing dot in the host, the smoke
+  environment drops `npm_config_*`, `NPM_CONFIG_*` and `NODE_OPTIONS`, an `EPUBLISHCONFLICT` publish
+  counts as skipped only if the registry then serves that version (an unpublished version gives the
+  same error), and the `rehearse` job pins the Verdaccio image by digest.

@@ -95,11 +95,11 @@ jobs:
           pnpm ls -r --json --depth -1 > "$RUNNER_TEMP/workspaces.json"
           # Every public workspace package at its version, whether or not
           # this run published it (a re-run skips what npm already has).
-          jq -r --arg tag "$GITHUB_REF_NAME" --arg root "$GITHUB_WORKSPACE/" '
+          jq -r --arg tag "$GITHUB_REF_NAME" --arg repo "$GITHUB_REPOSITORY" --arg root "$GITHUB_WORKSPACE/" '
             "## Packages in this release\n",
             ( [ .[] | select(.private != true and .path != ($root | rtrimstr("/"))) ]
               | sort_by(.name)[]
-              | "- [\(.name)@\(.version)](https://github.com/getdonn/donn/blob/\($tag)/\(.path | ltrimstr($root))/CHANGELOG.md)" )
+              | "- [\(.name)@\(.version)](https://github.com/\($repo)/blob/\($tag)/\(.path | ltrimstr($root))/CHANGELOG.md)" )
           ' "$RUNNER_TEMP/workspaces.json" > "$notes"
           gh release create "$GITHUB_REF_NAME" --verify-tag \
             --title "$GITHUB_REF_NAME" --notes-file "$notes"
@@ -182,7 +182,8 @@ jobs:
             > "$RUNNER_TEMP/summary-again.json" || status=$?
           cat "$RUNNER_TEMP/summary-again.json"
           [ "$status" -eq 0 ] || exit "$status"
-          jq -e '(.published | length == 0) and (.skipped | length == 13)' \
+          jq -e '(.published | length == 0) and (.skipped | length == 13)
+            and ((.conflicted // []) | length == 0)' \
             "$RUNNER_TEMP/summary-again.json"
       - name: Verdaccio log
         if: failure()
