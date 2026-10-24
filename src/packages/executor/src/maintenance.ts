@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { isAlive } from "./process.js";
 
 // Leftovers writeBuild can leave behind: locks from a process that died mid-build, version
-// directories no build symlink points to, and temporary links from an interrupted swap.
+// directories neither the build symlink nor its `.prev` link points to, and temporary links
+// from an interrupted swap.
 // `donn doctor --fix` removes them. Anything changed in the last ten minutes is left
 // alone: a running build writes its version and link, and creates its lock before writing
 // the pid. See docs/planning/07-cli-daily-use.md, section 3.
@@ -50,11 +51,12 @@ export async function findBuildLeftovers(
       }
       const version = VERSION.exec(entry.name);
       if (version && entry.isDirectory()) {
-        const target = await readlink(join(dir, version[1]!)).catch(
-          () => undefined,
-        );
-        if (target !== entry.name && (await isOld(path)))
-          found.orphanVersions.push(path);
+        const linked = async (name: string) =>
+          (await readlink(join(dir, name)).catch(() => undefined)) ===
+          entry.name;
+        const kept =
+          (await linked(version[1]!)) || (await linked(`${version[1]!}.prev`));
+        if (!kept && (await isOld(path))) found.orphanVersions.push(path);
         continue;
       }
       if (TEMP_LINK.test(entry.name) && (await isOld(path)))

@@ -58,6 +58,23 @@ describe("build maintenance", () => {
     ]);
   });
 
+  it("keeps the previous version the .prev link points to", async () => {
+    const home = mkdtempSync(join(tmpdir(), "donn-maint-"));
+    dirs.push(home);
+    const persona = join(home, "build/team-p-12345678");
+    mkdirSync(join(persona, "claude-code.v-aaaa1111"), { recursive: true });
+    mkdirSync(join(persona, "claude-code.v-bbbb2222"));
+    symlinkSync("claude-code.v-aaaa1111", join(persona, "claude-code"));
+    symlinkSync("claude-code.v-bbbb2222", join(persona, "claude-code.prev"));
+    utimesSync(
+      join(persona, "claude-code.v-bbbb2222"),
+      anHourAgo(),
+      anHourAgo(),
+    );
+
+    expect((await findBuildLeftovers(home)).orphanVersions).toEqual([]);
+  });
+
   it("keeps a lock whose owner is alive, and copes with no build folder", async () => {
     const home = mkdtempSync(join(tmpdir(), "donn-maint-"));
     dirs.push(home);
