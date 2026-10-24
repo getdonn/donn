@@ -4,8 +4,10 @@ import { parseArgs } from "node:util";
 import { checkTarball } from "./check.js";
 import { ReleaseError } from "./errors.js";
 import { packAll } from "./pack.js";
+
 import { listWorkspaces, publicPackages } from "./packages.js";
 import { realRunner } from "./run.js";
+import { smoke } from "./smoke.js";
 import { withTarball } from "./tarball.js";
 
 const USAGE = `usage: donn-release <command> [options]
@@ -57,9 +59,21 @@ const stub =
       new ReleaseError("not-implemented", `${name} is not implemented yet`),
     );
 
+async function smokeCommand(flags: Flags): Promise<void> {
+  const run = realRunner;
+  if (flags.registry) {
+    await smoke({ root: ROOT, source: { registry: flags.registry }, run });
+    return;
+  }
+  const all = await listWorkspaces(ROOT, run);
+  const tarballs = await packAll(ROOT, publicPackages(all), run);
+  await smoke({ root: ROOT, source: { tarballs }, run });
+  process.stdout.write("smoke ok\n");
+}
+
 const commands: Record<string, Command> = {
   pack,
-  smoke: stub("smoke"),
+  smoke: smokeCommand,
   publish: stub("publish"),
   claim: stub("claim"),
 };
