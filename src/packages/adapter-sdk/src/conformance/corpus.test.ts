@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { HOOK_EVENTS, ResolvedPersona } from "@zzpersona/spec";
+import { HOOK_EVENTS, ResolvedPersona } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { corpus } from "./index.js";

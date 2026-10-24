@@ -1,4 +1,4 @@
-import { explain } from "@zzpersona/resolver";
+import { explain } from "@getdonn/resolver";
 import type { CliIo } from "../cli.js";
 import { createContext, printWarnings, resolvePersona } from "../context.js";
 import { builtFrom } from "../registry.js";

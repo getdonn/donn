@@ -1,13 +1,14 @@
-# 12 — The Codex adapter and `zzpersona codex`
+# 12 — The Codex adapter and `donn codex`
 
 > Status: design, 2026-10-21. Phase 2, second spec: the real second harness. Builds on
 > `spikes/codex/FINDINGS.md` (Codex CLI 0.163.0, probed in `exec` and the TUI), `05-adapter-sdk.md`
 > and the Claude Code launch path (`06`, `10`). Built as a `gh stack`: layer 0 is this spec and its
 > plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
-A persona authored once launches Codex as well as Claude Code: `zzpersona codex` starts Codex with
+A persona authored once launches Codex as well as Claude Code: `donn codex` starts Codex with
 the persona's instructions, MCP servers and secrets, sensible sandbox defaults, and a report that
 says exactly what Codex cannot take. This is Phase 2's exit question in practice: two harnesses,
 one persona, a loss report people find credible.
@@ -22,7 +23,7 @@ one persona, a loss report people find credible.
 | Skills and hooks dropped | Install a plugin into `~/.codex`; pass `--dangerously-bypass-hook-trust` | No per-launch skill root; the bypass trusts the repo's hooks too |
 | Two servers needing one variable name with different secrets: the second is dropped | Give both the first secret; fail the launch | Never hand a server the wrong secret; one conflict should not block the session |
 
-## 1. The adapter (`@zzpersona/adapter-codex`)
+## 1. The adapter (`@getdonn/adapter-codex`)
 
 **Compile** writes `instructions.md` to the build (header naming the persona and its layers,
 instructions, `## Knowledge sources`, `## Tool rules` guidance as `agents-md` renders it) and a
@@ -51,7 +52,7 @@ codex -s <sandbox> -a <approval> -c developer_instructions="<instructions.md>" \
 
 `sandbox` defaults to `workspace-write`, `approval` to `on-request`; `targets.codex.sandbox`,
 `targets.codex.approval` and `targets.codex.model` override them. A sandbox of
-`danger-full-access` or an approval of `never` is reported `advisory` ("looser than zzpersona's
+`danger-full-access` or an approval of `never` is reported `advisory` ("looser than donn's
 default"). Every `-c` value is encoded as TOML (basic strings with quotes, backslashes, control
 characters and newlines escaped; inline tables), because Codex parses `-c` values as TOML.
 
@@ -61,17 +62,17 @@ characters and newlines escaped; inline tables), because Codex parses `-c` value
 | permissions | approximated (MCP tool allow rules exact) |
 | knowledge | advisory |
 | skills | dropped: "Codex has no per-launch skill root" |
-| hooks | dropped: "untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust" |
+| hooks | dropped: "untrusted hooks do not run, and donn never bypasses Codex's hook trust" |
 
 **Detect:** `codex --version` (exit 127: not installed).
 
 ## 2. The CLI
 
-**`zzpersona codex [persona] [--dry-run] [--json] [--no-overlay] [-- <codex args>]`** selects the
-persona as `zzpersona claude` does, resolves secrets into the launch environment, writes the build,
+**`donn codex [persona] [--dry-run] [--json] [--no-overlay] [-- <codex args>]`** selects the
+persona as `donn claude` does, resolves secrets into the launch environment, writes the build,
 and launches `codex` with the passthrough arguments last. `codex` missing: `codex-not-installed`.
 
-**`launch.ts`:** the steps both launch commands share (prepare the build, the `ZZPERSONA_*`
+**`launch.ts`:** the steps both launch commands share (prepare the build, the `DONN_*`
 variables, secrets, write the build, run the plan) move out of `claude.ts`; `claude` keeps its
 session folder, mode facts and managed-settings hint on top. No behaviour change, covered by the
 existing `claude` tests.
@@ -86,9 +87,9 @@ No live switching or mod for Codex (it has no mod system).
 | Layer | Contents |
 |---|---|
 | 0 `spec` | this spec and its plan |
-| 1 `adapter` | `@zzpersona/adapter-codex`, TOML encoding, golden builds, conformance |
+| 1 `adapter` | `@getdonn/adapter-codex`, TOML encoding, golden builds, conformance |
 | 2 `launch` | `launch.ts` from `claude.ts`, no behaviour change |
-| 3 `cli` | `zzpersona codex`, `compile --harness codex`, doctor's `codex` check |
+| 3 `cli` | `donn codex`, `compile --harness codex`, doctor's `codex` check |
 | 4 `e2e-docs` | opt-in e2e with real Codex; README, changeset, CLAUDE.md, the spec 05 note |
 
 - **Adapter:** golden launch arguments per corpus entry; TOML escaping (quotes, backslashes,
@@ -96,7 +97,7 @@ No live switching or mod for Codex (it has no mod system).
   `targets.codex` overrides and the looser-than-default note; the conformance kit.
 - **CLI:** `--dry-run`/`--json` plans; secrets in the launch environment (recorded `runPlan`);
   passthrough last; `codex-not-installed`; doctor's three states.
-- **Opt-in e2e (`ZZP_E2E=1`, skipped without Codex):** `zzpersona codex -- exec
+- **Opt-in e2e (`DONN_E2E=1`, skipped without Codex):** `donn codex -- exec
   --skip-git-repo-check "<prompt>"` in a scratch repo; one call checks the instruction codeword,
   the probe MCP tool's answer, and that the secret reached the server (value never printed).
 

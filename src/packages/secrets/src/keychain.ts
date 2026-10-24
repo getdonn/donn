@@ -87,6 +87,31 @@ export async function getKeychainItem(
   return fail(command, result);
 }
 
+/**
+ * Whether an item exists. On macOS without its secret: `find-generic-password` without `-w`
+ * prints only the attributes, so it never asks for access. secret-tool has no such lookup, so
+ * on Linux the value is read and dropped.
+ */
+export async function hasKeychainItem(
+  ctx: KeychainContext,
+  service: string,
+  account: string,
+): Promise<boolean> {
+  if (ctx.platform !== "darwin") {
+    return (await getKeychainItem(ctx, service, account)) !== undefined;
+  }
+  const result = await ctx.run(commandFor(ctx.platform), [
+    "find-generic-password",
+    "-s",
+    service,
+    "-a",
+    account,
+  ]);
+  if (result.exitCode === 0) return true;
+  if (isMissing(ctx.platform, result)) return false;
+  return fail("security", result);
+}
+
 /** `security -i` reads quoted words, so none of these can be escaped safely: refuse them. */
 function checkQuotable(name: string, text: string): void {
   if (/["\\\n\r]/.test(text)) {
@@ -118,7 +143,7 @@ export async function setKeychainItem(
           command,
           [
             "store",
-            "--label=zzpersona registry",
+            "--label=donn registry",
             "service",
             service,
             "account",

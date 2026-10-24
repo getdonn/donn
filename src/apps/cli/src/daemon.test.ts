@@ -25,7 +25,7 @@ let root: string;
 let daemons: Daemon[];
 let stubborn: ChildProcess | undefined;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-daemon-"));
+  root = mkdtempSync(join(tmpdir(), "donn-daemon-"));
   daemons = [];
 });
 afterEach(async () => {
@@ -201,9 +201,9 @@ describe("the daemon", () => {
     const home = longHome();
     const daemon = await start(home);
     const paths = daemonPaths(home, {});
-    const dir = join(tmpdir(), `zzpd-${process.getuid!()}`);
+    const dir = join(tmpdir(), `donnd-${process.getuid!()}`);
     expect(daemon.socket).toMatch(
-      new RegExp(`^${dir}/zzpd-[0-9a-f]{8}\\.sock$`),
+      new RegExp(`^${dir}/donnd-[0-9a-f]{8}\\.sock$`),
     );
     expect(paths.sock).toBe(daemon.socket);
     // A folder of the user's own, so no one else can take the socket's name.
@@ -223,7 +223,7 @@ describe("the daemon", () => {
     const home = longHome();
     const daemon = await start(home, { XDG_RUNTIME_DIR: run });
     expect(daemon.socket).toMatch(
-      new RegExp(`^${run}/zzpd-[0-9a-f]{8}\\.sock$`),
+      new RegExp(`^${run}/donnd-[0-9a-f]{8}\\.sock$`),
     );
     expect((await (await connectDaemon(home))!.status()).pid).toBe(process.pid);
   });
@@ -316,7 +316,7 @@ async function waitFor(check: () => boolean) {
   }
 }
 
-describe("zzpersona daemon", () => {
+describe("donn daemon", () => {
   const run = (argv: string[]) =>
     zz(argv, {
       cwd: root,

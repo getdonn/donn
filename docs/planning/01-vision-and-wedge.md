@@ -3,7 +3,10 @@
 > Working name: **Hatrack** (unverified — check npm, GitHub org, domain before committing).
 > Amended 2026-10-20: Hatrack is taken. Placeholder is `zzpersona` until a name is chosen; see
 > `00-handoff.md` → "Naming".
+> Amended 2026-10-23: the name is **donn** (npm `@getdonn/*`, CLI `donn`, `getdonn.dev`); see
+> `00-handoff.md` → "Naming".
 > Status: brainstorm, 2026-10-20. Nothing here is decided.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Problem and mission
 
@@ -104,7 +107,7 @@ first and best target — not the product itself.
 
 | Persona (ha) | OSS or paid | What they want |
 |---|---|---|
-| Solo developer with many hats | OSS | `hatrack switch payments` and everything is right |
+| Solo developer with many hats | OSS | `donn switch payments` and everything is right |
 | Team lead / staff engineer | OSS → paid | Publish *the* persona for the team; stop answering setup questions |
 | Platform / DevEx team | Paid | Org baseline, policy, audit, drift detection, gateway integration |
 | Security / compliance | Paid | "Which tools can which teams reach, and who changed it?" |
@@ -124,7 +127,7 @@ The OSS tool must be **fully useful for the solo developer** or there is no adop
 > Amended 2026-10-20: renamed `compilers/*` → `adapters/*` and `claude-plugin` + `claude-mod` →
 > `mod-claude-code` to match `03-architecture.md`. The generated persona plugin is build output of
 > `adapters/claude-code`, not a package.
-- `store-local` — `~/.hatrack/` + git as the persona store
+- `store-local` — `~/.donn/` + git as the persona store
 
 **Enterprise (separate private repo, licensed):**
 - control-plane server: persona registry, RBAC, SSO/OIDC, audit log, policy engine
@@ -171,11 +174,12 @@ The question is not "does it work." It is:
 ## Open questions
 
 - Name. (~~Hatrack~~ taken / Mantle / Guise / Dramatis / Roleset / Manyhats — rest unverified.)
-  Not blocking until first publish; see `00-handoff.md` → "Naming".
+  Not blocking until first publish; see `00-handoff.md` → "Naming". **Decided 2026-10-23:**
+  donn.
 - License for OSS core: Apache-2.0 vs. MIT. Lean Apache-2.0 (patent grant matters for enterprise).
 - ~~Does the enterprise server need to be a separate repo from day one, or a private package in
   the turborepo that is excluded from the OSS mirror?~~ **Decided 2026-10-20:** separate private
-  repo depending only on published `@hatrack/*` packages. See `03-architecture.md` → "Enterprise"
+  repo depending only on published `@getdonn/*` packages. See `03-architecture.md` → "Enterprise"
   and `00-handoff.md`.
 - Second compile target: Cursor or `AGENTS.md`-family (Codex/Copilot)? `AGENTS.md` is cheapest
   and covers several harnesses at once.

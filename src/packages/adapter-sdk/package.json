@@ -1,6 +1,6 @@
 {
-  "name": "@zzpersona/adapter-sdk",
-  "version": "0.3.0",
+  "name": "@getdonn/adapter-sdk",
+  "version": "0.4.0",
   "private": true,
   "description": "The harness adapter contract, compile-report helpers and conformance kit",
   "license": "Apache-2.0",
@@ -30,12 +30,12 @@
     "corpus:update": "node scripts/update-corpus.mjs"
   },
   "dependencies": {
-    "@zzpersona/spec": "workspace:*"
+    "@getdonn/spec": "workspace:*"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5",

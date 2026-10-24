@@ -1,5 +1,5 @@
 import type { CliIo } from "../cli.js";
-import { runChecks } from "../doctor/checks.js";
+import { runChecks, type Check } from "../doctor/checks.js";
 
 export interface DoctorOptions {
   fix?: boolean;
@@ -18,13 +18,19 @@ export async function doctorCommand(
   if (options.json) {
     io.stdout.write(`${JSON.stringify({ checks }, null, 2)}\n`);
   } else {
-    for (const check of checks) {
-      io.stdout.write(
-        `${check.status.padEnd(8)}${check.id.padEnd(10)}${check.message}\n`,
-      );
-      if (check.fix !== undefined)
-        io.stdout.write(`${" ".repeat(8)}fix: ${check.fix}\n`);
-    }
+    io.stdout.write(checkLines(checks));
   }
   return checks.some((c) => c.status === "error") ? 1 : 0;
+}
+
+/** The checks as `donn doctor` prints them: one line each, and its fix under it. */
+export function checkLines(checks: Check[]): string {
+  return checks
+    .map(
+      (check) =>
+        `${check.status.padEnd(8)}${check.id.padEnd(10)}${check.message}\n${
+          check.fix === undefined ? "" : `${" ".repeat(8)}fix: ${check.fix}\n`
+        }`,
+    )
+    .join("");
 }

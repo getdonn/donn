@@ -1,5 +1,5 @@
-import type { CapabilityMatrix } from "@zzpersona/adapter-sdk";
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import type { CapabilityMatrix } from "@getdonn/adapter-sdk";
+import { HOOK_EVENTS } from "@getdonn/spec";
 
 // What a Codex launch can carry per invocation (spikes/codex/FINDINGS.md). The notes are the
 // report's reasons.
@@ -11,7 +11,7 @@ const guidance = {
 } as const;
 const hooks = {
   support: "none",
-  note: "untrusted hooks do not run, and zzpersona never bypasses Codex's hook trust",
+  note: "untrusted hooks do not run, and donn never bypasses Codex's hook trust",
 } as const;
 
 const POLICY = {

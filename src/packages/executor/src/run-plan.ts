@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
-import type { ActivationPlan } from "@zzpersona/adapter-sdk";
+import type { ActivationPlan } from "@getdonn/adapter-sdk";
 import { ExecutorError } from "./errors.js";
 
 // Carries out an activation plan's steps in order. A launch step inherits the terminal, gets the

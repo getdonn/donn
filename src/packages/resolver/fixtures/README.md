@@ -1,6 +1,6 @@
 # Resolver fixtures
 
-These fixtures are the executable spec for `@zzpersona/resolver` (see `docs/planning/04-roadmap.md`,
+These fixtures are the executable spec for `@getdonn/resolver` (see `docs/planning/04-roadmap.md`,
 Phase 0: "This test suite is the real spec"). Each directory is one case: a set of persona files
 and the output the resolver must produce for them.
 
@@ -14,7 +14,7 @@ and the output the resolver must produce for them.
 ```
 
 `explain.txt` is generated: after an intended change to resolution or rendering, regenerate with
-`pnpm --filter @zzpersona/resolver exec vitest run -u` and review the diff like any other change.
+`pnpm --filter @getdonn/resolver exec vitest run -u` and review the diff like any other change.
 It is what a reviewer reads to judge whether the output is trustworthy (Phase 0 exit question).
 
 The personas root is the case's `personas/` directory. A ref like `team/payments` is the file
@@ -90,9 +90,9 @@ Warnings: `allow-shadowed-by-deny`, `ask-shadowed-by-deny`, `allow-shadowed-by-a
 
 Errors: `missing-ref`, `cycle`, `linearization-conflict`, `replace-target-missing`,
 `lock-violation`, `invalid-lock-path`, `user-layer-lock`, `invalid-persona` (a file that fails
-the `@zzpersona/spec` schema; no fixture yet, since every fixture file must validate).
+the `@getdonn/spec` schema; no fixture yet, since every fixture file must validate).
 
-`@zzpersona/spec` is the source of truth for the IR shape, path grammar and codes above;
+`@getdonn/spec` is the source of truth for the IR shape, path grammar and codes above;
 `src/fixtures.test.ts` validates every fixture against it, so this README and the spec cannot
 silently drift.
 

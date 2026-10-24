@@ -1,0 +1,66 @@
+{
+  "donn": "0.12.0",
+  "files": {
+    "managed-settings.d/50-donn.json": "b678896f0235a8101e0fb1f8344db572f1f44a97b8bd1bb3c29ba473b7c714ca"
+  },
+  "format": 1,
+  "layers": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "org/acme",
+      "version": 3
+    },
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ref": "area/fintech"
+    },
+    {
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "ref": "team/payments",
+      "version": 1
+    }
+  ],
+  "minClaudeCode": "2.1.283",
+  "os": "windows",
+  "report": {
+    "entries": [
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "instructions[org-security]",
+        "reason": "delivered as claudeMd: guidance after the system prompt that users cannot exclude, not part of the system prompt"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "permissions.deny[Bash(rm -rf:*)]",
+        "reason": "lower scopes may add rules, never remove this one"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "policy.bypassPermissions",
+        "reason": "permissions.disableBypassPermissionsMode: the bypass mode cannot be entered"
+      },
+      {
+        "layer": "area/fintech",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.deniedModels",
+        "reason": "applied last, as written"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.permissions",
+        "reason": "applied last, as written"
+      },
+      {
+        "layer": "org/acme",
+        "outcome": "enforced",
+        "path": "targets.claude-code.managed.strictKnownMarketplaces",
+        "reason": "applied last, as written"
+      }
+    ],
+    "warnings": []
+  }
+}

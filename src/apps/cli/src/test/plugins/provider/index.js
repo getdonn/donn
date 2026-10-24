@@ -1,4 +1,4 @@
-import { defineSecretProvider } from "@zzpersona/secrets";
+import { defineSecretProvider } from "@getdonn/secrets";
 
 // Test-only: a secret provider package. Never do this with real values.
 

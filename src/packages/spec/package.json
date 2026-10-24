@@ -1,6 +1,6 @@
 {
-  "name": "@zzpersona/spec",
-  "version": "0.2.0",
+  "name": "@getdonn/spec",
+  "version": "0.3.0",
   "private": true,
   "description": "Persona schema, resolved IR types, and validation",
   "license": "Apache-2.0",
@@ -24,8 +24,8 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
     "eslint": "10.13.0",
     "typescript": "7.0.2",

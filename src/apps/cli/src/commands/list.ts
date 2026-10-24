@@ -1,8 +1,8 @@
-import { LAYERS } from "@zzpersona/spec";
+import { LAYERS } from "@getdonn/spec";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";
 
-// zzpersona list: every available persona with its layer. See docs/planning/09-mod-claude-code.md §3.
+// donn list: every available persona with its layer. See docs/planning/09-mod-claude-code.md §3.
 
 export interface ListOptions {
   json?: boolean;

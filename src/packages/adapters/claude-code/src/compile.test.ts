@@ -3,8 +3,8 @@ import {
   AdapterInputError,
   type CompileInput,
   type CompileOutput,
-} from "@zzpersona/adapter-sdk";
-import { corpus } from "@zzpersona/adapter-sdk/conformance";
+} from "@getdonn/adapter-sdk";
+import { corpus } from "@getdonn/adapter-sdk/conformance";
 import { describe, expect, it } from "vitest";
 import { pluginName } from "./compile.js";
 import adapter from "./index.js";
@@ -43,7 +43,7 @@ describe("compile (relaunch)", () => {
     expect(full.files["system-prompt.md"]).toEqual({
       content:
         [
-          "## zzpersona persona: project/checkout-api",
+          "## donn persona: project/checkout-api",
           "Review code the way you would want yours reviewed.",
           "Never paste credentials, tokens or customer data into prompts.",
           "This area is PCI-DSS scoped. Treat card data as restricted.",
@@ -61,7 +61,7 @@ describe("compile (relaunch)", () => {
   it("heads the instructions with the persona", () => {
     const file = full.files["system-prompt.md"];
     expect(file && "content" in file && file.content.split("\n")[0]).toBe(
-      "## zzpersona persona: project/checkout-api",
+      "## donn persona: project/checkout-api",
     );
   });
 
@@ -71,13 +71,13 @@ describe("compile (relaunch)", () => {
       input("minimal", { ir: { ...ir, instructions: [], knowledge: [] } }),
     );
     expect(bare.files["system-prompt.md"]).toEqual({
-      content: `## zzpersona persona: ${entry("minimal").personaId}\n`,
+      content: `## donn persona: ${entry("minimal").personaId}\n`,
     });
   });
 
   it("names the plugin after the persona id", () => {
     expect(json(full, "plugin/.claude-plugin/plugin.json")).toEqual({
-      name: "zzp-project--checkout-api",
+      name: "donn-project--checkout-api",
       version: "0.0.0",
       description: "Persona checkout-api",
     });
@@ -85,16 +85,16 @@ describe("compile (relaunch)", () => {
       input("minimal", { personaId: "team/platform/payments" }),
     );
     expect(json(nested, "plugin/.claude-plugin/plugin.json")).toMatchObject({
-      name: "zzp-team--platform--payments",
+      name: "donn-team--platform--payments",
     });
   });
 
   it("keeps nested and hyphenated refs apart in plugin names", () => {
     expect(pluginName("team/platform-payments")).toBe(
-      "zzp-team--platform-payments",
+      "donn-team--platform-payments",
     );
     expect(pluginName("team/platform/payments")).toBe(
-      "zzp-team--platform--payments",
+      "donn-team--platform--payments",
     );
   });
 
@@ -154,27 +154,27 @@ describe("compile (relaunch)", () => {
 
   it("writes MCP servers with secret placeholders, reusing one per distinct ref", () => {
     expect(kitchen.secretEnv).toEqual({
-      ZZP_SECRET_1: "secret://vault/db/token",
-      ZZP_SECRET_2: "secret://vault/db/url",
-      ZZP_SECRET_3: "secret://vault/remote/key",
+      DONN_SECRET_1: "secret://vault/db/token",
+      DONN_SECRET_2: "secret://vault/db/url",
+      DONN_SECRET_3: "secret://vault/remote/key",
     });
     expect(json(kitchen, "mcp.json")).toEqual({
       mcpServers: {
         db: {
           command: "npx",
-          args: ["-y", "@corp/db-mcp", "--token", "${ZZP_SECRET_1}"],
+          args: ["-y", "@corp/db-mcp", "--token", "${DONN_SECRET_1}"],
           env: {
             LOG_LEVEL: "debug",
-            TOKEN: "${ZZP_SECRET_1}",
-            TOKEN_AGAIN: "${ZZP_SECRET_1}",
-            URL: "${ZZP_SECRET_2}",
+            TOKEN: "${DONN_SECRET_1}",
+            TOKEN_AGAIN: "${DONN_SECRET_1}",
+            URL: "${DONN_SECRET_2}",
           },
         },
         remote: {
           type: "sse",
           url: "https://mcp.corp/sse",
           headers: {
-            Authorization: "${ZZP_SECRET_3}",
+            Authorization: "${DONN_SECRET_3}",
             "X-Team": "kitchen",
           },
         },
@@ -305,13 +305,13 @@ describe("review fixes", () => {
     });
     expect(json(output, "mcp.json")).toEqual({
       mcpServers: {
-        db: { command: "npx", args: ["--token", "${ZZP_SECRET_1}"] },
-        remote: { type: "http", url: "${ZZP_SECRET_2}" },
+        db: { command: "npx", args: ["--token", "${DONN_SECRET_1}"] },
+        remote: { type: "http", url: "${DONN_SECRET_2}" },
       },
     });
     expect(output.secretEnv).toEqual({
-      ZZP_SECRET_1: "secret://v/t",
-      ZZP_SECRET_2: "secret://v/u",
+      DONN_SECRET_1: "secret://v/t",
+      DONN_SECRET_2: "secret://v/u",
     });
     expect(json(output, "settings.json")).toMatchObject({
       env: { LEVEL: "1" },

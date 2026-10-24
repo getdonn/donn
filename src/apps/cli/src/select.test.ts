@@ -17,7 +17,7 @@ const select = async (cwd: string, arg?: string) =>
 
 describe("selectPersona", () => {
   it("prefers argument, then switch, then project, then default", async () => {
-    const key = await projectKey(join(s.repo, ".zzpersona"));
+    const key = await projectKey(join(s.repo, ".donn"));
     await writeState(s.home, {
       version: 1,
       default: "team/payments",
@@ -47,10 +47,10 @@ describe("selectPersona", () => {
     });
   });
 
-  it("suggests zzpersona switch when nothing applies", async () => {
+  it("suggests donn switch when nothing applies", async () => {
     const error = await select(s.root).catch((e: unknown) => e);
     expect(error).toMatchObject({ code: "no-persona" });
-    expect((error as Error).message).toContain("zzpersona switch");
+    expect((error as Error).message).toContain("donn switch");
   });
 
   it("strips .yaml and suggests a case-insensitive match", async () => {

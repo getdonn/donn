@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
+import type { Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { daemonRequest } from "./daemon/client.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
@@ -62,7 +62,7 @@ const only = (command: string): Probe => ({
       : { exitCode: 127, stdout: "", stderr: "" },
 });
 
-describe("zzpersona switch: the per-harness report", () => {
+describe("donn switch: the per-harness report", () => {
   it("reports ok and drops per installed harness", async () => {
     const r = await run(["switch", "project/persona"]);
     expect(r.code, r.stderr).toBe(0);
@@ -96,7 +96,7 @@ describe("zzpersona switch: the per-harness report", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toContain("throwing     error boom");
     expect(r.stdout).toContain("claude-code  drops");
-    const key = await projectKey(join(s.repo, ".zzpersona"));
+    const key = await projectKey(join(s.repo, ".donn"));
     expect((await readState(s.home)).projects[key]).toBe("project/persona");
   });
 
@@ -131,7 +131,7 @@ describe("zzpersona switch: the per-harness report", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout).toMatch(/^plugins +error /m);
     expect(r.stdout).toContain("claude-code  drops");
-    const key = await projectKey(join(s.repo, ".zzpersona"));
+    const key = await projectKey(join(s.repo, ".donn"));
     expect((await readState(s.home)).projects[key]).toBe("project/persona");
   });
 
@@ -171,7 +171,7 @@ describe("zzpersona switch: the per-harness report", () => {
     );
     expect(shared).toMatchObject({ status: "shared" });
     expect((await run(["switch", "team/payments"])).stdout).toContain(
-      "agents-md    AGENTS.md carries project/persona (shared); team/payments applies to zzpersona launches only\n",
+      "agents-md    AGENTS.md carries project/persona (shared); team/payments applies to donn launches only\n",
     );
     expect(
       (await harnesses(["switch", "project/persona"]))?.find(
@@ -179,15 +179,15 @@ describe("zzpersona switch: the per-harness report", () => {
       ),
     ).toMatchObject({ status: "ok" });
     put(
-      join(s.repo, ".zzpersona/instructions/checkout-overview.md"),
+      join(s.repo, ".donn/instructions/checkout-overview.md"),
       "Changed overview text.",
     );
     const stale = (await harnesses(["switch", "project/persona"]))?.find(
       (h) => h.id === "agents-md",
     );
-    expect(stale).toMatchObject({ status: "ok", fix: "zzpersona write" });
+    expect(stale).toMatchObject({ status: "ok", fix: "donn write" });
     expect((await run(["switch", "project/persona"])).stdout).toContain(
-      "agents-md    carries project/persona — zzpersona write\n",
+      "agents-md    carries project/persona — donn write\n",
     );
   });
 
@@ -195,16 +195,16 @@ describe("zzpersona switch: the per-harness report", () => {
     expect((await run(["write"])).code).toBe(0);
     put(
       join(s.home, "personas/mine.yaml"),
-      "apiVersion: zzpersona/v0\nkind: Persona\nmetadata: { name: mine }\n",
+      "apiVersion: donn/v0\nkind: Persona\nmetadata: { name: mine }\n",
     );
-    const file = join(s.repo, ".zzpersona/persona.yaml");
+    const file = join(s.repo, ".donn/persona.yaml");
     const text = readFileSync(file, "utf8");
     writeFileSync(
       file,
       text.replace("extends:\n", "extends:\n  - user/mine\n"),
     );
     put(
-      join(s.repo, ".zzpersona/instructions/checkout-overview.md"),
+      join(s.repo, ".donn/instructions/checkout-overview.md"),
       "Changed overview text.",
     );
     const r = await run(["switch", "project/persona"]);
@@ -259,7 +259,7 @@ describe("zzpersona switch: the per-harness report", () => {
         "· 1 session here still runs project/persona: /persona use team/payments",
       );
       expect(r.stdout).toContain(
-        "· 1 session here still runs project/persona: relaunch with zzpersona codex",
+        "· 1 session here still runs project/persona: relaunch with donn codex",
       );
       const json = await harnesses(["switch", "team/payments"]);
       expect(json?.find((h) => h.id === "claude-code")?.sessions).toEqual({

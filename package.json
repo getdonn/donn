@@ -1,5 +1,5 @@
 {
-  "name": "zzpersona-monorepo",
+  "name": "donn-monorepo",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,8 +10,8 @@
     "format": "prettier --write .",
     "changeset": "changeset",
     "format:check": "prettier --check .",
-    "zzpersona": "node src/apps/cli/dist/bin.js",
-    "docs:capabilities": "turbo run build --filter=@zzpersona/cli && node src/apps/cli/scripts/capabilities-doc.mjs"
+    "donn": "node src/apps/cli/dist/bin.js",
+    "docs:capabilities": "turbo run build --filter=@getdonn/cli && node src/apps/cli/scripts/capabilities-doc.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",

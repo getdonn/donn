@@ -4,6 +4,9 @@
 > it into phases. Working name Hatrack; `@hatrack/*` package names are placeholders.
 > Amended 2026-10-20: Hatrack is taken. Every `hatrack` identifier below maps to the code
 > placeholder `zzpersona` (`@zzpersona/*`, `zzpersonad`, …); see `00-handoff.md` → "Naming".
+> Amended 2026-10-23: the name is **donn**; the placeholder becomes `@getdonn/*`, `donn` and
+> `donnd` at the rename (`00-handoff.md` → "Naming").
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Principles
 
@@ -28,19 +31,19 @@
 
 ```
                  ┌──────────────────────────── sources ────────────────────────────┐
-                 │  org / area / team personas    project .hatrack/    ~/.hatrack/  │
+                 │  org / area / team personas    project .donn/       ~/.donn/     │
                  │  (git repo  or  control plane)  persona.yaml         user layer  │
                  └───────────────┬─────────────────────┬───────────────────┬────────┘
                                  ▼                     ▼                   ▼
                           ┌────────────────────────────────────────────────────┐
-                          │                  @hatrack/resolver                 │
+                          │                  @getdonn/resolver                 │
                           │  load → DAG → C3 linearize → merge → locks → IR    │
                           │              + provenance + warnings               │
                           └───────────────────────────┬────────────────────────┘
                                                       ▼
                                       ┌──────────────────────────────┐
                                       │   Resolved Persona (IR)      │  ← harness-neutral
-                                      │   @hatrack/spec              │
+                                      │   @getdonn/spec              │
                                       └──────┬───────┬───────┬───────┘
           ┌──────────────┐                   │       │       │                  ┌──────────────┐
           │ secrets      │◄── resolve refs ──┤       │       ├── resolve names ─►│ MCP gateway  │
@@ -53,7 +56,7 @@
                                    ▼           ▼            ▼            ▼           ▼
                               build/<persona>/<harness>/  → activate() → the running tool
 
-   ┌──────────────── CLI (@hatrack/cli) ────────────────┐   ┌──── in-harness UX ────┐
+   ┌──────────────── CLI (@getdonn/cli) ────────────────┐   ┌──── in-harness UX ────┐
    │ init · resolve · compile · switch · doctor · diff  │   │ claude-code mod,       │
    │ publish · login · explain                          │   │ per-harness equivalents│
    └─────────────────────────┬──────────────────────────┘   └────────────────────────┘
@@ -79,7 +82,7 @@
 | `adapter-sdk` | The harness adapter contract (below), shared test harness, capability-matrix types | `HarnessAdapter` |
 | `adapters/*` | One package per harness | implements `HarnessAdapter` |
 | `cli` | User entry point; orchestrates resolve → compile → activate. Thin: talks to the daemon when it is running, falls back to in-process otherwise | commands |
-| `daemon` (`hatrackd`) | Long-running local service: sync, cache, watchers, local API. See "Local daemon" below | local HTTP/unix-socket API |
+| `daemon` (`donnd`) | Long-running local service: sync, cache, watchers, local API. See "Local daemon" below | local HTTP/unix-socket API |
 | `mod-claude-code` | In-session UX for Claude Code (status line, `/persona`, nudges); a client of the daemon | mod |
 | `desktop` | Tray/menubar app (Tauri or Electron) over the daemon: current persona, switch, sync status, drift, logs. Optional; no logic of its own | daemon client |
 
@@ -93,7 +96,7 @@
 | `gateway-integrations` | Deeper integrations than the OSS adapter: sync allowed-tool sets from Bifrost etc. into persona policy |
 | `deploy` | Dockerfile, Helm chart, reference Terraform |
 
-The enterprise repo depends on **published** `@hatrack/spec`, `@hatrack/resolver`, `@hatrack/store`
+The enterprise repo depends on **published** `@getdonn/spec`, `@getdonn/resolver`, `@getdonn/store`
 packages. That dependency direction is the boundary and is non-negotiable.
 
 ## The harness adapter contract
@@ -171,7 +174,7 @@ How `activate()` makes a build live varies by harness and is the riskiest per-ad
 
 Each adapter documents which it uses and why. Claude Code specifics: see Appendix A.
 
-## Local daemon (`hatrackd`)
+## Local daemon (`donnd`)
 
 Everything that should happen *without a terminal open* lives here, and every UI (CLI, mod, IDE
 extension, desktop tray, eventually the web console via a loopback token) is a client of it.
@@ -181,33 +184,33 @@ real reason a desktop presence exists at all.
 Responsibilities:
 
 - **Sync.** Pull published personas and ancestors from the control plane on an interval / push;
-  keep the local cache (`~/.hatrack/cache/`) warm so `switch` is instant and works offline.
+  keep the local cache (`~/.donn/cache/`) warm so `switch` is instant and works offline.
 - **Pre-build.** Resolve + compile personas the user is likely to need (recently used, cwd-matched)
   ahead of time, per installed harness.
-- **Watchers.** Watch persona source dirs and project `.hatrack/` files; rebuild on change;
+- **Watchers.** Watch persona source dirs and project `.donn/` files; rebuild on change;
   optionally trigger harness-specific reload where a harness exposes one.
 - **Drift + telemetry (opt-in).** Compute local-vs-published diffs and report to the control plane;
   nothing leaves the machine in OSS mode unless the user is logged in and opted in.
 - **Local marketplace / registry server.** Serve persona builds to harnesses that prefer a
   URL or marketplace over a directory (Claude Code local marketplace; others as discovered).
 - **Secrets broker.** Hold short-lived resolved secrets in memory so builds on disk can reference
-  `${HATRACK_SECRET_X}` env vars instead of materialising values (reduces secrets-on-disk).
+  `${DONN_SECRET_X}` env vars instead of materialising values (reduces secrets-on-disk).
 - **Harness detection.** Know which harnesses are installed and which persona is live in each.
 - **Local API.** Unix socket (Windows: named pipe) with a simple JSON-RPC/HTTP surface:
   `personas.list`, `personas.resolve`, `switch`, `status`, `events` (SSE for UIs). Authenticated
   by filesystem perms + a local token file.
 
-Lifecycle: installed as a user service (launchd / systemd --user / Windows service); `hatrack
-daemon start|stop|status`; `hatrack` CLI auto-starts it on first use (configurable). Must degrade
+Lifecycle: installed as a user service (launchd / systemd --user / Windows service); `donn
+daemon start|stop|status`; `donn` CLI auto-starts it on first use (configurable). Must degrade
 gracefully: every CLI command works in-process with the daemon absent, just slower and without
 background sync.
 
-> 2026-10-21: the first slice (spec 14) is built. It runs as `zzpersona daemon run` inside the CLI
+> 2026-10-21: the first slice (spec 14) is built. It runs as `donn daemon run` inside the CLI
 > package until the build code is a package of its own. Sync, drift, the marketplace, pre-build, the
 > secrets broker and service install are later slices.
 >
 > 2026-10-22: service install and auto-start are built (spec 16, `16-daemon-service.md`):
-> `zzpersona daemon install|uninstall` (launchd, systemd --user; not Windows yet), and `zzpersona
+> `donn daemon install|uninstall` (launchd, systemd --user; not Windows yet), and `donn
 > claude` / `codex` start the daemon when it is not running (`daemon: { autoStart: false }` turns
 > it off). Other commands do not auto-start it.
 
@@ -215,25 +218,25 @@ Desktop app: a **tray/menubar client** of the daemon (Tauri preferred over Elect
 revisit if a webview constraint appears). It shows current persona per harness, a switcher, sync
 and drift status, and the compile report. Enterprise can later add "assigned to you" personas and
 notifications here. It never embeds business logic; if it works in the tray app, it must also work
-via `hatrack --json`.
+via `donn --json`.
 
 ## Data flows
 
 **Author / publish**
 ```
-edit persona.yaml → hatrack resolve --explain (local lint)
-  → git commit (OSS)  |  hatrack publish (control plane: validate, enforce locks, version++, audit)
+edit persona.yaml → donn resolve --explain (local lint)
+  → git commit (OSS)  |  donn publish (control plane: validate, enforce locks, version++, audit)
 ```
 
 **Switch**
 ```
-hatrack switch <persona> [--harness claude-code|all]     (CLI → daemon if running, else in-process)
+donn switch <persona> [--harness claude-code|all]     (CLI → daemon if running, else in-process)
   1. store.get(persona) + ancestors           (daemon cache; remote if logged in and stale)
   2. resolver.resolve → IR + provenance
   3. secrets.resolve, gateway.resolve
   4. for each target harness: adapter.compile → build/<persona>/<harness>/ (+ report)
   5. adapter.activate
-  6. write ~/.hatrack/state.json { current, perHarness, builtFrom: {versions/shas} }
+  6. write ~/.donn/state.json { current, perHarness, builtFrom: {versions/shas} }
 ```
 
 **Drift** (control plane)
@@ -244,19 +247,19 @@ server compares to published version → drift report per user/team → console
 
 **Project auto-detect**
 ```
-cwd walk-up finds .hatrack/persona.yaml → compare to state.current → nudge in-session (never auto-switch)
+cwd walk-up finds .donn/persona.yaml → compare to state.current → nudge in-session (never auto-switch)
 ```
 
 ## Control plane
 
-> 2026-10-22: the publish rules live in `@zzpersona/registry-api` as `publishLayer` over a
+> 2026-10-22: the publish rules live in `@getdonn/registry-api` as `publishLayer` over a
 > `LayerStore` (spec 19, `19-publish-engine.md`). The mock and the control plane are each a store
 > plus HTTP; the server runs the engine in a transaction holding an org-wide lock. Until a
 > name and a GitHub org exist, the private repo consumes this one as a git submodule pinned to a
 > release tag, through package `exports` only.
 
 > 2026-10-22: identity is brokered by the server (an OIDC confidential client); the CLI never
-> talks to the identity provider. Sessions are server-issued `zzp_` tokens, and grants are
+> talks to the identity provider. Sessions are server-issued `donn_` tokens, and grants are
 > `publish`/`lock` per layer path, managed on the server. See spec 20, `20-registry-identity.md`.
 
 - **API:** REST + JSON; OpenAPI published; the OSS `store-remote` is the only client the CLI needs.
@@ -271,7 +274,7 @@ cwd walk-up finds .hatrack/persona.yaml → compare to state.current → nudge i
   must be locked at org level, allowed gateway set). Start as code; consider OPA/Rego only if
   customers ask for custom policy.
 - *Note (2026-10-22):* the registry contract the server must meet, its publish rules, the mock and
-  the conformance kit are specified in `18-registry-contract.md` (`@zzpersona/registry-api`).
+  the conformance kit are specified in `18-registry-contract.md` (`@getdonn/registry-api`).
 - **Deployment:** single container + Postgres; Helm chart with external-DB option; air-gapped OK
   (no outbound calls required).
 
@@ -279,7 +282,7 @@ cwd walk-up finds .hatrack/persona.yaml → compare to state.current → nudge i
 
 - Persona files never contain secret values; CI lint rejects anything that looks like one.
 - Generated builds are gitignored and may contain resolved secrets; builds live under
-  `~/.hatrack/build/` with `0700` perms.
+  `~/.donn/build/` with `0700` perms.
 - In enterprise mode, MCP servers may be declared **only** as `gateway://` refs (org lock on
   `mcp.servers` to disallow inline definitions). This makes the gateway the single tool route.
 - Locks are enforced server-side at publish and client-side at resolve. The client side is
@@ -314,7 +317,7 @@ docs/planning/       (these documents)
 ```
 
 **Enterprise private repo:** `control-plane/`, `console/`, `policy/`, `gateway-integrations/`,
-`deploy/`. Depends on published `@hatrack/*` packages only.
+`deploy/`. Depends on published `@getdonn/*` packages only.
 
 ## Technology choices (defaults, change with reason)
 
@@ -325,14 +328,14 @@ docs/planning/       (these documents)
 - CLI: `clipanion` or `commander`; output machine-readable with `--json` on every command.
 - Control plane: Hono or Fastify; Drizzle + Postgres; OpenAPI generated.
 - Console: Next.js or Vite + React; talks only to the public API.
-- Distribution: npm (`npx hatrack`), Homebrew tap, single-binary via `bun build --compile` later.
+- Distribution: npm (`npx donn`), Homebrew tap, single-binary via `bun build --compile` later.
 
 ## Open questions (architecture-level)
 
 1. **IR stability.** The IR is the contract between resolver and every adapter *and* the control
    plane. Version it independently of the YAML `apiVersion`? (Lean: yes, `irVersion`.)
-   *Decided 2026-10-20: yes. `@zzpersona/spec` exports `IR_VERSION = 0` separately from
-   `API_VERSION = "zzpersona/v0"`; the IR carries `irVersion`.*
+   *Decided 2026-10-20: yes. `@getdonn/spec` exports `IR_VERSION = 0` separately from
+   `API_VERSION = "donn/v0"`; the IR carries `irVersion`.*
 2. **Multi-harness switch atomicity.** `switch --harness all` can partially fail. Per-harness
    state with a summary, or all-or-nothing? (Lean: per-harness; report.)
    *Decided 2026-10-22 (spec 17): one choice for every harness, saved first; `switch` then reports
@@ -415,9 +418,9 @@ enable plugins, change MCP, or run `/reload-plugins`. A mod *can* draw status, r
 
 Two tiers, both generated from the same build:
 
-1. **Relaunch (primary, deterministic).** `hatrack switch <p>` writes
-   `~/.hatrack/build/<p>/claude-code/{plugin/, settings.json, mcp.json, system-prompt.md}` and
-   `hatrack claude` (or `switch --relaunch`) execs `claude --plugin-dir … --settings … --mcp-config
+1. **Relaunch (primary, deterministic).** `donn switch <p>` writes
+   `~/.donn/build/<p>/claude-code/{plugin/, settings.json, mcp.json, system-prompt.md}` and
+   `donn claude` (or `switch --relaunch`) execs `claude --plugin-dir … --settings … --mcp-config
    … --strict-mcp-config --append-system-prompt-file …`. This is the one that is guaranteed
    correct and the one CI/`-p` uses.
 2. **In-session (best effort).** The mod shows the active persona and a nudge when cwd implies a
@@ -433,9 +436,9 @@ Two tiers, both generated from the same build:
    toggle entirely. Design tier 2 in Phase 1 after manual check A in the spike findings.
    Config-root swap is rejected (separate login per config directory).*
 
-Persona plugins are served from a **local marketplace** (`~/.hatrack/marketplace/.claude-plugin/
+Persona plugins are served from a **local marketplace** (`~/.donn/marketplace/.claude-plugin/
 marketplace.json` with relative-path sources), so all persona builds are installable by id
-(`<persona>@hatrack`) and toggled via `enabledPlugins` rather than copied around. Edits in
+(`<persona>@donn`) and toggled via `enabledPlugins` rather than copied around. Edits in
 place take effect on `/reload-plugins` with no version bump.
 
 ### Enterprise enforcement maps onto managed settings
@@ -445,7 +448,7 @@ This is the best news in the research. Claude Code's managed layer can enforce e
 `allowedMcpServers` / `deniedMcpServers` / `managed-mcp.json`, `allowManagedPermissionRulesOnly`,
 `allowManagedMcpServersOnly`, `allowManagedHooksOnly`, `strictPluginOnlyCustomization`,
 `disableSideloadFlags`. So the control plane's Claude Code enforcement path is: **compile
-org-level locks into `managed-settings.d/hatrack.json` + `managed-mcp.json`**, delivered through
+org-level locks into `managed-settings.d/donn.json` + `managed-mcp.json`**, delivered through
 the customer's existing MDM / claude.ai admin console. That turns client-side-advisory locks into
 real policy for this harness without inventing a new enforcement mechanism. Note:
 `disableSideloadFlags` would break the relaunch strategy's `--plugin-dir`/`--mcp-config`; in

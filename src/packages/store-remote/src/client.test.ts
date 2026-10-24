@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { startMockRegistry } from "@zzpersona/registry-api/mock";
+import { startMockRegistry } from "@getdonn/registry-api/mock";
 import {
   RegistryError,
   createClient,
@@ -229,7 +229,7 @@ describe("sign-in", () => {
 describe("managedBundle", () => {
   const manifestOf = (os: "macos" | "linux" | "windows") => ({
     format: 1 as const,
-    zzpersona: "t",
+    donn: "t",
     os,
     layers: [],
     files: {},
@@ -245,7 +245,7 @@ describe("managedBundle", () => {
           bundle: {
             files: {
               "a/b.txt": new TextEncoder().encode("hello"),
-              "zzpersona/manifest.json": new TextEncoder().encode(
+              "donn/manifest.json": new TextEncoder().encode(
                 JSON.stringify(manifestOf(input.os)),
               ),
             },
@@ -274,7 +274,7 @@ describe("managedBundle", () => {
     // The manifest as sent, before tolerant parsing drops fields this client does not know.
     expect(bundle.rawManifest).toEqual(manifestOf("linux"));
     expect(new TextDecoder().decode(bundle.files["a/b.txt"])).toBe("hello");
-    expect(Object.keys(bundle.files)).toContain("zzpersona/manifest.json");
+    expect(Object.keys(bundle.files)).toContain("donn/manifest.json");
   });
 
   it("surfaces the registry's problems", async () => {

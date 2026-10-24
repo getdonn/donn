@@ -211,7 +211,7 @@ const managedManifestShape = (object: ObjectOf, strict: boolean) => {
     strict ? z.enum(values) : z.string();
   return object({
     format: z.literal(1),
-    zzpersona: z.string(),
+    donn: z.string(),
     os: word(MANAGED_OSES),
     layers: z.array(
       object({

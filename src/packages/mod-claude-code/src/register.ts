@@ -15,7 +15,7 @@ import {
   type LiveState,
 } from "./decide.js";
 
-// The zzpersona mod for Claude Code: the active persona in the band above the prompt, a nudge
+// The donn mod for Claude Code: the active persona in the band above the prompt, a nudge
 // when this folder selects a different one, and /persona. It never changes the session's
 // persona. See docs/planning/09-mod-claude-code.md.
 
@@ -38,11 +38,11 @@ let showNudge = true;
 let launched: Launched | undefined;
 let here: Here = { kind: "none" };
 let nudged = false;
-/** The session folder `zzpersona claude` launched with, and the live switch, if any (spec 10). */
+/** The session folder `donn claude` launched with, and the live switch, if any (spec 10). */
 let session: string | undefined;
 let live: LiveState | undefined;
 
-const NO_SESSION = "live switching needs a session started by zzpersona claude";
+const NO_SESSION = "live switching needs a session started by donn claude";
 
 const HELD: readonly unknown[] = ["mcp", "permissions", "settings"];
 
@@ -72,17 +72,17 @@ async function onStart(
 ): Promise<unknown> {
   await $.command.register({
     name: "persona",
-    description: "Show, list or switch zzpersona personas",
+    description: "Show, list or switch donn personas",
     argumentHint:
       "[list | switch <persona> [--default] | use <persona> | clear [--default]]",
   });
   // Literal names: the engine lists the variables a mod reads.
   launched = launchedFrom(
-    await $.env.get("ZZPERSONA_PERSONA"),
-    await $.env.get("ZZPERSONA_SOURCE"),
-    await $.env.get("ZZPERSONA_PROJECT"),
+    await $.env.get("DONN_PERSONA"),
+    await $.env.get("DONN_SOURCE"),
+    await $.env.get("DONN_PROJECT"),
   );
-  session = (await $.env.get("ZZPERSONA_SESSION")) || undefined;
+  session = (await $.env.get("DONN_SESSION")) || undefined;
   // Headless (`claude -p`, the SDK): nothing is drawn, so don't run the CLI.
   if (e.isInteractive === false) return next(e);
   // In the background: the session starts without waiting for the CLI. A failure here (the
@@ -157,7 +157,7 @@ async function onPersona($: Mod$, e: { args?: string }): Promise<unknown> {
   return { text: commandText(command.form, json, launched, here) };
 }
 
-/** Run `zzpersona live` and adopt its state; the text to print either way. */
+/** Run `donn live` and adopt its state; the text to print either way. */
 async function applyLive(
   $: Mod$,
   persona: string,

@@ -6,7 +6,7 @@ import {
   ADAPTER_API_VERSION,
   defineAdapter,
   type HarnessAdapter,
-} from "@zzpersona/adapter-sdk";
+} from "@getdonn/adapter-sdk";
 import {
   BUILT_IN_TYPES,
   defineSecretProvider,
@@ -14,7 +14,7 @@ import {
   type Env,
   type SecretBackend,
   type SecretProvider,
-} from "@zzpersona/secrets";
+} from "@getdonn/secrets";
 import { expandPath } from "./config.js";
 import type { Context } from "./context.js";
 import { CliError } from "./errors.js";
@@ -193,7 +193,7 @@ function asAdapter(entry: string, value: unknown): HarnessAdapter {
     fail(
       entry,
       "api-version",
-      `it targets adapter API ${String(candidate!.apiVersion)}; this zzpersona supports ${ADAPTER_API_VERSION}`,
+      `it targets adapter API ${String(candidate!.apiVersion)}; this donn supports ${ADAPTER_API_VERSION}`,
     );
   try {
     return defineAdapter(candidate as HarnessAdapter);
@@ -216,7 +216,7 @@ function asProvider(entry: string, value: unknown): SecretProvider {
     fail(
       entry,
       "api-version",
-      `it targets secret provider API ${String(candidate!.apiVersion)}; this zzpersona supports ${SECRET_PROVIDER_API_VERSION}`,
+      `it targets secret provider API ${String(candidate!.apiVersion)}; this donn supports ${SECRET_PROVIDER_API_VERSION}`,
     );
   try {
     return defineSecretProvider(candidate as SecretBackend);

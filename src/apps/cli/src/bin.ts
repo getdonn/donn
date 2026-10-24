@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { nodeProbe } from "@zzpersona/executor";
+import { nodeProbe } from "@getdonn/executor";
 import { createCli } from "./cli.js";
 import { abandonedWork, workingDir } from "./startup.js";
 

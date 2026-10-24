@@ -1,4 +1,4 @@
-import { AdapterInputError } from "@zzpersona/adapter-sdk";
+import { AdapterInputError } from "@getdonn/adapter-sdk";
 import { describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
 import { report } from "./errors.js";

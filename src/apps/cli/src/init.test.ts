@@ -14,7 +14,7 @@ afterEach(() => s.cleanup());
 
 const config = () => parse(readFileSync(join(home, "config.yaml"), "utf8"));
 
-describe("zzpersona init --personas", () => {
+describe("donn init --personas", () => {
   it("writes config and a starter persona into an empty folder", async () => {
     const dir = join(s.root, "mine");
     const r = await zz(["init", "--personas", dir, "--json"], {
@@ -87,7 +87,7 @@ describe("zzpersona init --personas", () => {
   });
 });
 
-describe("zzpersona init --extends", () => {
+describe("donn init --extends", () => {
   it("writes a project persona extending the full ref", async () => {
     const repo = join(s.root, "checkout");
     mkdirSync(repo);
@@ -97,9 +97,9 @@ describe("zzpersona init --extends", () => {
     });
     expect(r.code, r.stderr).toBe(0);
     expect(
-      parse(readFileSync(join(repo, ".zzpersona/persona.yaml"), "utf8")),
+      parse(readFileSync(join(repo, ".donn/persona.yaml"), "utf8")),
     ).toEqual({
-      apiVersion: "zzpersona/v0",
+      apiVersion: "donn/v0",
       kind: "Persona",
       metadata: { name: "checkout" },
       extends: ["team/payments"],
@@ -127,7 +127,7 @@ describe("zzpersona init --extends", () => {
       home: s.home,
     });
     expect(r.code).toBe(1);
-    expect(existsSync(join(repo, ".zzpersona"))).toBe(false);
+    expect(existsSync(join(repo, ".donn"))).toBe(false);
   });
 
   it("nests a project inside another, and the nested one wins there", async () => {
@@ -145,7 +145,7 @@ describe("zzpersona init --extends", () => {
   });
 });
 
-describe("zzpersona init", () => {
+describe("donn init", () => {
   it("does both in one call", async () => {
     const dir = join(s.root, "both");
     const repo = join(s.root, "repo2");
@@ -155,7 +155,7 @@ describe("zzpersona init", () => {
       home,
     });
     expect(r.code, r.stderr).toBe(0);
-    expect(existsSync(join(repo, ".zzpersona/persona.yaml"))).toBe(true);
+    expect(existsSync(join(repo, ".donn/persona.yaml"))).toBe(true);
   });
 
   it("explains itself with no flags", async () => {
@@ -165,7 +165,7 @@ describe("zzpersona init", () => {
   });
 });
 
-describe("zzpersona init (spec 08 hardening)", () => {
+describe("donn init (spec 08 hardening)", () => {
   it("reports what it created before a later step failed", async () => {
     const r = await zz(
       [
@@ -203,12 +203,12 @@ describe("zzpersona init (spec 08 hardening)", () => {
   });
 });
 
-describe("zzpersona init keeps the rest of config.yaml", () => {
+describe("donn init keeps the rest of config.yaml", () => {
   it("keeps plugin lists when it repoints the personas folder", async () => {
     mkdirSync(home, { recursive: true });
     writeFileSync(
       join(home, "config.yaml"),
-      `personas: ${join(s.root, "a")}\nadapters: [acme-zzp-x]\n`,
+      `personas: ${join(s.root, "a")}\nadapters: [acme-donn-x]\n`,
     );
     const r = await zz(["init", "--personas", join(s.root, "b"), "--force"], {
       cwd: s.root,
@@ -217,17 +217,17 @@ describe("zzpersona init keeps the rest of config.yaml", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(config()).toEqual({
       personas: join(s.root, "b"),
-      adapters: ["acme-zzp-x"],
+      adapters: ["acme-donn-x"],
     });
   });
 });
 
-describe("zzpersona init keeps config comments", () => {
+describe("donn init keeps config comments", () => {
   it("rewrites personas without dropping comments", async () => {
     mkdirSync(home, { recursive: true });
     writeFileSync(
       join(home, "config.yaml"),
-      `# my zzpersona config\npersonas: ${join(s.root, "a")} # old folder\nadapters: [acme-zzp-x]\n`,
+      `# my donn config\npersonas: ${join(s.root, "a")} # old folder\nadapters: [acme-donn-x]\n`,
     );
     const r = await zz(["init", "--personas", join(s.root, "b"), "--force"], {
       cwd: s.root,
@@ -235,10 +235,10 @@ describe("zzpersona init keeps config comments", () => {
     });
     expect(r.code, r.stderr).toBe(0);
     const text = readFileSync(join(home, "config.yaml"), "utf8");
-    expect(text).toContain("# my zzpersona config");
+    expect(text).toContain("# my donn config");
     expect(config()).toEqual({
       personas: join(s.root, "b"),
-      adapters: ["acme-zzp-x"],
+      adapters: ["acme-donn-x"],
     });
   });
 });

@@ -1,4 +1,4 @@
-import type { Detection, Platform, Probe } from "@zzpersona/adapter-sdk";
+import type { Detection, Platform, Probe } from "@getdonn/adapter-sdk";
 
 // Installed version, plus file-based managed settings that change how we can launch. Policy
 // delivered by MDM profile, registry or server-managed settings is invisible here; the CLI must

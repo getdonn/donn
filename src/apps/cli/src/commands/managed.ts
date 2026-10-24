@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
-import type { ManagedOs } from "@zzpersona/adapter-sdk";
+import type { ManagedOs } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";
 import { CliError, errorText } from "../errors.js";
-import { MANAGED_ROOTS } from "@zzpersona/adapter-claude-code";
+import { MANAGED_ROOTS } from "@getdonn/adapter-claude-code";
 import {
   MANIFEST_PATH,
   refuseManagedRoot,
@@ -44,7 +44,7 @@ export async function managedBuildCommand(
       { os: options.os },
     );
   }
-  const out = resolve(io.cwd, options.out ?? "zzpersona-managed");
+  const out = resolve(io.cwd, options.out ?? "donn-managed");
   await refuseManagedRoot(out, [
     managedEnv(io).root,
     ...Object.values(MANAGED_ROOTS),
@@ -113,32 +113,34 @@ const shellWord = (value: string, os: ManagedOs) =>
       : `'${value.replaceAll("'", "'\\''")}'`;
 
 /** Refuse without administrator rights, naming the exact command to re-run. */
-function needAdmin(env: ManagedEnv, command: string): void {
+export function needAdmin(env: ManagedEnv, command: string): void {
   if (env.isAdmin()) return;
   const what = command.split(" ").slice(0, 2).join(" ");
   throw new CliError(
     "managed-needs-admin",
     env.os === "windows"
-      ? `${what} needs administrator rights; run it in an elevated PowerShell: zzpersona ${command}`
-      : `${what} needs administrator rights; run: sudo zzpersona ${command}`,
-    { command: `zzpersona ${command}` },
+      ? `${what} needs administrator rights; run it in an elevated PowerShell: donn ${command}`
+      : `${what} needs administrator rights; run: sudo donn ${command}`,
+    { command: `donn ${command}` },
   );
 }
 
-/** True to go ahead; false (after saying so) when declined; throws without a terminal. */
-async function confirmed(
+/**
+ * True to go ahead; false (after saying so) when declined; throws `code` without a terminal.
+ * `donn migrate` asks through it too.
+ */
+export async function confirmed(
   io: CliIo,
-  env: ManagedEnv,
+  env: Pick<ManagedEnv, "confirm">,
   question: string,
   declined: string,
+  code = "managed-confirm",
 ): Promise<boolean> {
   const answer = await env.confirm(question);
   if (answer === undefined) {
-    throw new CliError(
-      "managed-confirm",
-      "no terminal to confirm on; re-run with --yes",
-      { hint: "--yes" },
-    );
+    throw new CliError(code, "no terminal to confirm on; re-run with --yes", {
+      hint: "--yes",
+    });
   }
   if (!answer) io.stderr.write(`cancelled; ${declined}\n`);
   return answer;
@@ -299,21 +301,21 @@ export async function managedCheckCommand(
 export function managedFix(result: CheckResult, os: ManagedOs): string {
   const install =
     os === "windows"
-      ? "zzpersona managed install <dir> in an elevated PowerShell"
-      : "sudo zzpersona managed install <dir>";
+      ? "donn managed install <dir> in an elevated PowerShell"
+      : "sudo donn managed install <dir>";
   const fixes: Partial<Record<CheckState, string>> = {
     ignored:
       'set managedSourcesBehavior: "merge" in the higher-ranked source, or deliver the policy through it',
     edited: `reinstall the bundle: ${install}`,
     overridden:
-      "remove the value from the later drop-in, or ask its owner to; zzpersona never edits other drop-ins",
-    stale: `zzpersona managed build, then ${install}`,
+      "remove the value from the later drop-in, or ask its owner to; donn never edits other drop-ins",
+    stale: `donn managed build, then ${install}`,
   };
   const all = result.findings.flatMap((f) => f.fix ?? fixes[f.state] ?? []);
   return [...new Set(all)].join("; ");
 }
 
-/** The `managed:` line of `zzpersona status`, or undefined when nothing is installed. */
+/** The `managed:` line of `donn status`, or undefined when nothing is installed. */
 export async function managedStatus(
   io: CliIo,
 ): Promise<{ line?: string; json: object }> {

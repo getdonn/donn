@@ -11,7 +11,7 @@ import {
   type ManagedManifest,
   type ManagedReport,
   type ManagedResult,
-} from "@zzpersona/adapter-sdk";
+} from "@getdonn/adapter-sdk";
 import {
   HOOK_EVENTS,
   IR_VERSION,
@@ -22,7 +22,7 @@ import {
   type Policy,
   type Ref,
   type ResolvedPersona,
-} from "@zzpersona/spec";
+} from "@getdonn/spec";
 import { NATIVE_EVENTS } from "../compile.js";
 import { KNOWN_MANAGED_KEYS, minClaudeCode } from "./keys.js";
 import { installedPath } from "./roots.js";
@@ -32,10 +32,10 @@ import { installedPath } from "./roots.js";
 // the bundle; everything else stays a persona default. See docs/planning/21-managed-settings.md,
 // section 2, for the mapping this implements row by row.
 
-const SETTINGS = "managed-settings.d/50-zzpersona.json";
+const SETTINGS = "managed-settings.d/50-donn.json";
 const MANAGED_MCP = "managed-mcp.json";
-const MANIFEST = "zzpersona/manifest.json";
-const HOOKS = "zzpersona/hooks";
+const MANIFEST = "donn/manifest.json";
+const HOOKS = "donn/hooks";
 const MANAGED = ["targets", "claude-code", "managed"];
 
 const ADVISORY = "enforced at publish and resolve, not by Claude Code";
@@ -52,7 +52,7 @@ const REASON = {
   secret:
     "is a secret reference, and managed files are readable by every user; pass secrets through each user's environment",
   unknownKey:
-    "is not a managed setting zzpersona knows; check the spelling against the Claude Code settings reference",
+    "is not a managed setting donn knows; check the spelling against the Claude Code settings reference",
   passthrough: "applied last, as written",
   sourcesBehavior:
     "written, but Claude Code reads it from the highest managed source, so from the policy files it cannot make a console or MDM policy merge with them; set it there",
@@ -718,7 +718,7 @@ export function compileManaged(input: ManagedInput): ManagedResult {
   const floor = minClaudeCode(Object.keys(policy));
   const manifest: ManagedManifest = {
     format: 1,
-    zzpersona: input.zzpersona,
+    donn: input.donn,
     os,
     layers: input.layers,
     files: hashes,
@@ -731,7 +731,7 @@ export function compileManaged(input: ManagedInput): ManagedResult {
   return { report, bundle: { files: ordered, manifest } };
 }
 
-/** Where the policy weakens zzpersona's own launches (docs/planning/09 and 10). */
+/** Where the policy weakens donn's own launches (docs/planning/09 and 10). */
 function warnings(
   policy: Settings,
   exclusive: boolean,
@@ -741,14 +741,14 @@ function warnings(
     found.push({
       code: "partial-mode",
       message:
-        "disableSideloadFlags rejects --plugin-dir and --mcp-config: zzpersona claude runs in partial mode, without the persona's plugin and MCP servers",
+        "disableSideloadFlags rejects --plugin-dir and --mcp-config: donn claude runs in partial mode, without the persona's plugin and MCP servers",
     });
   }
   if (exclusive) {
     found.push({
       code: "partial-mode",
       message:
-        "managed-mcp.json makes --mcp-config exit: zzpersona claude launches without the persona's MCP servers",
+        "managed-mcp.json makes --mcp-config exit: donn claude launches without the persona's MCP servers",
     });
   }
   if (policy.allowManagedHooksOnly === true) {

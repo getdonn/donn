@@ -4,7 +4,7 @@ import { diff, resolve, valueAt, type PersonaSource } from "./index.js";
 // diff() compares two resolve results over their provenance paths. See spec 08 §3.
 
 const persona = (name: string, extra: object = {}) => ({
-  apiVersion: "zzpersona/v0",
+  apiVersion: "donn/v0",
   kind: "Persona",
   metadata: { name, description: `the ${name} persona` },
   ...extra,

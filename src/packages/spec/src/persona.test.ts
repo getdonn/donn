@@ -7,7 +7,7 @@ import {
 } from "./persona.js";
 
 const base = {
-  apiVersion: "zzpersona/v0",
+  apiVersion: "donn/v0",
   kind: "Persona",
   metadata: { name: "base" },
 };
@@ -30,9 +30,9 @@ describe("Persona", () => {
   });
 
   it("rejects a wrong apiVersion", () => {
-    expect(
-      Persona.safeParse({ ...base, apiVersion: "zzpersona/v1" }).success,
-    ).toBe(false);
+    expect(Persona.safeParse({ ...base, apiVersion: "donn/v1" }).success).toBe(
+      false,
+    );
   });
 
   it("requires extends refs to start with a known layer", () => {
@@ -137,7 +137,7 @@ describe("policy", () => {
   });
 
   it("an overlay cannot carry policy", () => {
-    const overlay = { apiVersion: "zzpersona/v0", kind: "PersonaOverlay" };
+    const overlay = { apiVersion: "donn/v0", kind: "PersonaOverlay" };
     expect(
       PersonaOverlay.safeParse({ ...overlay, policy: { mcp: "exclusive" } })
         .success,
@@ -147,7 +147,7 @@ describe("policy", () => {
 
 describe("PersonaOverlay", () => {
   it("cannot carry metadata, extends or locks", () => {
-    const overlay = { apiVersion: "zzpersona/v0", kind: "PersonaOverlay" };
+    const overlay = { apiVersion: "donn/v0", kind: "PersonaOverlay" };
     expect(PersonaOverlay.safeParse(overlay).success).toBe(true);
     for (const key of ["metadata", "extends", "locks"]) {
       expect(PersonaOverlay.safeParse({ ...overlay, [key]: [] }).success).toBe(
@@ -158,7 +158,7 @@ describe("PersonaOverlay", () => {
 
   it("is selected by kind in PersonaDocument", () => {
     const doc = PersonaDocument.parse({
-      apiVersion: "zzpersona/v0",
+      apiVersion: "donn/v0",
       kind: "PersonaOverlay",
     });
     expect(doc.kind).toBe("PersonaOverlay");

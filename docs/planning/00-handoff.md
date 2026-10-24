@@ -3,6 +3,7 @@
 > Purpose: get a fresh session (or a new engineer) fully up to speed in one read. This captures
 > the reasoning and the rejected alternatives that the numbered docs state only as conclusions.
 > Written 2026-10-20 from the original brainstorming session. Update it when decisions change.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## How this started
 
@@ -42,7 +43,7 @@ of 2–3 engineers if it shows legs. Scope is not the constraint; sequencing is.
 | Adapters emit a `CompileReport` of dropped/weakened fields | Silent best-effort mapping | Policy owners must know where enforcement is advisory; also a marketing asset |
 | Open core with a **separate private enterprise repo** depending on published OSS packages | Private packages inside the monorepo excluded from the OSS mirror | Forces a clean boundary; monorepo-with-exclusions always leaks |
 | Knowledge = pointers to MCP-reachable sources | Ship/own a vector database | Every enterprise already has RAG + data-residency review; owning vectors makes this a data vendor, a worse business than config/governance |
-| Local daemon (`hatrackd`) is core; tray app is a thin client, later | Electron desktop app as a primary surface | Founder's real need was "something running locally for sync/agent pod"; that's a daemon. A third UI with no new user is cost without benefit. Tauri preferred over Electron for footprint |
+| Local daemon (`donnd`) is core; tray app is a thin client, later | Electron desktop app as a primary surface | Founder's real need was "something running locally for sync/agent pod"; that's a daemon. A third UI with no new user is cost without benefit. Tauri preferred over Electron for footprint |
 | IDE support = compile to that IDE's config; extensions later as daemon clients | VS Code extension early | Large surface area for a status indicator; wait for the daemon |
 | `locks` as the policy primitive; enforced server-side at publish, client-side advisory, drift as compensating control | Client-side enforcement only | Client is trivially editable; the gap *is* the enterprise upsell |
 | Replace (not deep-merge) opaque objects like MCP server defs; `deny` always beats `allow`; absence never deletes | Deep-merge everything | Deep-merged `args` arrays produce nonsense; security sets should only grow without explicit `remove` |
@@ -82,7 +83,61 @@ Sources: https://code.claude.com/docs/en/ (plugins, mods, settings, managed-sett
 claude-directory, env-vars, mcp, hooks, cli-reference); https://claude-codex.fr/en/advanced/mcp-profiles/ ;
 https://www.getmaxim.ai/articles/best-mcp-gateways-in-2026-compared-by-deployment-model-and-governance-depth/
 
-## Naming (amended 2026-10-20)
+## Naming (amended 2026-10-20, 2026-10-23)
+
+### Chosen 2026-10-23: donn
+
+The name is **donn**: to *don* a persona, putting on the right setup for the work in front of you.
+The double n is deliberate. `don` is taken on npm (a 2022 templating DSL) and as `don.sh` /
+`don.dev`; a Go tool named `don` already connects LLMs to command-line tools; and a dictionary
+word is hard to search for and weak as a trademark.
+
+Reserved 2026-10-23:
+
+- **Domain `getdonn.dev`.** `donn.dev` is for sale at about $5k (declined); `donn.ai` is parked
+  on a resale marketplace; `donn.sh` (about $90 a year) and `usedonn.com` were free and are
+  optional.
+- **npm org `@getdonn`.** `@donn` is held by another npm account. The bare package name `donn`
+  is unowned, but npm refuses to publish it ("too similar to existing packages dot, docx, conf,
+  hono…"), so the CLI ships as **`@getdonn/cli`** and installs the `donn` command. Same shape
+  as `@anthropic-ai/claude-code` → `claude` and `@openai/codex` → `codex`.
+- **GitHub org `getdonn`.** `donn` and `donn-dev` are unrelated users. The repo moves into the
+  org when it goes public (GitHub redirects the old URL).
+
+**2026-10-23: the rename landed (spec 22).** Run `donn migrate` once on a machine that ran
+zzpersona; the mapping below (the code said `zzpersona` until then) is kept as history:
+
+| Placeholder | Becomes |
+|---|---|
+| `@zzpersona/*` | `@getdonn/*` |
+| `zzpersona` (CLI) | `donn`, from the package `@getdonn/cli` |
+| `zzpersonad` | `donnd` |
+| `~/.zzpersona/`, `.zzpersona/persona.yaml` | `~/.donn/`, `.donn/persona.yaml` |
+| `apiVersion: zzpersona/v0` | `apiVersion: donn/v0` |
+| `ZZPERSONA_*` | `DONN_*` |
+
+`grep -ri zzpersona` is not the whole list: the short prefix `zzp` also appears (`ZZP_E2E`,
+`ZZP_SECRET_*`, `zzp-*` plugin and folder names, `zzpd-`), and so do OS service labels
+(`zzpersona.daemon`, `zzpersona-daemon.service`) and the managed-settings fragment
+`50-zzpersona.json`. The rename plan decides those.
+
+Rejected on the way, 2026-10-23:
+
+- **innate** (and `un8` as its shorthand): "innate" means inborn and unchanging, the opposite of
+  switching; `vima-tech/Innate`, an AI-agent knowledge layer, already uses it; `un8` reads as a
+  derivative of n8n and cannot be spelled by ear.
+- **Pluribus-derived** (`pluro`, `plures`, `plurex`, `luris`): the show's hive mind spreads like a
+  virus, and "many minds" does not describe what the product does.
+- **rolio** (role + portfolio): the runner-up; free on npm.
+- legata, mantlr, avatara, incarna, mimiq, roledex, myrio: weaker fit or longer. Of the earlier
+  list, Mantle, Guise and Manyhats are taken on npm.
+
+Still open: a USPTO search for DONN in software classes 9 and 42 before the first public
+release; a tagline (candidate: "Define it once. Don it anywhere."); the rename itself, including
+golden files, fixtures and the private control-plane repo's `@zzpersona/*` dependencies
+(superseded 2026-10-23: the rename landed, spec 22).
+
+The placeholder rules below (2026-10-20) hold until the rename lands (superseded 2026-10-23: it landed).
 
 **Hatrack is out** — the name is already taken by an existing project. No replacement is chosen,
 and choosing one does **not** block Phase 0; it blocks only the first `npm publish`.
@@ -106,7 +161,8 @@ Until a name is picked:
 
 ## Consolidated open questions
 
-From `01`: name (Mantle / Guise / Dramatis / Roleset / Manyhats — all unverified; Hatrack taken);
+From `01`: name (Mantle / Guise / Dramatis / Roleset / Manyhats — all unverified; Hatrack taken;
+*decided 2026-10-23: **donn**, see "Naming"*);
 license; second compile target (lean `agents-md`; *2026-10-21 spike: `agents-md` as a repo-file
 target plus Codex as the real second adapter, since relaunch works for Codex and Copilot too*).
 From `02`: Claude Code switch mechanism (now mostly answered in `03` App. A, spikes remain);
@@ -136,7 +192,7 @@ ship OSS early, watch for team-shaped issues, recruit 2–3 friends who lead sma
 - **Provenance** — which layer set each resolved value; powers `--explain` and drift.
 - **Drift** — difference between a user's local resolved persona and the published one.
 - **Gateway** — an MCP gateway (e.g. Bifrost) that governs which tools exist; personas reference servers by `gateway://name`.
-- **`hatrackd`** — the local daemon: sync, cache, pre-build, watchers, local API.
+- **`donnd`** — the local daemon: sync, cache, pre-build, watchers, local API.
 - **Mod** — a Claude Code plugin with in-process JS/TS hooks; our in-session UX for that harness.
 
 ## If you are a fresh session starting work

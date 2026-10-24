@@ -1,9 +1,10 @@
 # 05 — Adapter SDK and the Claude Code adapter
 
-> Status: design, 2026-10-21. Phase 1, first spec. Covers `@zzpersona/adapter-sdk` and
-> `@zzpersona/adapter-claude-code`. The CLI's plan executor gets its own spec next. Agreed in
-> conversation section by section; this document is the reviewable record. Placeholder name
-> `zzpersona` per `00-handoff.md` → "Naming".
+> Status: design, 2026-10-21. Phase 1, first spec. Covers `@getdonn/adapter-sdk` and
+> `@getdonn/adapter-claude-code`. The CLI's plan executor gets its own spec next. Agreed in
+> conversation section by section; this document is the reviewable record. Written under a
+> placeholder name; see `00-handoff.md` → "Naming".
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
@@ -115,7 +116,7 @@ type Step =
   | { kind: "overlay"; path: string; content: string };    // project-relative
 ```
 
-The CLI writes builds to `~/.zzpersona/build/<persona>/<adapter>/` (directory `0700`), adds an
+The CLI writes builds to `~/.donn/build/<persona>/<adapter>/` (directory `0700`), adds an
 ownership marker to every overlay and refuses to overwrite a file it does not own, resolves
 `secretEnv` refs just before a `launch` and adds them to its `env`, then carries out the steps
 in order. New step kinds (a `notify` for the mod, a `settings-local` for in-session
@@ -146,7 +147,7 @@ interface CompileReport {
   entries: ReportEntry[];               // lossy items only
 }
 interface ReportEntry {
-  path: string;                         // IR path grammar from @zzpersona/spec
+  path: string;                         // IR path grammar from @getdonn/spec
   outcome: "approximated" | "advisory" | "dropped";
   reason: string;
   lock?: { path: string; layer: Ref };  // added by the SDK, never by the adapter
@@ -164,7 +165,7 @@ interface ReportEntry {
 
 ## 3. Conformance kit
 
-Exported as `@zzpersona/adapter-sdk/conformance`.
+Exported as `@getdonn/adapter-sdk/conformance`.
 
 - `runConformance(adapter, options) → Promise<CheckResult[]>` is framework-neutral: each result
   is `{ name, corpusEntry?, passed, reason? }`. `conformanceSuite(adapter)` wraps it as vitest
@@ -193,16 +194,16 @@ Exported as `@zzpersona/adapter-sdk/conformance`.
 
 ## 4. Packaging and loading
 
-- `@zzpersona/adapter-sdk` (`src/packages/adapter-sdk/`): types; `defineAdapter()`, which stamps
+- `@getdonn/adapter-sdk` (`src/packages/adapter-sdk/`): types; `defineAdapter()`, which stamps
   `apiVersion` and validates the declaration; `requiredEntries()`; `annotateLocks()`;
   `renderBuild()`; error classes; the `./conformance` subpath. Depends only on
-  `@zzpersona/spec`.
-- `@zzpersona/adapter-claude-code` (`src/packages/adapters/claude-code/`): default export is a
+  `@getdonn/spec`.
+- `@getdonn/adapter-claude-code` (`src/packages/adapters/claude-code/`): default export is a
   `defineAdapter({...})`.
 - `ADAPTER_API_VERSION = 1`. The CLI refuses an adapter with another major version. Separately,
   each adapter's `irVersions` lets the IR evolve independently.
 - Loading, explicit only: first-party adapters from a built-in id → package map (CLI
-  dependencies); third-party ones from `adapters:` in `~/.zzpersona/config.yaml` (package name
+  dependencies); third-party ones from `adapters:` in `~/.donn/config.yaml` (package name
   or local path), loaded with `import()`. No scanning of `node_modules`.
 - Per-harness settings: an adapter reads `ir.targets[<its id>]`; no spec change is needed for a
   third-party adapter to get its own settings block.
@@ -226,12 +227,12 @@ Grounded in `spikes/claude-code/FINDINGS.md` (Claude Code v2.1.306).
 | `instructions` | `system-prompt.md`: fragments in order, inline text or `texts[file]`, separated by blank lines | native |
 | `skills` | local sources: `plugin/skills/<name>/` via `copyFrom`. `registry://` sources: reported `dropped` (no registry in v0) | native |
 | `hooks.*` | `plugin/hooks/hooks.json` with events mapped (`pre-tool-use` → `PreToolUse`, …, all nine); scripts via `copyFrom` into `plugin/hooks/scripts/`, invoked as `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/<file>` | native |
-| `mcp.servers` | `mcp.json`. `command` and `url` forms map directly; `secret://` env values become `${ZZP_SECRET_<n>}` in `secretEnv`. `gateway://` refs: reported `dropped` until gateway resolution exists | native |
+| `mcp.servers` | `mcp.json`. `command` and `url` forms map directly; `secret://` env values become `${DONN_SECRET_<n>}` in `secretEnv`. `gateway://` refs: reported `dropped` until gateway resolution exists | native |
 | `permissions.*` | `settings.json` → `permissions.allow/deny/ask` | native |
-| `secrets` | refs become `${ZZP_SECRET_<n>}` placeholders (Claude Code expands `${VAR}` in MCP config); the CLI supplies values as launch env | native |
+| `secrets` | refs become `${DONN_SECRET_<n>}` placeholders (Claude Code expands `${VAR}` in MCP config); the CLI supplies values as launch env | native |
 | `targets.claude-code` | `settings.json` leaves (e.g. `model`, `outputStyle`), except adapter keys below | native |
 | `knowledge` | appended to `system-prompt.md` as a "Knowledge sources" list of pointers | advisory |
-| whole persona | `plugin/.claude-plugin/plugin.json`, plugin name `zzp-<personaId with / → ->` | — |
+| whole persona | `plugin/.claude-plugin/plugin.json`, plugin name `donn-<personaId with / → ->` | — |
 
 Adapter keys in `targets.claude-code` (consumed, not written to settings): `strictMcp` (default
 `true`; `false` omits `--strict-mcp-config` so the user's own MCP servers stay visible).
@@ -280,7 +281,7 @@ Both fit without changing sections 1–4, which is the point of checking now.
   deliberately broken toy adapters, one per check, each of which must fail exactly that check.
 - `adapter-claude-code`: `conformanceSuite(adapter)`; golden `renderBuild` files for each corpus
   entry in each mode (`relaunch`, `partial`, `relaunch-no-mcp`); `detect` against fake probes.
-  An opt-in end-to-end test (`ZZP_E2E=1`) launches real `claude -p` against the `full` build,
+  An opt-in end-to-end test (`DONN_E2E=1`) launches real `claude -p` against the `full` build,
   as the spike did, and checks the codewords.
 
 ## Non-goals (this spec)
@@ -302,7 +303,7 @@ activation path; gateway resolution; implementing `agents-md` or `codex`; skill 
    *Amended 2026-10-21 (spec 12): there is no file option that keeps Codex's own instructions
    (`model_instructions_file` replaces them), so instructions go inline; ~40 KB of
    `developer_instructions` worked in `exec` and the TUI (`spikes/codex`).*
-3. **Plugin name.** `zzp-<personaId>` makes skills show as `zzp-project-checkout-api:<skill>`.
+3. **Plugin name.** `donn-<personaId>` makes skills show as `donn-project-checkout-api:<skill>`.
    Readable enough, or use the persona's `metadata.name`, which is not guaranteed unique?
    *Amended 2026-10-21 (spec 09): `/` now maps to `--` (`zzp-team--payments`), so
    `team/platform-payments` and `team/platform/payments` no longer share a name; ref segments

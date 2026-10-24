@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import type { Ref } from "@zzpersona/spec";
+import type { Ref } from "@getdonn/spec";
 
 /**
  * <home>/build/<slug>-<hash8>/<adapter>. The hash covers the project directory too: every

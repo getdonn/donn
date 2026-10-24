@@ -1,4 +1,4 @@
-import type { ResolvedPersona } from "@zzpersona/spec";
+import type { ResolvedPersona } from "@getdonn/spec";
 import { keychainBackend } from "./keychain.js";
 
 // secret://<provider>/<path> → value. The provider name is looked up in the persona's resolved

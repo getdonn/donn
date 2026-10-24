@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteKeychainItem,
+  hasKeychainItem,
   keychainParts,
   keychainSupported,
   setKeychainItem,
@@ -175,13 +176,18 @@ describe("keychain failures that are not a missing item", () => {
 });
 
 describe("keychain writes", () => {
-  const recorder = (platform: string, exitCode = 0, stderr = "") => {
+  const recorder = (
+    platform: string,
+    exitCode = 0,
+    stderr = "",
+    stdout = "",
+  ) => {
     const calls: { command: string; args: string[]; input?: string }[] = [];
     const ctx: KeychainContext = {
       platform,
       run: async (command: string, args: string[], input?: string) => {
         calls.push({ command, args, input });
-        return { exitCode, stdout: "", stderr };
+        return { exitCode, stdout, stderr };
       },
     };
     return { ctx, calls };
@@ -189,17 +195,12 @@ describe("keychain writes", () => {
 
   it("macOS writes the secret through security -i stdin, never argv", async () => {
     const { ctx, calls } = recorder("darwin");
-    await setKeychainItem(
-      ctx,
-      "zzpersona-registry",
-      "https://r.example",
-      "tok",
-    );
+    await setKeychainItem(ctx, "donn-registry", "https://r.example", "tok");
     expect(calls).toHaveLength(1);
     expect(calls[0]!.command).toBe("security");
     expect(calls[0]!.args).toEqual(["-i"]);
     expect(calls[0]!.input).toBe(
-      'add-generic-password -U -s "zzpersona-registry" -a "https://r.example" -w "tok"\n',
+      'add-generic-password -U -s "donn-registry" -a "https://r.example" -w "tok"\n',
     );
     expect(calls[0]!.args.join(" ")).not.toContain("tok");
   });
@@ -209,14 +210,7 @@ describe("keychain writes", () => {
     await setKeychainItem(ctx, "s", "a", "tok");
     expect(calls[0]).toEqual({
       command: "secret-tool",
-      args: [
-        "store",
-        "--label=zzpersona registry",
-        "service",
-        "s",
-        "account",
-        "a",
-      ],
+      args: ["store", "--label=donn registry", "service", "s", "account", "a"],
       input: "tok",
     });
   });
@@ -269,6 +263,35 @@ describe("keychain writes", () => {
       "account",
       "a",
     ]);
+  });
+
+  it("tells whether an item exists without reading its secret on macOS", async () => {
+    const found = recorder("darwin", 0, "", 'keychain: "login"\n');
+    expect(await hasKeychainItem(found.ctx, "s", "a")).toBe(true);
+    // No -w: security prints the attributes only, so no access prompt and no secret.
+    expect(found.calls[0]!.args).toEqual([
+      "find-generic-password",
+      "-s",
+      "s",
+      "-a",
+      "a",
+    ]);
+    expect(
+      await hasKeychainItem(recorder("darwin", 44, REAL44).ctx, "s", "a"),
+    ).toBe(false);
+    await expect(
+      hasKeychainItem(
+        recorder("darwin", 51, "User interaction is not allowed.").ctx,
+        "s",
+        "a",
+      ),
+    ).rejects.toThrow("security exited 51: User interaction is not allowed.");
+    expect(
+      await hasKeychainItem(recorder("linux", 0, "", "v").ctx, "s", "a"),
+    ).toBe(true);
+    expect(await hasKeychainItem(recorder("linux", 1).ctx, "s", "a")).toBe(
+      false,
+    );
   });
 
   it("reports unsupported platforms and a missing command", async () => {

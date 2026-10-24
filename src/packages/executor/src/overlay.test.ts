@@ -15,19 +15,19 @@ import { applyOverlay, ExecutorError, OverlayMarkersError } from "./index.js";
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-overlay-"));
+  root = mkdtempSync(join(tmpdir(), "donn-overlay-"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const BEGIN =
-  "<!-- zzpersona:begin — generated; edit the source, not this block -->";
-const END = "<!-- zzpersona:end -->";
+  "<!-- donn:begin — generated; edit the source, not this block -->";
+const END = "<!-- donn:end -->";
 const step = (content = "Persona text.\n") =>
   ({
     kind: "overlay",
     path: "AGENTS.md",
     content,
-    block: "zzpersona",
+    block: "donn",
   }) as const;
 const file = () => join(root, "AGENTS.md");
 const read = () => readFileSync(file(), "utf8");
@@ -134,7 +134,7 @@ describe("applyOverlay, block mode", () => {
   });
 
   it("refuses to write through a link to a file outside the root", async () => {
-    const outside = mkdtempSync(join(tmpdir(), "zzp-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "donn-outside-"));
     try {
       writeFileSync(join(outside, "bashrc"), "export A=1\n");
       symlinkSync(join(outside, "bashrc"), file());

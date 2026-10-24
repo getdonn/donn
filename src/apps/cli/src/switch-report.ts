@@ -1,7 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { HarnessAdapter, ReportEntry } from "@zzpersona/adapter-sdk";
-import { applyOverlay } from "@zzpersona/executor";
+import type { HarnessAdapter, ReportEntry } from "@getdonn/adapter-sdk";
+import { applyOverlay } from "@getdonn/executor";
 import { prepareBuild } from "./build.js";
 import type { CliIo } from "./cli.js";
 import { homeOf, type Context } from "./context.js";
@@ -70,10 +70,10 @@ async function daemonSessions(io: CliIo): Promise<SessionStatus[] | undefined> {
   }
 }
 
-/** Whether the repo's AGENTS.md carries a zzpersona block. */
+/** Whether the repo's AGENTS.md carries a donn block. */
 async function hasBlock(repo: string): Promise<boolean> {
   const text = await readFile(join(repo, "AGENTS.md"), "utf8").catch(() => "");
-  return text.includes("<!-- zzpersona:begin");
+  return text.includes("<!-- donn:begin");
 }
 
 async function agentsMd(
@@ -96,7 +96,7 @@ async function agentsMd(
     });
     stale ||= result.status === "stale";
   }
-  // `zzpersona write` refuses a shared file that includes a user layer: no fix to suggest.
+  // `donn write` refuses a shared file that includes a user layer: no fix to suggest.
   const writable = !build.result.ir.layers.some((ref) =>
     ref.startsWith("user/"),
   );
@@ -105,7 +105,7 @@ async function agentsMd(
     status: persona === SHARED ? "ok" : "shared",
     dropped: [],
     approximated: [],
-    ...(stale && writable && { fix: "zzpersona write" }),
+    ...(stale && writable && { fix: "donn write" }),
   };
 }
 
@@ -198,7 +198,7 @@ export async function harnessReport(
           personas.length > 1 ? `${personas[0]} and others` : personas[0]!,
         fix:
           adapter.id === "codex"
-            ? "relaunch with zzpersona codex"
+            ? "relaunch with donn codex"
             : `/persona use ${selection.ref}`,
       };
     }
@@ -234,7 +234,7 @@ export function reportLines(
     let text: string;
     if (r.status === "error") text = `error ${r.message ?? ""}`.trimEnd();
     else if (r.status === "shared")
-      text = `AGENTS.md carries ${SHARED} (shared); ${persona} applies to zzpersona launches only`;
+      text = `AGENTS.md carries ${SHARED} (shared); ${persona} applies to donn launches only`;
     else if (r.status === "drops") text = `drops ${r.dropped.join(", ")}`;
     else if (r.id === "agents-md") text = `carries ${SHARED}`;
     else text = "ok";

@@ -2,7 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { join, posix, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
-import type { LocalStore } from "@zzpersona/store-local";
+import type { LocalStore } from "@getdonn/store-local";
 import { cacheFolder, type CacheIndex } from "./cache.js";
 
 const PREFIX = ".registry/";

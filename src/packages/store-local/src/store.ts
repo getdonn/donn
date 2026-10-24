@@ -1,8 +1,8 @@
 import { existsSync, lstatSync } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import type { PersonaSource } from "@zzpersona/resolver";
-import type { Ref } from "@zzpersona/spec";
+import type { PersonaSource } from "@getdonn/resolver";
+import type { Ref } from "@getdonn/spec";
 import { parse, YAMLParseError } from "yaml";
 
 // Three locations mounted onto the resolver's one virtual root, by layer (the first path
@@ -11,9 +11,9 @@ import { parse, YAMLParseError } from "yaml";
 export interface Mounts {
   /** The personas folder: org/, area/, team/ live here. */
   personas?: string;
-  /** The project's .zzpersona directory, when inside a project. */
+  /** The project's .donn directory, when inside a project. */
   project?: string;
-  /** ~/.zzpersona: user personas under personas/, the overlay at overrides.yaml. */
+  /** ~/.donn: user personas under personas/, the overlay at overrides.yaml. */
   user: string;
 }
 
@@ -88,7 +88,7 @@ const toRef = (base: string, file: string, prefix = "") =>
   );
 
 export function createLocalStore(mounts: Mounts): LocalStore {
-  // Project files are contained by the repo, so one may link to ../AGENTS.md. A .zzpersona that
+  // Project files are contained by the repo, so one may link to ../AGENTS.md. A .donn that
   // is itself a symlink (dotfiles, a shared folder) lives elsewhere: it is its own root.
   const projectRoot =
     mounts.project === undefined
@@ -226,11 +226,11 @@ export function createLocalStore(mounts: Mounts): LocalStore {
   };
 }
 
-/** The nearest project's .zzpersona directory, walking up from `cwd`. */
+/** The nearest project's .donn directory, walking up from `cwd`. */
 export function findProject(cwd: string): string | undefined {
   let dir = resolve(cwd);
   for (;;) {
-    const candidate = join(dir, ".zzpersona");
+    const candidate = join(dir, ".donn");
     if (existsSync(join(candidate, "persona.yaml"))) return candidate;
     const parent = dirname(dir);
     if (parent === dir) return undefined;

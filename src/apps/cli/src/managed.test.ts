@@ -13,12 +13,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import claudeCode from "@zzpersona/adapter-claude-code";
-import type { ManagedManifest } from "@zzpersona/adapter-sdk";
-import { bundleDigest } from "@zzpersona/registry-api";
-import { startMockRegistry } from "@zzpersona/registry-api/mock";
-import { bundleLayer } from "@zzpersona/store-remote";
-import { createLocalStore } from "@zzpersona/store-local";
+import claudeCode from "@getdonn/adapter-claude-code";
+import type { ManagedManifest } from "@getdonn/adapter-sdk";
+import { bundleDigest } from "@getdonn/registry-api";
+import { startMockRegistry } from "@getdonn/registry-api/mock";
+import { bundleLayer } from "@getdonn/store-remote";
+import { createLocalStore } from "@getdonn/store-local";
 import { afterEach, describe, expect, it } from "vitest";
 import { cliVersion } from "./commands/daemon.js";
 import { readBundle, writeBundle } from "./managed/bundle-io.js";
@@ -35,7 +35,7 @@ const put = (path: string, text: string) => {
   writeFileSync(path, text);
 };
 
-const ORG = `apiVersion: zzpersona/v0
+const ORG = `apiVersion: donn/v0
 kind: Persona
 metadata: { name: acme }
 instructions:
@@ -52,7 +52,7 @@ locks:
   - instructions[conduct]
   - hooks.pre-tool-use[guard]
 `;
-const AREA = `apiVersion: zzpersona/v0
+const AREA = `apiVersion: donn/v0
 kind: Persona
 metadata: { name: fintech }
 extends: [org/acme]
@@ -61,7 +61,7 @@ permissions:
 locks:
   - permissions.ask
 `;
-const TEAM = `apiVersion: zzpersona/v0
+const TEAM = `apiVersion: donn/v0
 kind: Persona
 metadata: { name: payments }
 extends: [area/fintech]
@@ -79,7 +79,7 @@ interface Machine {
 }
 
 function machine(extra: Record<string, string> = {}, registry?: string) {
-  const root = mkdtempSync(join(tmpdir(), "zzp-managed-"));
+  const root = mkdtempSync(join(tmpdir(), "donn-managed-"));
   roots.push(root);
   const home = join(root, "home");
   const personas = join(root, "personas");
@@ -126,26 +126,26 @@ const run = (m: Machine, argv: string[], env: NodeJS.ProcessEnv = {}) =>
 
 const manifestOf = (dir: string) =>
   JSON.parse(
-    readFileSync(join(dir, "zzpersona/manifest.json"), "utf8"),
+    readFileSync(join(dir, "donn/manifest.json"), "utf8"),
   ) as ManagedManifest;
 const settingsOf = (dir: string) =>
   JSON.parse(
-    readFileSync(join(dir, "managed-settings.d/50-zzpersona.json"), "utf8"),
+    readFileSync(join(dir, "managed-settings.d/50-donn.json"), "utf8"),
   ) as Record<string, any>;
 
-describe("zzpersona managed build", () => {
+describe("donn managed build", () => {
   it("builds the org layer by default", async () => {
     const m = machine();
     const r = await run(m, ["--os", "linux"]);
     expect(r.code).toBe(0);
-    const out = join(m.cwd, "zzpersona-managed");
+    const out = join(m.cwd, "donn-managed");
     expect(r.stdout).toContain(`bundle: ${out}`);
     const manifest = manifestOf(out);
     expect(manifest.layers.map((l) => l.ref)).toEqual(["org/acme"]);
-    expect(manifest.zzpersona).toBe(cliVersion());
+    expect(manifest.donn).toBe(cliVersion());
     expect(manifest.os).toBe("linux");
     expect(settingsOf(out).permissions.deny).toEqual(["Bash(rm -rf:*)"]);
-    expect(readdirSync(join(out, "zzpersona/hooks"))).toHaveLength(1);
+    expect(readdirSync(join(out, "donn/hooks"))).toHaveLength(1);
     // Only the org's locks: nothing from the area or the team.
     expect(settingsOf(out).permissions.ask).toBeUndefined();
   });
@@ -193,7 +193,7 @@ describe("zzpersona managed build", () => {
 
   it("nothing locked builds an empty policy", async () => {
     const m = machine({
-      "org/acme.yaml": `apiVersion: zzpersona/v0
+      "org/acme.yaml": `apiVersion: donn/v0
 kind: Persona
 metadata: { name: acme }
 permissions:
@@ -202,7 +202,7 @@ permissions:
     });
     const r = await run(m, []);
     expect(r.code).toBe(0);
-    const out = join(m.cwd, "zzpersona-managed");
+    const out = join(m.cwd, "donn-managed");
     expect(settingsOf(out)).toEqual({});
     expect(existsSync(join(out, "managed-mcp.json"))).toBe(false);
     const notice =
@@ -214,7 +214,7 @@ permissions:
 
   it("says so when locks exist but Claude Code enforces none of them", async () => {
     const m = machine({
-      "org/acme.yaml": `apiVersion: zzpersona/v0
+      "org/acme.yaml": `apiVersion: donn/v0
 kind: Persona
 metadata: { name: acme }
 locks:
@@ -252,7 +252,7 @@ locks:
       /^refused: targets\.claude-code\.managed\.notARealKey \(team\/payments\) managed-unknown-key: .+$/,
     );
     expect(line).toContain("notARealKey");
-    expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+    expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
     const json = await run(m, ["--layer", "team/payments", "--json"]);
     expect(json.code).toBe(1);
     const parsed = JSON.parse(json.stdout);
@@ -304,7 +304,7 @@ targets:
         : process.platform === "win32"
           ? "windows"
           : "linux";
-    expect(manifestOf(join(m.cwd, "zzpersona-managed")).os).toBe(expected);
+    expect(manifestOf(join(m.cwd, "donn-managed")).os).toBe(expected);
     const bad = await run(m, ["--os", "beos"]);
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("--os");
@@ -314,8 +314,8 @@ targets:
     const m = machine();
     await run(m, ["--os", "linux", "--out", "a"]);
     await run(m, ["--os", "linux", "--out", "b"]);
-    const a = readFileSync(join(m.cwd, "a/zzpersona/manifest.json"));
-    const b = readFileSync(join(m.cwd, "b/zzpersona/manifest.json"));
+    const a = readFileSync(join(m.cwd, "a/donn/manifest.json"));
+    const b = readFileSync(join(m.cwd, "b/donn/manifest.json"));
     expect(a.equals(b)).toBe(true);
   });
 
@@ -328,11 +328,11 @@ targets:
 
   it("refuses to overwrite a folder that is not a bundle, and replaces one that is", async () => {
     const m = machine();
-    const out = join(m.cwd, "zzpersona-managed");
+    const out = join(m.cwd, "donn-managed");
     put(join(out, "mine.txt"), "keep me");
     const refused = await run(m, []);
     expect(refused.code).toBe(1);
-    expect(refused.stderr).toContain("not a zzpersona bundle");
+    expect(refused.stderr).toContain("not a donn bundle");
     expect(readFileSync(join(out, "mine.txt"), "utf8")).toBe("keep me");
     rmSync(out, { recursive: true });
 
@@ -352,16 +352,14 @@ targets:
     const before = filesIn(out);
     const r = await run(m, ["--os", "linux", "--out", "policy"]);
     expect(r.code).toBe(1);
-    expect(r.stderr).toContain("not a zzpersona bundle");
+    expect(r.stderr).toContain("not a donn bundle");
     expect(filesIn(out)).toEqual(before);
     // A manifest that cannot be read is not a bundle either.
     rmSync(join(out, "managed-settings.json"));
     rmSync(join(out, "managed-settings.d/10-org.json"));
-    writeFileSync(join(out, "zzpersona/manifest.json"), "{");
+    writeFileSync(join(out, "donn/manifest.json"), "{");
     expect((await run(m, ["--os", "linux", "--out", "policy"])).code).toBe(1);
-    expect(readFileSync(join(out, "zzpersona/manifest.json"), "utf8")).toBe(
-      "{",
-    );
+    expect(readFileSync(join(out, "donn/manifest.json"), "utf8")).toBe("{");
   });
 
   it("refuses an --out in or under a managed policy folder", async () => {
@@ -378,7 +376,7 @@ targets:
       });
       expect(r.code, out).toBe(1);
       expect(r.stderr).toContain(system);
-      expect(r.stderr).toContain("zzpersona managed install");
+      expect(r.stderr).toContain("donn managed install");
     }
     expect(readdirSync(system)).toEqual([]);
   });
@@ -388,7 +386,7 @@ targets:
     await run(m, []);
     const local = createLocalStore({ user: m.home, personas: m.personas });
     const { source, files } = await bundleLayer(local, "org/acme");
-    const layer = manifestOf(join(m.cwd, "zzpersona-managed")).layers[0]!;
+    const layer = manifestOf(join(m.cwd, "donn-managed")).layers[0]!;
     expect(layer.digest).toBe(bundleDigest(source, files));
     expect(layer.version).toBeUndefined();
   });
@@ -397,13 +395,13 @@ targets:
     const registry = await startMockRegistry({ token: "t" });
     try {
       const m = machine({}, registry.url);
-      const env = { ZZPERSONA_REGISTRY_TOKEN: "t" };
+      const env = { DONN_REGISTRY_TOKEN: "t" };
       const opts = { cwd: m.cwd, home: m.home, env };
       expect((await zz(["publish", "org/acme"], opts)).code).toBe(0);
       expect((await zz(["pull"], opts)).code).toBe(0);
       const r = await run(m, [], env);
       expect(r.code).toBe(0);
-      const layer = manifestOf(join(m.cwd, "zzpersona-managed")).layers[0]!;
+      const layer = manifestOf(join(m.cwd, "donn-managed")).layers[0]!;
       expect(layer.version).toBe(1);
       const index = JSON.parse(
         readFileSync(join(m.home, "cache/registry/index.json"), "utf8"),
@@ -418,7 +416,7 @@ targets:
     const registry = await startMockRegistry({ token: "t" });
     try {
       const m = machine({}, registry.url);
-      const env = { ZZPERSONA_REGISTRY_TOKEN: "t" };
+      const env = { DONN_REGISTRY_TOKEN: "t" };
       const opts = { cwd: m.cwd, home: m.home, env };
       await zz(["publish", "org/acme"], opts);
       await zz(["pull"], opts);
@@ -429,7 +427,7 @@ targets:
       const r = await run(m, ["--out", "second"], env);
       expect(r.code).toBe(1);
       expect(r.stderr).toContain("org/acme");
-      expect(r.stderr).toContain("zzpersona pull");
+      expect(r.stderr).toContain("donn pull");
       expect(existsSync(join(m.cwd, "second"))).toBe(false);
     } finally {
       await registry.stop();
@@ -438,7 +436,7 @@ targets:
 
   describe("--from-registry", () => {
     const TOKEN = "registry-token-1";
-    const env = { ZZPERSONA_REGISTRY_TOKEN: TOKEN };
+    const env = { DONN_REGISTRY_TOKEN: TOKEN };
 
     /** A machine whose three layers are published to a mock registry that builds bundles. */
     async function published(managed: boolean) {
@@ -495,14 +493,12 @@ targets:
         const a = filesOf(join(m.cwd, "remote"));
         const b = filesOf(join(m.cwd, "local"));
         const strip = (files: Record<string, string>) => {
-          const { "zzpersona/manifest.json": manifest, ...rest } = files;
-          const { zzpersona: _version, ...fields } = JSON.parse(manifest!);
+          const { "donn/manifest.json": manifest, ...rest } = files;
+          const { donn: _version, ...fields } = JSON.parse(manifest!);
           return { ...rest, manifest: fields };
         };
         expect(strip(a)).toEqual(strip(b));
-        expect(Object.keys(a)).toContain(
-          "managed-settings.d/50-zzpersona.json",
-        );
+        expect(Object.keys(a)).toContain("managed-settings.d/50-donn.json");
         // The result is a bundle install can use.
         expect(
           (await readBundle(join(m.cwd, "remote"))).manifest.layers,
@@ -533,7 +529,7 @@ targets:
         expect(r.code).toBe(1);
         expect(r.stderr).toContain("refused: mcp.servers.vault (org/acme)");
         expect(r.stderr).toContain("managed-secret");
-        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+        expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
       } finally {
         await registry.stop();
       }
@@ -584,7 +580,7 @@ targets:
 
     const manifestFor = (files: Record<string, string>) => ({
       format: 1,
-      zzpersona: "x",
+      donn: "x",
       os: "linux",
       layers: [{ ref: "org/acme", digest: `sha256:${"a".repeat(64)}` }],
       files,
@@ -599,7 +595,7 @@ targets:
         manifest: manifestFor({ "../evil.txt": hash("x") }),
         files: {
           "../evil.txt": b64("x"),
-          "zzpersona/manifest.json": b64("{}"),
+          "donn/manifest.json": b64("{}"),
         },
       });
       try {
@@ -611,7 +607,7 @@ targets:
         );
         expect(r.code).toBe(1);
         expect(r.stderr).toContain("../evil.txt");
-        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+        expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
         expect(existsSync(join(m.cwd, "..", "evil.txt"))).toBe(false);
       } finally {
         await evil.stop();
@@ -619,10 +615,10 @@ targets:
     });
 
     it("refuses files that do not match the manifest's digests", async () => {
-      const path = "managed-settings.d/50-zzpersona.json";
+      const path = "managed-settings.d/50-donn.json";
       const bad = await liar({
         manifest: manifestFor({ [path]: hash("one") }),
-        files: { [path]: b64("two"), "zzpersona/manifest.json": b64("{}") },
+        files: { [path]: b64("two"), "donn/manifest.json": b64("{}") },
       });
       try {
         const m = machine({}, bad.url);
@@ -633,7 +629,7 @@ targets:
         );
         expect(r.code).toBe(1);
         expect(r.stderr).toContain(path);
-        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+        expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
       } finally {
         await bad.stop();
       }
@@ -682,15 +678,13 @@ targets:
     });
 
     it("refuses manifest.json bytes that differ from the manifest it sent", async () => {
-      const path = "managed-settings.d/50-zzpersona.json";
+      const path = "managed-settings.d/50-donn.json";
       const manifest = manifestFor({ [path]: hash("one") });
       const bad = await liar({
         manifest,
         files: {
           [path]: b64("one"),
-          "zzpersona/manifest.json": b64(
-            JSON.stringify({ ...manifest, files: {} }),
-          ),
+          "donn/manifest.json": b64(JSON.stringify({ ...manifest, files: {} })),
         },
       });
       try {
@@ -698,7 +692,7 @@ targets:
         const r = await run(m, fromRegistry, env);
         expect(r.code).toBe(1);
         expect(r.stderr).toContain("manifest.json");
-        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+        expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
       } finally {
         await bad.stop();
       }
@@ -706,13 +700,13 @@ targets:
 
     /** A well-formed bundle answer whose manifest is `manifest` plus `extra`. */
     const answer = (extra: Record<string, unknown> = {}) => {
-      const path = "managed-settings.d/50-zzpersona.json";
+      const path = "managed-settings.d/50-donn.json";
       const manifest = { ...manifestFor({ [path]: hash("{}\n") }), ...extra };
       return {
         manifest,
         files: {
           [path]: b64("{}\n"),
-          "zzpersona/manifest.json": b64(JSON.stringify(manifest)),
+          "donn/manifest.json": b64(JSON.stringify(manifest)),
         },
       };
     };
@@ -737,7 +731,7 @@ targets:
         expect(layer.code).toBe(1);
         expect(layer.stderr).toContain("org/acme");
         expect(layer.stderr).toContain("area/fintech");
-        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+        expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
       } finally {
         await reg.stop();
       }
@@ -750,7 +744,7 @@ targets:
         const r = await run(m, fromRegistry, env);
         expect(r.code, r.stderr).toBe(0);
         expect(
-          manifestOf(join(m.cwd, "zzpersona-managed")) as unknown,
+          manifestOf(join(m.cwd, "donn-managed")) as unknown,
         ).toMatchObject({ signedBy: { key: "k1" } });
       } finally {
         await reg.stop();
@@ -758,15 +752,15 @@ targets:
     });
 
     it("refuses file keys that differ only in case", async () => {
-      const a = "managed-settings.d/50-zzpersona.json";
-      const b = "managed-settings.d/50-ZZPERSONA.json";
+      const a = "managed-settings.d/50-donn.json";
+      const b = "managed-settings.d/50-DONN.json";
       const manifest = manifestFor({ [a]: hash("x"), [b]: hash("x") });
       const bad = await liar({
         manifest,
         files: {
           [a]: b64("x"),
           [b]: b64("x"),
-          "zzpersona/manifest.json": b64(JSON.stringify(manifest)),
+          "donn/manifest.json": b64(JSON.stringify(manifest)),
         },
       });
       try {
@@ -774,7 +768,7 @@ targets:
         const r = await run(m, fromRegistry, env);
         expect(r.code).toBe(1);
         expect(r.stderr).toContain("differ only in case");
-        expect(existsSync(join(m.cwd, "zzpersona-managed"))).toBe(false);
+        expect(existsSync(join(m.cwd, "donn-managed"))).toBe(false);
       } finally {
         await bad.stop();
       }
@@ -788,9 +782,9 @@ describe("bundle io", () => {
   it("round-trips and verifies every hash", async () => {
     const m = machine();
     await run(m, ["--os", "linux"]);
-    const dir = join(m.cwd, "zzpersona-managed");
+    const dir = join(m.cwd, "donn-managed");
     const { files, manifest } = await readBundle(dir);
-    expect(Object.keys(files)).toContain("zzpersona/manifest.json");
+    expect(Object.keys(files)).toContain("donn/manifest.json");
     expect(Object.keys(manifest.files).every((p) => p in files)).toBe(true);
     const copy = join(m.cwd, "copy");
     await writeBundle(copy, files);
@@ -800,8 +794,8 @@ describe("bundle io", () => {
   it("names the first file whose hash differs", async () => {
     const m = machine();
     await run(m, ["--os", "linux"]);
-    const dir = join(m.cwd, "zzpersona-managed");
-    const target = "managed-settings.d/50-zzpersona.json";
+    const dir = join(m.cwd, "donn-managed");
+    const target = "managed-settings.d/50-donn.json";
     writeFileSync(join(dir, target), "{}");
     await expect(readBundle(dir)).rejects.toThrow(target);
   });
@@ -809,14 +803,14 @@ describe("bundle io", () => {
   it("names a listed file that is missing, and a folder without a manifest", async () => {
     const m = machine();
     await run(m, ["--os", "linux"]);
-    const dir = join(m.cwd, "zzpersona-managed");
-    rmSync(join(dir, "managed-settings.d/50-zzpersona.json"));
-    await expect(readBundle(dir)).rejects.toThrow("50-zzpersona.json");
-    await expect(readBundle(m.cwd)).rejects.toThrow("not a zzpersona bundle");
+    const dir = join(m.cwd, "donn-managed");
+    rmSync(join(dir, "managed-settings.d/50-donn.json"));
+    await expect(readBundle(dir)).rejects.toThrow("50-donn.json");
+    await expect(readBundle(m.cwd)).rejects.toThrow("not a donn bundle");
   });
 
   it("refuses Windows drive paths", async () => {
-    const root = mkdtempSync(join(tmpdir(), "zzp-bundle-"));
+    const root = mkdtempSync(join(tmpdir(), "donn-bundle-"));
     roots.push(root);
     for (const path of ["C:/evil", "c:evil", "z:\\x"]) {
       await expect(
@@ -826,7 +820,7 @@ describe("bundle io", () => {
   });
 
   it("refuses paths that leave the folder", async () => {
-    const root = mkdtempSync(join(tmpdir(), "zzp-bundle-"));
+    const root = mkdtempSync(join(tmpdir(), "donn-bundle-"));
     roots.push(root);
     await expect(
       writeBundle(join(root, "b"), { "../evil": enc("x") }),

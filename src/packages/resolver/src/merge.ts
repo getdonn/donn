@@ -21,7 +21,7 @@ import {
   type ResolveWarning,
   type SecretProvider,
   type WarningCode,
-} from "@zzpersona/spec";
+} from "@getdonn/spec";
 import { ResolveError } from "./errors.js";
 
 // Merges layers in order into one accumulator. Every individual change goes through guard(),

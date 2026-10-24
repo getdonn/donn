@@ -63,7 +63,7 @@ function engine(
         requests.push({ url, socketPath: init.socketPath, body: init.body });
         if (daemon.run === undefined) throw new Error("ECONNREFUSED");
         const { argv } = JSON.parse(init.body!) as { argv: string[] };
-        const { exitCode, stdout } = daemon.run(["zzpersona", ...argv]);
+        const { exitCode, stdout } = daemon.run(["donn", ...argv]);
         const text = JSON.stringify({ exitCode, stdout, stderr: "" });
         return { status: 200, ok: true, headers: {}, text };
       },
@@ -105,8 +105,8 @@ const json = (value: unknown): ProcessRunResult => ({
   stderr: "",
 });
 const LAUNCHED = {
-  ZZPERSONA_PERSONA: "team/payments",
-  ZZPERSONA_SOURCE: "switch",
+  DONN_PERSONA: "team/payments",
+  DONN_SOURCE: "switch",
 };
 const FOLDER = json({ persona: "team/platform", source: "project" });
 
@@ -121,7 +121,7 @@ describe("register", () => {
     await e.settle();
     await e.call("ui.render", { component: "AbovePrompt" });
     await e.call("ui.render", { component: "AbovePrompt" });
-    expect(e.runs).toEqual([["zzpersona", "switch", "--json"]]);
+    expect(e.runs).toEqual([["donn", "switch", "--json"]]);
   });
 
   it("draws the band above what other mods draw", async () => {
@@ -215,7 +215,7 @@ describe("register", () => {
       args: "",
     })) as { text: string };
     expect(out.text).toBe(
-      "this session runs no persona (it was not started by zzpersona claude)\nthis folder uses no persona",
+      "this session runs no persona (it was not started by donn claude)\nthis folder uses no persona",
     );
   });
 
@@ -244,8 +244,8 @@ describe("register", () => {
 
   it("uses the daemon and runs no process", async () => {
     const home = engine({ ...LAUNCHED, HOME: "/home/u" }, () => FOLDER);
-    home.files.set("/home/u/.zzpersona/daemon/token", "t0k");
-    home.stats.set("/home/u/.zzpersona/daemon/sock", {
+    home.files.set("/home/u/.donn/daemon/token", "t0k");
+    home.stats.set("/home/u/.donn/daemon/sock", {
       kind: "other",
       isLink: false,
     });
@@ -260,13 +260,13 @@ describe("register", () => {
       "this session runs team/payments (switch)\nthis folder uses team/platform (project)",
     );
     expect(home.requests).toHaveLength(2);
-    expect(home.requests[0]!.socketPath).toBe("/home/u/.zzpersona/daemon/sock");
+    expect(home.requests[0]!.socketPath).toBe("/home/u/.donn/daemon/sock");
     expect(home.runs).toEqual([]);
   });
 
   it("says how to fix it when both fail", async () => {
     const REASON =
-      "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+      "start the daemon (donn daemon start), or allow the mod to run donn";
     const STATUS = `unavailable: ${REASON}`;
     const UNAVAILABLE = STATUS;
     const blocked = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
@@ -280,12 +280,12 @@ describe("register", () => {
       args: "list",
     })) as { text: string };
     expect(out.text).toBe(
-      "unavailable: start the daemon (zzpersona daemon start), or allow the mod to run zzpersona",
+      "unavailable: start the daemon (donn daemon start), or allow the mod to run donn",
     );
-    expect(out.text.startsWith("zzpersona")).toBe(false);
+    expect(out.text.startsWith("donn")).toBe(false);
   });
 
-  it("replies with text that never starts with zzpersona (the host adds it)", async () => {
+  it("replies with text that never starts with donn (the host adds it)", async () => {
     const reply = async (error: Error | ProcessRunResult) => {
       const e = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
         if (error instanceof Error) throw error;
@@ -301,22 +301,22 @@ describe("register", () => {
     };
     const cases: [Error | ProcessRunResult, string][] = [
       [
-        new Error("spawn zzpersona ENOENT"),
-        "the zzpersona command was not found on PATH",
+        new Error("spawn donn ENOENT"),
+        "the donn command was not found on PATH",
       ],
       [
         { exitCode: 0, stdout: "not json", stderr: "" },
-        "the zzpersona command printed something that is not JSON",
+        "the donn command printed something that is not JSON",
       ],
       [
         { exitCode: 3, stdout: "null", stderr: "" },
-        "the zzpersona command exited 3",
+        "the donn command exited 3",
       ],
     ];
     for (const [input, text] of cases) {
       const out = await reply(input);
       expect(out).toBe(text);
-      expect(out.startsWith("zzpersona")).toBe(false);
+      expect(out.startsWith("donn")).toBe(false);
     }
   });
 
@@ -344,12 +344,12 @@ describe("register", () => {
 });
 
 describe("live switching", () => {
-  const SESSION = "/home/.zzpersona/sessions/0123456789abcdef";
+  const SESSION = "/home/.donn/sessions/0123456789abcdef";
   const state = (persona: string) => ({
     persona,
     previous: "team/payments",
     launched: "team/payments",
-    instructions: `## zzpersona persona: ${persona}\n\nBe ${persona}.\n`,
+    instructions: `## donn persona: ${persona}\n\nBe ${persona}.\n`,
     held: ["mcp"],
     stricter: false,
     plugin: "x",
@@ -362,7 +362,7 @@ describe("live switching", () => {
       return json({
         scope: "project",
         persona: argv[2],
-        project: "/r/.zzpersona",
+        project: "/r/.donn",
       });
     return FOLDER;
   };
@@ -382,7 +382,7 @@ describe("live switching", () => {
 
   it("applies /persona use live and appends to the session's last section", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -394,7 +394,7 @@ describe("live switching", () => {
       args: "use team/platform",
     })) as { text: string };
     expect(e.runs).toContainEqual([
-      "zzpersona",
+      "donn",
       "live",
       "team/platform",
       "--session",
@@ -415,7 +415,7 @@ describe("live switching", () => {
 
   it("switching back to the launched persona supersedes with its instructions", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -444,7 +444,7 @@ describe("live switching", () => {
 
   it("saves and applies /persona switch", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -468,14 +468,14 @@ describe("live switching", () => {
       args: "use team/platform",
     })) as { text: string };
     expect(out.text).toBe(
-      "live switching needs a session started by zzpersona claude",
+      "live switching needs a session started by donn claude",
     );
     expect(e.runs.filter((argv) => argv[1] === "live")).toEqual([]);
   });
 
   it("restores the live state after a reload", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply(state("team/platform")),
     );
     await e.call("session.start");
@@ -489,7 +489,7 @@ describe("live switching", () => {
 
   it("adopts a live state written by the daemon on the next prompt", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -501,7 +501,7 @@ describe("live switching", () => {
       JSON.stringify({
         ...state("team/payments"),
         instructions:
-          "## zzpersona persona: team/payments\n\nBe the edited payments.\n",
+          "## donn persona: team/payments\n\nBe the edited payments.\n",
         appliedAt: "2026-10-21T01:00:00.000Z",
       }),
     );
@@ -519,7 +519,7 @@ describe("live switching", () => {
 
   it("ignores an unchanged or missing live.json", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply(state("team/platform")),
     );
     await e.call("session.start");
@@ -537,7 +537,7 @@ describe("live switching", () => {
 
   it("ignores a live.json missing the fields the mod uses", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -571,7 +571,7 @@ describe("live switching", () => {
 
   it("never rolls back to an older live.json", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -598,7 +598,7 @@ describe("live switching", () => {
 
   it("lets the prompt through on a host without $.fs", async () => {
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");
@@ -628,7 +628,7 @@ describe("live switching", () => {
     // As Claude Code 2.1.306 does: sections go through prompt.section first, then compose,
     // and the last session section (total_tokens) never goes through prompt.section.
     const e = engine(
-      { ...LAUNCHED, ZZPERSONA_SESSION: SESSION },
+      { ...LAUNCHED, DONN_SESSION: SESSION },
       reply({ launched: "team/payments" }),
     );
     await e.call("session.start");

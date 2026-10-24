@@ -12,7 +12,7 @@ import { findOnPath } from "./path.js";
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "zzp-path-"));
+  root = mkdtempSync(join(tmpdir(), "donn-path-"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -25,17 +25,15 @@ function file(dir: string, name: string, mode: number) {
 
 describe("findOnPath", () => {
   it("finds the first executable on PATH, as a spawn without a shell would", () => {
-    file("a", "zzpersona", 0o644);
-    const found = file("b", "zzpersona", 0o755);
-    file("c", "zzpersona", 0o755);
+    file("a", "donn", 0o644);
+    const found = file("b", "donn", 0o755);
+    file("c", "donn", 0o755);
     const PATH = ["a", "b", "c"].map((d) => join(root, d)).join(":");
-    expect(findOnPath("zzpersona", { PATH })).toBe(found);
+    expect(findOnPath("donn", { PATH })).toBe(found);
   });
 
   it("is undefined when the command is missing or PATH is unset", () => {
-    expect(
-      findOnPath("zzpersona", { PATH: join(root, "none") }),
-    ).toBeUndefined();
-    expect(findOnPath("zzpersona", {})).toBeUndefined();
+    expect(findOnPath("donn", { PATH: join(root, "none") })).toBeUndefined();
+    expect(findOnPath("donn", {})).toBeUndefined();
   });
 });

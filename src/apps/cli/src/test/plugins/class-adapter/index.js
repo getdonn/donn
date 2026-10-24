@@ -4,7 +4,7 @@ import {
   defineAdapter,
   capabilityFields,
   requiredEntries,
-} from "@zzpersona/adapter-sdk";
+} from "@getdonn/adapter-sdk";
 
 // Test-only: a third-party adapter written as a class, as an outside author might. Its methods
 // live on the prototype and use `this`.

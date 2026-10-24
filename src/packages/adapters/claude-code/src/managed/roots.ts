@@ -1,4 +1,4 @@
-import type { ManagedOs } from "@zzpersona/adapter-sdk";
+import type { ManagedOs } from "@getdonn/adapter-sdk";
 
 // Where Claude Code reads managed policy files on each OS (code.claude.com/docs/en/managed-mcp,
 // "Deploy managed-mcp.json"; read 2026-10-23).

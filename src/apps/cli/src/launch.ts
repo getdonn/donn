@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
-import { renderBuild, type Detection } from "@zzpersona/adapter-sdk";
-import { runPlan, writeBuild } from "@zzpersona/executor";
-import { resolveSecrets } from "@zzpersona/secrets";
+import { renderBuild, type Detection } from "@getdonn/adapter-sdk";
+import { runPlan, writeBuild } from "@getdonn/executor";
+import { resolveSecrets } from "@getdonn/secrets";
 import { backendLoader } from "./plugins.js";
 import { prepareBuild, printReport, type PreparedBuild } from "./build.js";
 import type { CliIo } from "./cli.js";
@@ -61,10 +61,10 @@ export async function launch(
   printReport(io, build.output);
   // Tell the session which persona it runs, for the mod (spec 09 §1). Refs and paths only.
   const launchEnv: Record<string, string> = {
-    ZZPERSONA_PERSONA: selection.ref,
-    ZZPERSONA_SOURCE: selection.source,
+    DONN_PERSONA: selection.ref,
+    DONN_SOURCE: selection.source,
     ...(ctx.projectDir !== undefined && {
-      ZZPERSONA_PROJECT: dirname(ctx.projectDir),
+      DONN_PROJECT: dirname(ctx.projectDir),
     }),
   };
   build.plan = {

@@ -1,15 +1,16 @@
-# 13 — The capability matrix: `zzpersona capabilities` and `docs/capabilities.md`
+# 13 — The capability matrix: `donn capabilities` and `docs/capabilities.md`
 
 > Status: design, 2026-10-21. Phase 2, third item (order agreed: agents-md, Codex, capability
 > matrix, daemon). Builds on `05-adapter-sdk.md` (capabilities, report, conformance kit), `11`
 > and `12`. Replaces the hand-filled table in `03` §Capability matrix. Built as a `gh stack`: layer
 > 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
 Publish exactly what each harness can carry and enforce, from the adapters' own code rather than
 from guesses (roadmap Phase 2: "here is exactly what each tool can and cannot enforce"). Readers
-are people evaluating zzpersona and policy owners who need to know where enforcement is advisory.
+are people evaluating donn and policy owners who need to know where enforcement is advisory.
 The published matrix cannot drift from the adapters, and it says the same words the loss report
 says.
 
@@ -44,7 +45,7 @@ says.
 
 ## 2. The command and the doc
 
-**`zzpersona capabilities [--harness <id>] [--detect] [--markdown] [--json]`**
+**`donn capabilities [--harness <id>] [--detect] [--markdown] [--json]`**
 
 - **Default:** every available harness (first-party plus third-party from config), as a grid:
   rows are fields, columns harnesses, cells `●` native, `◐` approximated, `○` advisory, `✕` none,
@@ -79,7 +80,7 @@ and compares it byte for byte with the committed file; a stale doc fails with a 
 | 0 `spec` | this spec and its plan |
 | 1 `sdk` | `caveat`; `requiredEntries` reasons; conformance checks for declared fields and notes; toys |
 | 2 `adapters` | claude-code, agents-md, codex: notes and caveats in `capabilities()`, field-level reason maps removed |
-| 3 `cli` | `zzpersona capabilities`: grid, collapsing, footnotes, `--harness`, `--detect`, `--markdown`, `--json` |
+| 3 `cli` | `donn capabilities`: grid, collapsing, footnotes, `--harness`, `--detect`, `--markdown`, `--json` |
 | 4 `docs` | `docs/capabilities.md`, `pnpm docs:capabilities`, the staleness test, notes in `03` and `05`, README, changeset, CLAUDE.md |
 
 - **SDK:** each new conformance check fails its own broken toy and passes the good toy;

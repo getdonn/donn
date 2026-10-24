@@ -1,11 +1,11 @@
 import { dirname } from "node:path";
-import { applyOverlay, type OverlayMode } from "@zzpersona/executor";
+import { applyOverlay, type OverlayMode } from "@getdonn/executor";
 import { prepareBuild, printReport } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";
 import { CliError } from "../errors.js";
 
-// zzpersona write: render the repo's project persona into the files a harness reads from the
+// donn write: render the repo's project persona into the files a harness reads from the
 // repo (a committed AGENTS.md block). Always the project persona, without the user's overlay,
 // switches or default: the file is the same for every teammate. See
 // docs/planning/11-agents-md.md.
@@ -28,7 +28,7 @@ export async function writeCommand(
     throw new CliError(
       "no-project-persona",
       "no project persona here; write renders the repo's project persona",
-      { fix: "zzpersona init --extends <persona>" },
+      { fix: "donn init --extends <persona>" },
     );
   }
   const build = await prepareBuild(ctx, io, {

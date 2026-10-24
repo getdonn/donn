@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { isAlive } from "@zzpersona/executor";
+import { isAlive } from "@getdonn/executor";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon } from "../daemon/client.js";
@@ -23,7 +23,7 @@ import { CliError } from "../errors.js";
 import { CLI_ON_PATH_FIX, findOnPath } from "../path.js";
 import { NOT_RUNNING } from "./status.js";
 
-// zzpersona daemon run|start|stop|status: the daemon's lifecycle. `run` is the daemon in the
+// donn daemon run|start|stop|status: the daemon's lifecycle. `run` is the daemon in the
 // foreground; `start` spawns it detached, or starts the login service when it is installed;
 // `install` and `uninstall` manage that service. See docs/planning/14-daemon.md §1 and
 // 16-daemon-service.md §1.
@@ -42,7 +42,7 @@ export function cliVersion(): string {
   ).version;
 }
 
-/** Spawn `zzpersona daemon run` detached, its output appended to daemon.log. */
+/** Spawn `donn daemon run` detached, its output appended to daemon.log. */
 async function spawnDetached(io: CliIo, home: string): Promise<void> {
   const paths = daemonPaths(home);
   mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
@@ -54,7 +54,7 @@ async function spawnDetached(io: CliIo, home: string): Promise<void> {
       // Not the caller's folder: the daemon must not hold a directory the user may remove.
       cwd: home,
       stdio: ["ignore", out, out],
-      env: { ...io.env, ZZPERSONA_HOME: home },
+      env: { ...io.env, DONN_HOME: home },
     }).unref();
   } finally {
     closeSync(out);
@@ -119,7 +119,7 @@ export async function daemonRun(
     if (
       error instanceof CliError &&
       error.code === "daemon-running" &&
-      io.env.ZZPERSONA_SERVICE === "1"
+      io.env.DONN_SERVICE === "1"
     ) {
       io.stdout.write(
         options.json
@@ -284,16 +284,28 @@ function requireService(io: CliIo): ServiceManager {
   );
 }
 
-export async function daemonInstall(
+export interface InstalledServiceResult {
+  path: string;
+  command: string;
+  pid: number;
+  /** The other home whose service this one replaced. */
+  replaced?: string;
+}
+
+/**
+ * Install the login service for this home and wait for its daemon: what `daemon install` does,
+ * without the output. `onReplace` hears about another home's service before it is replaced.
+ */
+export async function installService(
   io: CliIo,
-  options: DaemonCommandOptions,
-): Promise<number> {
+  onReplace: (home: string) => void = () => {},
+): Promise<InstalledServiceResult> {
   const service = requireService(io);
-  const cli = findOnPath("zzpersona", io.env);
+  const cli = findOnPath("donn", io.env);
   if (!cli) {
     throw new CliError(
       "cli-not-on-path",
-      `zzpersona is not on PATH, so the service cannot run it; ${CLI_ON_PATH_FIX}`,
+      `donn is not on PATH, so the service cannot run it; ${CLI_ON_PATH_FIX}`,
     );
   }
   // Absolute: the service manager runs the daemon from another folder.
@@ -303,23 +315,37 @@ export async function daemonInstall(
   const paths = daemonPaths(home);
   mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
   const replaced = await otherHome(io, service, home);
-  if (replaced !== undefined && !options.json) {
-    io.stdout.write(`replacing the service for ${replaced}\n`);
-  }
+  if (replaced !== undefined) onReplace(replaced);
   await service.install({
     command: [cli, "daemon", "run"],
     env: {
       PATH: io.env.PATH ?? "",
-      ...(io.env.ZZPERSONA_HOME && { ZZPERSONA_HOME: home }),
-      ZZPERSONA_SERVICE: "1",
+      ...(io.env.DONN_HOME && { DONN_HOME: home }),
+      DONN_SERVICE: "1",
     },
     log: paths.log,
   });
   const status = await waitForDaemon(home, service);
+  return {
+    path: service.path,
+    command: cli,
+    pid: status.pid,
+    ...(replaced !== undefined && { replaced }),
+  };
+}
+
+export async function daemonInstall(
+  io: CliIo,
+  options: DaemonCommandOptions,
+): Promise<number> {
+  const result = await installService(io, (replaced) => {
+    if (!options.json)
+      io.stdout.write(`replacing the service for ${replaced}\n`);
+  });
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ installed: true, path: service.path, command: cli, pid: status.pid, ...(replaced !== undefined && { replaced }) }, null, 2)}\n`
-      : `service installed (${service.path}); daemon running (pid ${status.pid})\n`,
+      ? `${JSON.stringify({ installed: true, ...result }, null, 2)}\n`
+      : `service installed (${result.path}); daemon running (pid ${result.pid})\n`,
   );
   return 0;
 }

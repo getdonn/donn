@@ -12,7 +12,7 @@ files (2)
     }
     
   system-prompt.md (0644)
-    ## zzpersona persona: team/solo
+    ## donn persona: team/solo
     
     Be concise.
     

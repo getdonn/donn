@@ -1,6 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
-import type { Ref } from "@zzpersona/spec";
+import type { Ref } from "@getdonn/spec";
 import { z } from "zod";
 import { CliError } from "./errors.js";
 import { fsStep, withFileLock, writeFileAtomic } from "./fs.js";
@@ -17,7 +17,7 @@ const StateFile = z.strictObject({
 export interface State {
   version: 1;
   default?: Ref;
-  /** Real path of a project's .zzpersona directory → the persona switched to. */
+  /** Real path of a project's .donn directory → the persona switched to. */
   projects: Record<string, Ref>;
 }
 

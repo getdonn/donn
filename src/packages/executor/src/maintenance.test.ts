@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe("build maintenance", () => {
   it("finds and removes stale locks, orphaned versions and temp links", async () => {
-    const home = mkdtempSync(join(tmpdir(), "zzp-maint-"));
+    const home = mkdtempSync(join(tmpdir(), "donn-maint-"));
     dirs.push(home);
     const persona = join(home, "build/team-p-12345678");
     mkdirSync(join(persona, "claude-code.v-aaaa1111"), { recursive: true });
@@ -59,7 +59,7 @@ describe("build maintenance", () => {
   });
 
   it("keeps a lock whose owner is alive, and copes with no build folder", async () => {
-    const home = mkdtempSync(join(tmpdir(), "zzp-maint-"));
+    const home = mkdtempSync(join(tmpdir(), "donn-maint-"));
     dirs.push(home);
     expect(await findBuildLeftovers(home)).toEqual({
       staleLocks: [],
@@ -73,7 +73,7 @@ describe("build maintenance", () => {
   });
 
   it("keeps recent versions, temp links and pid-less locks: a build may be writing them", async () => {
-    const home = mkdtempSync(join(tmpdir(), "zzp-maint-"));
+    const home = mkdtempSync(join(tmpdir(), "donn-maint-"));
     dirs.push(home);
     const persona = join(home, "build/team-p-12345678");
     mkdirSync(join(persona, "claude-code.v-dddd4444"), { recursive: true });

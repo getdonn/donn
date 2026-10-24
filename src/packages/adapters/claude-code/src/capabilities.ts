@@ -1,5 +1,5 @@
-import type { CapabilityMatrix, Detection } from "@zzpersona/adapter-sdk";
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import type { CapabilityMatrix, Detection } from "@getdonn/adapter-sdk";
+import { HOOK_EVENTS } from "@getdonn/spec";
 import { modeFor } from "./compile.js";
 
 // What the relaunch path can express, and, given a detection, what its degraded mode can: managed

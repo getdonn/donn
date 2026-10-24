@@ -7,7 +7,7 @@ import { buildHash, MODE_FACTS, type SessionInfo } from "../session.js";
 import type { SessionStatus } from "./client.js";
 
 // One session's refresh: recompile its persona as its files are now and, when the build changed,
-// swap it in as `zzpersona live` does. No secret is resolved: prepareBuild only names the refs.
+// swap it in as `donn live` does. No secret is resolved: prepareBuild only names the refs.
 // See docs/planning/14-daemon.md §3.
 
 export interface RefreshOutcome {

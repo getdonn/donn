@@ -1,4 +1,4 @@
-import type { ResolvedPersona } from "@zzpersona/spec";
+import type { ResolvedPersona } from "@getdonn/spec";
 import { describe, expect, it } from "vitest";
 import { runConformance } from "./conformance/index.js";
 import { good } from "./testing/toy.js";

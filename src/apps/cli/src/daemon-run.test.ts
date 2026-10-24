@@ -42,12 +42,12 @@ async function start() {
 const run = (daemon: Daemon, body: unknown) =>
   daemonRequest(daemon.socket, daemon.token, "POST", "/run", 30_000, body);
 
-/** A session launched on org/base, as `zzpersona claude` leaves it, owned by this process. */
+/** A session launched on org/base, as `donn claude` leaves it, owned by this process. */
 async function session(): Promise<string> {
   const plugin = join(s.root, "launched-plugin");
   put(
     join(plugin, ".claude-plugin/plugin.json"),
-    JSON.stringify({ name: "zzp-org--base" }),
+    JSON.stringify({ name: "donn-org--base" }),
   );
   return createSession(
     s.home,

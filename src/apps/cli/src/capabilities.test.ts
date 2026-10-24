@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { capabilityFields, type Probe } from "@zzpersona/adapter-sdk";
-import { HOOK_EVENTS } from "@zzpersona/spec";
+import { capabilityFields, type Probe } from "@getdonn/adapter-sdk";
+import { HOOK_EVENTS } from "@getdonn/spec";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   capabilitiesDoc,
@@ -40,7 +40,7 @@ const rowLabels = (out: string) =>
     .slice(1)
     .map((line) => line.split(/\s+/)[0]);
 
-describe("zzpersona capabilities", () => {
+describe("donn capabilities", () => {
   it("prints the first-party grid within 80 columns", async () => {
     const r = await run([]);
     expect(r.code, r.stderr).toBe(0);

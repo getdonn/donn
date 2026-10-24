@@ -9,20 +9,20 @@ files (15)
             "-y",
             "@corp/db-mcp",
             "--token",
-            "${ZZP_SECRET_1}"
+            "${DONN_SECRET_1}"
           ],
           "env": {
             "LOG_LEVEL": "debug",
-            "TOKEN": "${ZZP_SECRET_1}",
-            "TOKEN_AGAIN": "${ZZP_SECRET_1}",
-            "URL": "${ZZP_SECRET_2}"
+            "TOKEN": "${DONN_SECRET_1}",
+            "TOKEN_AGAIN": "${DONN_SECRET_1}",
+            "URL": "${DONN_SECRET_2}"
           }
         },
         "remote": {
           "type": "sse",
           "url": "https://mcp.corp/sse",
           "headers": {
-            "Authorization": "${ZZP_SECRET_3}",
+            "Authorization": "${DONN_SECRET_3}",
             "X-Team": "kitchen"
           }
         }
@@ -31,7 +31,7 @@ files (15)
     
   plugin/.claude-plugin/plugin.json (0644)
     {
-      "name": "zzp-team--kitchen",
+      "name": "donn-team--kitchen",
       "version": "0.0.0",
       "description": "Persona kitchen-sink"
     }
@@ -160,7 +160,7 @@ files (15)
     }
     
   system-prompt.md (0644)
-    ## zzpersona persona: team/kitchen
+    ## donn persona: team/kitchen
     
     Follow the org rules.
     
@@ -170,9 +170,9 @@ files (15)
     - wiki: mcp://confluence?space=ENG
     
 secretEnv (3)
-  ZZP_SECRET_1 = secret://vault/db/token
-  ZZP_SECRET_2 = secret://vault/db/url
-  ZZP_SECRET_3 = secret://vault/remote/key
+  DONN_SECRET_1 = secret://vault/db/token
+  DONN_SECRET_2 = secret://vault/db/url
+  DONN_SECRET_3 = secret://vault/remote/key
 report (4)
   advisory  knowledge[wiki]  rendered as text in the system prompt
   dropped  skills[remote-skill]  skill registries are not supported in v0

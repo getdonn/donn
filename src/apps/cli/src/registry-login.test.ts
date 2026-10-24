@@ -11,8 +11,8 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Probe } from "@zzpersona/adapter-sdk";
-import { startMockRegistry } from "@zzpersona/registry-api/mock";
+import type { Probe } from "@getdonn/adapter-sdk";
+import { startMockRegistry } from "@getdonn/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCli, type CliIo } from "./cli.js";
 import { clean, openerCommand } from "./commands/registry.js";
@@ -50,7 +50,7 @@ interface Machine {
 }
 
 function machine(withRegistry = false): Machine {
-  const root = mkdtempSync(join(tmpdir(), "zzp-login-"));
+  const root = mkdtempSync(join(tmpdir(), "donn-login-"));
   roots.push(root);
   const home = join(root, "home");
   const personas = join(root, "personas");
@@ -79,7 +79,7 @@ async function run(
   live = { stdout: "", stderr: "" };
   const { env, ...rest } = io;
   const cli = createCli({
-    env: { ZZPERSONA_NO_DAEMON: "1", ZZPERSONA_HOME: m.home, ...env },
+    env: { DONN_NO_DAEMON: "1", DONN_HOME: m.home, ...env },
     cwd: m.cwd,
     stdout: { write: (s: string) => (live.stdout += s) },
     stderr: { write: (s: string) => (live.stderr += s) },
@@ -142,7 +142,7 @@ describe("login through the browser", () => {
         `^logged in to ${registry.url}/ as alice@corp.com \\(session until \\d{4}-\\d\\d-\\d\\d\\)\\n$`,
       ),
     );
-    expect(inputs.some((i) => i.includes("zzp_"))).toBe(true);
+    expect(inputs.some((i) => i.includes("donn_"))).toBe(true);
     expect(configText(m)).toContain(`${registry.url}/`);
   });
 
@@ -183,7 +183,7 @@ describe("login through the browser", () => {
     });
     expect(expired.code).toBe(1);
     expect(expired.stderr).toContain(
-      `login timed out; run zzpersona login ${registry.url}/ again`,
+      `login timed out; run donn login ${registry.url}/ again`,
     );
     expect(existsSync(tokenFile(m))).toBe(false);
     expect(configText(m)).not.toContain("registry:");
@@ -263,10 +263,10 @@ describe("login through the browser", () => {
       ["login", registry.url, "--no-browser", "--json"],
       { ...io, sleep: finishOnFirstSleep() },
     );
-    const token = /zzp_[0-9a-f]+/.exec(stored.join(" "))![0];
+    const token = /donn_[0-9a-f]+/.exec(stored.join(" "))![0];
     for (const r of [text, json]) {
       expect(r.stdout + r.stderr).not.toContain(token);
-      expect(r.stdout + r.stderr).not.toMatch(/zzp_/);
+      expect(r.stdout + r.stderr).not.toMatch(/donn_/);
     }
     const parsed = JSON.parse(json.stdout) as Record<string, unknown>;
     expect(Object.keys(parsed).sort()).toEqual(["expiresAt", "subject", "url"]);
@@ -281,9 +281,7 @@ describe("login through the browser", () => {
     const m = machine();
     const r = await run(m, ["login", registry.url, "--no-browser"]);
     expect(r.code).toBe(1);
-    expect(r.stderr).toContain(
-      "this registry has no sign-in; use zzpersona login",
-    );
+    expect(r.stderr).toContain("this registry has no sign-in; use donn login");
     expect(r.stderr).toContain("--token-stdin");
     expect(configText(m)).not.toContain("registry:");
   });
@@ -294,7 +292,7 @@ describe("login through the browser", () => {
       res.setHeader("content-type", "application/problem+json");
       res.end(
         JSON.stringify({
-          type: "urn:zzpersona:problem:unauthorized",
+          type: "urn:donn:problem:unauthorized",
           title: "Unauthorized",
           status: 401,
           detail: "missing or refused token",
@@ -310,9 +308,7 @@ describe("login through the browser", () => {
     const r = await run(m, ["login", url, "--no-browser"]);
     server.close();
     expect(r.code).toBe(1);
-    expect(r.stderr).toContain(
-      "this registry has no sign-in; use zzpersona login",
-    );
+    expect(r.stderr).toContain("this registry has no sign-in; use donn login");
     expect(r.stderr).toContain("--token-stdin");
     expect(configText(m)).not.toContain("registry:");
   });
@@ -383,7 +379,7 @@ describe("a signed-in session", () => {
   it("whoami of a service token prints no session line", async () => {
     const m = machine(true);
     const r = await run(m, ["whoami"], {
-      env: { ZZPERSONA_REGISTRY_TOKEN: registry.token },
+      env: { DONN_REGISTRY_TOKEN: registry.token },
     });
     expect(r.stdout).not.toContain("session until");
   });
@@ -415,7 +411,7 @@ describe("a signed-in session", () => {
     expect(soon.status).toBe("warn");
     expect(soon.message).toMatch(/^session ends \d{4}-\d\d-\d\d/);
     expect(`${soon.message} ${soon.fix}`).toContain(
-      `zzpersona login ${registry.url}/`,
+      `donn login ${registry.url}/`,
     );
     const later = await checkOf(Date.now() + 10 * DAY);
     expect(later.message).toContain("accepted as alice@corp.com");
@@ -553,7 +549,7 @@ describe("the sign-in link", () => {
     registry = await startMockRegistry({ subject: "mallory\u001b[2J\u0007" });
     const m = machine(true);
     const r = await run(m, ["whoami"], {
-      env: { ZZPERSONA_REGISTRY_TOKEN: registry.token },
+      env: { DONN_REGISTRY_TOKEN: registry.token },
     });
     expect(r.stdout).toContain("mallory[2J at");
     expect(r.stdout).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
@@ -611,7 +607,7 @@ describe("server text in publish output", () => {
       ],
     });
     const r = await run(fake.m, ["publish", "org/acme"], {
-      env: { ZZPERSONA_REGISTRY_TOKEN: "tok-9f3a" },
+      env: { DONN_REGISTRY_TOKEN: "tok-9f3a" },
     });
     fake.stop();
     expect(r.code).toBe(1);
@@ -626,7 +622,7 @@ describe("server text in publish output", () => {
       broken: [],
     });
     const r = await run(fake.m, ["publish", "org/acme", "--dry-run"], {
-      env: { ZZPERSONA_REGISTRY_TOKEN: "tok-9f3a" },
+      env: { DONN_REGISTRY_TOKEN: "tok-9f3a" },
     });
     fake.stop();
     expect(r.code, r.stderr).toBe(0);

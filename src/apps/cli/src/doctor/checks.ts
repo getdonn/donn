@@ -1,20 +1,20 @@
 import { existsSync } from "node:fs";
 import { access, constants, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { findBuildLeftovers, removeBuildLeftovers } from "@zzpersona/executor";
+import { findBuildLeftovers, removeBuildLeftovers } from "@getdonn/executor";
 import {
   keychainParts,
   parseSecretRef,
   resolveSecrets,
   SecretResolutionError,
-} from "@zzpersona/secrets";
+} from "@getdonn/secrets";
 import {
   createClient,
   normaliseUrl,
   readIndex,
   RegistryError,
-} from "@zzpersona/store-remote";
-import { createLocalStore } from "@zzpersona/store-local";
+} from "@getdonn/store-remote";
+import { createLocalStore } from "@getdonn/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { cliVersion } from "../commands/daemon.js";
@@ -38,6 +38,8 @@ import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { HARNESSES } from "../harness.js";
+import { LEGACY } from "../migrate/legacy.js";
+import { madeByDonn, madeByDonnAdvice } from "../migrate/steps.js";
 import {
   backendLoader,
   loadAdapters,
@@ -47,7 +49,7 @@ import { ageText, readToken } from "../registry.js";
 import { selectPersona, type Selection } from "../select.js";
 import { readState, updateState, type State } from "../state.js";
 
-// zzpersona doctor: one line per check, in a fixed order; a check whose prerequisite failed is
+// donn doctor: one line per check, in a fixed order; a check whose prerequisite failed is
 // `skipped`. Never creates anything except under --fix. See docs/planning/07-cli-daily-use.md, §3.
 
 export type Status = "ok" | "warn" | "error" | "skipped";
@@ -138,7 +140,7 @@ async function registryChecks(
         ? new CliError(error.code, error.message)
         : error,
     );
-    add("registry", "error", message, `zzpersona login <https url>`);
+    add("registry", "error", message, `donn login <https url>`);
     add("registry-token", "skipped", "the registry URL is not valid");
     add("registry-cache", "skipped", "the registry URL is not valid");
     return;
@@ -150,7 +152,7 @@ async function registryChecks(
       "registry-token",
       "warn",
       `not logged in to ${url}`,
-      `zzpersona login ${url} --token-stdin`,
+      `donn login ${url} --token-stdin`,
     );
   } else {
     try {
@@ -166,7 +168,7 @@ async function registryChecks(
           ? `, session until ${who.expiresAt.slice(0, 10)}`
           : "";
       const inFile =
-        io.env.ZZPERSONA_REGISTRY_TOKEN === undefined &&
+        io.env.DONN_REGISTRY_TOKEN === undefined &&
         existsSync(join(home, "registry-token"));
       if (
         who.kind === "session" &&
@@ -177,7 +179,7 @@ async function registryChecks(
           "registry-token",
           "warn",
           `session ends ${who.expiresAt.slice(0, 10)}`,
-          `zzpersona login ${url}`,
+          `donn login ${url}`,
         );
       } else if (inFile) {
         add(
@@ -196,14 +198,14 @@ async function registryChecks(
           "registry-token",
           "error",
           "the registry refused the token",
-          `zzpersona login ${url} --token-stdin`,
+          `donn login ${url} --token-stdin`,
         );
       } else {
         add(
           "registry",
           "warn",
           `${url} did not answer; cached layers stay in use`,
-          "check your network, then run zzpersona pull",
+          "check your network, then run donn pull",
         );
         add("registry-token", "skipped", "the registry did not answer");
       }
@@ -215,7 +217,7 @@ async function registryChecks(
       "registry-cache",
       "warn",
       "nothing pulled from this registry yet",
-      "zzpersona pull",
+      "donn pull",
     );
   } else {
     const pulled = Date.parse(index.pulledAt);
@@ -249,6 +251,28 @@ export async function runChecks(
   const skip = (id: string, because: string) => add(id, "skipped", because);
   const home = homeOf(io);
 
+  // migrate: a home from before the rename, not migrated yet (spec 22 §3). First, because running
+  // other fixes (init, mod install) first would make the new home and stand in migrate's way.
+  // Only under $HOME as the environment gives it.
+  const legacyHome = io.env.HOME && join(io.env.HOME, LEGACY.home);
+  if (legacyHome && existsSync(legacyHome)) {
+    if (!existsSync(home)) {
+      add(
+        "migrate",
+        "error",
+        `${legacyHome} is from before the rename, and ${home} does not exist yet`,
+        "donn migrate",
+      );
+    } else if (await madeByDonn(home)) {
+      add(
+        "migrate",
+        "error",
+        `${legacyHome} is from before the rename, and ${home} was made by running donn before migrating`,
+        await madeByDonnAdvice(home),
+      );
+    }
+  }
+
   // home
   if (!(await writable(home))) {
     add(
@@ -257,12 +281,12 @@ export async function runChecks(
       `${home} is not writable`,
       `fix the permissions on ${home}`,
     );
-  } else if (io.env.ZZPERSONA_HOME === "") {
+  } else if (io.env.DONN_HOME === "") {
     add(
       "home",
       "warn",
-      `ZZPERSONA_HOME is set but empty; using ${home}`,
-      "unset ZZPERSONA_HOME",
+      `DONN_HOME is set but empty; using ${home}`,
+      "unset DONN_HOME",
     );
   } else {
     add("home", "ok", home);
@@ -277,7 +301,7 @@ export async function runChecks(
         "config",
         "warn",
         "no personas folder configured; only project and user personas are available",
-        "zzpersona init --personas <dir>",
+        "donn init --personas <dir>",
       );
     } else {
       add("config", "ok", join(home, "config.yaml"));
@@ -300,7 +324,7 @@ export async function runChecks(
       "personas",
       "error",
       `the configured personas folder ${config.personas} does not exist`,
-      `create it, or zzpersona init --personas <dir> --force`,
+      `create it, or donn init --personas <dir> --force`,
     );
   } else {
     const problems: string[] = [];
@@ -370,7 +394,7 @@ export async function runChecks(
             `${kept.length} switch(es) for projects without a persona.yaml: ${kept.join(", ")}`,
           ].join("; "),
           gone.length > 0
-            ? "zzpersona doctor --fix"
+            ? "donn doctor --fix"
             : `kept because the project may come back (its repo exists on another branch, or its volume is not mounted); delete the entry from ${join(home, "state.json")} if it is no longer needed`,
         );
       }
@@ -430,7 +454,7 @@ export async function runChecks(
         ? ` for ${dirname(selection.project)}`
         : "";
       // Claude Code reads AGENTS.md when the repo has no CLAUDE.md, so the persona's
-      // instructions would reach a zzpersona claude session twice (docs/planning/11-agents-md.md).
+      // instructions would reach a donn claude session twice (docs/planning/11-agents-md.md).
       let twice = "";
       if (ctx.projectDir !== undefined) {
         const repo = dirname(ctx.projectDir);
@@ -438,7 +462,7 @@ export async function runChecks(
           () => "",
         );
         if (
-          agents.includes("<!-- zzpersona:begin") &&
+          agents.includes("<!-- donn:begin") &&
           !existsSync(join(repo, "CLAUDE.md"))
         )
           twice = "; AGENTS.md also carries it for Claude Code";
@@ -454,7 +478,7 @@ export async function runChecks(
           "persona",
           "warn",
           "no persona would be used here",
-          "zzpersona init --extends <persona> in a project, or zzpersona switch <persona>",
+          "donn init --extends <persona> in a project, or donn switch <persona>",
         );
       } else {
         add("persona", "error", errorText(error));
@@ -496,7 +520,7 @@ export async function runChecks(
     );
   } else {
     // Version and mode are independent findings: an old claude must not hide a degraded mode.
-    // `zzpersona claude` runs the claude PATH finds; a shell alias does not count.
+    // `donn claude` runs the claude PATH finds; a shell alias does not count.
     const where = claudePath ? ` (${claudePath})` : "";
     const findings: string[] = [];
     const fixes: string[] = [];
@@ -514,15 +538,15 @@ export async function runChecks(
     if (differs) {
       findings.push(differs);
       fixes.push(
-        `point the alias at ${claudePath}, or remove it so the shell and zzpersona run the same claude`,
+        `point the alias at ${claudePath}, or remove it so the shell and donn run the same claude`,
       );
     }
     if (detection.version && olderThan(detection.version, VERIFIED_CLAUDE)) {
       findings.push(
-        `claude ${detection.version}${where} is older than ${VERIFIED_CLAUDE}, the version zzpersona was verified against`,
+        `claude ${detection.version}${where} is older than ${VERIFIED_CLAUDE}, the version donn was verified against`,
       );
       fixes.push(
-        "update the Claude Code that PATH finds (zzpersona claude ignores shell aliases)",
+        "update the Claude Code that PATH finds (donn claude ignores shell aliases)",
       );
     }
     if (detection.facts.sideloadBlocked === true) {
@@ -550,7 +574,7 @@ export async function runChecks(
     }
   }
 
-  // codex: optional; `zzpersona codex` runs the codex PATH finds
+  // codex: optional; `donn codex` runs the codex PATH finds
   const codex = await HARNESSES.codex!.detect(io.probe);
   if (!codex.installed) {
     add("codex", "ok", "codex not installed (optional)");
@@ -561,7 +585,7 @@ export async function runChecks(
       add(
         "codex",
         "warn",
-        `codex ${codex.version}${where} is older than ${VERIFIED_CODEX}, the version zzpersona was verified against`,
+        `codex ${codex.version}${where} is older than ${VERIFIED_CODEX}, the version donn was verified against`,
         "update the Codex CLI that PATH finds",
       );
     } else {
@@ -573,23 +597,23 @@ export async function runChecks(
     }
   }
 
-  // cli: the mod runs `zzpersona` from PATH without a shell
-  const cli = findOnPath("zzpersona", io.env);
-  if (cli) add("cli", "ok", `zzpersona on PATH: ${cli}`);
+  // cli: the mod runs `donn` from PATH without a shell
+  const cli = findOnPath("donn", io.env);
+  if (cli) add("cli", "ok", `donn on PATH: ${cli}`);
   else
     add(
       "cli",
       "warn",
-      "zzpersona is not on PATH, so the Claude Code mod cannot run it",
+      "donn is not on PATH, so the Claude Code mod cannot run it",
       CLI_ON_PATH_FIX,
     );
 
   // daemon: optional; running at the version of this CLI, or not at all. An installed service
-  // must name a zzpersona that exists and be loaded. A service for another home is not this
+  // must name a donn that exists and be loaded. A service for another home is not this
   // home's concern: `daemon install` here would take it over.
   const service = await serviceFor(io, home);
   const serviceCommand = service?.installed.command;
-  const reinstall = "zzpersona daemon install";
+  const reinstall = "donn daemon install";
   let serviceProblem: string | undefined;
   if (service && serviceCommand !== undefined) {
     if (!existsSync(serviceCommand)) {
@@ -611,7 +635,7 @@ export async function runChecks(
       "daemon",
       "warn",
       refused.replace(/^daemon: /, "the daemon ").replace(/;.*$/, ""),
-      "zzpersona daemon stop && zzpersona daemon start",
+      "donn daemon stop && donn daemon start",
     );
   } else if (daemon) {
     const status = daemon.probed;
@@ -624,7 +648,7 @@ export async function runChecks(
           "daemon",
           "warn",
           mismatch,
-          "zzpersona daemon stop && zzpersona daemon start",
+          "donn daemon stop && donn daemon start",
         );
       }
     } else if (serviceProblem !== undefined) {
@@ -649,14 +673,14 @@ export async function runChecks(
         "daemon",
         "warn",
         `the daemon (pid ${pid}) is unresponsive`,
-        "zzpersona daemon stop",
+        "donn daemon stop",
       );
     } else if (existsSync(await daemonSocket(home)) || pid > 0) {
       add(
         "daemon",
         "warn",
         `the daemon's socket or pid file is stale in ${paths.dir}`,
-        "zzpersona daemon start",
+        "donn daemon start",
       );
     } else if (serviceProblem !== undefined) {
       add("daemon", "warn", serviceProblem, reinstall);
@@ -665,20 +689,20 @@ export async function runChecks(
     }
   }
 
-  // mod: the Claude Code mod this zzpersona ships, installed and current
+  // mod: the Claude Code mod this donn ships, installed and current
   const installed = await installedModVersion(home);
   const shipped = bundledMod().version;
   if (installed === undefined) {
-    add("mod", "warn", "the mod is not installed", "zzpersona mod install");
+    add("mod", "warn", "the mod is not installed", "donn mod install");
   } else if (installed !== shipped) {
     add(
       "mod",
       "warn",
-      `mod ${installed} does not match the mod this zzpersona ships (${shipped})`,
-      "zzpersona mod install",
+      `mod ${installed} does not match the mod this donn ships (${shipped})`,
+      "donn mod install",
     );
   } else {
-    add("mod", "ok", `zzpersona mod ${installed}`);
+    add("mod", "ok", `donn mod ${installed}`);
   }
 
   // registry: configured, token accepted, cache age (only with a registry in config.yaml)
@@ -747,12 +771,12 @@ export async function runChecks(
         "build",
         "warn",
         summary,
-        `zzpersona doctor --fix (it removes only what no running session uses; deleting ${buildRoot} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
+        `donn doctor --fix (it removes only what no running session uses; deleting ${buildRoot} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
       );
     }
   }
 
-  // managed: the Claude Code policy `zzpersona managed install` put on this machine (spec 21).
+  // managed: the Claude Code policy `donn managed install` put on this machine (spec 21).
   // Most machines have none, which is not a problem to flag.
   try {
     const result = await checkHere(io);
@@ -780,7 +804,7 @@ export async function runChecks(
       "warn",
       errorText(error),
       error instanceof CliError && error.code === "managed-newer-format"
-        ? "upgrade zzpersona"
+        ? "upgrade donn"
         : undefined,
     );
   }

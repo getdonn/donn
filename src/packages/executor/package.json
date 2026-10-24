@@ -1,6 +1,6 @@
 {
-  "name": "@zzpersona/executor",
-  "version": "0.2.2",
+  "name": "@getdonn/executor",
+  "version": "0.3.0",
   "private": true,
   "description": "Carries out adapter plans: the real probe, atomic builds with containment, and launch steps",
   "license": "Apache-2.0",
@@ -21,14 +21,14 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@zzpersona/adapter-sdk": "workspace:*",
-    "@zzpersona/spec": "workspace:*",
-    "@zzpersona/store-local": "workspace:*"
+    "@getdonn/adapter-sdk": "workspace:*",
+    "@getdonn/spec": "workspace:*",
+    "@getdonn/store-local": "workspace:*"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"

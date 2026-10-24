@@ -3,11 +3,11 @@ import type {
   ManagedLayer,
   ManagedOs,
   ManagedResult,
-} from "@zzpersona/adapter-sdk";
-import { resolve, type PersonaSource } from "@zzpersona/resolver";
+} from "@getdonn/adapter-sdk";
+import { resolve, type PersonaSource } from "@getdonn/resolver";
 import { parse } from "yaml";
 import { normalizeBundlePath } from "./bundle.js";
-import type { Ref } from "@zzpersona/spec";
+import type { Ref } from "@getdonn/spec";
 
 // Resolve a layer and compile its chain's locks to a managed policy bundle. Shared by the CLI,
 // the mock registry and the control plane; the caller supplies the layers (with digests) and a
@@ -21,14 +21,14 @@ export interface CompileFromSource {
   /** The chain, root first, with versions and digests, copied into the manifest. */
   layers: ManagedLayer[];
   /** The CLI (or server) version recorded in the manifest. */
-  zzpersona: string;
+  donn: string;
   /** Reads a personas-root-relative file named by the IR; the caller enforces containment. */
   readFile(path: string): Promise<Uint8Array>;
 }
 
 export async function compileFromSource(
   compiler: ManagedCompiler,
-  { source, ref, os, layers, zzpersona, readFile }: CompileFromSource,
+  { source, ref, os, layers, donn, readFile }: CompileFromSource,
 ): Promise<ManagedResult> {
   const { ir, provenance } = await resolve(ref, { source });
   const wanted = compiler.inputs(ir);
@@ -43,7 +43,7 @@ export async function compileFromSource(
     ir,
     layers,
     os,
-    zzpersona,
+    donn,
     texts,
     scripts,
     provenance,

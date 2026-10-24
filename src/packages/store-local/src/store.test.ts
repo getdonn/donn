@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 function temp(): string {
-  const dir = mkdtempSync(join(tmpdir(), "zzp-store-"));
+  const dir = mkdtempSync(join(tmpdir(), "donn-store-"));
   dirs.push(dir);
   return dir;
 }
@@ -28,13 +28,13 @@ function put(path: string, content = "") {
 }
 
 const persona = (name: string) =>
-  `apiVersion: zzpersona/v0\nkind: Persona\nmetadata:\n  name: ${name}\n`;
+  `apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: ${name}\n`;
 
 function mounts() {
   const root = temp();
   return {
     personas: join(root, "personas"),
-    project: join(root, "repo", ".zzpersona"),
+    project: join(root, "repo", ".donn"),
     user: join(root, "home"),
   };
 }
@@ -92,7 +92,7 @@ describe("load", () => {
   it("reports invalid YAML with the file and line", async () => {
     const m = mounts();
     const file = join(m.personas, "team/bad.yaml");
-    put(file, "apiVersion: zzpersona/v0\nkind: [unclosed\n");
+    put(file, "apiVersion: donn/v0\nkind: [unclosed\n");
     const error = await createLocalStore(m)
       .load("team/bad")
       .catch((e: unknown) => e);
@@ -164,18 +164,16 @@ describe("list", () => {
 });
 
 describe("findProject", () => {
-  it("finds the nearest .zzpersona/persona.yaml walking up", () => {
+  it("finds the nearest .donn/persona.yaml walking up", () => {
     const root = temp();
-    put(join(root, "repo/.zzpersona/persona.yaml"), persona("repo"));
-    put(join(root, "repo/a/.zzpersona/persona.yaml"), persona("a"));
+    put(join(root, "repo/.donn/persona.yaml"), persona("repo"));
+    put(join(root, "repo/a/.donn/persona.yaml"), persona("a"));
     mkdirSync(join(root, "repo/a/b"), { recursive: true });
     mkdirSync(join(root, "repo/c"), { recursive: true });
     expect(findProject(join(root, "repo/a/b"))).toBe(
-      join(root, "repo/a/.zzpersona"),
+      join(root, "repo/a/.donn"),
     );
-    expect(findProject(join(root, "repo/c"))).toBe(
-      join(root, "repo/.zzpersona"),
-    );
+    expect(findProject(join(root, "repo/c"))).toBe(join(root, "repo/.donn"));
     expect(findProject(root)).toBeUndefined();
   });
 });
@@ -203,7 +201,7 @@ describe("hardening (spec 07)", () => {
     put(join(m.personas, "team/skills/x/data.yaml"), "foo: 1\n");
     put(
       join(m.personas, "team/overlay.yaml"),
-      "apiVersion: zzpersona/v0\nkind: PersonaOverlay\n",
+      "apiVersion: donn/v0\nkind: PersonaOverlay\n",
     );
     expect(await createLocalStore(m).list()).toEqual([
       "team/linked",
@@ -241,9 +239,9 @@ describe("hardening (spec 07)", () => {
 });
 
 describe("project containment", () => {
-  it("reads project files when .zzpersona itself is a symlink", async () => {
+  it("reads project files when .donn itself is a symlink", async () => {
     const m = mounts();
-    const real = join(dirname(dirname(m.project)), "dotfiles/zzp");
+    const real = join(dirname(dirname(m.project)), "dotfiles/donn");
     put(join(real, "instructions/a.md"), "linked text");
     mkdirSync(dirname(m.project), { recursive: true });
     symlinkSync(real, m.project);

@@ -4,7 +4,7 @@ import { isAlive } from "./process.js";
 
 // Leftovers writeBuild can leave behind: locks from a process that died mid-build, version
 // directories no build symlink points to, and temporary links from an interrupted swap.
-// `zzpersona doctor --fix` removes them. Anything changed in the last ten minutes is left
+// `donn doctor --fix` removes them. Anything changed in the last ten minutes is left
 // alone: a running build writes its version and link, and creates its lock before writing
 // the pid. See docs/planning/07-cli-daily-use.md, section 3.
 

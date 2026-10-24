@@ -4,14 +4,14 @@
 export type Source = "argument" | "switch" | "project" | "default";
 const SOURCES: readonly string[] = ["argument", "switch", "project", "default"];
 
-/** The persona `zzpersona claude` launched this session with, from its environment. */
+/** The persona `donn claude` launched this session with, from its environment. */
 export interface Launched {
   persona: string;
   source: Source;
   project?: string;
 }
 
-/** What this folder selects, from `zzpersona switch --json`. */
+/** What this folder selects, from `donn switch --json`. */
 export type Here =
   | { kind: "persona"; persona: string; source: Source; project?: string }
   | { kind: "none" }
@@ -19,7 +19,7 @@ export type Here =
 
 export type Form = "show" | "list" | "switch" | "use" | "clear";
 
-/** What `zzpersona live` reports (docs/planning/10-live-switching.md §2). */
+/** What `donn live` reports (docs/planning/10-live-switching.md §2). */
 export interface LiveState {
   persona: string;
   previous: string;
@@ -43,11 +43,11 @@ const LAYER_ORDER: readonly string[] = [
   "user",
 ];
 
-/** Why the mod has no zzpersona: no daemon answered, and policy refused it the CLI (spec 15). */
+/** Why the mod has no donn: no daemon answered, and policy refused it the CLI (spec 15). */
 export const UNAVAILABLE =
-  "start the daemon (zzpersona daemon start), or allow the mod to run zzpersona";
+  "start the daemon (donn daemon start), or allow the mod to run donn";
 
-/** What `/persona` prints for a command that failed; the host prefixes `zzpersona: `. */
+/** What `/persona` prints for a command that failed; the host prefixes `donn: `. */
 export const failureText = (reason: string, code?: string): string =>
   code === "unavailable" ? `unavailable: ${reason}` : reason;
 
@@ -107,7 +107,7 @@ export function nudgeText(
   current: Launched | undefined,
   here: Here,
   live?: LiveState,
-  /** The session was started by zzpersona claude with a session folder (spec 10). */
+  /** The session was started by donn claude with a session folder (spec 10). */
   canLive = false,
 ): string | undefined {
   // After a live switch the session runs the live persona.
@@ -117,7 +117,7 @@ export function nudgeText(
   if (here.kind === "unavailable") return `unavailable: ${here.reason}`;
   if (!folderSpecific(here)) return undefined;
   if (!launched) {
-    return `this folder uses ${here.persona}; start with zzpersona claude to load it, or zzpersona claude -- --continue to keep this conversation`;
+    return `this folder uses ${here.persona}; start with donn claude to load it, or donn claude -- --continue to keep this conversation`;
   }
   if (here.persona === launched.persona) return undefined;
   const how = canLive
@@ -153,7 +153,7 @@ export function personaCommand(
   return { usage: USAGE };
 }
 
-const repoOf = (project: string) => project.replace(/\/\.zzpersona\/?$/, "");
+const repoOf = (project: string) => project.replace(/\/\.donn\/?$/, "");
 
 function folderLine(here: Here, now = false): string {
   const uses = now ? "now uses" : "uses";
@@ -175,7 +175,7 @@ export function commandText(
   const data = (json ?? {}) as Json;
   if (form === "show") {
     if (!launched)
-      return `this session runs no persona (it was not started by zzpersona claude)\n${folderLine(here)}`;
+      return `this session runs no persona (it was not started by donn claude)\n${folderLine(here)}`;
     const session = `this session runs ${launched.persona} (${launched.source})`;
     return here.kind === "persona" && here.persona === launched.persona
       ? `${session}, which this folder uses`
@@ -183,7 +183,7 @@ export function commandText(
   }
   if (form === "list") {
     const personas = (data.personas ?? []) as { ref: string; layer: string }[];
-    // Inheritance order, as `zzpersona list` prints it; unknown layers last.
+    // Inheritance order, as `donn list` prints it; unknown layers last.
     const rank = (layer: string) => {
       const i = LAYER_ORDER.indexOf(layer);
       return i === -1 ? LAYER_ORDER.length : i;
@@ -220,15 +220,15 @@ export function commandText(
       return [
         saved,
         `This session still runs ${launched.persona}. To apply it, exit and run:`,
-        `  zzpersona claude ${persona}`,
+        `  donn claude ${persona}`,
       ].join("\n");
     }
     return [
       saved,
       `This session still runs ${launched?.persona ?? "no persona"}. To apply it, exit and run:`,
-      "  zzpersona claude",
+      "  donn claude",
       // Verified (spikes/mod-smoke): a resumed session keeps the system prompt it began with.
-      "(zzpersona claude -- --continue keeps this conversation, but not the new persona's instructions.)",
+      "(donn claude -- --continue keeps this conversation, but not the new persona's instructions.)",
     ].join("\n");
   }
   const cleared =
@@ -243,7 +243,7 @@ export function commandText(
  * persona's own once switched back or refreshed by the daemon (docs/planning/14-daemon.md).
  */
 export function liveSection(live: LiveState): {
-  id: "zzpersona:live-persona";
+  id: "donn:live-persona";
   text: string;
   scope: "session";
 } {
@@ -252,16 +252,16 @@ export function liveSection(live: LiveState): {
     : `The instructions for this session's persona ${live.persona} were updated.`;
   // A heading of its own: for the launched persona the compiled heading is the same as the launch
   // section's, and this section sits above it, so "disregard" must name which one by text.
-  const heading = `## zzpersona persona: ${live.persona} (updated ${live.appliedAt})`;
+  const heading = `## donn persona: ${live.persona} (updated ${live.appliedAt})`;
   const body = live.instructions.trimEnd();
-  const compiled = /^## zzpersona persona: [^\n]*\n*/;
+  const compiled = /^## donn persona: [^\n]*\n*/;
   return {
-    id: "zzpersona:live-persona",
+    id: "donn:live-persona",
     scope: "session",
     text: [
       `${lead} Disregard the section headed exactly`,
-      `"## zzpersona persona: ${live.launched}" (the launch instructions), wherever it appears in this`,
-      `prompt; the section headed "## zzpersona persona: ${live.persona} (updated`,
+      `"## donn persona: ${live.launched}" (the launch instructions), wherever it appears in this`,
+      `prompt; the section headed "## donn persona: ${live.persona} (updated`,
       `${live.appliedAt})" below is current. Answers given earlier in this conversation may`,
       "be outdated.",
       "",
@@ -287,7 +287,7 @@ export function liveText(live: LiveState, saved?: string): string {
       ? [
           `Still from ${live.launched} until you relaunch: ${live.held.map((h) => HELD_TEXT[h]).join(", ")}.`,
           // Named: `/persona use` saves nothing, so a bare relaunch could start another persona.
-          `To apply those too, exit and run: zzpersona claude ${live.persona}`,
+          `To apply those too, exit and run: donn claude ${live.persona}`,
         ]
       : []),
     ...(live.stricter

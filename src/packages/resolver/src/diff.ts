@@ -2,7 +2,7 @@ import {
   parsePath,
   type ResolvedPersona,
   type ResolveResult,
-} from "@zzpersona/spec";
+} from "@getdonn/spec";
 
 // What changes from one resolved persona to another, over the paths provenance already uses.
 // Pure: no provider is called, and secret refs stay refs. See docs/planning/08-cli-reach.md §3.

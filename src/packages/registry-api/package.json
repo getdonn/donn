@@ -1,6 +1,6 @@
 {
-  "name": "@zzpersona/registry-api",
-  "version": "0.5.0",
+  "name": "@getdonn/registry-api",
+  "version": "0.6.0",
   "private": true,
   "description": "The registry contract: schemas, routes, OpenAPI, a mock server and a conformance kit",
   "license": "Apache-2.0",
@@ -30,9 +30,9 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@zzpersona/adapter-sdk": "workspace:*",
-    "@zzpersona/resolver": "workspace:*",
-    "@zzpersona/spec": "workspace:*",
+    "@getdonn/adapter-sdk": "workspace:*",
+    "@getdonn/resolver": "workspace:*",
+    "@getdonn/spec": "workspace:*",
     "yaml": "^2.9.1",
     "zod": "^4.1.0"
   },
@@ -40,9 +40,9 @@
     "vitest": "^5.0.5"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ActivationPlan, Probe } from "@zzpersona/adapter-sdk";
+import type { ActivationPlan, Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installedProbe, seed, zz, type Seeded } from "./test/seed.js";
 
@@ -42,7 +42,7 @@ const launchStep = (plan: ActivationPlan) => {
   return step;
 };
 
-describe("zzpersona codex", () => {
+describe("donn codex", () => {
   it("launches codex with the sandbox defaults and secrets in the environment", async () => {
     useEnvVault();
     const { calls, runPlan } = recorder();
@@ -64,7 +64,7 @@ describe("zzpersona codex", () => {
     expect(calls[0]!.secretEnv).toEqual({ SCHEMA_TOKEN: "tok-value" });
     expect(step.args.join(" ")).not.toContain("tok-value");
     expect(step.args.join(" ")).toContain('env_vars = ["SCHEMA_TOKEN"]');
-    expect(step.env.ZZPERSONA_PERSONA).toBe("project/persona");
+    expect(step.env.DONN_PERSONA).toBe("project/persona");
   });
 
   it("registers a session while codex runs and removes it after", async () => {

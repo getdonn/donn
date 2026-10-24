@@ -1,6 +1,6 @@
 {
-  "name": "@zzpersona/adapter-codex",
-  "version": "0.2.0",
+  "name": "@getdonn/adapter-codex",
+  "version": "0.3.0",
   "private": true,
   "description": "Launches Codex CLI with a persona, as -c overrides on the command line",
   "license": "Apache-2.0",
@@ -21,13 +21,13 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@zzpersona/adapter-sdk": "workspace:*",
-    "@zzpersona/spec": "workspace:*"
+    "@getdonn/adapter-sdk": "workspace:*",
+    "@getdonn/spec": "workspace:*"
   },
   "devDependencies": {
+    "@getdonn/eslint-config": "workspace:*",
+    "@getdonn/typescript-config": "workspace:*",
     "@types/node": "^24.0.0",
-    "@zzpersona/eslint-config": "workspace:*",
-    "@zzpersona/typescript-config": "workspace:*",
     "eslint": "10.13.0",
     "smol-toml": "^1.9.1",
     "typescript": "7.0.2",

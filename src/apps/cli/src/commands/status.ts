@@ -6,7 +6,7 @@ import { listSessions } from "../session.js";
 import { cliVersion } from "./daemon.js";
 import { managedStatus } from "./managed.js";
 
-// zzpersona status: what the daemon knows of live sessions, or what the registry shows without
+// donn status: what the daemon knows of live sessions, or what the registry shows without
 // it. See docs/planning/14-daemon.md §4.
 
 export interface StatusOptions {
@@ -14,7 +14,7 @@ export interface StatusOptions {
 }
 
 export const NOT_RUNNING =
-  "daemon not running: sessions are not refreshed on edits; zzpersona daemon start";
+  "daemon not running: sessions are not refreshed on edits; donn daemon start";
 
 /** `<harness>  <launched> → <live>  [<state>  ]<project or ->` */
 function line(s: Omit<SessionStatus, "state"> & { state?: string }): string {

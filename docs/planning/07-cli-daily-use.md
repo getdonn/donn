@@ -7,11 +7,12 @@
 > third-party adapter loading, `diff`, and the SDK-side deferred minors); the Claude Code mod
 > (status line, nudge, in-session switch) gets its own spec after the spike's manual checks.
 > Built as a `gh stack`: layer 0 is this spec and its plan.
+> 2026-10-23: renamed zzpersona/hatrack → donn (spec 22).
 
 ## Intent
 
 The Phase 1 exit question (`04`): *do I switch personas more than once a day without thinking
-about it?* Spec 06 made `zzpersona claude` work; this spec makes it pleasant to live with:
+about it?* Spec 06 made `donn claude` work; this spec makes it pleasant to live with:
 choose a different persona for a repo or by default (`switch`), get set up in one command
 (`init`), find out what is wrong (`doctor`), and stop tripping over the rough edges the last
 two reviews found.
@@ -22,30 +23,30 @@ two reviews found.
 |---|---|---|
 | Split the remaining CLI into daily use (07) and reach (08) | One spec | Independent pieces; daily use answers the exit question, reach matters once others are involved |
 | `switch` remembers a choice per project plus a default for everywhere else | One global current persona; no `switch` (files only) | A global switch fights project personas; files-only gives no quick way to try another persona without touching a committed file |
-| Switch state lives in `~/.zzpersona/state.json`, keyed by project | A git-ignored `.zzpersona/local.yaml` per project; an environment variable | Nothing written into repos or committed by accident; one file the mod and `doctor` can read; per user and per machine, which is what a switch is |
+| Switch state lives in `~/.donn/state.json`, keyed by project | A git-ignored `.donn/local.yaml` per project; an environment variable | Nothing written into repos or committed by accident; one file the mod and `doctor` can read; per user and per machine, which is what a switch is |
 | `init` is flags only | Interactive prompts; no `init` | Predictable, scriptable, works with `--json` and agents; a missing flag is reported with the exact fix |
 
 ## 1. `switch`, `state.json`, and persona selection
 
-`~/.zzpersona/state.json`, written atomically (temporary file, then rename):
+`~/.donn/state.json`, written atomically (temporary file, then rename):
 
 ```json
 {
   "version": 1,
   "default": "team/payments",
-  "projects": { "/Users/you/repo/.zzpersona": "team/platform" }
+  "projects": { "/Users/you/repo/.donn": "team/platform" }
 }
 ```
 
-A **project** is a directory with `.zzpersona/persona.yaml`, found by walking up (`findProject`,
-spec 06). Entries are keyed by the **real path** of that `.zzpersona` directory, so a symlinked
+A **project** is a directory with `.donn/persona.yaml`, found by walking up (`findProject`,
+spec 06). Entries are keyed by the **real path** of that `.donn` directory, so a symlinked
 checkout matches.
 
 | Command | Does |
 |---|---|
-| `zzpersona switch <persona>` | In a project: this project uses `<persona>`. Outside: sets the default. `--default` sets the default from inside a project. The persona is resolved before saving |
-| `zzpersona switch --clear [--default]` | Removes this project's switch, or the default |
-| `zzpersona switch` | Shows the persona `zzpersona claude` would use here, and why |
+| `donn switch <persona>` | In a project: this project uses `<persona>`. Outside: sets the default. `--default` sets the default from inside a project. The persona is resolved before saving |
+| `donn switch --clear [--default]` | Removes this project's switch, or the default |
+| `donn switch` | Shows the persona `donn claude` would use here, and why |
 
 `--json`: `{ "scope": "project" \| "default", "persona", "project"? }` when setting or clearing;
 `{ "persona", "source", "project"? }` when showing.
@@ -56,24 +57,24 @@ checkout matches.
 2. this project's switch → `switch`
 3. this project's persona, `project/persona` → `project`
 4. the default → `default`
-5. otherwise error `no-persona`, listing available personas and suggesting `zzpersona switch`
+5. otherwise error `no-persona`, listing available personas and suggesting `donn switch`
 
 `selectPersona` returns `{ ref, source, project? }`. A persona that came from `state.json` and
-fails to resolve with `missing-ref` gets the hint "set by `zzpersona switch`; run
-`zzpersona switch --clear` to remove it". An unparseable `state.json` is an error naming the
+fails to resolve with `missing-ref` gets the hint "set by `donn switch`; run
+`donn switch --clear` to remove it". An unparseable `state.json` is an error naming the
 file. Concurrent `switch` commands: last write wins.
 
 ## 2. `init` (flags only)
 
 Two forms, combinable in one command:
 
-- **`zzpersona init --personas <dir>`** writes `~/.zzpersona/config.yaml` with
+- **`donn init --personas <dir>`** writes `~/.donn/config.yaml` with
   `personas: <dir>`. If the config already names a different folder it refuses, naming the
   current value; `--force` replaces it. Creates `<dir>` if needed. If `<dir>` has no persona
   under `org/`, `area/` or `team/`, writes a starter `org/base.yaml` (one inline instruction, a
   `Bash(rm -rf:*)` deny rule, comments pointing to `02-persona-spec.md`). Never overwrites
   existing files. Prints a `git init` hint; does not run git.
-- **`zzpersona init --extends <persona>`** writes `.zzpersona/persona.yaml` in the **current
+- **`donn init --extends <persona>`** writes `.donn/persona.yaml` in the **current
   directory**: `metadata.name` = the directory's basename, `extends: [<full ref>]` (a bare name
   is stored as its full ref). The persona must resolve first. Refuses an existing
   `persona.yaml` unless `--force`.
@@ -81,7 +82,7 @@ Two forms, combinable in one command:
 - Output lists what was created or updated; `--json` is `{ "created": [paths], "updated": [paths] }`.
   Files are written atomically.
 
-## 3. `zzpersona doctor [persona] [--fix]`
+## 3. `donn doctor [persona] [--fix]`
 
 Runs the checks below in order, one line each: `ok`, `warn`, `error` or `skipped` (when a check
 it depends on failed), a message, and a fix when something is wrong. Exit 1 if any check is an
@@ -89,7 +90,7 @@ it depends on failed), a message, and a fix when something is wrong. Exit 1 if a
 
 | id | `warn` / `error` when |
 |---|---|
-| `home` | home not writable (error); `ZZPERSONA_HOME` set but empty (warn) |
+| `home` | home not writable (error); `DONN_HOME` set but empty (warn) |
 | `config` | `config.yaml` doesn't parse (error); no `personas:` set (warn) |
 | `personas` | folder missing (error); not a git repository (warn); stray `project/`/`user/` folders (warn) |
 | `state` | `state.json` doesn't parse (error); switch entries for projects that no longer exist (warn, fixable) |
@@ -113,7 +114,7 @@ projects can't be traced (the directory name is a hash); `doctor` notes that del
 Plain output, e.g.:
 
 ```
-ok     config    /Users/you/.zzpersona/config.yaml
+ok     config    /Users/you/.donn/config.yaml
 warn   personas  /Users/you/personas is not a git repository; run `git init` there to track changes
 ok     persona   team/platform (switch for /Users/you/repo)
 error  secrets   secret://vault/payments/token: provider type "hashicorp-vault" is not supported yet
@@ -128,7 +129,7 @@ error  secrets   secret://vault/payments/token: provider type "hashicorp-vault" 
 | `--` passthrough silently ignored by `resolve`/`compile` | Every command except `claude` rejects passthrough: `unexpected-passthrough` |
 | Symlinked persona files invisible to `list()` | `list()` follows symlinks (as `load()` does) |
 | Every `.yaml` under `org/area/team` listed as a persona | `list()` includes only files whose parsed `kind` is `Persona` |
-| Empty `ZZPERSONA_HOME` treated as set | An empty value means unset (and `doctor` warns) |
+| Empty `DONN_HOME` treated as set | An empty value means unset (and `doctor` warns) |
 | `readText` has no symlink containment | `readText` applies `copyFrom`'s real-path containment against the mount root; an escaping instruction file is refused |
 | File-path-like persona arguments | A trailing `.yaml` is stripped; an unknown persona gets `did you mean <ref>?` from a case-insensitive match |
 | Build directories accumulate | `doctor --fix` (section 3) |
@@ -147,8 +148,8 @@ minors (spec 08).
 - `doctor`: each check's `ok`/`warn`/`error` against seeded homes and fake probes; `skipped`
   propagation; `--fix` removes exactly the fixable items; `--json` shape; exit code.
 - Hardening: one failing-first test per fixed minor.
-- The CLI e2e (`ZZP_E2E=1`) gains: `init --personas`, `init --extends`, `switch`, then
-  `doctor` exits 0, then `zzpersona claude --dry-run` uses the switched persona.
+- The CLI e2e (`DONN_E2E=1`) gains: `init --personas`, `init --extends`, `switch`, then
+  `doctor` exits 0, then `donn claude --dry-run` uses the switched persona.
 
 ## Non-goals (this spec)
 
