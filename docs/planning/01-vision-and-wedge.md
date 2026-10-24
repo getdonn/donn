@@ -129,18 +129,27 @@ The OSS tool must be **fully useful for the solo developer** or there is no adop
 > `adapters/claude-code`, not a package.
 - `store-local` — `~/.donn/` + git as the persona store
 
+> Amended 2026-10-24 (specs 23–26), also open source:
+> - `adapters/eve` and `donn agent` — project agents built on a persona (a PR reviewer first),
+>   run locally, self-hosted or on Vercel, model calls through the org's gateway when there is one
+> - `ui` and `desktop` — the GUI: one app served by the daemon (`donn ui`) and a Tauri desktop
+>   shell, with the agent builder
+
 **Enterprise (separate private repo, licensed):**
 - control-plane server: persona registry, RBAC, SSO/OIDC, audit log, policy engine
 - web admin console
 - gateway adapters (Bifrost first) — resolve MCP servers by name through an allowed set
 - drift detection: local persona vs. published persona
 - Docker image + Helm chart (table stakes for the buyer)
+- *(2026-10-24)* agent governance: who may create or deploy which agents, against which gateway,
+  with an inventory of running agents (a private-repo spec; `23` → Non-goals)
 
 **Later phases (sequencing, not scope cuts — see `04-roadmap.md`):**
 - Desktop presence — reframed: the valuable part is a **local daemon** (sync, pre-build, watchers,
   drift, local API) that CLI, mod, IDE extensions and a tray app all talk to. The tray/desktop app
   is a thin client of that daemon, not a product of its own. Daemon is core (OSS); tray app is
-  phase 2. See `03-architecture.md` → "Local daemon".
+  phase 2. See `03-architecture.md` → "Local daemon". *Revised 2026-10-24 (`26`): a web and
+  desktop GUI over the daemon is a planned surface for adoption, still with no logic of its own.*
 - IDE extensions — start with "compile to that IDE's config files"; a real extension (status,
   switch, drift warning) comes after the second compile target proves the spec is harness-neutral.
 - **Knowledge / vector store.** v1 is pointers to MCP-reachable sources the gateway governs.
