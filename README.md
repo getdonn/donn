@@ -257,16 +257,25 @@ an interruption finishes the job. In order, it:
 7. installs the new mod, then installs and starts the new background service if the old one was
    installed.
 
-It runs `donn doctor` at the end. It exits 0 when the migration succeeded, even if `doctor`
-reports findings; read them.
+It runs `donn doctor` at the end, but only when a step ran (not when everything was already
+done), and not for `--project`. Exit codes: 0 when the migration succeeded, even if `doctor`
+reports findings (read them), and also when a step is left pending (for example a locked
+keychain): the output lists it, and a re-run finishes it. Declining the prompt exits 1, and so
+does a refusal or a failed step (any non-zero).
 
-It refuses, before changing anything, when `donn` is not on `PATH` (the new service needs it),
-when `claude` is not on `PATH` while the old mod is installed, when the mod has not been built,
-when `ZZPERSONA_HOME` points at another home (in your environment or the old service file), or
-when the target (`~/.donn`) already exists and is not empty.
+It refuses, before changing anything, when:
+
+- `donn` is not on `PATH`, but only if the old background service was installed (the new one
+  has to be started);
+- `claude` is not on `PATH`, but only while the old mod is installed or being swapped;
+- the mod has not been built;
+- `ZZPERSONA_HOME` points at another home (in your environment or the old service file);
+- `DONN_HOME` sits inside the old home;
+- the target (`~/.donn`) already exists and is not empty.
 
 - `donn migrate --project [dir]` moves a project's `.zzpersona/` to `.donn/` (with `git mv` when
-  tracked), its persona's `apiVersion`, and the `AGENTS.md` markers. It never commits.
+  tracked), its persona's `apiVersion`, and the `AGENTS.md` markers. It never commits. Lines
+  in `.gitignore` that name `.zzpersona` are reported, not changed.
 - An old machine-wide managed policy is reported, not changed. `sudo donn migrate --managed`
   removes exactly the files the old policy installed; then `donn managed build` and
   `sudo donn managed install donn-managed` put it back under the new name.

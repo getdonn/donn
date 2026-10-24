@@ -78,7 +78,7 @@ install); the first `npm publish` is the next step the name unblocks.
 - Node: develop on 26 (pnpm downloads it via `devEngines.runtime`; system Node is irrelevant);
   `engines` floor is >=24, and `@types/node` tracks the floor, not the dev version.
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
-  never at the repo root. All packages `"private": true` until the rename to donn lands.
+  never at the repo root. All packages `"private": true` until the first npm publish.
 - Every CLI command supports `--json`.
 - Formatting: Prettier at width 80 (`.prettierrc.json`). `pnpm format` before committing;
   `pnpm format:check` must pass. `.prettierignore` excludes generated files, test fixtures and
