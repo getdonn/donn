@@ -170,7 +170,10 @@ async function session(b: Bridge): Promise<string> {
   return (res.body as { token: string }).token;
 }
 
-async function startTestDaemon(now?: () => number) {
+async function startTestDaemon(
+  now?: () => number,
+  timing?: Parameters<typeof startDaemon>[0]["bridge"],
+) {
   const daemon = await startDaemon({
     home: s.home,
     env: {},
@@ -178,9 +181,48 @@ async function startTestDaemon(now?: () => number) {
     debounceMs: 50,
     probe: installedProbe,
     ...(now && { now }),
+    ...(timing && { bridge: timing }),
   });
   daemons.push(daemon);
   return daemon;
+}
+
+/**
+ * Sends `bytes` of body to `path` and never ends the request. Settles once the bridge closes
+ * the connection: with its answer's status, or how the connection ended. A bridge that drained
+ * the body would never close it.
+ */
+function endless(
+  port: number,
+  path: string,
+  bytes: number,
+  token?: string,
+): Promise<number | string> {
+  return new Promise((resolve) => {
+    let outcome: number | string = "closed";
+    const req = request({
+      host: "127.0.0.1",
+      port,
+      method: "POST",
+      path,
+      agent: false,
+      headers: {
+        host: `127.0.0.1:${port}`,
+        "content-type": "application/json",
+        "transfer-encoding": "chunked",
+        ...(token !== undefined && { authorization: `Bearer ${token}` }),
+      },
+    });
+    req.on("response", (res) => {
+      outcome = res.statusCode ?? 0;
+      res.resume();
+    });
+    req.on("error", (error: NodeJS.ErrnoException) => {
+      if (outcome === "closed") outcome = error.code ?? "error";
+    });
+    req.on("close", () => resolve(outcome));
+    req.write("x".repeat(bytes));
+  });
 }
 
 const uiOpen = (daemon: Daemon, body?: unknown) =>
@@ -270,10 +312,50 @@ describe("uiAllowed", () => {
     }
   });
 
-  it("names the --project an agent command acts on", () => {
+  it("names the --project and --out a command acts on", () => {
     expect(
       uiAllowed(["agent", "sync", "bot", "--project", "/p", "--json"]),
-    ).toEqual({ ok: true, project: "/p" });
+    ).toEqual({
+      ok: true,
+      name: "agent sync",
+      project: true,
+      projectDir: "/p",
+    });
+    expect(uiAllowed(["managed", "build", "--out", "b", "--json"])).toEqual({
+      ok: true,
+      name: "managed build",
+      project: true,
+      outDir: "b",
+    });
+  });
+
+  it("says which commands need a project", () => {
+    for (const command of [
+      "status",
+      "doctor",
+      "whoami",
+      "logout",
+      "pull",
+      "capabilities",
+      "list",
+    ])
+      expect(uiAllowed([command, "--json"]), command).toMatchObject({
+        project: false,
+      });
+    expect(uiAllowed(["login", "https://r", "--json"])).toMatchObject({
+      project: false,
+    });
+    for (const argv of [
+      ["resolve", "--json"],
+      ["compile", "--json"],
+      ["diff", "x", "--json"],
+      ["write", "--json"],
+      ["publish", "team/web", "--json"],
+      ["switch", "--json"],
+      ["managed", "check", "--json"],
+      ["agent", "list", "--json"],
+    ])
+      expect(uiAllowed(argv), argv.join(" ")).toMatchObject({ project: true });
   });
 
   it("refuses everything else, naming the rule", () => {
@@ -537,7 +619,6 @@ describe("the bridge", { timeout: 20_000 }, () => {
     for (const body of [
       "not json",
       null,
-      { argv: ["list", "--json"] },
       { argv: "list", cwd: s.repo },
       { argv: ["list", "--json"], cwd: "rel" },
     ]) {
@@ -545,11 +626,129 @@ describe("the bridge", { timeout: 20_000 }, () => {
       expect(res.status, JSON.stringify(body)).toBe(400);
       expect(res.body).toMatchObject({ error: { code: "bad-request" } });
     }
-    const big = await call(b.port, "POST", "/v1/run", {
+    // Over 1 MiB the request is answered and cut, not read to its end.
+    for (const [path, t] of [
+      ["/v1/run", token],
+      ["/v1/session", undefined],
+    ] as const) {
+      const outcome = await endless(b.port, path, 2 ** 20 + 1024, t);
+      expect([413, "ECONNRESET", "EPIPE", "closed"], path).toContain(outcome);
+    }
+    // A body under the limit that never ends is not cut.
+    let pending = true;
+    void endless(b.port, "/v1/session", 1024).then(() => (pending = false));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(pending).toBe(true);
+    expect((await call(b.port, "GET", "/v1/x", { token })).status).toBe(404);
+  });
+
+  it("runs a project-independent command without a cwd, in the daemon's home", async () => {
+    const { bridge: b, spy: recorder } = await bridge();
+    const token = await session(b);
+    const res = await call(b.port, "POST", "/v1/run", {
       token,
-      body: { argv: ["list", "--json"], cwd: s.repo, pad: "x".repeat(2 ** 20) },
+      body: { argv: ["whoami", "--json"] },
     });
-    expect(big.status).toBe(413);
+    expect(res.status).toBe(200);
+    const cli = await zz(["whoami", "--json"], {
+      cwd: s.home,
+      home: s.home,
+      env: { HOME: s.home },
+    });
+    expect(JSON.parse((res.body as { stdout: string }).stdout)).toEqual(
+      JSON.parse(cli.stdout),
+    );
+    expect(recorder.calls).toEqual([
+      { argv: ["whoami", "--json"], cwd: s.home },
+    ]);
+    for (const argv of [
+      ["status", "--json"],
+      ["doctor", "--json"],
+      ["logout", "--json"],
+      ["capabilities", "--json"],
+      ["list", "--json"],
+    ]) {
+      const ran = await call(b.port, "POST", "/v1/run", {
+        token,
+        body: { argv },
+      });
+      expect(ran.status, argv.join(" ")).toBe(200);
+    }
+    // Given, a cwd still has to be a known project.
+    const given = await call(b.port, "POST", "/v1/run", {
+      token,
+      body: { argv: ["whoami", "--json"], cwd: s.repo },
+    });
+    expect(given.body).toMatchObject({ error: { code: "unknown-project" } });
+  });
+
+  it("refuses a project command without a cwd, naming the rule", async () => {
+    pick(s.repo);
+    const { bridge: b, spy: recorder } = await bridge();
+    const token = await session(b);
+    for (const argv of [
+      ["resolve", "--json"],
+      ["switch", "--json"],
+      ["agent", "list", "--json"],
+      ["managed", "check", "--json"],
+    ]) {
+      const res = await call(b.port, "POST", "/v1/run", {
+        token,
+        body: { argv },
+      });
+      expect(res.status, argv.join(" ")).toBe(403);
+      expect(res.body).toEqual({
+        error: {
+          code: "not-allowed",
+          message: expect.any(String),
+          rule: expect.stringMatching(/acts on a project/),
+        },
+      });
+    }
+    for (const cwd of ["repo", null, 7]) {
+      const res = await call(b.port, "POST", "/v1/run", {
+        token,
+        body: { argv: ["whoami", "--json"], cwd },
+      });
+      expect(res.status, String(cwd)).toBe(400);
+    }
+    expect(recorder.calls).toEqual([]);
+  });
+
+  it("keeps managed build --out inside a known project", async () => {
+    pick(s.repo);
+    const outside = mkdtempSync(join(tmpdir(), "donn-out-"));
+    try {
+      symlinkSync(outside, join(s.repo, "escape"));
+      const { bridge: b, spy: recorder } = await bridge();
+      const token = await session(b);
+      const build = (out: string) =>
+        call(b.port, "POST", "/v1/run", {
+          token,
+          body: {
+            argv: ["managed", "build", "--out", out, "--json"],
+            cwd: s.repo,
+          },
+        });
+      for (const out of [
+        outside,
+        join(outside, "bundle"),
+        "../bundle",
+        "escape/bundle",
+        "/tmp/bundle",
+      ]) {
+        const res = await build(out);
+        expect(res.status, out).toBe(403);
+        expect(res.body).toMatchObject({ error: { code: "outside-project" } });
+      }
+      expect(recorder.calls).toEqual([]);
+      for (const out of ["bundle", join(s.repo, "nested/bundle")]) {
+        expect((await build(out)).status, out).toBe(200);
+      }
+      expect(recorder.calls).toHaveLength(2);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("runs only in a project the daemon knows or the UI picked", async () => {
@@ -735,6 +934,27 @@ describe("the bridge", { timeout: 20_000 }, () => {
     await b.closed;
   });
 
+  it("restarts the idle clock with each code handed out", async () => {
+    let t = 0;
+    const { bridge: b } = await bridge({ now: () => t, tickMs: 5 });
+    t = 599_999;
+    const code = b.code();
+    t = 600_000 + 30_000;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(b.closing).toBe(false);
+    const res = await call(b.port, "POST", "/v1/session", { body: { code } });
+    expect(res.status).toBe(200);
+  });
+
+  it("says it is closing the moment close starts", async () => {
+    const { bridge: b } = await bridge();
+    expect(b.closing).toBe(false);
+    const done = b.close();
+    expect(b.closing).toBe(true);
+    await done;
+    expect(b.closing).toBe(true);
+  });
+
   it("does not count an unauthenticated request as activity", async () => {
     let t = 0;
     const { bridge: b } = await bridge({ now: () => t, tickMs: 5 });
@@ -759,6 +979,44 @@ describe("POST /ui/open", { timeout: 20_000 }, () => {
     for (const code of [a.code, b.code]) {
       const res = await call(a.port, "POST", "/v1/session", { body: { code } });
       expect(res.status).toBe(200);
+    }
+  });
+
+  it("opens a fresh bridge rather than hand out a code for a closing one", async () => {
+    let t = 0;
+    const daemon = await startTestDaemon(() => t, { tickMs: 5 });
+    const first = (await uiOpen(daemon)).body as { port: number };
+    // An unfinished request keeps the closing bridge from closing at once (its grace period).
+    void endless(first.port, "/v1/session", 16);
+    await new Promise((r) => setTimeout(r, 30));
+    t = 600_000;
+    await new Promise((r) => setTimeout(r, 30));
+    const second = (await uiOpen(daemon)).body as {
+      port: number;
+      code: string;
+    };
+    expect(second.port).not.toBe(first.port);
+    const res = await call(second.port, "POST", "/v1/session", {
+      body: { code: second.code },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("leaves no bridge listening when an open races shutdown", async () => {
+    for (const delay of [0, 1, 2, 5]) {
+      const daemon = await startTestDaemon();
+      const opened = uiOpen(daemon).catch(() => undefined);
+      await new Promise((r) => setTimeout(r, delay));
+      await daemon.close();
+      const answer = await opened;
+      if (answer?.status === 200) {
+        const { port } = answer.body as { port: number };
+        await expect(call(port, "GET", "/v1/x")).rejects.toThrow(
+          /ECONNREFUSED/,
+        );
+      } else if (answer !== undefined) {
+        expect(answer.body).toMatchObject({ error: { code: "stopping" } });
+      }
     }
   });
 

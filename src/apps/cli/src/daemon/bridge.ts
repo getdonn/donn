@@ -7,7 +7,15 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { extname, isAbsolute, join, resolve, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { listCreated } from "../agent/registry.js";
@@ -47,6 +55,8 @@ export interface Bridge {
   code(): string;
   /** Keeps the bridge open (an event stream) until the returned release is called. */
   hold(): () => void;
+  /** Whether it is closing or closed (set the moment `close()` starts): never reuse it then. */
+  readonly closing: boolean;
   /** Stop listening and cut every connection. Safe to call twice. */
   close(): Promise<void>;
   /** Settles once the bridge has closed: by `close()` or idleness. */
@@ -100,8 +110,17 @@ function send(
   res.end(`${JSON.stringify(body)}\n`);
 }
 
-/** A path with symlinks resolved; as given (made absolute) when it does not exist. */
-const real = (path: string) => realpath(path).catch(() => resolve(path));
+/** A path with symlinks resolved, through its nearest existing ancestor when it does not exist. */
+async function real(path: string): Promise<string> {
+  const absolute = resolve(path);
+  const rest: string[] = [];
+  for (let dir = absolute; ; dir = dirname(dir)) {
+    const found = await realpath(dir).catch(() => undefined);
+    if (found !== undefined) return join(found, ...rest.reverse());
+    if (dirname(dir) === dir) return absolute;
+    rest.push(basename(dir));
+  }
+}
 
 const under = (path: string, dir: string) =>
   path === dir || path.startsWith(dir.endsWith(sep) ? dir : `${dir}${sep}`);
@@ -121,6 +140,32 @@ async function knownProjects(home: string): Promise<Set<string>> {
     .catch(() => [] as string[]);
   const all = [...sessions, ...created, ...picked].filter((p) => isAbsolute(p));
   return new Set(await Promise.all(all.map(real)));
+}
+
+/**
+ * `{ argv, cwd? }` from `POST /v1/run`'s body, or the reason it is not one. Unlike `POST /run`,
+ * `cwd` may be left out: a project-independent command then runs in the daemon's home.
+ */
+async function uiRunRequest(
+  text: string,
+): Promise<{ argv: string[]; cwd?: string } | string> {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return "the body is not JSON";
+  }
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    Array.isArray(body) ||
+    (body as { cwd?: unknown }).cwd !== undefined
+  )
+    return runRequest(text);
+  const { argv } = body as { argv?: unknown };
+  if (!Array.isArray(argv) || !argv.every((a) => typeof a === "string"))
+    return "argv must be an array of strings";
+  return { argv: argv as string[] };
 }
 
 type Found = { file: string } | "not-found" | "not-built";
@@ -206,10 +251,13 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   };
 
   const exchange = async (req: IncomingMessage, res: ServerResponse) => {
-    const text = await readBody(req);
+    const text = await readBody(req, { stopAtLimit: true });
+    if (text === undefined) {
+      return send(res, 413, failure("too-large", "the body is over 1 MiB"));
+    }
     let code: unknown;
     try {
-      code = (JSON.parse(text ?? "") as { code?: unknown } | null)?.code;
+      code = (JSON.parse(text) as { code?: unknown } | null)?.code;
     } catch {
       code = undefined;
     }
@@ -227,11 +275,11 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   };
 
   const run = async (req: IncomingMessage, res: ServerResponse) => {
-    const text = await readBody(req);
+    const text = await readBody(req, { stopAtLimit: true });
     if (text === undefined) {
       return send(res, 413, failure("too-large", "the body is over 1 MiB"));
     }
-    const request = await runRequest(text);
+    const request = await uiRunRequest(text);
     if (typeof request === "string") {
       return send(res, 400, failure("bad-request", request));
     }
@@ -245,12 +293,23 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
         },
       });
     }
+    if (request.cwd === undefined && verdict.project) {
+      return send(res, 403, {
+        error: {
+          code: "not-allowed",
+          message: `${verdict.name} needs a project`,
+          rule: `${verdict.name} acts on a project: send it as cwd`,
+        },
+      });
+    }
+    // A project-independent command runs where the daemon's own runs do: its home.
+    const cwd = request.cwd ?? options.home;
     const known = await knownProjects(options.home);
     for (const dir of [
-      request.cwd,
-      ...(verdict.project === undefined
+      ...(request.cwd === undefined ? [] : [request.cwd]),
+      ...(verdict.projectDir === undefined
         ? []
-        : [resolve(request.cwd, verdict.project)]),
+        : [resolve(cwd, verdict.projectDir)]),
     ]) {
       if (!known.has(await real(dir))) {
         return send(
@@ -263,10 +322,23 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
         );
       }
     }
+    if (verdict.outDir !== undefined) {
+      const out = await real(resolve(cwd, verdict.outDir));
+      if (![...known].some((project) => under(out, project))) {
+        return send(
+          res,
+          403,
+          failure("outside-project", `--out is not inside a project: ${out}`, {
+            out,
+            fix: "write the bundle inside the project",
+          }),
+        );
+      }
+    }
     return send(
       res,
       200,
-      await options.runInProcess(options.io, request.argv, request.cwd),
+      await options.runInProcess(options.io, request.argv, cwd),
     );
   };
 
@@ -297,6 +369,10 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   };
 
   const server = createServer((req, res) => {
+    // A body left unread (a refusal, or one over the limit) is not drained: the connection goes.
+    res.on("finish", () => {
+      if (!req.complete) req.destroy();
+    });
     void (async () => {
       // Before anything else, the token included: a rebound page must learn nothing.
       if (!fromLoopback(req)) {
@@ -394,8 +470,13 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
 
   return {
     port,
+    get closing() {
+      return closing !== undefined;
+    },
     code() {
       const t = now();
+      // A code handed out must outlive its 60 s: the idle clock restarts with it.
+      last = t;
       for (const [code, expires] of codes) if (t >= expires) codes.delete(code);
       const code = randomBytes(32).toString("base64url");
       codes.set(code, t + CODE_MS);

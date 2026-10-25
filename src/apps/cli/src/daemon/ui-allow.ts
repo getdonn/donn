@@ -6,7 +6,18 @@ import { allowedRun } from "./run.js";
 // See docs/planning/26-gui.md §2.
 
 export type UiVerdict =
-  { ok: true; project?: string } | { ok: false; rule: string };
+  | {
+      ok: true;
+      /** The command, for messages: `resolve`, `agent sync`, `managed build`. */
+      name: string;
+      /** Whether it acts on a project, so needs a known one as `cwd`; else `cwd` may be left out. */
+      project: boolean;
+      /** `--project`'s value: it must be a known project too. */
+      projectDir?: string;
+      /** `--out`'s value (managed build): it must lie inside a known project. */
+      outDir?: string;
+    }
+  | { ok: false; rule: string };
 
 interface Form {
   /** Flags that take no value. */
@@ -17,12 +28,14 @@ interface Form {
   args?: readonly [number, number];
   /** Flags the command has that the UI never sends, with why. */
   refused?: Readonly<Record<string, string>>;
+  /** Machine- or registry-wide: runs without a project, in the daemon's home. */
+  global?: true;
 }
 
 const OVERLAY = ["--no-overlay", "--local"];
 
 const COMMANDS: Readonly<Record<string, Form>> = {
-  list: {},
+  list: { global: true },
   resolve: { switches: ["--explain", ...OVERLAY], args: [0, 1] },
   compile: {
     switches: ["--dry-run", ...OVERLAY],
@@ -32,12 +45,14 @@ const COMMANDS: Readonly<Record<string, Form>> = {
   capabilities: {
     switches: ["--detect", "--markdown"],
     values: ["--harness"],
+    global: true,
   },
   diff: { switches: OVERLAY, args: [1, 2] },
-  status: {},
-  doctor: { switches: ["--fix"], args: [0, 1] },
-  whoami: {},
+  status: { global: true },
+  doctor: { switches: ["--fix"], args: [0, 1], global: true },
+  whoami: { global: true },
   login: {
+    global: true,
     switches: ["--no-browser"],
     args: [1, 1],
     refused: {
@@ -46,8 +61,8 @@ const COMMANDS: Readonly<Record<string, Form>> = {
         "login --token-stdin reads a stdin the bridge does not have",
     },
   },
-  logout: {},
-  pull: {},
+  logout: { global: true },
+  pull: { global: true },
   publish: { switches: ["--dry-run", "--force"], args: [1, 1] },
   write: { switches: ["--check", "--remove"], values: ["--harness"] },
 };
@@ -126,7 +141,7 @@ export function uiAllowed(argv: readonly string[]): UiVerdict {
   if (command === "switch") {
     // The forms POST /run allows the mod, and no others.
     return allowedRun(argv)
-      ? { ok: true }
+      ? { ok: true, name: "switch", project: true }
       : no("switch takes only the forms POST /run allows, with --json");
   }
   if (command === "managed") {
@@ -154,7 +169,7 @@ export function uiAllowed(argv: readonly string[]): UiVerdict {
 function check(name: string, form: Form, rest: readonly string[]): UiVerdict {
   const seen = new Set<string>();
   let args = 0;
-  let project: string | undefined;
+  const dirs: { projectDir?: string; outDir?: string } = {};
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i]!;
     if (token === "") return no(`${name}: an argument is empty`);
@@ -173,7 +188,8 @@ function check(name: string, form: Form, rest: readonly string[]): UiVerdict {
     const value = rest[++i];
     if (value === undefined || value === "" || value.startsWith("-"))
       return no(`${name}: ${token} needs a value`);
-    if (token === "--project") project = value;
+    if (token === "--project") dirs.projectDir = value;
+    if (token === "--out") dirs.outDir = value;
   }
   if (!seen.has("--json")) return no(`${name}: --json is required`);
   const [least, most] = form.args ?? [0, 0];
@@ -181,5 +197,5 @@ function check(name: string, form: Form, rest: readonly string[]): UiVerdict {
     const count = least === most ? `${least}` : `${least} to ${most}`;
     return no(`${name} takes ${count} positional argument(s)`);
   }
-  return project === undefined ? { ok: true } : { ok: true, project };
+  return { ok: true, name, project: form.global !== true, ...dirs };
 }

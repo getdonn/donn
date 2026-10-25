@@ -29,7 +29,7 @@ import { CliError, errorEnvelope } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { listSessions, removeSession, type SessionInfo } from "../session.js";
 import { agentRunner } from "./agents.js";
-import { openBridge, type Bridge } from "./bridge.js";
+import { openBridge, type Bridge, type BridgeOptions } from "./bridge.js";
 import type {
   DaemonEvent,
   DaemonStatus,
@@ -62,6 +62,8 @@ export interface DaemonOptions {
   passwdHome?: () => string | undefined;
   /** Runs the agents' own eve (spec 25); defaults to node:child_process. */
   spawn?: Spawn;
+  /** Test seam: the UI bridge's idle timing and app folder (spec 26 §2). */
+  bridge?: Pick<BridgeOptions, "idleMs" | "tickMs" | "uiDir">;
 }
 
 export interface Daemon {
@@ -716,17 +718,27 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   /** The loopback bridge for the UI (spec 26 §2), while one is open. */
   let bridge: Bridge | undefined;
   let opening: Promise<Bridge> | undefined;
+  const shuttingDown = () => new CliError("stopping", "the daemon is stopping");
   const openUi = (port: number | undefined): Promise<Bridge> => {
-    if (bridge) return Promise.resolve(bridge);
+    // One closing (idle) is not handed out again: a code for it would die with it.
+    if (bridge && !bridge.closing) return Promise.resolve(bridge);
+    // Shutdown may have begun while the request read the config: open nothing to outlive it.
+    if (stopping) return Promise.reject(shuttingDown());
     opening ??= openBridge({
       home: options.home,
       io,
       runInProcess: runAndAnnounce,
       now,
       ...(port !== undefined && { port }),
+      ...options.bridge,
       log,
     })
       .then(async (opened) => {
+        // Opened while shutdown passed its bridge close: close this one too.
+        if (stopping) {
+          await opened.close();
+          throw shuttingDown();
+        }
         bridge = opened;
         await log(`ui open on 127.0.0.1:${opened.port}`);
         void opened.closed.then(() => {
@@ -816,7 +828,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
           if (known === undefined) throw error;
           return send(
             res,
-            400,
+            known.code === "stopping" ? 503 : 400,
             failure(known.code, known.message, known.details),
           );
         }

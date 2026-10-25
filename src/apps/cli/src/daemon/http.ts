@@ -16,15 +16,27 @@ export const sameToken = (header: string | undefined, token: string) => {
 /** The largest request body read, `POST /run`'s; larger is `413 too-large`. */
 export const BODY_LIMIT = 1024 * 1024;
 
-/** The request's body as text, or undefined once it passes `BODY_LIMIT` (the rest is drained). */
-export function readBody(req: IncomingMessage): Promise<string | undefined> {
+/**
+ * The request's body as text, or undefined once it passes `BODY_LIMIT`. The socket drains the
+ * rest; with `stopAtLimit` (the bridge, which other local users can reach) reading stops there,
+ * and the caller answers and destroys the request.
+ */
+export function readBody(
+  req: IncomingMessage,
+  { stopAtLimit = false } = {},
+): Promise<string | undefined> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
-    req.on("data", (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       size += chunk.length;
-      if (size <= BODY_LIMIT) chunks.push(chunk);
-    });
+      if (size <= BODY_LIMIT) return void chunks.push(chunk);
+      if (!stopAtLimit) return;
+      req.off("data", onData);
+      req.pause();
+      resolve(undefined);
+    };
+    req.on("data", onData);
     req.on("end", () =>
       resolve(
         size > BODY_LIMIT ? undefined : Buffer.concat(chunks).toString("utf8"),
