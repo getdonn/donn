@@ -1,6 +1,12 @@
 import type { Probe } from "@getdonn/adapter-sdk";
 import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
+import type { Spawn } from "./agent/spawn.js";
+import {
+  agentCreateCommand,
+  agentListCommand,
+  agentSyncCommand,
+} from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { cliVersion } from "./commands/daemon.js";
@@ -86,6 +92,10 @@ export interface CliIo {
   managed?: Partial<ManagedEnv>;
   /** Injected in tests; the system's record of the user's home folder, used when HOME is empty. */
   passwdHome?: () => string | undefined;
+  /** Injected in tests; runs the agent project's own eve. Defaults to node:child_process. */
+  spawn?: Spawn;
+  /** Injected in tests; downloads eve's template tarballs. Defaults to globalThis.fetch. */
+  fetch?: typeof fetch;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -484,6 +494,68 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { steps, env, doctor } as JSON")
         .action((options) =>
           handle(options.json, () => migrateCommand(io, options)),
+        );
+
+      const agent = program
+        .command("agent")
+        .description("Build, run and deploy agents on a persona (spec 25)");
+      agent
+        .command("list")
+        .description("List the agents donn knows of")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agents } as JSON")
+        .action((options) =>
+          handle(options.json, () => agentListCommand(io, options)),
+        );
+      agent
+        .command("create")
+        .description(
+          "Create an agent from a template: declare it if needed, install it, write donn's files",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option(
+          "--template <template>",
+          "eve:<slug>, eve:blank or a path; declares the agent when the persona does not",
+        )
+        .addOption(
+          new Option("--target <target>", "where the agent runs").choices([
+            "local",
+            "self-host",
+            "vercel",
+          ]),
+        )
+        .option("--path <path>", "the agent's folder (default: agents/<name>)")
+        .option("--eve <version>", "pin this eve version (inside the range)")
+        .option(
+          "--dry-run",
+          "show the persona edit and the reports; write nothing",
+        )
+        .option("--force", "replace an incomplete create of this agent")
+        .option(
+          "--accept-portability",
+          "create the agent although it cannot run at its target yet",
+        )
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, dir, frameworkVersion, files, report, portability } as JSON",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentCreateCommand(io, name, options)),
+        );
+
+      agent
+        .command("sync")
+        .description(
+          "Recompile the persona into a created agent's donn-owned files",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--dry-run", "list what would change; write nothing")
+        .option("--force", "overwrite donn-owned files edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { written, removed, report } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentSyncCommand(io, name, options)),
         );
 
       const daemon = program

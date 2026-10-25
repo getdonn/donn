@@ -1,7 +1,7 @@
 import { defineAgentAdapter } from "@getdonn/adapter-sdk";
 import { capabilities } from "./capabilities.js";
 import { compile } from "./compile.js";
-import { templates } from "./templates.js";
+import { TEMPLATES_AT, templates } from "./templates.js";
 
 // The eve adapter: a persona as the files of an eve agent's own slots.
 // See docs/planning/24-adapter-eve.md.
@@ -14,6 +14,7 @@ export {
 } from "./agent-ts.js";
 export { CHANNEL_FILE, ROUTE_AUTH_FILE, ROUTE_TOKEN_ENV } from "./channel.js";
 export { COPY_PENDING, manifestFiles } from "./manifest.js";
+export { TEMPLATES_AT };
 export { portability } from "./portability.js";
 export { EveCompileError, type EveErrorCode } from "./errors.js";
 
