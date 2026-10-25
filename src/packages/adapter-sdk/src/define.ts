@@ -29,7 +29,7 @@ const KNOWN_FIELDS: ReadonlySet<string> = new Set([
   ...HOOK_EVENTS.map((event) => `hooks.${event}`),
 ]);
 
-const isCapabilityField = (field: string) =>
+export const isCapabilityField = (field: string) =>
   KNOWN_FIELDS.has(field) || /^targets\.[^.]+$/.test(field);
 
 /** Stamp the contract version on an adapter and check its declaration. */
