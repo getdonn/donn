@@ -1,0 +1,4 @@
+apiVersion: donn/v0
+kind: PersonaOverlay
+models:
+  default: anthropic/claude-opus-4.5

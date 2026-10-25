@@ -1,0 +1,7 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+models:
+  gateway: { type: openai-compatible, baseURL: "https://gw.team.example/v1" }

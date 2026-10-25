@@ -1,0 +1,10 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: base
+models:
+  gateway:
+    type: openai-compatible
+    baseURL: https://gw.corp.example/v1
+    apiKey: secret://vault/gw/key
+    headers: { X-Team: platform }

@@ -1,0 +1,8 @@
+description: An agent path that climbs out of the project is a schema error (invalid-persona).
+resolve: team/t
+expect:
+  error:
+    code: invalid-persona
+    layer: team/t
+    issues:
+      - "agents.define.x.path: must stay inside the project and outside .donn/"

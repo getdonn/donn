@@ -129,3 +129,71 @@ describe("explain", () => {
     ).toBeDefined();
   });
 });
+
+describe("explain models and agents", () => {
+  const persona = (name: string, extra: object = {}) => ({
+    apiVersion: "donn/v0",
+    kind: "Persona",
+    metadata: { name },
+    ...extra,
+  });
+  const render = async (docs: Record<string, unknown>, ref: Ref) =>
+    explain(await resolve(ref, { source: { load: async (r) => docs[r] } }));
+
+  it("renders the gateway, its header names and apiKey ref, and the default", async () => {
+    const out = await render(
+      {
+        "team/t": persona("t", {
+          models: {
+            gateway: {
+              type: "openai-compatible",
+              baseURL: "https://gw.example/v1",
+              apiKey: "secret://vault/gw/key",
+              headers: { "X-Secret-Header": "header-value" },
+            },
+            default: "anthropic/claude-sonnet-4.5",
+          },
+        }),
+      },
+      "team/t",
+    );
+    expect(out).toMatch(
+      /^models \(2\)\n {2}gateway {2}openai-compatible https:\/\/gw\.example\/v1 {2}team\/t {2}headers: X-Secret-Header; apiKey: secret:\/\/vault\/gw\/key$/m,
+    );
+    expect(out).toMatch(
+      /^ {2}default {2}anthropic\/claude-sonnet-4\.5\s+team\/t$/m,
+    );
+    expect(out).not.toContain("header-value");
+  });
+
+  it("renders each agent with its model and env names, never env values", async () => {
+    const out = await render(
+      {
+        "team/t": persona("t", {
+          agents: {
+            define: {
+              "pr-reviewer": {
+                template: "eve:reviewer",
+                target: "vercel",
+                model: "anthropic/claude-opus-4.5",
+                env: { TOKEN: "secret://vault/gh/token", MODE: "plain-value" },
+              },
+            },
+          },
+        }),
+      },
+      "team/t",
+    );
+    expect(out).toMatch(
+      /^ {2}pr-reviewer {2}eve:reviewer → vercel at agents\/pr-reviewer {2}team\/t {2}model: anthropic\/claude-opus-4\.5; env: TOKEN, MODE$/m,
+    );
+    expect(out).not.toContain("plain-value");
+    expect(out).not.toContain("vault/gh/token");
+  });
+
+  it("omits both sections when empty", async () => {
+    const out = await render({ "team/t": persona("t") }, "team/t");
+    expect(out).not.toMatch(/^models/m);
+    expect(out).not.toMatch(/^agents/m);
+  });
+});

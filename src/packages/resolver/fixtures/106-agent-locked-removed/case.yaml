@@ -1,0 +1,8 @@
+description: Removing a locked agent fails resolution, naming the lock's layer and the removing layer.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: agents.define.pr-reviewer
+    lockedBy: org/base
+    layer: team/t

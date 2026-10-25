@@ -1,0 +1,13 @@
+description: >-
+  models.default is a scalar: a later layer overrides it, and provenance names the layer that set
+  the final value.
+resolve: project/p
+expect:
+  resolved:
+    models:
+      default: anthropic/claude-opus-4.5
+  provenance:
+    "models.default": project/p
+  warnings: []
+  history:
+    - { path: models.default, layer: project/p, kind: override, from: org/base }

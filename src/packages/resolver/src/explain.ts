@@ -2,6 +2,7 @@ import {
   lockCovers,
   parsePath,
   type McpServer,
+  type ModelGateway,
   type ResolveResult,
 } from "@getdonn/spec";
 
@@ -48,6 +49,19 @@ function serverSummary(server: McpServer): { value: string; notes: string[] } {
   };
 }
 
+function gatewayRow(gateway: ModelGateway): Row {
+  const headers = Object.keys(gateway.headers ?? {});
+  return {
+    label: "gateway",
+    value: [gateway.type, gateway.baseURL].filter(Boolean).join(" "),
+    path: "models.gateway",
+    notes: [
+      ...(headers.length > 0 ? [`headers: ${headers.join(", ")}`] : []),
+      ...(gateway.apiKey === undefined ? [] : [`apiKey: ${gateway.apiKey}`]),
+    ],
+  };
+}
+
 function targetRows(value: unknown, keys: string[]): Row[] {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return Object.entries(value).flatMap(([key, child]) =>
@@ -79,8 +93,12 @@ export function explain({
   const lockNotes = (path: string): string[] => {
     const parsed = parsePath(path);
     if (!parsed) return [];
+    // Locks are written against the persona (`agents.define.<name>`); agent rows carry the IR path.
+    const agent = /^agents\.([^.[]+)$/.exec(path);
+    const lockable = agent ? parsePath(`agents.define.${agent[1]}`) : parsed;
+    if (!lockable) return [];
     return locks
-      .filter((lock) => lockCovers(lock.parsed, parsed))
+      .filter((lock) => lockCovers(lock.parsed, lockable))
       .map((lock) => `locked: ${lock.path} by ${lock.layer}`);
   };
 
@@ -157,6 +175,23 @@ export function explain({
       ],
     },
     {
+      title: "models",
+      rows: [
+        ...(ir.models.gateway === undefined
+          ? []
+          : [gatewayRow(ir.models.gateway)]),
+        ...(ir.models.default === undefined
+          ? []
+          : [
+              {
+                label: "default",
+                value: ir.models.default,
+                path: "models.default",
+              },
+            ]),
+      ],
+    },
+    {
       title: "permissions",
       rows: (["deny", "ask", "allow"] as const).flatMap((list) =>
         ir.permissions[list].map((rule) => ({
@@ -203,6 +238,21 @@ export function explain({
       rows: Object.entries(ir.targets).flatMap(([harness, config]) =>
         targetRows(config, [harness]),
       ),
+    },
+    {
+      title: "agents",
+      maxValue: Infinity,
+      rows: Object.entries(ir.agents).map(([name, agent]) => ({
+        label: name,
+        value: `${agent.template} → ${agent.target} at ${agent.path}`,
+        path: `agents.${name}`,
+        notes: [
+          ...(agent.model === undefined ? [] : [`model: ${agent.model}`]),
+          ...(Object.keys(agent.env).length === 0
+            ? []
+            : [`env: ${Object.keys(agent.env).join(", ")}`]),
+        ],
+      })),
     },
     {
       title: "removed",

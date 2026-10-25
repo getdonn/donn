@@ -1,0 +1,13 @@
+description: >-
+  The user overlay may set models, but a lock on models covers models.default: the overlay's
+  value is dropped with overlay-lock-ignored instead of failing resolution (as 078).
+resolve: team/t
+overlay: user/overrides
+expect:
+  resolved:
+    models:
+      default: anthropic/claude-sonnet-4.5
+  provenance:
+    "models.default": org/base
+  warnings:
+    - { code: overlay-lock-ignored, path: models.default, layer: user/overrides }

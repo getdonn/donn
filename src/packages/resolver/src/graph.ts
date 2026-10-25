@@ -9,6 +9,9 @@ export interface PersonaSource {
   dir?(ref: Ref): string;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export async function loadDocument(
   source: PersonaSource,
   ref: Ref,
@@ -20,6 +23,13 @@ export async function loadDocument(
       "missing-ref",
       from === undefined ? { ref } : { ref, from },
     );
+  }
+  if (
+    isRecord(raw) &&
+    raw["kind"] === "PersonaOverlay" &&
+    Object.hasOwn(raw, "agents")
+  ) {
+    throw new ResolveError("agents-in-overlay", { layer: ref });
   }
   const parsed = PersonaDocument.safeParse(raw);
   if (!parsed.success) {

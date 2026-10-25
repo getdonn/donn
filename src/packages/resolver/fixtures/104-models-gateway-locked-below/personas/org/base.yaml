@@ -1,0 +1,8 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: base
+models:
+  gateway: { type: vercel-ai-gateway }
+locks:
+  - models.gateway

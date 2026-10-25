@@ -70,6 +70,14 @@ export function isValidLockPath(path: string): boolean {
       return (
         !hasEntry && (depth === 1 || (second === "providers" && depth <= 3))
       );
+    case "models":
+      return (
+        !hasEntry &&
+        (depth === 1 ||
+          (depth === 2 && (second === "gateway" || second === "default")))
+      );
+    case "agents":
+      return !hasEntry && second === "define" && (depth === 2 || depth === 3);
     case "targets":
       return !hasEntry;
     default:

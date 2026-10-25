@@ -1,0 +1,24 @@
+description: >-
+  Removing an agent warns agent-removed from the removing layer. A later layer may define it
+  again: it is back, with the removal in history.
+resolve: project/p
+expect:
+  resolved:
+    agents:
+      a:
+        template: eve:blank
+        target: vercel
+        path: agents/a
+        env: {}
+      b:
+        template: eve:blank
+        target: local
+        path: agents/b
+        env: {}
+  provenance:
+    "agents.a": project/p
+    "agents.b": team/t
+  warnings:
+    - { code: agent-removed, path: agents.a, layer: project/base }
+  history:
+    - { path: agents.a, layer: project/base, kind: remove, from: team/t }
