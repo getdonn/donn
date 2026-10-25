@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/executor",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Carries out adapter plans: the real probe, atomic builds with containment, and launch steps",
   "license": "Apache-2.0",
   "repository": {

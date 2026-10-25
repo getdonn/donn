@@ -1,5 +1,11 @@
 # @getdonn/spec
 
+## 0.5.0
+
+### Minor Changes
+
+- c4fd06d: Add `agents.define.<name>.world` (`local` or `postgres`) for self-host agents. Any other target is an `invalid-persona` error; the resolved agent carries `world` only when set.
+
 ## 0.4.0
 
 ### Minor Changes
