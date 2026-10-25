@@ -8,6 +8,7 @@
 > Builds on `02` (merge semantics, locks), `05` (adapter SDK), `13` (capability matrix) and
 > `14`–`16` (daemon). Built as a `gh stack`: layer 0 is specs 23–26 and their amendments.
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
+> *Amended 2026-10-25:* "Facts this design rests on" corrected for eve 0.83.2.
 
 ## Intent
 
@@ -35,6 +36,39 @@ agent is useful on day one with no new authoring, and it is used by everyone on 
 only by whoever set it up.
 
 ## Facts this design rests on
+
+*Amended 2026-10-25 (re-checked against eve 0.83.2: the npm tarball's `docs/` and changelog, the
+`vercel/eve` repository, `eve.dev/templates`; details in `24`'s "Re-check 2026-10-25"):* the
+facts below stand except for these corrections, and the field shapes of §1–§2 are unchanged.
+
+- **Extensions are packages.** A mount under `agent/extensions/<name>` must default-export an
+  installed extension package built by `eve extension build`; there is no mount of a bare folder
+  of contributions. The decision row "a persona compiles to an eve extension" therefore now means
+  donn-named files in the agent's own slots (`24`, option A); the rest of that decision stands.
+- **Instructions** may also be an `agent/instructions/` directory of `.md` and `.ts` fragments,
+  read after the root `instructions.md` in filename order. `agent.ts` is optional; when present it
+  must name a `model`.
+- **Sandbox.** Outside Vercel the default sandbox selects Docker when a Docker daemon answers at
+  build time and records it in the build; Docker takes only `allow-all` or `deny-all` network
+  policies.
+- **Connections.** A bearer token goes in `auth: { getToken }`, not a top-level `getToken`;
+  `headers` carries other schemes. The URL may speak Streamable HTTP or SSE, with no transport
+  option. Connection names are lowercase letters, digits and dashes.
+- **Models.** eve peers `ai@^7` (and builds on `@ai-sdk/*@^4`).
+- **Hosting.** `@workflow/world-postgres` must be 5.0.4 or later for session handoff.
+- **`eve init`** on an existing package requires its `package.json` and no `agent/` files, and adds
+  the missing `eve`, `ai` and `zod` dependencies.
+- **GitHub channel.** The pull-request checkout into the sandbox needs a firewall-capable backend
+  (Vercel); elsewhere the agent gets the diff in context but not the repository's files. Comment
+  turns start on the invocation token (`@<botName>` in the comment), which an `onComment` handler
+  can replace; no owner, member or collaborator gate is documented.
+- **Templates.** The gallery has twenty, under slugs that differ from their titles:
+  `kody-eve-template` (GitHub Project Maintainer), `eve-software-factory-template`,
+  `eve-coding-agent-template` (Coding Agent on Slack), `eve-sre-agent-template` (Incident
+  Investigation Assistant). Only eight templates are in the eve repository's `apps/templates/`
+  (six of them in the gallery); the rest, `kody-eve-template` included, live in their own
+  repositories. `eve:github-project-maintainer` in §2's example is illustrative; the real
+  template is `eve:kody-eve-template`.
 
 From the eve docs (`vercel/eve` through Context7, and `eve.dev/templates`; read 2026-10-24; eve is
 beta, before 1.0):

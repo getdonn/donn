@@ -5,6 +5,8 @@
 > report), `06` (secrets, the plan executor), `14`–`16` (the daemon) and `07` (`doctor`). The GUI
 > (`26`) calls every operation here through the daemon. Built as a `gh stack` after `24`.
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
+> *Amended 2026-10-25:* eve 0.83.2 facts in §2 (template sources, `eve init`), §4 (sandbox,
+> checkout) and §6 (`--answer`, `--yes`); see `24`'s "Re-check 2026-10-25".
 
 ## Intent
 
@@ -61,8 +63,18 @@ this machine), `self-host` (a Node server and a container image the user operate
    - `eve:<slug>`: download the eve repository's tarball at the tag for the pinned version and
      extract `apps/templates/<slug>`. Without a tag for that version, refuse
      (`template-not-at-version`, naming the nearest tagged versions).
+     *Amended 2026-10-25:* the tags are `eve@<version>` (`eve@0.83.2` exists). The directory is
+     the template's `repoPath` (`24` §1), which can differ from its gallery slug. Only eight
+     templates are in the repository; a gallery slug without a `repoPath` (`kody-eve-template`,
+     the GitHub Project Maintainer, among them) is refused (`template-not-in-repo`, naming the
+     template's own repository) until `24`'s open question 3 is settled, and can be created
+     meanwhile from a local clone as a path template.
    - `eve:blank`: write a minimal `package.json`, then run `eve init <path> --non-interactive`,
      which adds `agent/` to an existing package and does not run `git init`.
+     *Amended 2026-10-25:* in eve 0.83 that form requires the `package.json` and no `agent/`
+     files, adds the missing `eve`, `ai` and `zod` dependencies and always installs; step 5 then
+     re-pins `eve` and installs again. donn always passes `<path>`: a new directory in
+     non-interactive mode needs an explicit name, and donn never asks eve to create one.
    - a path template: copy it.
    - Never a nested Git repository: a `.git` in the result is removed before anything else.
 5. **Pin and add dependencies.** Set `eve` to the exact pinned version in the agent's
@@ -112,6 +124,10 @@ reach `localhost`.
 - The image needs a Docker daemon for the sandbox at run time (a mounted socket or a
   Docker-in-Docker sidecar); the report says so, and `24` selects the Docker sandbox explicitly
   because the build cannot detect one.
+  *Amended 2026-10-25:* eve 0.83's default sandbox does detect Docker, but at build time, and
+  records the result in the build; `24`'s `sandbox.ts` pins Docker so an image built on a host
+  without a daemon still runs on Docker. The GitHub channel's checkout is Vercel-only, so a
+  self-hosted PR reviewer sees the diff but not the repository's files (`24` §5).
 - Route auth is the user's: the portability report names Basic, JWT or OIDC. Once the identity work
   (spec 20 and the control plane) has an issuer the agent can trust, a later spec can generate it.
 
@@ -165,6 +181,10 @@ Workflow world's database variable for `self-host`).
   form field. donn's `--answer key=value` passes through to eve's `--answer`. A question eve marks
   as secret is never answered on a command line: donn names the env variable or secret ref to set
   instead, as eve's own rule requires.
+  *Amended 2026-10-25:* eve's form is `--answer 'key=<JSON>'`, repeatable, so donn JSON-encodes
+  a value that is not already JSON (a bare string becomes `"…"`). eve's `--yes` accepts its
+  recommended answers; donn does not pass it to `eve add`, keeping the decision above that
+  defaults are never accepted unseen.
 - **Exit 1** shows eve's last event as is, with the command that failed.
 - A prerequisite eve reports (`eve link`) is run by donn only for `vercel` targets; otherwise it
   is shown as a step for the user.
@@ -185,7 +205,7 @@ Workflow world's database variable for `self-host`).
 
 | Layer | Contents |
 |---|---|
-| 1 `spikes` | `spikes/eve-runner/FINDINGS.md`: template tarballs at a tag, `eve init` into an existing package, `eve build`/`start` with a stub gateway, the self-host start command and Docker sandbox in a container, the GitHub Actions one-shot question |
+| 1 `spikes` | `spikes/eve-runner/FINDINGS.md`: template tarballs at a tag, `eve init` into an existing package, `eve build`/`start` with a stub gateway, the self-host start command and Docker sandbox in a container, whether the GitHub channel skips its checkout on Docker (added 2026-10-25, `24` §5), the GitHub Actions one-shot question |
 | 2 `create` | `list`, `create` (declare, report, pin, materialise, install, edit, write), `sync`; the persona edit; the question protocol |
 | 3 `run` | `run`, `stop`, `logs`, `env`, `exec`; daemon runs, events, `status`, restart on sync |
 | 4 `ship` | `build` (Dockerfile, `env.json`), `deploy` (link, env push with confirmation); `doctor` lines; docs; changesets |
