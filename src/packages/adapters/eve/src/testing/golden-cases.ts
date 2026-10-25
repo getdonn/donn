@@ -18,6 +18,8 @@ export interface GoldenCase {
   model?: string;
   texts?: Record<string, string>;
   hasSandbox?: boolean;
+  hasRouteAuth?: boolean;
+  world?: "local" | "postgres";
 }
 
 const claude = { default: "anthropic/claude-sonnet-5" };
@@ -166,6 +168,18 @@ export const goldenCases: GoldenCase[] = [
     target: "self-host",
     hasSandbox: true,
   },
+  {
+    name: "self-host-postgres-world",
+    ir: { models: claude },
+    target: "self-host",
+    world: "postgres",
+  },
+  {
+    name: "local-template-route-auth",
+    ir: { models: claude },
+    hasRouteAuth: true,
+  },
+  { name: "vercel-no-channel", ir: { models: claude }, target: "vercel" },
 ];
 
 export function goldenInput(c: GoldenCase): AgentCompileInput {
@@ -181,12 +195,17 @@ export function goldenInput(c: GoldenCase): AgentCompileInput {
           path: "agents/reviewer",
           env: c.env ?? {},
           ...(c.model && { model: c.model }),
+          ...(c.world && { world: c.world }),
         },
       },
     },
     agent: "reviewer",
     frameworkVersion: "0.83.2",
     texts: c.texts ?? {},
-    project: { hasSandbox: c.hasSandbox ?? false, existing: [] },
+    project: {
+      hasSandbox: c.hasSandbox ?? false,
+      hasRouteAuth: c.hasRouteAuth ?? false,
+      existing: [],
+    },
   };
 }

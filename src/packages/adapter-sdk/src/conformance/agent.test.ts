@@ -24,7 +24,7 @@ const cases: AgentConformanceCase[] = [
       agent: "reviewer",
       frameworkVersion: "1.2.3",
       texts: {},
-      project: { hasSandbox: false, existing: [] },
+      project: { hasSandbox: false, hasRouteAuth: false, existing: [] },
     },
   },
 ];

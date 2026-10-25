@@ -47,6 +47,12 @@ export interface AgentCompileInput {
      * `agent/sandbox/` folder. Both count: set it true for either form.
      */
     hasSandbox: boolean;
+    /**
+     * Did the template define its own route auth, as `agent/channels/eve.<ts|mts|js|mjs|cjs>` or an
+     * `agent/channels/eve/` folder. When false, donn writes `agent/channels/eve.ts` for the local
+     * and self-host targets.
+     */
+    hasRouteAuth: boolean;
     /** Agent-directory paths not in the manifest (template- or user-owned), for collisions. */
     existing: string[];
   };
@@ -81,6 +87,8 @@ export interface TemplateInfo {
   title: string;
   /** Directory in the framework repository at the version tag; absent for a template kept elsewhere. */
   repoPath?: string;
+  /** `sha256-<hex>` of the template directory at the pinned tag; absent for a template kept elsewhere. */
+  digest?: string;
   /** Vercel-only services the template's code uses. */
   services: VercelService[];
 }

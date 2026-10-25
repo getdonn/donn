@@ -15,6 +15,8 @@ export interface DonnSlots {
   instructions: boolean;
   /** Whether `agent/sandbox.ts` is written. */
   sandbox?: boolean;
+  /** Whether `agent/channels/eve.ts` is written. */
+  channel?: boolean;
 }
 
 /** An `existing` path below the agent directory: `agent/skills/x.md` and `skills/x.md` alike. */
@@ -54,6 +56,16 @@ export function assertNoSlotCollisions(
     )
       clash(
         "agent/sandbox.ts would be written, and a sandbox is already there",
+      );
+
+    // eve takes one `channels/eve` module or folder; two (or a folder beside a file) are an error.
+    if (
+      slots.channel &&
+      (/^channels\/eve\.(?:ts|mts|js|mjs|cjs)$/.test(path) ||
+        path.startsWith("channels/eve/"))
+    )
+      clash(
+        "agent/channels/eve.ts would be written, and a route-auth channel is already there",
       );
 
     // macOS folds case, so `skills/Donn-x/` and `skills/donn-x/` are one directory.

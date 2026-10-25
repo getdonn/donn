@@ -175,6 +175,9 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
       texts: {},
       project: {
         hasSandbox: false,
+        hasRouteAuth: files.some((f) =>
+          /^agent\/channels\/eve(?:\.(?:ts|mts|js|mjs|cjs)|\/)/.test(f),
+        ),
         existing: files.filter((f) => f.startsWith("agent/")),
       },
     });

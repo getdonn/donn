@@ -36,7 +36,7 @@ const cases: AgentConformanceCase[] = corpus.map(
         "team/skills/run-payment-sim/SKILL.md":
           "---\ndescription: A skill\n---\n",
       },
-      project: { hasSandbox: false, existing: [] },
+      project: { hasSandbox: false, hasRouteAuth: false, existing: [] },
     },
   }),
 );
