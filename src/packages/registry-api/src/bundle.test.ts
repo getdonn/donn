@@ -75,4 +75,24 @@ describe("referencedPaths", () => {
       dirs: [],
     });
   });
+
+  it("lists a path agent template as a directory and skips eve: templates", () => {
+    const agent = (template: string) => ({
+      template,
+      target: "local",
+      path: "agents/x",
+    });
+    const doc = PersonaDocument.parse({
+      apiVersion: "donn/v0",
+      kind: "Persona",
+      metadata: { name: "web" },
+      agents: {
+        define: { a: agent("./templates/a"), b: agent("eve:blank") },
+      },
+    }) as Persona;
+    expect(referencedPaths(doc)).toEqual({
+      files: [],
+      dirs: ["templates/a"],
+    });
+  });
 });
