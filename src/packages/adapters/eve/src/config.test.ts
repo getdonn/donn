@@ -366,7 +366,13 @@ describe("env.ts", () => {
     const text = file(out, "agent/lib/donn/env.ts");
     const read = [...text.matchAll(/process\.env\.(\w+)/g)].map((m) => m[1]);
     expect(read.sort()).toEqual(
-      ["DONN_SECRET_1", "EMPTY", "REGION", "WORKFLOW_POSTGRES_URL"].sort(),
+      [
+        "DATABASE_URL",
+        "DONN_SECRET_1",
+        "EMPTY",
+        "REGION",
+        "WORKFLOW_POSTGRES_URL",
+      ].sort(),
     );
     expect(out.env).toEqual({ REGION: "eu", EMPTY: "" });
     // Loading never throws (eve build evaluates it); only the model call refuses.
@@ -589,5 +595,215 @@ describe("connections", () => {
     expect(bad.report.entries.map((e) => e.path)).toContain(
       "targets.eve.connections",
     );
+  });
+});
+
+describe("final review fixes", () => {
+  const selfHost = { target: "self-host" as const };
+  const servers = (
+    s: Record<string, { url: string; headers?: Record<string, string> }>,
+  ) => input({ mcp: { servers: s } });
+
+  describe("sandbox.ts is never overwritten or shadowed (I1)", () => {
+    it.each([
+      "agent/sandbox.ts",
+      "agent/sandbox.mts",
+      "agent/sandbox.js",
+      "agent/sandbox.mjs",
+      "agent/sandbox.cjs",
+      "agent/sandbox/index.ts",
+      "sandbox/default.ts",
+    ])(
+      "refuses an existing %s when donn would write sandbox.ts",
+      (existing) => {
+        const run = () =>
+          adapter.compile(
+            input({}, selfHost, {
+              project: { hasSandbox: false, existing: [existing] },
+            }),
+          );
+        expect(run).toThrow(/slot-collision/);
+        expect(run).toThrow(existing);
+      },
+    );
+
+    it("does not object when donn writes no sandbox", () => {
+      const existing = ["agent/sandbox.ts"];
+      expect(() =>
+        adapter.compile(
+          input({}, selfHost, { project: { hasSandbox: true, existing } }),
+        ),
+      ).not.toThrow();
+      expect(() =>
+        adapter.compile(
+          input({}, {}, { project: { hasSandbox: false, existing } }),
+        ),
+      ).not.toThrow();
+    });
+  });
+
+  describe("agent env (I2)", () => {
+    it("moves a whole secret ref to secretEnv under its own name", () => {
+      const out = adapter.compile(
+        input({}, { env: { TOKEN: "secret://vault/t", REGION: "eu" } }),
+      );
+      expect(out.env).toEqual({ REGION: "eu" });
+      expect(out.secretEnv.TOKEN).toBe("secret://vault/t");
+    });
+
+    it("refuses an env name that the gateway key already sets from another ref", () => {
+      const run = () =>
+        adapter.compile(
+          input(
+            {
+              models: {
+                gateway: { type: "vercel-ai-gateway", apiKey: "secret://v/a" },
+                default: "anthropic/claude-sonnet-5",
+              },
+            },
+            { env: { AI_GATEWAY_API_KEY: "secret://v/b" } },
+          ),
+        );
+      expect(run).toThrow(/env-collision/);
+      expect(run).toThrow("secret://v/a");
+      expect(run).toThrow("secret://v/b");
+    });
+
+    it("accepts the same ref twice, and refuses a plain value on a secret name", () => {
+      const models = {
+        gateway: { type: "vercel-ai-gateway" as const, apiKey: "secret://v/a" },
+        default: "anthropic/claude-sonnet-5",
+      };
+      expect(() =>
+        adapter.compile(
+          input({ models }, { env: { AI_GATEWAY_API_KEY: "secret://v/a" } }),
+        ),
+      ).not.toThrow();
+      expect(() =>
+        adapter.compile(
+          input({ models }, { env: { AI_GATEWAY_API_KEY: "plain" } }),
+        ),
+      ).toThrow(/env-collision/);
+    });
+  });
+
+  describe("whole-value secret refs (I3)", () => {
+    it.each(["secret://vault/a,b", "secret://v/x?y=1"])(
+      "keeps %s whole in a header and a bearer",
+      (ref) => {
+        const out = adapter.compile(
+          servers({
+            plain: { url: "https://x.example/mcp", headers: { "X-K": ref } },
+            bearer: {
+              url: "https://x.example/mcp",
+              headers: { Authorization: `Bearer ${ref}` },
+            },
+          }),
+        );
+        expect(Object.values(out.secretEnv)).toEqual([ref]);
+        const plain = file(out, "agent/connections/donn-plain.ts");
+        expect(plain).toContain('"X-K": process.env.DONN_SECRET_1!');
+        expect(file(out, "agent/connections/donn-bearer.ts")).toContain(
+          "token: process.env.DONN_SECRET_1!",
+        );
+      },
+    );
+
+    it("still stops an embedded ref at a delimiter", () => {
+      const out = adapter.compile(
+        servers({
+          a: { url: "https://x.example/mcp?key=secret://v/k&b=1" },
+        }),
+      );
+      expect(Object.values(out.secretEnv)).toEqual(["secret://v/k"]);
+      expect(file(out, "agent/connections/donn-a.ts")).toContain(
+        "`https://x.example/mcp?key=${process.env.DONN_SECRET_1}&b=1`",
+      );
+    });
+  });
+
+  it("a vercel-ai-gateway with an anthropic/ model needs no thinking advisory (M4)", () => {
+    const out = adapter.compile(
+      input(
+        {
+          models: {
+            gateway: { type: "vercel-ai-gateway" },
+            default: "anthropic/claude-sonnet-5",
+          },
+        },
+        { template: "eve:personal-agent-template" },
+      ),
+    );
+    expect(
+      out.report.entries.filter((e) => e.reason.includes("providerOptions")),
+    ).toEqual([]);
+  });
+
+  it("compares skill and connection names case-insensitively", () => {
+    const skills = {
+      skills: [{ name: "x", source: "team/skills/x" }],
+    };
+    const texts = { "team/skills/x/SKILL.md": "---\ndescription: x\n---\n" };
+    for (const existing of [
+      "agent/skills/Donn-X/SKILL.md",
+      "agent/connections/Donn-X.ts",
+    ]) {
+      expect(() =>
+        adapter.compile(
+          input(
+            {
+              ...skills,
+              mcp: { servers: { x: { url: "https://x.example" } } },
+            },
+            {},
+            { texts, project: { hasSandbox: false, existing: [existing] } },
+          ),
+        ),
+      ).toThrow(/slot-collision/);
+    }
+  });
+
+  it("names the scripts caveat's Docker need (M5)", () => {
+    const out = adapter.compile(
+      input(
+        { skills: [{ name: "r", source: "team/skills/r" }] },
+        {},
+        {
+          texts: {
+            "team/skills/r/SKILL.md": "---\ndescription: x\n---\n",
+            "team/skills/r/scripts/a.sh": "echo",
+          },
+        },
+      ),
+    );
+    expect(
+      out.report.entries.find((e) => e.path === "skills[r]")?.reason,
+    ).toContain("locally that needs Docker running when eve builds");
+  });
+
+  it("self-host's world needs WORKFLOW_POSTGRES_URL or DATABASE_URL (M6)", () => {
+    const text = file(
+      adapter.compile(input({}, selfHost)),
+      "agent/lib/donn/env.ts",
+    );
+    expect(text).toContain("DATABASE_URL: process.env.DATABASE_URL");
+    expect(text).toContain(
+      "WORKFLOW_POSTGRES_URL: process.env.WORKFLOW_POSTGRES_URL",
+    );
+    expect(text).toContain('join(" or ")');
+    // The values object, which must all be set, holds neither.
+    const values = text.slice(text.indexOf("const values"), text.indexOf("};"));
+    expect(values).not.toContain("DATABASE_URL");
+  });
+
+  it("refuses a framework version outside the adapter's range (M9)", () => {
+    for (const frameworkVersion of ["0.84.0", "0.83.1", "1.0.0", "x"]) {
+      expect(() =>
+        adapter.compile(input({}, {}, { frameworkVersion })),
+      ).toThrow(/framework-version/);
+    }
+    expect(() =>
+      adapter.compile(input({}, {}, { frameworkVersion: "0.83.9" })),
+    ).not.toThrow();
   });
 });

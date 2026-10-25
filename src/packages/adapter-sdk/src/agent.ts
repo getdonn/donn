@@ -42,7 +42,10 @@ export interface AgentCompileInput {
   texts: Record<string, string>;
   /** Facts about the created project that change the output. */
   project: {
-    /** Did the template author a sandbox. */
+    /**
+     * Did the template author a sandbox, as either `agent/sandbox.<ts|mts|js|mjs|cjs>` or an
+     * `agent/sandbox/` folder. Both count: set it true for either form.
+     */
     hasSandbox: boolean;
     /** Agent-directory paths not in the manifest (template- or user-owned), for collisions. */
     existing: string[];

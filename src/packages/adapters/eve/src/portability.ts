@@ -159,7 +159,8 @@ export function templateModelEntries(
   const anthropic =
     gateway === undefined
       ? id.startsWith("anthropic/")
-      : gateway.type === "anthropic";
+      : gateway.type === "anthropic" ||
+        (gateway.type === "vercel-ai-gateway" && id.startsWith("anthropic/"));
   if (anthropic) return [];
   return [
     {

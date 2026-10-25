@@ -5,15 +5,15 @@ import {
 } from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
 import {
+  isWholeRef,
   propertyKey,
-  REF_PATTERN,
   SecretNames,
   valueExpression,
 } from "./env.js";
 
 // `agent/connections/donn-<name>.ts`. See docs/planning/24-adapter-eve.md, section 3.
 
-const BEARER = new RegExp(`^Bearer (${REF_PATTERN})$`);
+const BEARER = /^Bearer (secret:\/\/.+)$/;
 const byName = ([a]: [string, unknown], [b]: [string, unknown]) =>
   a < b ? -1 : a > b ? 1 : 0;
 
@@ -52,7 +52,8 @@ function connectionFile(
   )) {
     const bearer =
       key.toLowerCase() === "authorization" ? BEARER.exec(value) : null;
-    if (bearer) {
+    // The rest after `Bearer ` is the ref in full, as for any whole value.
+    if (bearer && isWholeRef(bearer[1]!)) {
       if (auth)
         throw new AdapterInputError(
           `MCP server "${server}" has two Authorization headers carrying a bearer secret; keep one`,
