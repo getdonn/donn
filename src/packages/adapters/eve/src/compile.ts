@@ -3,6 +3,7 @@ import {
   annotateLocks,
   isContainedPath,
   requiredEntries,
+  satisfiesRange,
   UnsupportedIrVersionError,
   type AgentAdapter,
   type AgentCompileInput,
@@ -13,12 +14,18 @@ import {
 } from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
 import { capabilities } from "./capabilities.js";
+import {
+  CHANNEL_FILE,
+  CHANNEL_TS,
+  ROUTE_AUTH_FILE,
+  ROUTE_AUTH_TS,
+  ROUTE_TOKEN_ENV,
+} from "./channel.js";
 import { assertNoSlotCollisions } from "./collisions.js";
 import { configFile, CONFIG_FILE, SANDBOX_FILE, SANDBOX_TS } from "./config.js";
 import { connectionFiles, unknownTargetEntries } from "./connections.js";
 import { ENV_FILE, envFile, isWholeRef, SecretNames } from "./env.js";
 import { EveCompileError } from "./errors.js";
-import { satisfies } from "./semver.js";
 import {
   isKnownTemplate,
   portability,
@@ -205,7 +212,7 @@ export function compile(
   if (!self.irVersions.includes(ir.irVersion)) {
     throw new UnsupportedIrVersionError(self.id, ir.irVersion);
   }
-  if (!satisfies(input.frameworkVersion, self.frameworkRange)) {
+  if (!satisfiesRange(input.frameworkVersion, self.frameworkRange)) {
     throw new EveCompileError(
       "framework-version",
       `${self.id} ${input.frameworkVersion} is outside the range this adapter compiles for (${self.frameworkRange})`,
@@ -270,6 +277,16 @@ export function compile(
     agent.target === "self-host" && !input.project.hasSandbox;
   if (writesSandbox) files[SANDBOX_FILE] = { content: SANDBOX_TS };
 
+  const donnRoutes = agent.target !== "vercel";
+  const writesChannel = donnRoutes && !input.project.hasRouteAuth;
+  if (donnRoutes) {
+    files[ROUTE_AUTH_FILE] = { content: ROUTE_AUTH_TS };
+    if (writesChannel) files[CHANNEL_FILE] = { content: CHANNEL_TS };
+    // The runner fills the value per run; a token the agent sets itself is kept.
+    if (!(ROUTE_TOKEN_ENV in env) && !(ROUTE_TOKEN_ENV in secretEnv))
+      env[ROUTE_TOKEN_ENV] = "";
+  }
+
   const template = agent.template;
   if (!isKnownTemplate(template))
     entries.push(unknownTemplateEntry(input.agent, template));
@@ -284,6 +301,7 @@ export function compile(
     connections: [...connections.names.values()],
     instructions: text !== undefined,
     sandbox: writesSandbox,
+    channel: writesChannel,
   });
 
   return {
@@ -294,6 +312,10 @@ export function compile(
       { adapter: self.id, irVersion: ir.irVersion, entries },
       ir,
     ),
-    portability: portability(template, agent.target),
+    portability: portability(
+      template,
+      agent.target,
+      input.project.hasRouteAuth,
+    ),
   };
 }

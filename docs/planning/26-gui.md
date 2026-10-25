@@ -7,6 +7,14 @@
 > report), `13` (capabilities), `18`–`20` (registry and identity) and `25` (`donn agent`). Built as
 > a `gh stack` of its own.
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
+> *Amended 2026-10-25 (`25`'s spike, maintainer's decision):* `donn agent add <name> <item>
+> [--answer key=<JSON>]…` and the question protocol (`25` §6) are built here, not in `25`, on
+> eve's real wire format: question `message`, `kind` (`confirm`, `text`, `environment`,
+> `select`, `multi-select`, `editable-select`), `options`, `recommended`, `required`; a secret is
+> `kind: "environment"` with a `variable`; a second blocked status `prerequisite_required` (for
+> example `eve link`); eve's `next.args` is the continuation; events arrive on stdout and stderr
+> mixed with text. Recordings: `spikes/eve-runner/templates/fixtures/` and
+> `spikes/eve-runner/runtime/recordings/`.
 
 ## Intent
 

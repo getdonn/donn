@@ -22,12 +22,35 @@ describe("portability", () => {
         for (const template of ["eve:blank", "./my-template"]) {
           const entries = portability(template, target);
           expect(entries.map((e) => e.service)).toEqual(["route-auth"]);
-          expect(entries[0]).toMatchObject({
-            target,
-            blocking: true,
-            instead: expect.stringContaining("Basic, JWT or OIDC"),
-          });
+          expect(entries[0]).toMatchObject({ target, blocking: false });
         }
+      });
+
+      it("route auth is advisory when donn writes the channel", () => {
+        const [entry] = find(portability("eve:blank", target), "route-auth");
+        expect(entry!.blocking).toBe(false);
+        if (target === "local")
+          expect(entry!.instead).toBe(
+            "donn writes agent/channels/eve.ts: routes accept a bearer `DONN_ROUTE_TOKEN`, which donn sets for the run, and `eve dev` opens local requests",
+          );
+        if (target === "self-host")
+          expect(entry!.instead).toBe(
+            "Routes accept a bearer `DONN_ROUTE_TOKEN`; put Basic, JWT or OIDC in front before exposing them",
+          );
+      });
+
+      it("route auth blocks, with the lines to add, when the template has its own channel", () => {
+        const [entry] = find(
+          portability("eve:blank", target, true),
+          "route-auth",
+        );
+        expect(entry).toMatchObject({ target, blocking: true });
+        expect(entry!.instead).toContain("agent/channels/eve.ts");
+        expect(entry!.instead).toContain(
+          'import { donnToken } from "../lib/donn/route-auth";',
+        );
+        expect(entry!.instead).toContain("donnToken, localDev()");
+        expect(entry!.instead).toContain("Basic, JWT or OIDC");
       });
 
       it("connect: a GitHub App and a Slack app of your own, blocking", () => {
@@ -152,10 +175,10 @@ describe("portability", () => {
     expect(portability("eve:eve-llm-council-template", "vercel")).toEqual([]);
   });
 
-  it("an unknown slug is not known; it still carries route auth", () => {
+  it("an unknown slug or a path template is not known; it still carries route auth", () => {
     expect(isKnownTemplate("eve:kody-eve-template")).toBe(false);
     expect(isKnownTemplate("eve:blank")).toBe(true);
-    expect(isKnownTemplate("./path")).toBe(true);
+    expect(isKnownTemplate("./path")).toBe(false);
     expect(isKnownTemplate("eve:eve-chat-template")).toBe(true);
     expect(
       portability("eve:kody-eve-template", "self-host").map((e) => e.service),

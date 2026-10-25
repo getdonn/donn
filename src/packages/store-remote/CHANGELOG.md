@@ -1,5 +1,15 @@
 # @getdonn/store-remote
 
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [c4fd06d]
+  - @getdonn/spec@0.5.0
+  - @getdonn/resolver@0.7.0
+  - @getdonn/registry-api@0.7.1
+  - @getdonn/store-local@0.2.3
+
 ## 0.5.2
 
 ### Patch Changes

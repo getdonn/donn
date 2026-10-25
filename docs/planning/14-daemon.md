@@ -28,6 +28,13 @@ next slices need: mod transport over the socket, service install, and the tray a
 | Refresh every Claude Code session on any change, skip when the build hash is unchanged | Track which files each persona depends on | A few sessions are cheap to rebuild; no edit to an indirectly reached file is missed |
 | The daemon never resolves secrets | A secrets broker in this slice | A live swap needs none (spec 10); the broker is its own slice |
 
+> 2026-10-25: spec 25 (`25-agent-runner.md` §5) changes this row: the daemon now resolves an
+> agent's secret refs just before it starts a `local` agent, in its own environment. Under `donn
+> daemon install` (spec 16) that is the service's environment, which carries none of the user's
+> shell exports, so a `secret://env/…` ref set only in a shell does not resolve there; the
+> `secret-unresolved` refusal says so and points to the keychain provider, or to `donn agent run`
+> with the daemon stopped.
+
 ## 1. Process and lifecycle
 
 - **`donn daemon run`** is the daemon, in the foreground; same binary and package as the

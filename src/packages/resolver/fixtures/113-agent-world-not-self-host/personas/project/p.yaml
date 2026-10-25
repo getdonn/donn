@@ -1,0 +1,7 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: p
+agents:
+  define:
+    bot: { template: "eve:blank", target: vercel, world: postgres }

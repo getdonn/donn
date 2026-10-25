@@ -36,8 +36,13 @@ interface Row {
   title: string;
   /** Directory under the repository root, when it differs from the slug. */
   dir?: string;
+  /** `sha256-<hex>` of the template directory (spikes/eve-runner/FINDINGS-templates.md, T2). */
+  digest: string;
   facts: TemplateFacts;
 }
+
+/** The eve tag the table's digests were computed at. Moving it means recomputing them. */
+export const TEMPLATES_AT = "0.83.2";
 
 const REPO_ROOT = "apps/templates";
 const none = (): Omit<TemplateFacts, "services"> => ({
@@ -51,6 +56,8 @@ const ROWS: Row[] = [
   {
     slug: "eve-chat-template",
     title: "Chat",
+    digest:
+      "sha256-f505db3dea24e2d6e5d3e318f6e386dc5981c27f3ecf558452f3f634b4172f1d",
     facts: {
       ...none(),
       // connect: agent/channels/slack.ts connectSlackCredentials(); agent/connections/{linear,
@@ -63,6 +70,8 @@ const ROWS: Row[] = [
   {
     slug: "eve-coding-agent-template",
     title: "Coding Agent on Slack",
+    digest:
+      "sha256-55c8800e30fcd72e0429981b333f1850ac589da87587c3b879d01355a50c4201",
     facts: {
       ...none(),
       // connect: channels/github.ts connectGitHubCredentials(), channels/slack.ts
@@ -81,6 +90,8 @@ const ROWS: Row[] = [
   {
     slug: "eve-company-brain-template",
     title: "Company Brain",
+    digest:
+      "sha256-3286c1dc6b6830c3a34e6d8440fdacfd5490d818ffc464519462990f3369ba97",
     facts: {
       ...none(),
       // connect: channels/slack.ts connectSlackCredentials(). Its sandbox
@@ -93,6 +104,8 @@ const ROWS: Row[] = [
   {
     slug: "eve-voice-template",
     title: "Voice",
+    digest:
+      "sha256-70d1e5d0723f84093eb379569abd15cba37e6450520db1f8632cc4b9936da637",
     facts: {
       ...none(),
       // ai-gateway: agent/agent.ts `model: "anthropic/claude-haiku-5.5"`. No Connect, sandbox
@@ -104,6 +117,8 @@ const ROWS: Row[] = [
     slug: "eve-slack-agent",
     title: "Slack Assistant",
     dir: "eve-slack-agent-template",
+    digest:
+      "sha256-485a00d2717bcdfb804dec8fb2fc6ace74413857ec9ea7876ecb9060f7af0ee8",
     facts: {
       ...none(),
       // connect: channels/slack.ts connectSlackCredentials().
@@ -116,6 +131,8 @@ const ROWS: Row[] = [
     slug: "eve-discord-agent",
     title: "Discord Agent",
     dir: "eve-discord-agent-template",
+    digest:
+      "sha256-82a7cce4ce80dabb6c14c4996d4f11f9502797c5bcd18eb797c2c970f3dc9e8c",
     facts: {
       ...none(),
       // connect: channels/discord.ts and tools/read_recent_messages.ts (connectDiscordCredentials,
@@ -129,6 +146,8 @@ const ROWS: Row[] = [
   {
     slug: "eve-llm-council-template",
     title: "LLM Council",
+    digest:
+      "sha256-5bbc9205570883efab83b2f88e226dd0d4b107a36e4b1249c494974b1715b49a",
     facts: {
       ...none(),
       // ai-gateway: agent/agent.ts and the four subagents/*/agent.ts name gateway strings
@@ -141,6 +160,8 @@ const ROWS: Row[] = [
   {
     slug: "personal-agent-template",
     title: "Personal Agent",
+    digest:
+      "sha256-780bf87a0a36f5f39aeb3a07f567b9b1a589d3607733a63d5a4a6d6fa843d4fe",
     facts: {
       ...none(),
       // connect: channels/slack.ts connectSlackCredentials(); connections/linear.ts connect();
@@ -162,10 +183,11 @@ export function templateFacts(slug: string): TemplateFacts | undefined {
 
 /** The templates of eve's repository at the pinned tag, with the services their code uses. */
 export function templates(): TemplateInfo[] {
-  return ROWS.map(({ slug, title, dir, facts }) => ({
+  return ROWS.map(({ slug, title, dir, digest, facts }) => ({
     slug,
     title,
     repoPath: `${REPO_ROOT}/${dir ?? slug}`,
+    digest,
     services: [...facts.services],
   }));
 }

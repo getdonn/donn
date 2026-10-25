@@ -1,6 +1,20 @@
 import type { Probe } from "@getdonn/adapter-sdk";
 import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
+import type { AgentControl } from "./agent/run.js";
+import type { Spawn } from "./agent/spawn.js";
+import {
+  agentBuildCommand,
+  agentCreateCommand,
+  agentDeployCommand,
+  agentEnvCommand,
+  agentExecCommand,
+  agentListCommand,
+  agentLogsCommand,
+  agentRunCommand,
+  agentStopCommand,
+  agentSyncCommand,
+} from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { cliVersion } from "./commands/daemon.js";
@@ -71,6 +85,7 @@ export interface CliIo {
     command: string,
     args: string[],
     input?: string,
+    options?: { cwd?: string },
   ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   /** All of stdin, for `login --token-stdin`; defaults to process.stdin. */
   stdin?: () => Promise<string>;
@@ -86,6 +101,12 @@ export interface CliIo {
   managed?: Partial<ManagedEnv>;
   /** Injected in tests; the system's record of the user's home folder, used when HOME is empty. */
   passwdHome?: () => string | undefined;
+  /** Injected in tests; runs the agent project's own eve. Defaults to node:child_process. */
+  spawn?: Spawn;
+  /** Injected in tests; downloads eve's template tarballs. Defaults to globalThis.fetch. */
+  fetch?: typeof fetch;
+  /** Set inside the daemon: its running agents, so `agent run|stop|list` use them directly. */
+  agents?: AgentControl;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -97,7 +118,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
       const ours = split === -1 ? argv : argv.slice(0, split);
       const passthrough = split === -1 ? [] : argv.slice(split + 1);
       const wantsJson = ours.includes("--json");
-      /** Run a command; only `claude` and `codex` take passthrough arguments after `--`. */
+      /** Run a command; only `claude`, `codex` and `agent exec` take passthrough arguments after `--`. */
       const handle = async (
         json: boolean | undefined,
         command: () => Promise<number>,
@@ -107,7 +128,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           if (passthrough.length > 0 && !options.passthrough) {
             throw new CliError(
               "unexpected-passthrough",
-              "arguments after `--` are only passed through by donn claude and donn codex",
+              "arguments after `--` are only passed through by donn claude, donn codex and donn agent exec",
               { args: passthrough },
             );
           }
@@ -484,6 +505,170 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { steps, env, doctor } as JSON")
         .action((options) =>
           handle(options.json, () => migrateCommand(io, options)),
+        );
+
+      const agent = program
+        .command("agent")
+        .description("Build, run and deploy agents on a persona (spec 25)");
+      agent
+        .command("list")
+        .description("List the agents donn knows of")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agents } as JSON")
+        .action((options) =>
+          handle(options.json, () => agentListCommand(io, options)),
+        );
+      agent
+        .command("create")
+        .description(
+          "Create an agent from a template: declare it if needed, install it, write donn's files",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option(
+          "--template <template>",
+          "eve:<slug>, eve:blank or a path; declares the agent when the persona does not",
+        )
+        .addOption(
+          new Option("--target <target>", "where the agent runs").choices([
+            "local",
+            "self-host",
+            "vercel",
+          ]),
+        )
+        .option("--path <path>", "the agent's folder (default: agents/<name>)")
+        .option("--eve <version>", "pin this eve version (inside the range)")
+        .option(
+          "--dry-run",
+          "show the persona edit and the reports; write nothing",
+        )
+        .option("--force", "replace an incomplete create of this agent")
+        .option(
+          "--accept-portability",
+          "create the agent although it cannot run at its target yet",
+        )
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, dir, frameworkVersion, files, report, portability } as JSON",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentCreateCommand(io, name, options)),
+        );
+
+      agent
+        .command("sync")
+        .description(
+          "Recompile the persona into a created agent's donn-owned files",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--dry-run", "list what would change; write nothing")
+        .option("--force", "overwrite donn-owned files edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { written, removed, report } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentSyncCommand(io, name, options)),
+        );
+
+      agent
+        .command("build")
+        .description(
+          "Build a self-host agent: eve build on this host, then deploy/donn/Dockerfile and env.json",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--force", "overwrite deploy files edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, dir, dockerfile, envFile, sandboxImages, report } as JSON",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentBuildCommand(io, name, options)),
+        );
+
+      agent
+        .command("deploy")
+        .description(
+          "Deploy a vercel agent: link it, set its env in Vercel production after confirming, eve deploy",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--yes", "set the environment variables without asking")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agent, dir, pushed, url? } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentDeployCommand(io, name, options)),
+        );
+
+      agent
+        .command("env")
+        .description("Print the environment an agent needs (names and refs)")
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--resolve", "resolve secrets and print their values")
+        .addOption(
+          new Option("--format <format>", "output format").choices([
+            "dotenv",
+            "json",
+          ]),
+        )
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { env } as JSON (values only with --resolve)")
+        .action((name: string, options) =>
+          handle(options.json, () => agentEnvCommand(io, name, options)),
+        );
+
+      agent
+        .command("exec")
+        .description(
+          "Run a command (after --) in the agent's folder with its env resolved",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print errors as JSON")
+        .action((name: string, options) =>
+          handle(
+            options.json,
+            () => agentExecCommand(io, name, passthrough, options),
+            { passthrough: true },
+          ),
+        );
+
+      agent
+        .command("run")
+        .description(
+          "Build and start a created agent: through the daemon when it runs, else here",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--dev", "run eve dev in the foreground, with its terminal UI")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent } as JSON (with its url and route token)",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentRunCommand(io, name, options)),
+        );
+
+      agent
+        .command("stop")
+        .description("Stop an agent the daemon runs")
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agent, stopped, leftovers, exited } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentStopCommand(io, name, options)),
+        );
+
+      agent
+        .command("logs")
+        .description("Print the log of an agent the daemon ran")
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--follow", "keep printing lines as they are written")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, log, lines } (with --follow, { line } per line)",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentLogsCommand(io, name, options)),
         );
 
       const daemon = program

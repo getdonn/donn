@@ -34,8 +34,11 @@ export interface ServiceManager {
 }
 
 const LABEL = "dev.getdonn.daemon";
-/** How long a reinstall waits for launchd to let go of the old job. */
-const UNLOAD_WAIT_MS = 5_000;
+/**
+ * How long a reinstall waits for launchd to let go of the old job: past the old daemon's
+ * shutdown, which stops its agents (SIGKILL after 10 s each, in parallel).
+ */
+const UNLOAD_WAIT_MS = 20_000;
 const UNLOAD_POLL_MS = 50;
 const UNIT = "donn-daemon";
 
@@ -46,7 +49,7 @@ export const serviceOf = (io: CliIo): ServiceManager | undefined =>
   io.service ?? serviceManager(io);
 
 export interface ServiceManagerOptions {
-  /** How long a launchd reinstall waits for the old job to go; 5 s. */
+  /** How long a launchd reinstall waits for the old job to go; 20 s. */
   unloadWaitMs?: number;
   /**
    * Another service's name: its launchd label, or its systemd unit without `.service`.

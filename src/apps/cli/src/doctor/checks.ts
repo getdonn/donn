@@ -18,6 +18,7 @@ import { createLocalStore } from "@getdonn/store-local";
 import { prepareBuild, type PreparedBuild } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { cliVersion } from "../commands/daemon.js";
+import { agentChecks } from "./agents.js";
 import { checkHere, managedFix } from "../commands/managed.js";
 import { bundledMod, installedModVersion } from "../commands/mod.js";
 import { managedEnv } from "../managed/env.js";
@@ -793,6 +794,10 @@ export async function runChecks(
       }
     }
   }
+
+  // agents: per created agent, the pinned eve, Docker, the gateway, agent.ts and its files
+  // (spec 25 §7); nothing without created agents.
+  await agentChecks(io, home, add);
 
   // build
   const buildRoot = join(home, "build");

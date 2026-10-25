@@ -6,7 +6,7 @@ import { CliError } from "./errors.js";
 /** Write via a temporary sibling and rename, so readers never see a partial file. */
 export async function writeFileAtomic(
   path: string,
-  content: string,
+  content: string | Uint8Array,
   mode?: number,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true });

@@ -1,0 +1,4 @@
+node_modules
+.eve
+.env*
+deploy

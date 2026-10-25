@@ -1,0 +1,7 @@
+description: >-
+  world applies only to target self-host: any other target makes the persona invalid.
+resolve: project/p
+expect:
+  error:
+    code: invalid-persona
+    layer: project/p

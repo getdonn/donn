@@ -1,0 +1,17 @@
+{
+  "name": "eve-runner-spike",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.77",
+    "@workflow/world-postgres": "5.0.5",
+    "ai": "^7.0.152",
+    "eve": "0.83.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

@@ -32,7 +32,7 @@ function input(
     agent: "reviewer",
     frameworkVersion: "0.83.2",
     texts: {},
-    project: { hasSandbox: false, existing: [] },
+    project: { hasSandbox: false, hasRouteAuth: false, existing: [] },
     ...rest,
   };
 }
@@ -296,18 +296,26 @@ describe("targets.eve and the world", () => {
     ).toHaveLength(1);
   });
 
-  it("uses the postgres world for self-host only", () => {
-    const self = adapter.compile(input({}, { target: "self-host" }));
+  it("uses the postgres world only when the agent asks for it", () => {
+    const self = adapter.compile(
+      input({}, { target: "self-host", world: "postgres" }),
+    );
     expect(config(self)).toContain(
       'experimental: { workflow: { world: "@workflow/world-postgres" } },',
     );
     expect(file(self, "agent/lib/donn/env.ts")).toContain(
       "process.env.WORKFLOW_POSTGRES_URL",
     );
-    for (const target of ["local", "vercel"] as const) {
-      const out = adapter.compile(input({}, { target }));
+    for (const agent of [
+      { target: "self-host" },
+      { target: "self-host", world: "local" },
+      { target: "local" },
+      { target: "vercel" },
+    ] as const) {
+      const out = adapter.compile(input({}, agent));
       expect(config(out)).not.toContain("experimental");
       expect(file(out, "agent/lib/donn/env.ts")).not.toContain("WORKFLOW");
+      expect(file(out, "agent/lib/donn/env.ts")).not.toContain("DATABASE_URL");
     }
   });
 });
@@ -333,7 +341,7 @@ describe("sandbox.ts", () => {
         input(
           {},
           { target: "self-host" },
-          { project: { hasSandbox: true, existing: [] } },
+          { project: { hasSandbox: true, hasRouteAuth: false, existing: [] } },
         ),
       ).files["agent/sandbox.ts"],
     ).toBeUndefined();
@@ -360,7 +368,11 @@ describe("env.ts", () => {
           },
           targets: { eve: { contextWindow: 128000 } },
         },
-        { target: "self-host", env: { REGION: "eu", EMPTY: "" } },
+        {
+          target: "self-host",
+          world: "postgres",
+          env: { REGION: "eu", EMPTY: "" },
+        },
       ),
     );
     const text = file(out, "agent/lib/donn/env.ts");
@@ -374,7 +386,7 @@ describe("env.ts", () => {
         "WORKFLOW_POSTGRES_URL",
       ].sort(),
     );
-    expect(out.env).toEqual({ REGION: "eu", EMPTY: "" });
+    expect(out.env).toEqual({ REGION: "eu", EMPTY: "", DONN_ROUTE_TOKEN: "" });
     // Loading never throws (eve build evaluates it); only the model call refuses.
     expect(text).not.toContain("throw");
     expect(text).toContain("console.warn");
@@ -619,7 +631,11 @@ describe("final review fixes", () => {
         const run = () =>
           adapter.compile(
             input({}, selfHost, {
-              project: { hasSandbox: false, existing: [existing] },
+              project: {
+                hasSandbox: false,
+                hasRouteAuth: false,
+                existing: [existing],
+              },
             }),
           );
         expect(run).toThrow(/slot-collision/);
@@ -631,12 +647,18 @@ describe("final review fixes", () => {
       const existing = ["agent/sandbox.ts"];
       expect(() =>
         adapter.compile(
-          input({}, selfHost, { project: { hasSandbox: true, existing } }),
+          input({}, selfHost, {
+            project: { hasSandbox: true, hasRouteAuth: false, existing },
+          }),
         ),
       ).not.toThrow();
       expect(() =>
         adapter.compile(
-          input({}, {}, { project: { hasSandbox: false, existing } }),
+          input(
+            {},
+            {},
+            { project: { hasSandbox: false, hasRouteAuth: false, existing } },
+          ),
         ),
       ).not.toThrow();
     });
@@ -647,7 +669,7 @@ describe("final review fixes", () => {
       const out = adapter.compile(
         input({}, { env: { TOKEN: "secret://vault/t", REGION: "eu" } }),
       );
-      expect(out.env).toEqual({ REGION: "eu" });
+      expect(out.env).toEqual({ REGION: "eu", DONN_ROUTE_TOKEN: "" });
       expect(out.secretEnv.TOKEN).toBe("secret://vault/t");
     });
 
@@ -756,7 +778,14 @@ describe("final review fixes", () => {
               mcp: { servers: { x: { url: "https://x.example" } } },
             },
             {},
-            { texts, project: { hasSandbox: false, existing: [existing] } },
+            {
+              texts,
+              project: {
+                hasSandbox: false,
+                hasRouteAuth: false,
+                existing: [existing],
+              },
+            },
           ),
         ),
       ).toThrow(/slot-collision/);
@@ -783,7 +812,7 @@ describe("final review fixes", () => {
 
   it("self-host's world needs WORKFLOW_POSTGRES_URL or DATABASE_URL (M6)", () => {
     const text = file(
-      adapter.compile(input({}, selfHost)),
+      adapter.compile(input({}, { ...selfHost, world: "postgres" })),
       "agent/lib/donn/env.ts",
     );
     expect(text).toContain("DATABASE_URL: process.env.DATABASE_URL");

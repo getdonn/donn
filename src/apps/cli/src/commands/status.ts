@@ -1,3 +1,4 @@
+import { createdAgentRows, createdLine } from "../agent/list.js";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon, type SessionStatus } from "../daemon/client.js";
@@ -39,12 +40,20 @@ export async function statusCommand(
   });
   const managed = await managedStatus(io);
   const managedLine = managed.line === undefined ? [] : [managed.line];
+  // One line per agent created on this machine; running only when the daemon says so.
+  const agents = await createdAgentRows(
+    io,
+    home,
+    client?.probed.agents ?? [],
+    client?.probed.syncFailed,
+  );
+  const agentLines = agents.map(createdLine);
   if (client) {
     const status = client.probed;
     io.stdout.write(
       options.json
-        ? `${JSON.stringify({ daemon: true, ...status, managed: managed.json }, null, 2)}\n`
-        : `${[`daemon ${status.version} (pid ${status.pid})`, ...status.sessions.map(line), ...managedLine].join("\n")}\n`,
+        ? `${JSON.stringify({ daemon: true, ...status, agents, managed: managed.json }, null, 2)}\n`
+        : `${[`daemon ${status.version} (pid ${status.pid})`, ...status.sessions.map(line), ...agentLines, ...managedLine].join("\n")}\n`,
     );
     return 0;
   }
@@ -63,8 +72,8 @@ export async function statusCommand(
     }));
   io.stdout.write(
     options.json
-      ? `${JSON.stringify({ daemon: false, sessions, managed: managed.json }, null, 2)}\n`
-      : `${[NOT_RUNNING, ...sessions.map(line), ...managedLine].join("\n")}\n`,
+      ? `${JSON.stringify({ daemon: false, sessions, agents, managed: managed.json }, null, 2)}\n`
+      : `${[NOT_RUNNING, ...sessions.map(line), ...agentLines, ...managedLine].join("\n")}\n`,
   );
   return 0;
 }

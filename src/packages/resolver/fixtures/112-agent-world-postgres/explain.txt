@@ -1,0 +1,8 @@
+p
+
+layers (merge order)
+  1  project/p  target
+
+agents (2)
+  bot    eve:blank → self-host at agents/bot    project/p
+  plain  eve:blank → self-host at agents/plain  project/p

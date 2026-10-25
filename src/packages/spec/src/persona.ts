@@ -3,6 +3,7 @@ import {
   AgentName,
   AgentPath,
   AgentTarget,
+  AgentWorld,
   AgentTemplate,
   API_VERSION,
   EnvName,
@@ -68,14 +69,21 @@ const Hooks = z.strictObject({
   remove: z.array(HookRemoval).optional(),
 }) as z.ZodType<Partial<Record<HookEvent, Hook[]>> & { remove?: string[] }>;
 
-export const Agent = z.strictObject({
-  template: AgentTemplate,
-  target: AgentTarget,
-  /** Stored as written; the resolver normalizes it. Default `agents/<name>`. */
-  path: AgentPath.optional(),
-  model: z.string().min(1).optional(),
-  env: z.record(EnvName, z.string()).optional(),
-});
+export const Agent = z
+  .strictObject({
+    template: AgentTemplate,
+    target: AgentTarget,
+    /** Stored as written; the resolver normalizes it. Default `agents/<name>`. */
+    path: AgentPath.optional(),
+    model: z.string().min(1).optional(),
+    env: z.record(EnvName, z.string()).optional(),
+    /** `self-host` only; absent means eve's local world. */
+    world: AgentWorld.optional(),
+  })
+  .refine((a) => a.world === undefined || a.target === "self-host", {
+    path: ["world"],
+    message: "world applies only to target self-host",
+  });
 export type Agent = z.infer<typeof Agent>;
 
 /** Everything a layer can contribute. Shared by Persona and PersonaOverlay. */

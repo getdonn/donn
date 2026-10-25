@@ -16,11 +16,12 @@ function eveSlug(template: string): string | undefined {
     : undefined;
 }
 
-/** `eve:blank` and path templates have no services; a known slug has a row. */
+/** `eve:blank` has no services and a known slug has a row; a path template is unknown. */
 export function isKnownTemplate(template: string): boolean {
   const slug = eveSlug(template);
   return (
-    slug === undefined || slug === "blank" || templateFacts(slug) !== undefined
+    slug !== undefined &&
+    (slug === "blank" || templateFacts(slug) !== undefined)
   );
 }
 
@@ -32,7 +33,7 @@ export function unknownTemplateEntry(
   return {
     path: `agents.${agent}.template`,
     outcome: "advisory",
-    reason: `portability-unknown: ${template} is not in the adapter's template table (only the templates of eve's repository are), so its use of Vercel-only services is not checked; only route auth is reported`,
+    reason: `portability-unknown: ${template} is not in the adapter's template table (only the templates of eve's repository are; a path template is never), so its use of Vercel-only services is not checked; only route auth is reported`,
   };
 }
 
@@ -69,6 +70,7 @@ export function portabilityFor(
   facts: Pick<TemplateFacts, "services"> &
     Partial<Omit<TemplateFacts, "services">>,
   target: Target,
+  hasRouteAuth = false,
 ): PortabilityEntry[] {
   if (target === "vercel") return [];
   const has = (s: TemplateFacts["services"][number]) =>
@@ -118,28 +120,42 @@ export function portabilityFor(
     );
   if (has("drive")) add("drive", NO_EQUIVALENT, true);
   if (has("daemons")) add("daemons", NO_EQUIVALENT, true);
-  add(
-    "route-auth",
-    "Configure Basic, JWT or OIDC auth for the agent's routes",
-    true,
-  );
+  if (hasRouteAuth)
+    add(
+      "route-auth",
+      'The template has its own agent/channels/eve.ts, so donn writes none. Add two lines to it: import { donnToken } from "../lib/donn/route-auth"; (with localDev from "eve/channels/auth", if it does not import it) and donnToken, localDev() in its auth: [...] list. Or configure Basic, JWT or OIDC auth for the agent\'s routes',
+      true,
+    );
+  else if (target === "local")
+    add(
+      "route-auth",
+      "donn writes agent/channels/eve.ts: routes accept a bearer `DONN_ROUTE_TOKEN`, which donn sets for the run, and `eve dev` opens local requests",
+      false,
+    );
+  else
+    add(
+      "route-auth",
+      "Routes accept a bearer `DONN_ROUTE_TOKEN`; put Basic, JWT or OIDC in front before exposing them",
+      false,
+    );
   return entries;
 }
 
 /**
  * The portability entries of a template (`eve:<slug>`, `eve:blank` or a path) at a target.
  * `eve:blank`, path templates and unknown slugs list no services, so only route auth is
- * reported; compile adds `unknownTemplateEntry` for an unknown slug.
+ * reported; compile adds `unknownTemplateEntry` for an unknown slug or a path template.
  */
 export function portability(
   template: string,
   target: Target,
+  hasRouteAuth = false,
 ): PortabilityEntry[] {
   const slug = eveSlug(template);
   const facts = (slug !== undefined && templateFacts(slug)) || {
     services: [],
   };
-  return portabilityFor(facts, target);
+  return portabilityFor(facts, target, hasRouteAuth);
 }
 
 /**

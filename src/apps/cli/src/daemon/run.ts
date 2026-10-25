@@ -1,9 +1,11 @@
-import { isAbsolute } from "node:path";
+import { isAbsolute, resolve } from "node:path";
+import { rootOf } from "../agent/run.js";
 import { createCli, type CliIo } from "../cli.js";
 
-// POST /run: the Claude Code mod's commands, run in-process with captured output. Only the forms
-// the mod sends are allowed: the socket must not launch harnesses, write files or stop the
-// daemon. See docs/planning/15-mod-transport.md §1.
+// POST /run: the Claude Code mod's commands and the agent commands the GUI sends, run in-process
+// with captured output. Only those forms are allowed: the socket must not launch harnesses,
+// print secret values or stop the daemon. See docs/planning/15-mod-transport.md §1 and
+// docs/planning/25-agent-runner.md §7.
 
 /** The flags each command may carry besides `--json`; `--session` takes a value. */
 const FLAGS: Record<string, readonly string[]> = {
@@ -18,6 +20,7 @@ const FLAGS: Record<string, readonly string[]> = {
  * `live <persona> --session <abs dir>`, `live --show --session <abs dir>`; flags in any order.
  */
 export function allowedRun(argv: readonly string[]): boolean {
+  if (argv[0] === "agent") return parseAgent(argv) !== undefined;
   const [command, ...rest] = argv;
   if (command === undefined || !Object.hasOwn(FLAGS, command)) return false;
   const json = rest.indexOf("--json");
@@ -53,6 +56,90 @@ export function allowedRun(argv: readonly string[]): boolean {
   // live
   if (session === undefined) return false;
   return flags.has("--show") ? !persona : persona;
+}
+
+/**
+ * `donn agent` subcommands allowed on the socket, each with `--json`: their switches, the flags
+ * that take a value, and whether they name an agent. Not `exec`, `logs` or `deploy`, not `env
+ * --resolve` (values), not `run --dev` (a terminal UI).
+ */
+const AGENT: Record<
+  string,
+  { switches: readonly string[]; values: readonly string[]; named: boolean }
+> = {
+  list: { switches: [], values: ["--project"], named: false },
+  sync: {
+    switches: ["--dry-run", "--force"],
+    values: ["--project"],
+    named: true,
+  },
+  run: { switches: [], values: ["--project"], named: true },
+  stop: { switches: [], values: ["--project"], named: true },
+  build: { switches: ["--force"], values: ["--project"], named: true },
+  env: { switches: [], values: ["--project", "--format"], named: true },
+  create: {
+    switches: ["--dry-run", "--force", "--accept-portability"],
+    values: ["--project", "--template", "--target", "--path", "--eve"],
+    named: true,
+  },
+};
+
+interface AgentArgv {
+  subcommand: string;
+  name?: string;
+  flags: Map<string, string | true>;
+}
+
+/** An allowed `agent …` argv, parsed; undefined for any other. */
+function parseAgent(argv: readonly string[]): AgentArgv | undefined {
+  const [, subcommand, ...rest] = argv;
+  if (subcommand === undefined || !Object.hasOwn(AGENT, subcommand))
+    return undefined;
+  const allowed = AGENT[subcommand]!;
+  const flags = new Map<string, string | true>();
+  const names: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i]!;
+    if (token === "") return undefined;
+    if (!token.startsWith("-")) {
+      names.push(token);
+      continue;
+    }
+    if (flags.has(token)) return undefined;
+    if (token === "--json" || allowed.switches.includes(token)) {
+      flags.set(token, true);
+    } else if (allowed.values.includes(token)) {
+      const value = rest[++i];
+      if (value === undefined || value === "" || value.startsWith("-"))
+        return undefined;
+      flags.set(token, value);
+    } else {
+      return undefined;
+    }
+  }
+  if (!flags.has("--json")) return undefined;
+  if (names.length !== (allowed.named ? 1 : 0)) return undefined;
+  return {
+    subcommand,
+    ...(names[0] !== undefined && { name: names[0] }),
+    flags,
+  };
+}
+
+/** For a `POST /run` of `agent create` that exited 0 (not a dry run): the agent and project. */
+export function agentCreated(
+  argv: readonly string[],
+  cwd: string,
+): { name: string; project: string } | undefined {
+  if (argv[0] !== "agent") return undefined;
+  const parsed = parseAgent(argv);
+  if (parsed?.subcommand !== "create" || parsed.flags.has("--dry-run"))
+    return undefined;
+  const project = parsed.flags.get("--project");
+  return {
+    name: parsed.name!,
+    project: rootOf(typeof project === "string" ? resolve(cwd, project) : cwd),
+  };
 }
 
 export interface RunResult {

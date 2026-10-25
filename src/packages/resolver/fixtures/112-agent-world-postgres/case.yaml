@@ -1,0 +1,22 @@
+description: >-
+  A self-host agent may pick its Workflow world; it is carried into the IR only when set.
+resolve: project/p
+expect:
+  resolved:
+    agents:
+      bot:
+        template: eve:blank
+        target: self-host
+        path: agents/bot
+        world: postgres
+        env: {}
+      plain:
+        template: eve:blank
+        target: self-host
+        path: agents/plain
+        env: {}
+  provenance:
+    "agents.bot": project/p
+    "agents.plain": project/p
+  warnings: []
+  history: []

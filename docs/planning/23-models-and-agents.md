@@ -8,6 +8,7 @@
 > Builds on `02` (merge semantics, locks), `05` (adapter SDK), `13` (capability matrix) and
 > `14`–`16` (daemon). Built as a `gh stack`: layer 0 is specs 23–26 and their amendments.
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
+> *Amended 2026-10-25:* `agents.define.<name>.world` added (§2), from `25`'s layer 1 spike.
 > *Amended 2026-10-25:* "Facts this design rests on" corrected for eve 0.83.2.
 
 ## Intent
@@ -186,6 +187,7 @@ agents:
 | `path` | Project-relative directory of the eve project. Default `agents/<name>`. Must stay inside the project and outside `.donn/` |
 | `model` | Optional; overrides `models.default` for this agent. Still routed through `models.gateway` |
 | `env` | Map of environment variable → string or secret ref, for what the template's code reads. Names are uppercase; the `DONN_` prefix is reserved |
+| `world` | *Added 2026-10-25 (`25`'s spike, maintainer's decision).* Optional, `self-host` only: `local` (the default; eve's local Workflow world, state under the agent's `.eve/`, one replica) or `postgres` (`@workflow/world-postgres`, connection `WORKFLOW_POSTGRES_URL`, falling back to `DATABASE_URL`). Any other target makes the persona invalid (`invalid-persona`, issue "world applies only to target self-host"). Carried in the IR only when set; the agent is replaced whole by name, like its other fields |
 
 - **Resolved where it is used.** An agent compiles against the persona resolved for the project
   that creates it, whichever layer declared it.

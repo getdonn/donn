@@ -28,7 +28,7 @@ export function checkLines(checks: Check[]): string {
   return checks
     .map(
       (check) =>
-        `${check.status.padEnd(8)}${check.id.padEnd(10)}${check.message}\n${
+        `${check.status.padEnd(8)}${check.id.padEnd(Math.max(10, check.id.length + 1))}${check.message}\n${
           check.fix === undefined ? "" : `${" ".repeat(8)}fix: ${check.fix}\n`
         }`,
     )

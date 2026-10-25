@@ -1,0 +1,8 @@
+# Spike: copy a host-built .output (sandbox template prepared on the host's daemon) into an image.
+FROM node:26-slim
+WORKDIR /agent
+COPY --from=docker:28.3-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY .output ./.output
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+EXPOSE 3000
+CMD ["node", ".output/server/index.mjs"]

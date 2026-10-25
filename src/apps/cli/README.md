@@ -24,6 +24,22 @@ donn mod install                  # add the Claude Code mod (status band and /pe
 
 Run `donn --help` for every command; each supports `--json`.
 
+## Agents
+
+A project persona can declare agents that run on it (eve is the first framework):
+
+```sh
+donn agent create pr-bot --template eve:blank --target local
+donn agent run pr-bot            # local: eve build + start, through the daemon when it runs
+donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile and env.json
+donn agent deploy pr-bot         # vercel: link, env push after confirming, eve deploy
+```
+
+Also `list`, `sync`, `stop`, `logs`, `env` and `exec` (meant for entrypoints and scripts: no
+stdin or terminal). Run self-host images with `docker run --init`. The
+[README's Agents section](https://github.com/getdonn/donn#agents) covers targets, the two images
+to ship, `env.json` and secrets.
+
 ## Who uses it directly
 
 End users. The other `@getdonn/*` packages are libraries behind this command.

@@ -1,0 +1,8 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: p
+agents:
+  define:
+    bot: { template: "eve:blank", target: self-host, world: postgres }
+    plain: { template: "eve:blank", target: self-host }

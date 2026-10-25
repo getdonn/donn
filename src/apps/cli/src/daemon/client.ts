@@ -25,6 +25,30 @@ export interface SessionStatus {
   error?: string;
 }
 
+/** A created agent the daemon runs (spec 25 §4 `local`); `GET /agents` adds its route token. */
+export interface AgentStatus {
+  name: string;
+  /** The project's root folder. */
+  project: string;
+  url: string;
+  pid?: number;
+  startedAt: string;
+}
+
+/** A running agent as `GET /agents` answers it: with the route token its routes take. */
+export interface AgentInfo extends AgentStatus {
+  token: string;
+}
+
+/** A created agent whose last sync by the daemon stopped (spec 25 §3); never forced. */
+export interface AgentSyncFailure {
+  name: string;
+  /** The project's root folder. */
+  project: string;
+  /** The stop's error code, e.g. `owned-file-edited`. */
+  code: string;
+}
+
 export interface DaemonStatus {
   version: string;
   pid: number;
@@ -33,6 +57,10 @@ export interface DaemonStatus {
   service: boolean;
   watching: string[];
   sessions: SessionStatus[];
+  /** Running agents, without their tokens; absent from a daemon older than spec 25. */
+  agents?: AgentStatus[];
+  /** Created agents whose last sync stopped; absent from a daemon older than spec 25. */
+  syncFailed?: AgentSyncFailure[];
 }
 
 export type DaemonEventType =
@@ -41,6 +69,12 @@ export type DaemonEventType =
   | "session.refreshed"
   | "session.stale"
   | "session.refresh-failed"
+  | "agent.created"
+  | "agent.synced"
+  | "agent.sync-failed"
+  | "agent.started"
+  | "agent.stopped"
+  | "agent.failed"
   | "daemon.stopping";
 
 export interface DaemonEvent {
@@ -54,11 +88,27 @@ export interface DaemonClient {
   status(): Promise<DaemonStatus>;
   refresh(): Promise<void>;
   shutdown(): Promise<void>;
+  /** `GET /agents`: the running agents with their route tokens. */
+  agents(): Promise<AgentInfo[]>;
+  /** `POST /agents/run`: builds and starts a created agent, or finds it running. */
+  runAgent(
+    project: string,
+    name: string,
+  ): Promise<{ agent: AgentInfo; already: boolean }>;
+  /** `POST /agents/stop`. */
+  stopAgent(
+    project: string,
+    name: string,
+  ): Promise<{ stopped: boolean; leftovers?: number; exited?: number }>;
   /** Follow `GET /events`; returns a function that stops following. */
   events(on: (e: DaemonEvent) => void): () => void;
 }
 
 const PROBE_TIMEOUT_MS = 500;
+/** Building and starting an agent: `eve build`, then up to 60 s for `eve start` to listen. */
+const AGENT_RUN_TIMEOUT_MS = 10 * 60_000;
+/** Stopping one: SIGTERM, SIGKILL after 10 s, then `docker ps`. */
+const AGENT_STOP_TIMEOUT_MS = 30_000;
 /** A call after the probe: a daemon that wedges must not hang the CLI. */
 const CALL_TIMEOUT_MS = 5_000;
 
@@ -123,11 +173,19 @@ export const ownSocket = (
 /** The body of a successful response; an error response becomes a CliError with its code. */
 function ok(res: DaemonResponse): unknown {
   if (res.status >= 200 && res.status < 300) return res.body;
-  const error = (res.body as { error?: { code?: string; message?: string } })
-    .error;
+  const error = (
+    res.body as {
+      error?: {
+        code?: string;
+        message?: string;
+        details?: Record<string, unknown>;
+      };
+    }
+  ).error;
   throw new CliError(
     error?.code ?? "daemon",
     `daemon: ${error?.message ?? `HTTP ${res.status}`}`,
+    error?.details ?? {},
   );
 }
 
@@ -172,7 +230,12 @@ export async function connectDaemon(
     )();
     return { socket, token: token?.trim() };
   };
-  const call = async (method: string, path: string, timeoutMs: number) => {
+  const call = async (
+    method: string,
+    path: string,
+    timeoutMs: number,
+    body?: unknown,
+  ) => {
     // A refusal is retried once with the token read again: the daemon may have restarted between
     // the read and the request.
     for (let attempt = 0; ; attempt++) {
@@ -180,7 +243,14 @@ export async function connectDaemon(
       if (token === undefined) {
         throw new CliError("daemon", "daemon: not running");
       }
-      const res = await daemonRequest(socket, token, method, path, timeoutMs);
+      const res = await daemonRequest(
+        socket,
+        token,
+        method,
+        path,
+        timeoutMs,
+        body,
+      );
       if (res.status !== 401) return ok(res);
       if (attempt > 0) throw new CliError("daemon-unauthorized", REFUSED);
     }
@@ -209,6 +279,22 @@ export async function connectDaemon(
     refresh: async () => void (await call("POST", "/refresh", CALL_TIMEOUT_MS)),
     shutdown: async () =>
       void (await call("POST", "/shutdown", CALL_TIMEOUT_MS)),
+    agents: async () =>
+      (
+        (await call("GET", "/agents", CALL_TIMEOUT_MS)) as {
+          agents: AgentInfo[];
+        }
+      ).agents,
+    runAgent: async (project, name) =>
+      (await call("POST", "/agents/run", AGENT_RUN_TIMEOUT_MS, {
+        project,
+        name,
+      })) as { agent: AgentInfo; already: boolean },
+    stopAgent: async (project, name) =>
+      (await call("POST", "/agents/stop", AGENT_STOP_TIMEOUT_MS, {
+        project,
+        name,
+      })) as { stopped: boolean; leftovers?: number; exited?: number },
     events: (on) => {
       const req = request(
         {
