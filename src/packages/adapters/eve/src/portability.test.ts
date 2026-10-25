@@ -29,6 +29,10 @@ describe("portability", () => {
       it("route auth is advisory when donn writes the channel", () => {
         const [entry] = find(portability("eve:blank", target), "route-auth");
         expect(entry!.blocking).toBe(false);
+        if (target === "local")
+          expect(entry!.instead).toBe(
+            "donn writes agent/channels/eve.ts: routes accept a bearer `DONN_ROUTE_TOKEN`, which donn sets for the run, and `eve dev` opens local requests",
+          );
         if (target === "self-host")
           expect(entry!.instead).toBe(
             "Routes accept a bearer `DONN_ROUTE_TOKEN`; put Basic, JWT or OIDC in front before exposing them",
@@ -42,8 +46,10 @@ describe("portability", () => {
         );
         expect(entry).toMatchObject({ target, blocking: true });
         expect(entry!.instead).toContain("agent/channels/eve.ts");
-        expect(entry!.instead).toContain("DONN_ROUTE_TOKEN");
-        expect(entry!.instead).toContain("localDev()");
+        expect(entry!.instead).toContain(
+          'import { donnToken } from "../lib/donn/route-auth";',
+        );
+        expect(entry!.instead).toContain("donnToken, localDev()");
         expect(entry!.instead).toContain("Basic, JWT or OIDC");
       });
 

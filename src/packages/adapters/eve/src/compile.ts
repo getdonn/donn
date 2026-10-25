@@ -14,7 +14,13 @@ import {
 } from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
 import { capabilities } from "./capabilities.js";
-import { CHANNEL_FILE, CHANNEL_TS, ROUTE_TOKEN_ENV } from "./channel.js";
+import {
+  CHANNEL_FILE,
+  CHANNEL_TS,
+  ROUTE_AUTH_FILE,
+  ROUTE_AUTH_TS,
+  ROUTE_TOKEN_ENV,
+} from "./channel.js";
 import { assertNoSlotCollisions } from "./collisions.js";
 import { configFile, CONFIG_FILE, SANDBOX_FILE, SANDBOX_TS } from "./config.js";
 import { connectionFiles, unknownTargetEntries } from "./connections.js";
@@ -271,10 +277,11 @@ export function compile(
     agent.target === "self-host" && !input.project.hasSandbox;
   if (writesSandbox) files[SANDBOX_FILE] = { content: SANDBOX_TS };
 
-  const writesChannel =
-    agent.target !== "vercel" && !input.project.hasRouteAuth;
-  if (writesChannel) {
-    files[CHANNEL_FILE] = { content: CHANNEL_TS };
+  const donnRoutes = agent.target !== "vercel";
+  const writesChannel = donnRoutes && !input.project.hasRouteAuth;
+  if (donnRoutes) {
+    files[ROUTE_AUTH_FILE] = { content: ROUTE_AUTH_TS };
+    if (writesChannel) files[CHANNEL_FILE] = { content: CHANNEL_TS };
     // The runner fills the value per run; a token the agent sets itself is kept.
     if (!(ROUTE_TOKEN_ENV in env) && !(ROUTE_TOKEN_ENV in secretEnv))
       env[ROUTE_TOKEN_ENV] = "";

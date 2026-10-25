@@ -123,7 +123,7 @@ export function portabilityFor(
   if (hasRouteAuth)
     add(
       "route-auth",
-      "The template has its own agent/channels/eve.ts, so donn writes none. Add to its auth list an AuthFn that accepts a bearer token equal to process.env.DONN_ROUTE_TOKEN (read per request) and localDev(), or configure Basic, JWT or OIDC auth for the agent's routes",
+      'The template has its own agent/channels/eve.ts, so donn writes none. Add two lines to it: import { donnToken } from "../lib/donn/route-auth"; (with localDev from "eve/channels/auth", if it does not import it) and donnToken, localDev() in its auth: [...] list. Or configure Basic, JWT or OIDC auth for the agent\'s routes',
       true,
     );
   else if (target === "local")
@@ -144,7 +144,7 @@ export function portabilityFor(
 /**
  * The portability entries of a template (`eve:<slug>`, `eve:blank` or a path) at a target.
  * `eve:blank`, path templates and unknown slugs list no services, so only route auth is
- * reported; compile adds `unknownTemplateEntry` for an unknown slug.
+ * reported; compile adds `unknownTemplateEntry` for an unknown slug or a path template.
  */
 export function portability(
   template: string,

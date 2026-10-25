@@ -12,6 +12,7 @@ export {
   patchAgentTs,
   type AgentTsResult,
 } from "./agent-ts.js";
+export { CHANNEL_FILE, ROUTE_AUTH_FILE, ROUTE_TOKEN_ENV } from "./channel.js";
 export { COPY_PENDING, manifestFiles } from "./manifest.js";
 export { portability } from "./portability.js";
 export { EveCompileError, type EveErrorCode } from "./errors.js";
