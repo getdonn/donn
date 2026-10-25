@@ -1,0 +1,9 @@
+node_modules/
+.output/
+.eve/
+.vercel/
+dist/
+*.log
+templates/work/
+runtime/add-proj/
+runtime/fakehome/

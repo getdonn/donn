@@ -1,0 +1,4 @@
+{"version":1,"type":"progress","message":"Installed channel/github"}
+Set up GitHub: Respond to issues, pull requests, and comments
+Checking Vercel setup...
+No authenticated Vercel account found; choose Vercel Connect or portable credentials.

@@ -7,6 +7,8 @@
 > layers.
 > *Amended 2026-10-25:* re-checked against eve 0.83.2. The persona is no longer an extension: donn
 > writes `donn`-named files straight into the agent's own slots (see "Re-check 2026-10-25").
+> *Amended 2026-10-25 (`25`'s spike):* `world: postgres` opt-in for `self-host`, a donn-owned
+> `agent/channels/eve.ts` for route auth, path templates report `portability-unknown` (§5).
 > *Built 2026-10-25* (`feature/eve-*` stack, six layers): `AgentAdapter` and its conformance kit in
 > `@getdonn/adapter-sdk`, `@getdonn/adapter-eve` (public from this release), the capability
 > matrix's "Agent adapters" section and an opt-in real-eve e2e (`DONN_E2E=1`). What the build
@@ -249,7 +251,9 @@ spreads `donn`, because the gateway is then no longer enforced for that agent.
   donn sets it from `targets.eve.contextWindow` when given; otherwise the report carries an
   `approximated` entry naming the default eve falls back to.
 - For `self-host`, `experimental.workflow.world` is `@workflow/world-postgres`, and its connection
-  variable is added to the env the agent needs (`25` §4). `local` and `vercel` leave the world to
+  variable is added to the env the agent needs (`25` §4). *Amended 2026-10-25 (`25`'s spike):*
+  only when the agent sets `world: postgres` (`23` §2); by default `self-host` keeps eve's local
+  world, like `local`. `local` and `vercel` leave the world to
   eve's default for the host. *(2026-10-25)* At 5.0.4 or later: eve's session handoff needs it,
   and the world must match the `@workflow/*` 5.x line eve vendors.
 - Any added provider package (`@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`,
@@ -403,7 +407,9 @@ each template's source at the pinned eve version and kept in a table in the adap
   them, live in their own repositories (the gallery links `vercel-labs/kody-eve-template` and
   `vercel-labs/eve-software-factory-template`, for example). Only the repository's templates are
   read at the pinned tag and get table rows; every other slug compiles with
-  `portability-unknown` until another source is defined (open question 3).
+  `portability-unknown` until another source is defined (open question 3). *2026-10-25:* spec 25
+  keeps it that way and creates such a template from a local clone as a path template; a
+  donn-maintained PR-reviewer template is a later spec (`25`, open question 2).
 
 `compile` turns the services into entries for the agent's target:
 
@@ -414,7 +420,7 @@ each template's source at the pinned eve version and kept in a table in the adap
 | GitHub channel sandbox checkout (`github-checkout`, added 2026-10-25) | fine | not blocking, a known limitation: "The GitHub channel checks the repository out into the sandbox only on a firewall-capable backend (Vercel). Here the agent gets the pull request's diff in context but not the repository's files" |
 | AI Gateway (a model string in the template) | fine | not blocking: replaced by `lib/donn/config.ts` |
 | Vercel Drive, Vercel Daemons | fine | blocking: "No self-hosted equivalent in eve; pick another template or target" |
-| Route auth (`vercelOidc()`) | fine | blocking: "Configure Basic, JWT or OIDC auth for the agent's routes" |
+| Route auth (`vercelOidc()`) | fine | blocking: "Configure Basic, JWT or OIDC auth for the agent's routes" (*2026-10-25:* see the route-auth note below) |
 
 - **The PR reviewer without checkout.** Outside Vercel the reviewer reviews the diff (eve sends
   the changed files' patches and drops bodies of large generated files) against the persona's
@@ -424,6 +430,18 @@ each template's source at the pinned eve version and kept in a table in the adap
   start on eve's invocation token (`@<botName>` in the comment), which an `onComment` handler in
   the template's `channels/github.ts` replaces; donn does not change the gate.
 - `blank` and path templates list no services; the report then covers only route auth.
+  *Amended 2026-10-25 (`25`'s spike):* a path template's services are unknown, so it compiles
+  with `portability-unknown` as an unknown slug does (kody, as a path template, uses Connect, a
+  Vercel sandbox and the checkout, none of which the report showed).
+- *Amended 2026-10-25 (`25`'s spike), route auth.* eve fails closed under `eve start`, and
+  `localDev()` opens only under `eve dev`. For `local` and `self-host`, when the template has no
+  `agent/channels/eve.ts`, the compile writes one as a donn-owned file: `eveChannel({ auth:
+  [donnToken, localDev()] })`, where `donnToken` accepts a bearer token equal to
+  `DONN_ROUTE_TOKEN`, read per request (so `eve build` needs no value). Route auth is then
+  not blocking for `local` and an advisory for `self-host` ("routes accept a bearer
+  `DONN_ROUTE_TOKEN`; put Basic, JWT or OIDC in front before exposing them"). A template with its
+  own `channels/eve.ts` keeps the blocking entry, with the two lines to add by hand. `vercel`
+  is unchanged (eve's default channel, with `vercelOidc()`).
 - `donn agent create` and the GUI show the report before anything is written (`25` §2, `26`).
 - A template missing from the table compiles with a `portability-unknown` warning rather than an
   error: eve adds templates faster than donn will release.
