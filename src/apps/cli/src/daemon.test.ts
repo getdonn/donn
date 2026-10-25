@@ -321,8 +321,9 @@ describe("donn daemon", () => {
     zz(argv, {
       cwd: root,
       home: homeIn(),
-      // No HOME: no login service to report beside the daemon.
+      // No usable home folder: no login service to report beside the daemon.
       env: { HOME: undefined },
+      passwdHome: () => "no-home",
       spawnDaemon: async (home) => {
         daemons.push(
           await startDaemon({ home, env: {}, version: cliVersion() }),

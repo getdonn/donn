@@ -84,6 +84,8 @@ export interface CliIo {
   signal?: AbortSignal;
   /** Test seam for `managed install|uninstall|check`: the system folder, MDM reader and prompt. */
   managed?: Partial<ManagedEnv>;
+  /** Injected in tests; the system's record of the user's home folder, used when HOME is empty. */
+  passwdHome?: () => string | undefined;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {

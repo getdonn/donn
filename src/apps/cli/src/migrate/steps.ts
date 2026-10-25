@@ -14,7 +14,6 @@ import {
   stat,
   symlink,
 } from "node:fs/promises";
-import { homedir } from "node:os";
 import {
   basename,
   dirname,
@@ -32,6 +31,7 @@ import { MARKETPLACE } from "../commands/mod.js";
 import { CliError } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { isDaemonProcess } from "../daemon/process.js";
+import { userHomeDir } from "../userhome.js";
 import { LEGACY } from "./legacy.js";
 
 // The pieces `donn migrate` is made of. Each one can run again: it looks at what is on disk and
@@ -44,32 +44,34 @@ const errno = (error: unknown) => (error as NodeJS.ErrnoException).code;
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes(errno(error) ?? "");
 
-/** The user's home folder as the environment gives it, else the system's. */
-export const userHome = (io: Pick<CliIo, "env">) => io.env.HOME ?? homedir();
+/** The user's home folder as the environment gives it, else the system's (an empty HOME is unset). */
+export const userHome = (io: Pick<CliIo, "env" | "passwdHome">) =>
+  userHomeDir(io.env, io.passwdHome);
 
 /** The old home (`~/.zzpersona`): where doctor and migrate both look for one. */
-export const legacyHome = (io: Pick<CliIo, "env">) =>
+export const legacyHome = (io: Pick<CliIo, "env" | "passwdHome">) =>
   join(userHome(io), LEGACY.home);
 
-/** A POSIX-shell word: as is when plainly safe, otherwise single-quoted. */
+/**
+ * A POSIX-shell word: as is when plainly safe, otherwise single-quoted with embedded quotes
+ * written as '\''. A leading `~` is quoted: donn never expands it in a path of its own.
+ */
 export const shellWord = (value: string) =>
-  /^[\w./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+  /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) && !value.startsWith("~")
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
 
 /**
  * The repo a state.json key (a project's `.donn` folder, or its old name) belongs to, when that
  * repo still has the old project folder: a project not migrated yet.
  */
-export function unmigratedRepo(key: string): string | undefined {
+export async function unmigratedRepo(key: string): Promise<string | undefined> {
   if (![LEGACY.home, ".donn"].includes(basename(key))) return undefined;
   const repo = dirname(key);
-  // `migrate --project` needs the old folder's persona.yaml, and refuses when the project has a
-  // .donn/persona.yaml of its own already (a switch keyed by that folder is not waiting).
+  // `migrate --project` needs the old folder's persona.yaml, and refuses when .donn/ holds
+  // anything (a switch keyed by that folder is not waiting), whichever name the key has.
   if (!existsSync(join(repo, LEGACY.home, "persona.yaml"))) return undefined;
-  if (
-    basename(key) === ".donn" &&
-    existsSync(join(repo, ".donn", "persona.yaml"))
-  )
-    return undefined;
+  if (await occupied(join(repo, ".donn"))) return undefined;
   return repo;
 }
 
@@ -118,7 +120,7 @@ export async function madeByDonnAdvice(target: string): Promise<string> {
     (await legacyDaemonPid(target)) === undefined
       ? ""
       : "stop its daemon (`donn daemon stop`), ";
-  return `${daemon}run \`donn mod uninstall\` if the donn mod is installed, then remove ${target} and run \`donn migrate\` again`;
+  return `${daemon}run \`donn mod uninstall\` if the donn mod is installed, then remove ${shellWord(target)} and run \`donn migrate\` again`;
 }
 
 /** The refusal when the target holds only what donn made itself (see madeByDonn). */
@@ -154,16 +156,22 @@ export async function initOrLoginAdvice(
     parseYaml,
   )?.value as
     { personas?: string; registry?: { url?: string } } | null | undefined;
-  const sets = [
-    ...(config?.personas === undefined ? [] : [`personas: ${config.personas}`]),
-    ...(config?.registry?.url === undefined
+  // What the home holds that remove would discard, as the commands that set it again.
+  const again = [
+    ...(config?.personas === undefined
       ? []
-      : [`registry: ${config.registry.url}`]),
+      : [`donn init --personas ${shellWord(config.personas)}`]),
+    ...(files.some((file) => file.includes("registry"))
+      ? [
+          `donn login${config?.registry?.url === undefined ? "" : ` ${shellWord(config.registry.url)}`}`,
+        ]
+      : []),
   ];
-  const login = files.some((file) => file.includes("registry"))
-    ? `, then run \`donn login${config?.registry?.url === undefined ? "" : ` ${config.registry.url}`}\` again`
-    : "";
-  return `${daemon}${mod}remove ${target}${sets.length > 0 ? ` (it sets ${sets.join(", ")})` : ""}, run \`donn migrate\`${login}`;
+  const rerun =
+    again.length > 0
+      ? `, then run ${again.map((c) => `\`${c}\``).join(" and ")} again`
+      : "";
+  return `${daemon}${mod}remove ${shellWord(target)}, run \`donn migrate\`${rerun}`;
 }
 
 /** The refusal when the target holds only what `donn init` and `donn login` wrote. */
@@ -368,6 +376,17 @@ async function digestTree(dir: string): Promise<string> {
   return hash.digest("hex");
 }
 
+/** `realpath`, for a path that may not exist yet: its nearest existing folder, resolved. */
+async function realpathLoose(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    const parent = dirname(path);
+    if (!isMissing(error) || parent === path) throw error;
+    return join(await realpathLoose(parent), basename(path));
+  }
+}
+
 /**
  * Move the home `src` to `target`: one rename on one filesystem. Across filesystems, a copy next
  * to the target, verified against the source; then the source is set aside, the copy put in
@@ -401,32 +420,34 @@ export async function moveHome(
   }
   if (!(await present(src))) return;
   if (await occupied(target)) throw targetExists(target);
+  // A link with a relative target points somewhere else from another folder. In the same folder
+  // the plain rename is right; otherwise the new link is absolute, built from where the old
+  // one physically lives (the kernel reads a relative link from there, not from the path it was
+  // reached by), made next to the target and put in place the way a copy is. Whether that can
+  // be done is settled before anything is changed: no new folder, no folder cleared.
+  const relink =
+    (await lstat(src)).isSymbolicLink() &&
+    !isAbsolute(await readlink(src)) &&
+    (await realpath(dirname(src)).catch(() => dirname(src))) !==
+      (await realpathLoose(dirname(target)));
+  const reach = relink ? await realpath(src).catch(() => undefined) : undefined;
+  const notReproduced = (changed = false) =>
+    new CliError(
+      "migrate-copy",
+      `${src} is a link that could not be reproduced at ${target}; ${changed ? "the old link was not touched" : "nothing was moved"}: point ${src} at its folder by an absolute path, then run donn migrate again`,
+      { src, target },
+    );
+  if (relink && reach === undefined) throw notReproduced();
   // A copy that was interrupted is started again.
   await rm(staging, { recursive: true, force: true });
   await mkdir(dirname(target), { recursive: true });
   await clearEmpty(target);
-  // A link with a relative target points somewhere else from another folder. In the same folder
-  // the plain rename is right; otherwise the new link is absolute, built from where the old
-  // one physically lives (the kernel reads a relative link from there, not from the path it was
-  // reached by), made next to the target and put in place the way a copy is.
-  if (
-    (await lstat(src)).isSymbolicLink() &&
-    !isAbsolute(await readlink(src)) &&
-    (await realpath(dirname(src)).catch(() => dirname(src))) !==
-      (await realpath(dirname(target)))
-  ) {
-    const reach = await realpath(src).catch(() => undefined);
-    if (reach !== undefined) await symlink(reach, staging);
-    if (
-      reach === undefined ||
-      (await realpath(staging).catch(() => "")) !== reach
-    ) {
+  if (relink && reach !== undefined) {
+    await symlink(reach, staging);
+    if ((await realpath(staging).catch(() => "")) !== reach) {
+      // Practically unreachable (reach is a realpath); the folders made above may remain.
       await rm(staging, { recursive: true, force: true });
-      throw new CliError(
-        "migrate-copy",
-        `${src} is a link that could not be reproduced at ${target}; nothing was moved: point ${src} at its folder by an absolute path, then run donn migrate again`,
-        { src, target },
-      );
+      throw notReproduced(true);
     }
     await move(src, aside);
     await move(staging, target);

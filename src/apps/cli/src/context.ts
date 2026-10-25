@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { resolve, ResolveError } from "@getdonn/resolver";
 import type { ResolveResult } from "@getdonn/spec";
 import {
@@ -10,6 +9,7 @@ import {
 } from "@getdonn/store-local";
 import { normaliseUrl, readIndex, withRegistry } from "@getdonn/store-remote";
 import type { CliIo } from "./cli.js";
+import { userHomeDir } from "./userhome.js";
 import { loadConfig, type Config } from "./config.js";
 import { CliError } from "./errors.js";
 import type { Selection } from "./select.js";
@@ -17,6 +17,8 @@ import { readState, type State } from "./state.js";
 
 export interface Context {
   home: string;
+  /** The system's record of the home folder (a test seam); see userHomeDir. */
+  passwdHome?: () => string | undefined;
   /** The project's .donn directory, when inside a project. */
   projectDir?: string;
   /** Local layers, with the registry cache in front when one is configured and pulled. */
@@ -29,7 +31,10 @@ export interface Context {
 
 /** DONN_HOME, or ~/.donn. An empty DONN_HOME counts as unset. */
 export function homeOf(io: CliIo): string {
-  return io.env.DONN_HOME || join(io.env.HOME ?? homedir(), ".donn");
+  return resolvePath(
+    io.cwd,
+    io.env.DONN_HOME || join(userHomeDir(io.env, io.passwdHome), ".donn"),
+  );
 }
 
 export async function createContext(
@@ -37,7 +42,7 @@ export async function createContext(
   options: { local?: boolean } = {},
 ): Promise<Context> {
   const home = homeOf(io);
-  const config = await loadConfig(home, io.env);
+  const config = await loadConfig(home, io.env, io.passwdHome);
   const projectDir = findProject(io.cwd);
   const local = createLocalStore({
     user: home,
@@ -69,6 +74,7 @@ export async function createContext(
   const state = await readState(home);
   return {
     home,
+    ...(io.passwdHome && { passwdHome: io.passwdHome }),
     store,
     local,
     state,

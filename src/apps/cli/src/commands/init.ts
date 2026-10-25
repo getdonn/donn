@@ -71,12 +71,12 @@ async function initPersonas(
   out: Changes,
 ) {
   const home = homeOf(io);
-  const target = expandPath(dir, io.cwd, io.env);
+  const target = expandPath(dir, io.cwd, io.env, io.passwdHome);
   const configFile = join(home, "config.yaml");
   const hadConfig = existsSync(configFile);
   let current: string | undefined;
   try {
-    current = (await loadConfig(home, io.env)).personas;
+    current = (await loadConfig(home, io.env, io.passwdHome)).personas;
   } catch (error) {
     // --force replaces a config that does not parse; without it, report the config.
     if (!(

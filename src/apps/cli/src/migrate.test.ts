@@ -19,12 +19,20 @@ import { isAlive, nodeProbe } from "@getdonn/executor";
 import { findProject } from "@getdonn/store-local";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
+import { homeOf } from "./context.js";
 import { cliVersion } from "./commands/daemon.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { serviceManager } from "./daemon/service.js";
 import type { ManagedEnv } from "./managed/env.js";
 import { planMigration, runMigration } from "./migrate/plan.js";
-import { moveHome, rewriteApiVersion } from "./migrate/steps.js";
+import {
+  initOrLoginAdvice,
+  madeByDonnAdvice,
+  moveHome,
+  rewriteApiVersion,
+  shellWord,
+  unmigratedRepo,
+} from "./migrate/steps.js";
 import { projectKey } from "./state.js";
 import { installedProbe, safeManaged, seed, zz } from "./test/seed.js";
 
@@ -1939,23 +1947,17 @@ describe("rename leftovers: doctor finds the old home as migrate does", () => {
   it("falls back to the user's home folder when HOME is not in the environment", async () => {
     const m = machine();
     oldInstall(m);
-    const saved = process.env.HOME;
-    process.env.HOME = user();
-    try {
-      const r = await donn(m, ["doctor", "--json"], {
-        env: { HOME: undefined },
-      });
-      const checks = json(r).checks as Check[];
-      expect(checks[0]).toEqual({
-        id: "migrate",
-        status: "error",
-        message: `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
-        fix: "donn migrate",
-      });
-    } finally {
-      if (saved === undefined) delete process.env.HOME;
-      else process.env.HOME = saved;
-    }
+    const r = await donn(m, ["doctor", "--json"], {
+      env: { HOME: undefined },
+      passwdHome: () => user(),
+    });
+    const checks = json(r).checks as Check[];
+    expect(checks[0]).toEqual({
+      id: "migrate",
+      status: "error",
+      message: `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+      fix: "donn migrate",
+    });
   });
 });
 
@@ -2037,9 +2039,14 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
 
   const REGISTRY_CONFIG = `registry:\n  url: ${REGISTRY}\n`;
   const MOD = "run `donn mod uninstall` if the donn mod is installed, ";
-  /** `sets` is what the home holds that remove would discard: the personas folder, the url. */
-  const advice = (sets: string, login: boolean, mod = true) =>
-    `${mod ? MOD : ""}remove ${newHome()} (it sets ${sets}), run \`donn migrate\`${login ? `, then run \`donn login ${REGISTRY}\` again` : ""}`;
+  /** `personas` and `login` are what the home holds that remove would discard, as commands to run again. */
+  const advice = (personas: string, login: boolean, mod = true) => {
+    const again = [
+      ...(personas ? [`\`donn init --personas ${personas}\``] : []),
+      ...(login ? [`\`donn login ${REGISTRY}\``] : []),
+    ];
+    return `${mod ? MOD : ""}remove ${newHome()}, run \`donn migrate\`${again.length ? `, then run ${again.join(" and ")} again` : ""}`;
+  };
   const what = (files: string) =>
     `${newHome()} holds only what donn init or donn login wrote (${files}); donn migrate moves the old home's settings`;
 
@@ -2048,7 +2055,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
       "init only",
       [["config.yaml", "personas: /p\n"]],
       "config.yaml (personas)",
-      "personas: /p",
+      "/p",
       false,
     ],
     [
@@ -2058,14 +2065,14 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         ["registry-token", "t\n"],
       ],
       "config.yaml (registry), registry-token",
-      `registry: ${REGISTRY}`,
+      "",
       true,
     ],
     [
       "login through the keychain",
       [["config.yaml", REGISTRY_CONFIG]],
       "config.yaml (registry)",
-      `registry: ${REGISTRY}`,
+      "",
       true,
     ],
     [
@@ -2075,7 +2082,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         ["registry-token", "t\n"],
       ],
       "config.yaml (personas, registry), registry-token",
-      `personas: /p, registry: ${REGISTRY}`,
+      "/p",
       true,
     ],
   ];
@@ -2113,7 +2120,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
     put(join(newHome(), "config.yaml"), "personas: /p\n");
     const r = await donn(m, ["migrate", "--yes", "--json"]);
     expect(json(r).error.message).toBe(
-      `${what("config.yaml (personas)")}; ${advice("personas: /p", false, false)}`,
+      `${what("config.yaml (personas)")}; ${advice("/p", false, false)}`,
     );
   });
 
@@ -2263,5 +2270,244 @@ describe("rename leftovers: exit codes and paths", () => {
     expect(r.code).toBe(1);
     expect(json(r).error.code).toBe("migrate-old-home");
     expect(existsSync(newHome())).toBe(false);
+  });
+});
+
+describe("review notes: a project is not migrated yet only when migrate --project would run", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+  const dir = (name: string) => {
+    mkdirSync(join(root, name), { recursive: true });
+    return realpathSync(join(root, name));
+  };
+
+  it("leaves out a project whose .donn/ holds something, in migrate and in doctor", async () => {
+    const m = machine();
+    oldInstall(m);
+    const full = dir("full");
+    const empty = dir("empty");
+    const keyed = dir("keyed");
+    for (const repo of [full, empty, keyed])
+      put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    put(join(full, ".donn/notes.md"), "mine\n");
+    mkdirSync(join(empty, ".donn"));
+    put(join(keyed, ".donn/notes.md"), "mine\n");
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects: { [join(full, ".donn")]: "a/b", [join(empty, ".donn")]: "a/b", [join(keyed, ".zzpersona")]: "a/b" } })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).projects).toEqual([
+      { dir: empty, next: `donn migrate --project ${empty}` },
+    ]);
+    const d = await donn(m, ["doctor", "--json"]);
+    const projects = (json(d).checks as Check[]).find(
+      (c) => c.id === "projects",
+    );
+    expect(projects?.fix).toBe(`donn migrate --project ${empty}`);
+  });
+
+  it("applies the same test to a key still named .zzpersona", async () => {
+    const repo = dir("old-key");
+    put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    expect(await unmigratedRepo(join(repo, ".zzpersona"))).toBe(repo);
+    put(join(repo, ".donn/notes.md"), "mine\n");
+    expect(await unmigratedRepo(join(repo, ".zzpersona"))).toBeUndefined();
+    expect(await unmigratedRepo(join(repo, ".donn"))).toBeUndefined();
+  });
+});
+
+describe("review notes: advice is pasteable", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+
+  it("quotes only what a shell would split or expand", () => {
+    expect(shellWord("/a/b-c_d.e,f@g+h=i:j%k")).toBe("/a/b-c_d.e,f@g+h=i:j%k");
+    expect(shellWord("~/personas")).toBe("'~/personas'");
+    expect(shellWord("/my repo")).toBe("'/my repo'");
+    expect(shellWord("it's")).toBe("'it'\\''s'");
+    expect(shellWord("$HOME")).toBe("'$HOME'");
+  });
+
+  it("quotes the repo in the doctor and migrate commands", async () => {
+    const m = machine();
+    oldInstall(m);
+    const repo = join(root, "my 'repo");
+    put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    const real = realpathSync(repo);
+    const quoted = `'${real.replaceAll("'", "'\\''")}'`;
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects: { [join(real, ".zzpersona")]: "a/b" } })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(json(r).projects).toEqual([
+      { dir: real, next: `donn migrate --project ${quoted}` },
+    ]);
+    const d = await donn(m, ["doctor", "--json"]);
+    expect(
+      (json(d).checks as Check[]).find((c) => c.id === "projects")?.fix,
+    ).toBe(`donn migrate --project ${quoted}`);
+  });
+
+  it("quotes the folder to remove and the values to set again", async () => {
+    const target = join(root, "a b", "it's");
+    mkdirSync(target, { recursive: true });
+    writeFileSync(
+      join(target, "config.yaml"),
+      `personas: ${JSON.stringify("/my p/it's")}\nregistry:\n  url: http://h/?a=1&b=2\n`,
+    );
+    writeFileSync(join(target, "registry-token"), "t\n");
+    const q = (v: string) => `'${v.replaceAll("'", "'\\''")}'`;
+    expect(await madeByDonnAdvice(target)).toContain(`remove ${q(target)} and`);
+    const advice = await initOrLoginAdvice(target, [
+      "config.yaml (personas, registry)",
+      "registry-token",
+    ]);
+    expect(advice).toContain(`remove ${q(target)},`);
+    expect(advice).toContain(`\`donn init --personas ${q("/my p/it's")}\``);
+    expect(advice).toContain(`\`donn login ${q("http://h/?a=1&b=2")}\``);
+  });
+});
+
+describe("review notes: a relative link moved to another folder", () => {
+  /** <root>/u/.zzpersona -> real-home, to be <root>/other/.donn. */
+  function setup() {
+    const real = join(root, "u/real-home");
+    put(join(real, "config.yaml"), "x: 1\n");
+    symlinkSync("real-home", join(root, "u/.zzpersona"));
+    return {
+      src: join(root, "u/.zzpersona"),
+      target: join(root, "other/.donn"),
+      real,
+    };
+  }
+  /** A rename that fails on its nth call, before doing anything. */
+  const failing = (n: number) => {
+    let calls = 0;
+    return async (from: string, to: string) => {
+      if (++calls === n) throw new Error("interrupted");
+      await rename(from, to);
+    };
+  };
+  const leftovers = () => [
+    ...readdirSync(join(root, "u")),
+    ...readdirSync(join(root, "other")),
+  ];
+
+  it.each([
+    ["after the new link is made, before the old one is set aside", 1],
+    ["after the old link is set aside, before the new one is put in place", 2],
+  ])("finishes when interrupted %s", async (_name, call) => {
+    const { src, target, real } = setup();
+    await expect(
+      moveHome(src, target, { rename: failing(call) }),
+    ).rejects.toThrow("interrupted");
+    await moveHome(src, target);
+    expect(existsSync(src)).toBe(false);
+    expect(realpathSync(target)).toBe(realpathSync(real));
+    expect(read(join(real, "config.yaml"))).toBe("x: 1\n");
+    expect(read(join(target, "config.yaml"))).toBe("x: 1\n");
+    expect(leftovers().sort()).toEqual([".donn", "real-home"]);
+  });
+
+  it("changes nothing when it refuses", async () => {
+    mkdirSync(join(root, "u"), { recursive: true });
+    symlinkSync("missing", join(root, "u/.zzpersona"));
+    await expect(
+      moveHome(join(root, "u/.zzpersona"), join(root, "fresh/sub/.donn")),
+    ).rejects.toMatchObject({ code: "migrate-copy" });
+    expect(existsSync(join(root, "fresh"))).toBe(false);
+
+    mkdirSync(join(root, "other/.donn"), { recursive: true });
+    await expect(
+      moveHome(join(root, "u/.zzpersona"), join(root, "other/.donn")),
+    ).rejects.toMatchObject({ code: "migrate-copy" });
+    expect(readdirSync(join(root, "other/.donn"))).toEqual([]);
+    expect(readdirSync(join(root, "other"))).toEqual([".donn"]);
+  });
+});
+
+describe("review notes: an empty HOME counts as unset", () => {
+  it("uses the system's home folder for it, and does not read process.env", async () => {
+    const m = machine();
+    oldInstall(m);
+    const passwdHome = () => user();
+    const d = await donn(m, ["doctor", "--json"], {
+      env: { HOME: "" },
+      passwdHome,
+    });
+    const first = (json(d).checks as { id: string; message: string }[])[0]!;
+    expect(first.id).toBe("migrate");
+    expect(first.message).toBe(
+      `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { HOME: "" },
+      passwdHome,
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(existsSync(newHome())).toBe(true);
+    expect(existsSync(oldHome())).toBe(false);
+  });
+
+  it("refuses when no absolute home folder can be found, changing nothing", async () => {
+    const m = machine();
+    oldInstall(m);
+    mkdirSync(join(root, "repo/.zzpersona"), { recursive: true });
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      cwd: join(root, "repo"),
+      env: { HOME: "" },
+      passwdHome: () => "relative/home",
+    });
+    expect(r.code).toBe(1);
+    expect(json(r).error.code).toBe("migrate-home");
+    expect(existsSync(oldHome())).toBe(true);
+    expect(existsSync(join(root, "repo/.donn"))).toBe(false);
+    expect(changes(m)).toEqual([]);
+  });
+});
+
+describe("review notes: doctor names the home as donn uses it", () => {
+  it("shows an absolute path to remove when DONN_HOME is relative", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(join(root, "rel/config.yaml"), "personas: /p\n");
+    const d = await donn(m, ["doctor", "--json"], {
+      env: { DONN_HOME: "rel" },
+    });
+    const first = (json(d).checks as { id: string; fix?: string }[])[0]!;
+    expect(first.id).toBe("migrate");
+    expect(first.fix).toContain(`remove ${join(root, "rel")},`);
+  });
+});
+
+describe("review notes: the home helper reaches every reader", () => {
+  it("expands ~/ in config.yaml against the injected home when HOME is empty", async () => {
+    const m = machine();
+    put(join(newHome(), "config.yaml"), "personas: ~/nowhere\n");
+    const d = await donn(m, ["doctor", "--json"], {
+      env: { HOME: "" },
+      passwdHome: () => user(),
+    });
+    const personas = (json(d).checks as { id: string; message: string }[]).find(
+      (c) => c.id === "personas",
+    );
+    expect(personas?.message).toContain(join(user(), "nowhere"));
+  });
+
+  it("makes a relative DONN_HOME absolute against the working folder", () => {
+    expect(
+      homeOf({ env: { DONN_HOME: "rel" }, cwd: "/c" } as unknown as CliIo),
+    ).toBe("/c/rel");
+  });
+
+  it("words the refusal for a relative HOME too", async () => {
+    const m = machine();
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { HOME: "rel" },
+    });
+    expect(json(r).error.code).toBe("migrate-home");
+    expect(json(r).error.message).toContain('HOME is "rel"');
+    expect(json(r).error.message).not.toContain("no record");
   });
 });

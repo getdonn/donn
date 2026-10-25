@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep, isAbsolute } from "node:path";
 import {
   deleteKeychainItem,
   getKeychainItem,
@@ -134,6 +134,12 @@ export interface PlanOptions {
 /** The user's home folder, the old donn home in it, and where the new one goes. */
 function where(io: CliIo) {
   const user = userHome(io);
+  if (!isAbsolute(user)) {
+    throw new CliError(
+      "migrate-home",
+      `could not find an absolute home folder (${io.env.HOME ? `HOME is "${io.env.HOME}"` : `HOME is empty and the system gave "${user}"`}); set HOME to an absolute path and run donn migrate again`,
+    );
+  }
   const src = legacyHome(io);
   const target = absoluteHome(io, homeOf(io));
   /**
@@ -200,7 +206,7 @@ async function personasFolder(
     personas = undefined; // a broken config.yaml: doctor says so afterwards
   }
   return typeof personas === "string" && personas !== ""
-    ? expandPath(personas, home, io.env)
+    ? expandPath(personas, home, io.env, io.passwdHome)
     : undefined;
 }
 
@@ -246,7 +252,9 @@ export async function oldHomePaths(
 /** The registry accounts (normalised URLs) a token may be stored under. */
 async function registryAccounts(io: CliIo, home: string): Promise<string[]> {
   const urls: string[] = [];
-  const config = await loadConfig(home, io.env).catch(() => undefined);
+  const config = await loadConfig(home, io.env, io.passwdHome).catch(
+    () => undefined,
+  );
   if (config?.registry !== undefined) urls.push(config.registry.url);
   const index = await readIndex(home).catch(() => undefined);
   if (index !== undefined) urls.push(index.url);
@@ -295,7 +303,7 @@ export async function pendingProjects(
   const state = await readState(w.live()).catch(() => undefined);
   const dirs = new Set<string>();
   for (const key of Object.keys(state?.projects ?? {})) {
-    const dir = unmigratedRepo(key);
+    const dir = await unmigratedRepo(key).catch(() => undefined);
     if (dir !== undefined) dirs.add(dir);
   }
   return [...dirs]
@@ -722,7 +730,7 @@ export async function planMigration(
         "claude-not-on-path",
         removed
           ? `claude is not on PATH, so the donn mod cannot be installed (the old one is already unregistered); ${hint}; then run donn migrate again`
-          : `claude is not on PATH, so the old mod cannot be unregistered; ${hint}; or, if Claude Code is gone, remove ${join(w.live(), "mod")}; then run donn migrate again`,
+          : `claude is not on PATH, so the old mod cannot be unregistered; ${hint}; or, if Claude Code is gone, remove ${shellWord(join(w.live(), "mod"))}; then run donn migrate again`,
         { hint },
       );
     }

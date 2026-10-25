@@ -367,7 +367,7 @@ export async function logoutCommand(
   options: JsonOption,
 ): Promise<number> {
   const home = homeOf(io);
-  const config = await loadConfig(home, io.env);
+  const config = await loadConfig(home, io.env, io.passwdHome);
   const removed = await deleteToken(io, home, config.registry?.url ?? "");
   print(io, options.json, removed ? "logged out" : "not logged in", {
     loggedOut: removed,
@@ -380,7 +380,7 @@ export async function whoamiCommand(
   options: JsonOption,
 ): Promise<number> {
   const home = homeOf(io);
-  const config = await loadConfig(home, io.env);
+  const config = await loadConfig(home, io.env, io.passwdHome);
   const url =
     config.registry === undefined ? undefined : checkedUrl(config.registry.url);
   const token = url === undefined ? undefined : await readToken(io, home, url);
@@ -422,7 +422,7 @@ export async function pullCommand(
   options: JsonOption,
 ): Promise<number> {
   const home = homeOf(io);
-  const config = await loadConfig(home, io.env);
+  const config = await loadConfig(home, io.env, io.passwdHome);
   const { client, url } = await clientFor(io, home, config);
   let changes: PullChange[];
   try {
@@ -450,7 +450,7 @@ export async function publishCommand(
   options: JsonOption & { dryRun?: boolean; force?: boolean },
 ): Promise<number> {
   const home = homeOf(io);
-  const config = await loadConfig(home, io.env);
+  const config = await loadConfig(home, io.env, io.passwdHome);
   // The local folders only, never the cache: what is published is what is on disk.
   const { store: local } = await createContext(io, { local: true });
   const { client, url } = await clientFor(io, home, config);

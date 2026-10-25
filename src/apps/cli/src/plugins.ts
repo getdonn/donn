@@ -139,11 +139,12 @@ export async function loadPlugin(
   home: string,
   entry: string,
   env: Env,
+  passwd?: () => string | undefined,
 ): Promise<Omit<LoadedPlugin<unknown>, "plugin"> & { module: unknown }> {
   let resolved: string;
   let version: string | undefined;
   if (isPath(entry)) {
-    const path = expandPath(entry, home, env);
+    const path = expandPath(entry, home, env, passwd);
     if (!existsSync(path)) fail(entry, "not-found", `${path} does not exist`);
     resolved = path;
     if (statSync(path).isDirectory()) {
@@ -227,12 +228,17 @@ function asProvider(entry: string, value: unknown): SecretProvider {
 
 /** Every listed adapter, validated: contract version, no built-in or duplicate ids. */
 export async function loadAdapters(
-  ctx: Pick<Context, "home" | "config">,
+  ctx: Pick<Context, "home" | "config" | "passwdHome">,
   env: Env,
 ): Promise<LoadedPlugin<HarnessAdapter>[]> {
   const loaded: LoadedPlugin<HarnessAdapter>[] = [];
   for (const entry of ctx.config.adapters ?? []) {
-    const { module, ...where } = await loadPlugin(ctx.home, entry, env);
+    const { module, ...where } = await loadPlugin(
+      ctx.home,
+      entry,
+      env,
+      ctx.passwdHome,
+    );
     const plugin = asAdapter(entry, module);
     if (plugin.id in HARNESSES)
       fail(entry, "built-in-id", `its id ${plugin.id} is a built-in adapter`);
@@ -250,12 +256,17 @@ export async function loadAdapters(
 
 /** Every listed secret provider, validated: contract version, no built-in or duplicate types. */
 export async function loadSecretProviders(
-  ctx: Pick<Context, "home" | "config">,
+  ctx: Pick<Context, "home" | "config" | "passwdHome">,
   env: Env,
 ): Promise<LoadedPlugin<SecretProvider>[]> {
   const loaded: LoadedPlugin<SecretProvider>[] = [];
   for (const entry of ctx.config.secretProviders ?? []) {
-    const { module, ...where } = await loadPlugin(ctx.home, entry, env);
+    const { module, ...where } = await loadPlugin(
+      ctx.home,
+      entry,
+      env,
+      ctx.passwdHome,
+    );
     const plugin = asProvider(entry, module);
     if (BUILT_IN_TYPES.includes(plugin.type))
       fail(entry, "built-in-type", `its type ${plugin.type} is built in`);
@@ -295,7 +306,7 @@ export async function findAdapter(
 
 /** The built-in adapters, then the ones the config lists. */
 export async function allAdapters(
-  ctx: Pick<Context, "home" | "config">,
+  ctx: Pick<Context, "home" | "config" | "passwdHome">,
   env: Env,
 ): Promise<HarnessAdapter[]> {
   const loaded = await loadAdapters(ctx, env);
