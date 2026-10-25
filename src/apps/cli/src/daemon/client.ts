@@ -102,6 +102,8 @@ export interface DaemonClient {
     project: string,
     name: string,
   ): Promise<{ stopped: boolean; leftovers?: number; exited?: number }>;
+  /** `POST /ui/open`: the loopback bridge's port and a one-time sign-in code (spec 26 §1). */
+  openUi(port?: number): Promise<{ port: number; code: string }>;
   /** Follow `GET /events`; returns a function that stops following. */
   events(on: (e: DaemonEvent) => void): () => void;
 }
@@ -298,6 +300,13 @@ export async function connectDaemon(
         project,
         name,
       })) as { stopped: boolean; leftovers?: number; exited?: number },
+    openUi: async (port) =>
+      (await call(
+        "POST",
+        "/ui/open",
+        CALL_TIMEOUT_MS,
+        port === undefined ? {} : { port },
+      )) as { port: number; code: string },
     events: (on) => {
       const req = request(
         {

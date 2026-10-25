@@ -19,6 +19,7 @@ import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { cliVersion } from "./commands/daemon.js";
 import { statusCommand } from "./commands/status.js";
+import { uiCommand } from "./commands/ui.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
 import {
@@ -740,6 +741,16 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { daemon, sessions } as JSON")
         .action((options) =>
           handle(options.json, () => statusCommand(io, options)),
+        );
+
+      program
+        .command("ui")
+        .description("Open the donn app in your browser, served by the daemon")
+        .option("--no-open", "print the URL instead of opening the browser")
+        .option("--port <n>", "listen on this port (1024-65535)")
+        .option("--json", "print { url, port } as JSON")
+        .action((options) =>
+          handle(options.json, () => uiCommand(io, options)),
         );
 
       try {

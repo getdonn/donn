@@ -102,6 +102,7 @@ runs it with approval `never`; the sandbox still applies.)
 ```sh
 donn daemon start    # a background process, per DONN_HOME
 donn status          # the sessions it knows of, and whether each is current
+donn ui              # the app in your browser, served by the daemon (--no-open, --port)
 donn daemon stop
 ```
 
