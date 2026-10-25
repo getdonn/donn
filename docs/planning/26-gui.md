@@ -15,6 +15,23 @@
 > example `eve link`); eve's `next.args` is the continuation; events arrive on stdout and stderr
 > mixed with text. Recordings: `spikes/eve-runner/templates/fixtures/` and
 > `spikes/eve-runner/runtime/recordings/`.
+> *Amended 2026-10-25 (planning, maintainer's decisions):*
+> - **Stack.** Vite 8 + React 19 + TypeScript; shadcn/ui on Tailwind CSS v4 (open question 2);
+>   react-router for routes, TanStack Query for requests. Next.js's static export was the
+>   alternative; nothing here server-renders.
+> - **Desktop deferred.** Layers 1–3 (bridge, `donn ui`, the web app with every screen) are built
+>   now; layer 4 (Tauri 2, tray, packaging) follows once the web app has been used and open
+>   question 1 is decided. This machine has no Rust toolchain yet.
+> - **Env secrets under the daemon** (left open by `25`'s final review): a terminal
+>   `donn agent run` resolves `secret://env/…` refs itself and sends those values with the run
+>   request over the user-only socket; a run started from the GUI has no shell, so it refuses
+>   env-provider refs with the fix to use the keychain provider. Other providers resolve in the
+>   daemon as before (§2, "Env secrets").
+> - **Output schemas.** The CLI has no zod schemas for its `--json` output yet; a private
+>   workspace package `@getdonn/cli-schemas` defines them, the CLI's tests validate real output
+>   against them, and the app imports them (§4).
+> - **Templates.** The builder lists templates through a new `donn agent templates --json` (the
+>   adapter's table plus the `eve:blank` entry), so the app reads nothing outside the CLI.
 
 ## Intent
 
@@ -81,13 +98,19 @@ of its release work (Open questions).
   | `POST /v1/open` | `{ path }` → the user's editor (`$VISUAL`, `$EDITOR`, else the OS default); the path must be inside a known personas root or the project |
 
 - **The UI allowlist** (every form with `--json`): `list`, `switch` in the forms `/run` allows,
-  `resolve` (with `--explain`), `capabilities`, `diff`, `status`, `doctor`, `whoami`, `login`,
-  `logout`, `pull`, `publish`, `write`, `managed build|check` and every `agent` subcommand. Never
-  `daemon`, `mod install`, `managed install|uninstall` (they need `sudo`), `migrate`, `init`,
-  `live` (it belongs to a harness session), or a harness launch (`claude`, `codex`).
+  `resolve` (with `--explain`), `compile` (*added 2026-10-25*, for the compile reports),
+  `capabilities`, `diff`, `status`, `doctor`, `whoami`, `login`, `logout`, `pull`, `publish`,
+  `write`, `managed build|check` and every `agent` subcommand. Never `daemon`, `mod install`,
+  `managed install|uninstall` (they need `sudo`), `migrate`, `init`, `live` (it belongs to a harness
+  session), or a harness launch (`claude`, `codex`).
 - **Outward actions confirm in the UI.** `publish`, `agent deploy` and the env push it does are
   sent with the CLI's own confirmation flag only after a dialog that shows what the CLI would have
   prompted. The CLI is unchanged: it already prompts for these on a TTY.
+- **Env secrets** *(added 2026-10-25)*. A run the bridge starts carries no caller environment:
+  a `secret://env/…` ref fails `secret-unresolved` with a fix naming the keychain provider. The
+  socket's `POST /agents/run` accepts `{ env: { <ref>: <value> } }` from a terminal `donn agent
+  run`, which resolves env-provider refs in its own environment first; the daemon uses those
+  values for that run only and never logs or stores them.
 - **`cwd`** must be a project the daemon knows (it has a session or a created agent there) or one
   the user picked in the app's project picker, which records it in `~/.donn/ui.json`.
 
@@ -120,6 +143,10 @@ of its release work (Open questions).
 
 - `src/apps/ui`: Vite, React, TypeScript; a small typed client over `/v1/run` whose result types
   come from the CLI's `--json` output schemas (zod), so the app and the CLI cannot drift.
+  *(2026-10-25)* The schemas live in the private package `@getdonn/cli-schemas` (a dev
+  dependency of the CLI, whose tests parse real output with them, and a dependency of the app,
+  which bundles them). The app's build is copied into the CLI's `dist/ui/` at build time, so the
+  published `@getdonn/cli` serves it with no extra package.
 - `src/apps/desktop`: Tauri 2; the shell only: daemon start or attach, token, tray, window.
 - The bridge lives in the daemon (`src/apps/cli`, where the daemon runs today).
 
@@ -128,7 +155,7 @@ of its release work (Open questions).
 | 1 `bridge` | the loopback listener, the UI token and one-time code, Host/Origin checks, the UI allowlist, jobs and their events, `/v1/open`; `donn ui` |
 | 2 `app` | `src/apps/ui`: shell, project picker, screens 1–4 |
 | 3 `agents` | screen 5, after `25`'s layer 2 |
-| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux |
+| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux (*deferred 2026-10-25*) |
 
 - **Bridge:** requests without the token, with a wrong `Host` or a foreign `Origin` are refused; a
   used one-time code fails; a command outside the allowlist is `403`; `/v1/open` outside a known
