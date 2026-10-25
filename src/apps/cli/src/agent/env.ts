@@ -1,14 +1,13 @@
 import { resolveSecrets, SecretResolutionError } from "@getdonn/secrets";
 import type { CliIo } from "../cli.js";
-import { printWarnings, type Context } from "../context.js";
+import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
 import { backendLoader } from "../plugins.js";
 import { secretContext } from "../secret-context.js";
 import { eveEnv } from "./eve.js";
-import { posixRelative } from "./files.js";
 import { compile, compileInputs } from "./inputs.js";
 import { nodeSpawn } from "./spawn.js";
-import { locateAgent, resolveProject } from "./sync.js";
+import { loadCreatedAgent } from "./load.js";
 
 // `donn agent env` and `donn agent exec`: the environment an agent needs, from the compile's
 // `secretEnv` and `env` and what its target adds, and a command run with it resolved.
@@ -30,6 +29,7 @@ export interface EnvEntry {
 }
 
 const ROUTE_TOKEN = "DONN_ROUTE_TOKEN";
+const SIGNALS: NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGHUP"];
 const WORLD_DATABASE = "WORKFLOW_POSTGRES_URL";
 
 export interface AgentEnvironment {
@@ -45,35 +45,8 @@ export async function agentEnvironment(
   name: string,
   options: { resolve: boolean },
 ): Promise<AgentEnvironment> {
-  const project = await resolveProject(ctx);
-  if (project === undefined) {
-    throw new CliError(
-      "no-project-persona",
-      "no project persona here; an agent is declared in the repo's project persona",
-      { fix: "donn init --extends <persona>" },
-    );
-  }
-  const { root, result } = project;
-  printWarnings(io, result);
-  const agent = result.ir.agents[name];
-  if (agent === undefined) {
-    throw new CliError(
-      "agent-not-declared",
-      `the persona declares no agent ${name}`,
-      {
-        agent: name,
-        fix: `donn agent create ${name} --template <…> --target <…>`,
-      },
-    );
-  }
-  const { dir, manifest } = await locateAgent(ctx, root, name, agent);
-  if (manifest === undefined || manifest.state !== "complete") {
-    throw new CliError(
-      "agent-not-created",
-      `agent ${name} is not created (nothing complete at ${posixRelative(root, dir)})`,
-      { agent: name, fix: `donn agent create ${name}` },
-    );
-  }
+  const { result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
+  const agent = result.ir.agents[name]!;
   const output = compile(
     await compileInputs(ctx, result.ir, name, dir, manifest.frameworkVersion),
   );
@@ -156,15 +129,18 @@ export async function agentEnv(
   return (await agentEnvironment(ctx, io, name, options)).entries;
 }
 
-/** NAME=value lines; a secret without its value is `NAME=` and its ref as a comment. */
+/**
+ * NAME=value lines. A secret without its value is `NAME=` and its ref as a comment; a value set
+ * at run time is a comment line only, so loading the file never overrides the real value.
+ */
 export function formatDotenv(entries: EnvEntry[]): string {
   return entries
     .map((e) => {
+      if (e.source === "runtime")
+        return `# ${e.name}: set at run time (${e.why})`;
       if (e.source === "plain" || e.value !== undefined)
         return `${e.name}=${quote(e.value ?? "")}`;
-      return e.ref === undefined
-        ? `${e.name}= # ${e.why}`
-        : `${e.name}= # ${e.ref}`;
+      return `${e.name}= # ${e.ref}`;
     })
     .map((line) => `${line}\n`)
     .join("");
@@ -201,5 +177,14 @@ export async function exec(
     onLine: (line, stream) =>
       (stream === "stderr" ? io.stderr : io.stdout).write(`${line}\n`),
   });
-  return child.exited;
+  // As a container's entrypoint this is the process that gets the signal; pass it on, so the
+  // child (which holds the resolved secrets) is not orphaned.
+  const forward = (signal: NodeJS.Signals) => () => child.kill(signal);
+  const handlers = SIGNALS.map((s) => [s, forward(s)] as const);
+  for (const [signal, handler] of handlers) process.on(signal, handler);
+  try {
+    return await child.exited;
+  } finally {
+    for (const [signal, handler] of handlers) process.off(signal, handler);
+  }
 }

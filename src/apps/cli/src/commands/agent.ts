@@ -1,10 +1,9 @@
-import { resolve as resolvePath } from "node:path";
 import { create, type CreateOptions } from "../agent/create.js";
 import { agentEnv, exec, formatDotenv } from "../agent/env.js";
+import { projectContext } from "../agent/load.js";
 import { agentStates, formatRows } from "../agent/list.js";
 import { sync, type SyncOptions } from "../agent/sync.js";
 import type { CliIo } from "../cli.js";
-import { createContext } from "../context.js";
 
 // donn agent: build, run and deploy agents on a persona. See docs/planning/25-agent-runner.md.
 
@@ -19,11 +18,7 @@ export async function agentListCommand(
   io: CliIo,
   options: AgentOptions,
 ): Promise<number> {
-  const ctx = await createContext(
-    options.project === undefined
-      ? io
-      : { ...io, cwd: resolvePath(io.cwd, options.project) },
-  );
+  const ctx = await projectContext(io, options.project);
   const agents = await agentStates(ctx, io);
   io.stdout.write(
     options.json
@@ -56,21 +51,13 @@ export interface EnvOptions extends AgentOptions {
   format?: "dotenv" | "json";
 }
 
-async function projectContext(io: CliIo, options: AgentOptions) {
-  return createContext(
-    options.project === undefined
-      ? io
-      : { ...io, cwd: resolvePath(io.cwd, options.project) },
-  );
-}
-
 /** `donn agent env <name>`: see agent/env.ts. */
 export async function agentEnvCommand(
   io: CliIo,
   name: string,
   options: EnvOptions,
 ): Promise<number> {
-  const ctx = await projectContext(io, options);
+  const ctx = await projectContext(io, options.project);
   const env = await agentEnv(ctx, io, name, {
     resolve: options.resolve === true,
   });
@@ -89,5 +76,5 @@ export async function agentExecCommand(
   command: string[],
   options: AgentOptions,
 ): Promise<number> {
-  return exec(await projectContext(io, options), io, name, command);
+  return exec(await projectContext(io, options.project), io, name, command);
 }

@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeEve } from "../test/fake-eve.js";
 import { seed, zz, type Seeded } from "../test/seed.js";
 
@@ -108,7 +108,10 @@ describe("donn agent env", () => {
     expect(r.stdout).toContain("API_TOKEN= # secret://env/API_TOKEN");
     expect(r.stdout).toContain("GREETING=hello");
     expect(r.stdout).toMatch(/AI_GATEWAY_API_KEY=|DONN_SECRET_1= # secret:/);
-    expect(r.stdout).toContain("DONN_ROUTE_TOKEN=");
+    expect(r.stdout).toContain(
+      "# DONN_ROUTE_TOKEN: set at run time (route-auth)",
+    );
+    expect(r.stdout).not.toMatch(/^DONN_ROUTE_TOKEN=/m);
     const json = await run(["env", "kody", "--format", "json"]);
     expect(json.stdout).not.toContain("-SECRET");
     const entries = JSON.parse(json.stdout).env;
@@ -175,6 +178,32 @@ describe("donn agent env", () => {
     });
   });
 
+  it("--resolve writes run-time entries as comments only", async () => {
+    setup("self-host", "      world: postgres\n");
+    await create();
+    const r = await run(["env", "kody", "--resolve"]);
+    expect(r.stdout).not.toMatch(/^(DONN_ROUTE_TOKEN|WORKFLOW_POSTGRES_URL)=/m);
+    expect(r.stdout).toContain(
+      "# WORKFLOW_POSTGRES_URL: set at run time (world-database)",
+    );
+  });
+
+  it("stops on an incomplete create and on a changed target", async () => {
+    await create();
+    const manifest = join(s.repo, "agents/kody/.donn/agent.json");
+    const saved = readFileSync(manifest, "utf8");
+    writeFileSync(
+      manifest,
+      JSON.stringify({ ...JSON.parse(saved), state: "incomplete" }),
+    );
+    const incomplete = await run(["env", "kody", "--json"]);
+    expect(incomplete.stdout + incomplete.stderr).toContain("agent-incomplete");
+    writeFileSync(manifest, saved);
+    setup("self-host");
+    const changed = await run(["env", "kody", "--json"]);
+    expect(changed.stdout + changed.stderr).toContain("recreate-needed");
+  });
+
   it("stops for an agent that was never created", async () => {
     const r = await run(["env", "kody", "--json"]);
     expect(r.code).not.toBe(0);
@@ -220,6 +249,36 @@ describe("donn agent exec", () => {
     const r = await run(["exec", "kody", "--", "true"]);
     expect(r.code).not.toBe(0);
     expect(spawner.calls).toHaveLength(0);
+  });
+
+  it("forwards SIGTERM to the child and stops listening afterwards", async () => {
+    await create();
+    const kills: string[] = [];
+    let finish: (code: number) => void = () => undefined;
+    const calls: string[] = [];
+    spawner = Object.assign(
+      () => {
+        calls.push("spawn");
+        return {
+          pid: 1,
+          exited: new Promise<number>((resolve) => (finish = resolve)),
+          kill: (signal?: string) => {
+            kills.push(signal ?? "");
+            finish(143);
+          },
+        };
+      },
+      { calls: [] },
+    ) as unknown as ReturnType<typeof fakeEve>;
+    const before = process.listenerCount("SIGTERM");
+    const pending = run(["exec", "kody", "--", "serve"]);
+    await vi.waitFor(() => expect(calls).toEqual(["spawn"]));
+    expect(process.listenerCount("SIGTERM")).toBe(before + 1);
+    process.emit("SIGTERM");
+    const r = await pending;
+    expect(kills).toEqual(["SIGTERM"]);
+    expect(r.code).toBe(143);
+    expect(process.listenerCount("SIGTERM")).toBe(before);
   });
 
   it("needs a command after --", async () => {

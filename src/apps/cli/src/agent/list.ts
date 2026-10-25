@@ -5,11 +5,11 @@ import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
 import {
   locateAgent,
-  recompile,
   recreateField,
   resolveProject,
   type RecreateField,
-} from "./sync.js";
+} from "./load.js";
+import { recompile } from "./sync.js";
 
 // `donn agent list`: the agents of the project persona and where each stands.
 // See docs/planning/25-agent-runner.md, sections 1 and 3.
