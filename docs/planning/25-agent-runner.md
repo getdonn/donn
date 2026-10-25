@@ -261,3 +261,5 @@ Windows (the daemon service is macOS and Linux today).
 1. **Template provenance.** Tarballs come from the eve repository on GitHub at a tag. Should donn
    verify them beyond HTTPS (a checksum table per version in the adapter)? Lean: yes, the table
    that already lists each template's services can carry its digest.
+
+- 2026-10-25 (final review of 24, deferred here): a path template's Vercel services are unknown, so consider reporting `portability-unknown` for it as for an unknown slug; a template's own `experimental` or `modelContextWindowTokens` in `agent.ts` is replaced by the `...donn` spread (an advisory needs `agent.ts` knowledge); a `requiredEnv` output field would let `donn agent env` and `doctor` list the env a compile needs without parsing `env.ts`.

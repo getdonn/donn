@@ -2,6 +2,7 @@ import { corpus } from "@getdonn/adapter-sdk/conformance";
 import { agentConformanceSuite } from "@getdonn/adapter-sdk/conformance/vitest";
 import type { AgentConformanceCase } from "@getdonn/adapter-sdk/conformance";
 import type { ResolvedPersona } from "@getdonn/spec";
+import { goldenCases, goldenInput } from "./testing/golden-cases.js";
 import adapter from "./index.js";
 
 // The shared agent conformance kit, over the SDK corpus personas with an agent added.
@@ -40,4 +41,10 @@ const cases: AgentConformanceCase[] = corpus.map(
   }),
 );
 
-agentConformanceSuite(adapter, cases);
+// The golden builds too: secretEnv, auth.getToken, a written sandbox.ts and the gateway key.
+const golden: AgentConformanceCase[] = goldenCases.map((c) => ({
+  name: `golden ${c.name}`,
+  input: goldenInput(c),
+}));
+
+agentConformanceSuite(adapter, [...cases, ...golden]);

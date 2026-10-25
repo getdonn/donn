@@ -135,7 +135,7 @@ interface TemplateInfo {
 
 interface PortabilityEntry {
   target: "local" | "self-host" | "vercel";
-  service: VercelService;
+  service: PortabilityService;
   /** What to do instead at this target, written to be read as an instruction. */
   instead: string;                    // "Bring a GitHub App: set GITHUB_APP_PRIVATE_KEY …"
   /** Env names the replacement needs, if any. */
