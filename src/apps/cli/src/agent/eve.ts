@@ -36,19 +36,19 @@ export function eveEnv(
   return { ...env, ...extra };
 }
 
-/** Runs `<pm> exec eve <args>` in `dir`; a non-zero exit is returned, not thrown. */
-export async function runEve(
+/** Runs `command args` in `dir`, keeping the last lines; a non-zero exit is returned, not thrown. */
+export async function runTool(
   io: CliIo,
   dir: string,
+  command: string,
   args: string[],
-  options: { env: Record<string, string>; onProgress?: (line: string) => void },
+  options: { env: NodeJS.ProcessEnv; onProgress?: (line: string) => void },
 ): Promise<{ exitCode: number; tail: string[] }> {
   const spawn = io.spawn ?? nodeSpawn;
-  const pm = await packageManager(dir);
   const tail: string[] = [];
-  const child = spawn(pm, ["exec", "eve", ...args], {
+  const child = spawn(command, args, {
     cwd: dir,
-    env: eveEnv(io.env, options.env),
+    env: options.env,
     onLine: (line) => {
       tail.push(line);
       if (tail.length > TAIL_LINES) tail.shift();
@@ -57,4 +57,18 @@ export async function runEve(
   });
   const exitCode = await child.exited;
   return { exitCode, tail };
+}
+
+/** Runs `<pm> exec eve <args>` in `dir`; a non-zero exit is returned, not thrown. */
+export async function runEve(
+  io: CliIo,
+  dir: string,
+  args: string[],
+  options: { env: Record<string, string>; onProgress?: (line: string) => void },
+): Promise<{ exitCode: number; tail: string[] }> {
+  const pm = await packageManager(dir);
+  return runTool(io, dir, pm, ["exec", "eve", ...args], {
+    env: eveEnv(io.env, options.env),
+    ...(options.onProgress && { onProgress: options.onProgress }),
+  });
 }
