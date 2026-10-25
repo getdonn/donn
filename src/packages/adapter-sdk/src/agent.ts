@@ -38,7 +38,7 @@ export interface AgentCompileInput {
   agent: string;
   /** The pinned framework version (`25` §2). */
   frameworkVersion: string;
-  /** Text of every file the IR references by path, as for harnesses. */
+  /** Text of every file the IR references by path, as for harnesses, and of every file of a local skill directory. */
   texts: Record<string, string>;
   /** Facts about the created project that change the output. */
   project: {

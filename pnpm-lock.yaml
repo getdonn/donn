@@ -367,6 +367,34 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
 
+  src/packages/adapters/eve:
+    dependencies:
+      '@getdonn/adapter-sdk':
+        specifier: workspace:*
+        version: link:../../adapter-sdk
+      '@getdonn/spec':
+        specifier: workspace:*
+        version: link:../../spec
+    devDependencies:
+      '@getdonn/eslint-config':
+        specifier: workspace:*
+        version: link:../../eslint-config
+      '@getdonn/typescript-config':
+        specifier: workspace:*
+        version: link:../../typescript-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      eslint:
+        specifier: 10.13.0
+        version: 10.13.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
+
   src/packages/eslint-config:
     devDependencies:
       '@babel/core':
