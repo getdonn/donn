@@ -26,21 +26,30 @@ export const watchKey = (paths: string[]) =>
  * Call `onChange` once `debounceMs` pass after the last change under `paths`. A folder is watched
  * recursively; a file, or a path that does not exist yet, through its parent folder filtered by
  * name, so an editor's atomic rename and the path's creation are both seen. `accept` filters
- * changes by absolute path. A watcher that fails counts as a change: the caller recomputes.
+ * changes by absolute path. `onChange` gets the paths changed since its last call, or undefined
+ * when that is not known: a watcher that fails counts as a change, and the caller recomputes.
  */
 export function watchSources(
   paths: string[],
-  onChange: () => void,
+  onChange: (changed: ReadonlySet<string> | undefined) => void,
   debounceMs: number,
   accept: (path: string) => boolean = () => true,
 ): Watch {
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
+  let pending: Set<string> | undefined = new Set();
   const watchers: FSWatcher[] = [];
+  const fire = () => {
+    const changed = pending;
+    pending = new Set();
+    onChange(changed);
+  };
   const changed = (path: string | undefined) => {
     if (closed || (path !== undefined && !accept(path))) return;
+    if (path === undefined) pending = undefined;
+    else pending?.add(path);
     clearTimeout(timer);
-    timer = setTimeout(onChange, debounceMs);
+    timer = setTimeout(fire, debounceMs);
   };
   const add = (
     dir: string,

@@ -1,37 +1,27 @@
-import { dirname, resolve as resolvePath } from "node:path";
 import type { AgentCompileOutput } from "@getdonn/adapter-sdk";
-import type { ResolvedAgent, ResolveResult } from "@getdonn/spec";
+import type { ResolveResult } from "@getdonn/spec";
 import { printReport } from "../build.js";
 import type { CliIo } from "../cli.js";
-import {
-  createContext,
-  printWarnings,
-  resolvePersona,
-  type Context,
-} from "../context.js";
-import { CliError } from "../errors.js";
+import type { Context } from "../context.js";
 import {
   checkOwned,
   pendingChanges,
   planFiles,
   posixRelative,
-  readManifest,
   writeAgentFiles,
   writeManifest,
   type Manifest,
   type PlannedFiles,
 } from "./files.js";
 import { compile, compileInputs } from "./inputs.js";
-import { listCreated } from "./registry.js";
+import { withFileLock } from "../fs.js";
+import { loadCreatedAgent, projectContext, projectRoot } from "./load.js";
+import { agentLockPath } from "./registry.js";
 
 // `donn agent sync <name>`: recompile and rewrite donn's files in a created agent by the
 // manifest's rules (docs/planning/24-adapter-eve.md, section 4). It never touches agent.ts or
 // anything donn does not own. Also the shared lookups `list` uses.
 // See docs/planning/25-agent-runner.md, section 3.
-
-export const PROJECT_PERSONA = "project/persona";
-
-export type RecreateField = "template" | "target" | "path" | "world";
 
 export interface SyncOptions {
   force?: boolean;
@@ -39,53 +29,6 @@ export interface SyncOptions {
   json?: boolean;
   /** The project folder; the current directory's project by default. */
   project?: string;
-}
-
-/** The project's root folder and its resolved persona; undefined outside a project. */
-export async function resolveProject(
-  ctx: Context,
-): Promise<{ root: string; result: ResolveResult } | undefined> {
-  if (ctx.projectDir === undefined) return undefined;
-  const result = await resolvePersona(
-    ctx,
-    { ref: PROJECT_PERSONA, source: "project" },
-    false,
-  );
-  return { root: dirname(ctx.projectDir), result };
-}
-
-/** The agent's folder and manifest: at the persona's path, else where it was created. */
-export async function locateAgent(
-  ctx: Context,
-  root: string,
-  name: string,
-  agent: ResolvedAgent,
-): Promise<{ dir: string; manifest?: Manifest }> {
-  const dir = resolvePath(root, agent.path);
-  const own = (m: Manifest | undefined) => (m?.agent === name ? m : undefined);
-  const here = own(await readManifest(dir));
-  if (here !== undefined) return { dir, manifest: here };
-  const created = (await listCreated(ctx.home)).find(
-    (c) => c.project === root && c.name === name && c.path !== undefined,
-  );
-  if (created?.path !== undefined && created.path !== agent.path) {
-    const moved = resolvePath(root, created.path);
-    const manifest = own(await readManifest(moved));
-    if (manifest !== undefined) return { dir: moved, manifest };
-  }
-  return { dir };
-}
-
-/** The first of template, target, path and world the persona changed since the create. */
-export function recreateField(
-  agent: ResolvedAgent,
-  manifest: Manifest,
-): RecreateField | undefined {
-  if (agent.template !== manifest.template) return "template";
-  if (agent.target !== manifest.target) return "target";
-  if (agent.path !== manifest.path) return "path";
-  if (agent.world !== manifest.world) return "world";
-  return undefined;
 }
 
 /** A fresh compile against the agent directory, at the version the agent was created with. */
@@ -102,67 +45,47 @@ export async function recompile(
   return { output, planned: await planFiles(output, ctx.store) };
 }
 
-const fixCreate = (name: string) => `donn agent create ${name}`;
+export interface SyncedAgent {
+  root: string;
+  dir: string;
+  output: AgentCompileOutput;
+  written: string[];
+  removed: string[];
+  /** Owned files edited by hand: overwritten with `force`, else the sync stops on them. */
+  edited: string[];
+}
 
-export async function sync(
+/**
+ * The sync itself, for the command and the daemon: recompile `name` and, unless `dryRun`, write
+ * donn's files and the manifest. An owned file edited by hand stops it (`owned-file-edited`)
+ * unless `force`. `onCompiled` sees the compile before any stop. It holds the agent's lock from
+ * reading the manifest to writing it, so a sync in another process (the daemon's, a terminal's)
+ * waits rather than reading this one's files as edited.
+ */
+export async function syncAgent(
+  ctx: Context,
   io: CliIo,
   name: string,
-  options: SyncOptions,
-): Promise<number> {
-  const ctx = await createContext(
-    options.project === undefined
-      ? io
-      : { ...io, cwd: resolvePath(io.cwd, options.project) },
+  options: {
+    force?: boolean;
+    dryRun?: boolean;
+    onCompiled?: (output: AgentCompileOutput) => void | Promise<void>;
+  } = {},
+): Promise<SyncedAgent> {
+  return withFileLock(agentLockPath(ctx.home, projectRoot(ctx), name), () =>
+    syncLocked(ctx, io, name, options),
   );
-  const project = await resolveProject(ctx);
-  if (project === undefined) {
-    throw new CliError(
-      "no-project-persona",
-      "no project persona here; an agent is declared in the repo's project persona",
-      { fix: "donn init --extends <persona>" },
-    );
-  }
-  const { root, result } = project;
-  printWarnings(io, result);
-  const agent = result.ir.agents[name];
-  if (agent === undefined) {
-    throw new CliError(
-      "agent-not-declared",
-      `the persona declares no agent ${name}`,
-      { agent: name, fix: `${fixCreate(name)} --template <…> --target <…>` },
-    );
-  }
-  const { dir, manifest } = await locateAgent(ctx, root, name, agent);
-  const shown = posixRelative(root, dir);
-  if (manifest === undefined) {
-    throw new CliError(
-      "agent-not-created",
-      `agent ${name} is not created (nothing at ${shown})`,
-      { agent: name, fix: fixCreate(name) },
-    );
-  }
-  if (manifest.state !== "complete") {
-    throw new CliError(
-      "agent-incomplete",
-      `${shown} holds an incomplete create of ${name}`,
-      { dir, fix: `${fixCreate(name)} --force` },
-    );
-  }
-  const field = recreateField(agent, manifest);
-  if (field !== undefined) {
-    throw new CliError(
-      "recreate-needed",
-      `the persona changed ${name}'s ${field} since it was created; that decides files donn does not own, so sync does not rewrite them`,
-      {
-        agent: name,
-        field,
-        fix: `remove ${shown}, then ${fixCreate(name)}`,
-      },
-    );
-  }
+}
 
+async function syncLocked(
+  ctx: Context,
+  io: CliIo,
+  name: string,
+  options: Parameters<typeof syncAgent>[3] & {},
+): Promise<SyncedAgent> {
+  const { root, result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
   const { output, planned } = await recompile(ctx, result, name, dir, manifest);
-  if (!options.json) printReport(io, output);
+  await options.onCompiled?.(output);
   const { written, removed } = await pendingChanges(dir, planned, manifest);
   // A dry run stops where the real sync would; with --force it reports the overwrites.
   const edited = await checkOwned(dir, manifest, options.force === true);
@@ -173,6 +96,26 @@ export async function sync(
     });
     await writeManifest(dir, { ...manifest, files });
   }
+  return { root, dir, output, written, removed, edited };
+}
+
+export async function sync(
+  io: CliIo,
+  name: string,
+  options: SyncOptions,
+): Promise<number> {
+  const ctx = await projectContext(io, options.project);
+  const { root, dir, output, written, removed, edited } = await syncAgent(
+    ctx,
+    io,
+    name,
+    {
+      force: options.force,
+      dryRun: options.dryRun,
+      ...(!options.json && { onCompiled: (o) => printReport(io, o) }),
+    },
+  );
+  const shown = posixRelative(root, dir);
 
   if (options.json) {
     io.stdout.write(

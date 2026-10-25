@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -27,6 +28,20 @@ const Index = z.object({
 });
 
 const indexFile = (home: string) => join(home, "agents", "index.json");
+
+/** `<home>/agents/<first 16 hex of sha256(project)>/<file>`: a project's agents' own files. */
+export function agentStatePath(
+  home: string,
+  project: string,
+  file: string,
+): string {
+  const hash = createHash("sha256").update(project).digest("hex").slice(0, 16);
+  return join(home, "agents", hash, file);
+}
+
+/** The lock a sync of agent `name` holds while it checks and writes donn's files. */
+export const agentLockPath = (home: string, project: string, name: string) =>
+  agentStatePath(home, project, `${name}.lock`);
 const same = (a: CreatedAgent, b: CreatedAgent) =>
   a.project === b.project && a.name === b.name;
 

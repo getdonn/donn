@@ -20,12 +20,15 @@ import {
 import { connect } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
+import { listCreated, type CreatedAgent } from "../agent/registry.js";
+import type { Spawn } from "../agent/spawn.js";
 import { isAlive, nodeProbe } from "@getdonn/executor";
 import type { CliIo } from "../cli.js";
 import { loadConfig } from "../config.js";
 import { CliError } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { listSessions, removeSession, type SessionInfo } from "../session.js";
+import { agentRunner } from "./agents.js";
 import type {
   DaemonEvent,
   DaemonStatus,
@@ -36,7 +39,7 @@ import { createLog } from "./log.js";
 import { daemonPaths, privateSocketDir } from "./paths.js";
 import { isDaemonProcess } from "./process.js";
 import { refreshSession, type RefreshOutcome } from "./refresh.js";
-import { allowedRun, runInProcess } from "./run.js";
+import { agentCreated, allowedRun, runInProcess } from "./run.js";
 import { watchKey, watchSources, type Watch } from "./watch.js";
 
 // The daemon: HTTP/1.1 with JSON bodies over a unix socket, a bearer token on every request.
@@ -55,6 +58,8 @@ export interface DaemonOptions {
   now?: () => number;
   /** Test seam: the system's record of the user's home folder (see userhome.ts). */
   passwdHome?: () => string | undefined;
+  /** Runs the agents' own eve (spec 25); defaults to node:child_process. */
+  spawn?: Spawn;
 }
 
 export interface Daemon {
@@ -343,9 +348,39 @@ interface Tracked {
   pid: number;
 }
 
-const failure = (code: string, message: string) => ({
-  error: { code, message },
+const failure = (
+  code: string,
+  message: string,
+  details?: Record<string, unknown>,
+) => ({
+  error: {
+    code,
+    message,
+    ...(details !== undefined &&
+      Object.keys(details).length > 0 && { details }),
+  },
 });
+
+/** `{ project, name }` from `POST /agents/run|stop`'s body, or the reason it is not one. */
+function agentRequest(
+  text: string,
+): { project: string; name: string } | string {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return "the body is not JSON";
+  }
+  const { project, name } = (body ?? {}) as {
+    project?: unknown;
+    name?: unknown;
+  };
+  if (typeof project !== "string" || !isAbsolute(project))
+    return "project must be an absolute path";
+  if (typeof name !== "string" || name === "")
+    return "name must be an agent's name";
+  return { project, name };
+}
 
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   const now = options.now ?? Date.now;
@@ -353,9 +388,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   await mkdir(paths.dir, { recursive: true, mode: 0o700 });
   await chmod(paths.dir, 0o700);
   const sessionsDir = join(options.home, "sessions");
+  const agentsIndex = join(options.home, "agents", "index.json");
   await acquireLock(paths.lock);
   try {
     await mkdir(sessionsDir, { recursive: true });
+    // So the created agents' index is watched before the first create writes it.
+    await mkdir(dirname(agentsIndex), { recursive: true, mode: 0o700 });
   } catch (error) {
     // Held, but not started: a lock left here would hold off every later start.
     await releaseLock(paths.lock);
@@ -382,6 +420,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     probe: options.probe ?? nodeProbe(),
     now,
     ...(options.passwdHome && { passwdHome: options.passwdHome }),
+    ...(options.spawn && { spawn: options.spawn }),
   };
 
   /** What the daemon last found for each running session, by folder. */
@@ -395,6 +434,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const text = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
     for (const stream of streams) stream.write(text);
   };
+
+  // The CLI run in-process (POST /run) starts and stops agents here, not over the socket.
+  const agents = agentRunner({ home: options.home, io, emit, log, now });
+  io.agents = agents;
 
   const status = async (): Promise<DaemonStatus> => ({
     version: options.version,
@@ -423,6 +466,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
           ...(t?.error !== undefined && { error: t.error }),
         };
       }),
+    agents: (await agents.list()).map(({ token: _, ...agent }) => agent),
+    syncFailed: agents.syncFailures(),
   });
 
   // The session registry only changes by a folder coming or going, or its launch record: the
@@ -434,8 +479,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     return parts.length === 1 || parts[1] === "launched.json";
   };
 
-  /** Watch the personas roots, running sessions' projects, the overlay, config and sessions. */
-  const rewatch = async (running: SessionInfo[]) => {
+  /**
+   * Watch the personas roots, the projects of running sessions and of created agents, the
+   * overlay, config, the registry index, sessions and the created agents' index.
+   */
+  const rewatch = async (running: SessionInfo[], created: CreatedAgent[]) => {
     const config = await loadConfig(options.home, io.env, io.passwdHome).catch(
       () => ({
         personas: undefined,
@@ -444,14 +492,16 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     // Shutdown may have begun during the read: it closes the watchers, so start none.
     if (stopping) return;
     const projects = [
-      ...new Set(
-        running.flatMap((s) =>
+      ...new Set([
+        ...running.flatMap((s) =>
           s.launched.project === undefined
             ? []
             : [join(s.launched.project, ".donn")],
         ),
-      ),
+        ...created.map((c) => join(c.project, ".donn")),
+      ]),
     ].filter((dir) => existsSync(dir));
+    watchedProjects = projects.map((dir) => dirname(dir));
     const paths = [
       ...(config.personas !== undefined ? [config.personas] : []),
       // The store's user layer: user personas live under <home>/personas.
@@ -462,12 +512,66 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       // A pull replaces the registry index by rename: published layers changed.
       join(options.home, "cache", "registry", "index.json"),
       sessionsDir,
+      // `donn agent create` in a terminal: announced, and its project watched.
+      agentsIndex,
     ];
     const key = watchKey(paths);
     if (watcher && key === watchedKey) return;
     watcher?.close();
-    watcher = watchSources(paths, () => void refresh(), debounceMs, accept);
+    watcher = watchSources(paths, changed, debounceMs, accept);
     watchedKey = key;
+  };
+
+  /** What changed since the last pass, for the agents: every source, or these paths. */
+  let agentScope: "all" | Set<string> = "all";
+  /** The projects watched, by root folder, as of the last rewatch. */
+  let watchedProjects: string[] = [];
+  const changed = (paths: ReadonlySet<string> | undefined) => {
+    if (paths === undefined) agentScope = "all";
+    else if (agentScope !== "all") for (const p of paths) agentScope.add(p);
+    void refresh();
+  };
+  /** An explicit refresh, and the first pass, sync every created agent. */
+  const refreshAll = () => {
+    agentScope = "all";
+    return refresh();
+  };
+
+  const under = (path: string, dir: string) =>
+    path === dir || path.startsWith(`${dir}${sep}`);
+
+  /**
+   * The created agents a change reaches: those of a project whose `.donn/` changed, or all of
+   * them when a shared source did (personas, the overlay, config, the registry index), since
+   * any project can inherit from it. Sessions and the agents' index reach none.
+   */
+  const reached = (
+    created: CreatedAgent[],
+    scope: "all" | Set<string>,
+  ): CreatedAgent[] => {
+    if (scope === "all") return created;
+    const projects = new Set<string>();
+    for (const path of scope) {
+      if (under(path, sessionsDir) || path === agentsIndex) continue;
+      const project = watchedProjects.find((p) =>
+        under(path, join(p, ".donn")),
+      );
+      if (project === undefined) return created;
+      projects.add(project);
+    }
+    return created.filter((c) => projects.has(c.project));
+  };
+
+  /** The created agents announced so far, by project and name; undefined before the first pass. */
+  let announced: Set<string> | undefined;
+  /** The index as the last pass read it: an entry gone from it since can be announced again. */
+  let listed = new Set<string>();
+  const createdKey = (c: { project: string; name: string }) =>
+    `${c.project}\0${c.name}`;
+  const announce = async (c: { project: string; name: string }) => {
+    announced?.add(createdKey(c));
+    await log(`agent ${c.name} created in ${c.project}`);
+    emit({ type: "agent.created", name: c.name, project: c.project });
   };
 
   const record = async (session: SessionInfo, outcome: RefreshOutcome) => {
@@ -541,8 +645,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     emit({ type: "session.ended", session: dir });
   };
 
-  /** One pass: drop dead sessions, note new ones, rewatch, refresh each running session. */
+  /**
+   * One pass: drop dead sessions, note new ones and new created agents, rewatch, refresh each
+   * running session, sync the created agents the changes reach.
+   */
   const cycle = async () => {
+    const scope = agentScope;
+    agentScope = new Set();
     const running: SessionInfo[] = [];
     for (const session of await listSessions(options.home)) {
       if (!session.running) {
@@ -577,11 +686,28 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       if (!live.has(dir)) await ended(dir);
     }
     if (stopping) return;
-    await rewatch(running);
+    const created = await listCreated(options.home).catch(async (error) => {
+      await log(`error agents index: ${String(error)}`);
+      return [] as CreatedAgent[];
+    });
+    // One created since the last pass (POST /run's are announced as they finish).
+    const keys = new Set(created.map(createdKey));
+    if (announced === undefined) announced = new Set(keys);
+    else {
+      for (const k of listed) if (!keys.has(k)) announced.delete(k);
+      for (const c of created)
+        if (!announced.has(createdKey(c))) await announce(c);
+    }
+    listed = keys;
+    await rewatch(running, created);
     for (const session of running) {
       // Shutdown finishes the swap in flight, not the ones after it.
       if (stopping) return;
       await record(session, await refreshSession(io, session));
+    }
+    for (const c of reached(created, scope)) {
+      if (stopping) return;
+      await agents.sync(c.project, c.name);
     }
   };
 
@@ -638,7 +764,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return;
       }
       if (route === "POST /refresh") {
-        await refresh();
+        await refreshAll();
         return send(res, 200, await status());
       }
       if (route === "POST /run") {
@@ -656,14 +782,52 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             403,
             failure(
               "not-allowed",
-              `not a command the mod runs: ${run.argv.join(" ")}`,
+              `not a command the socket runs: ${run.argv.join(" ")}`,
             ),
           );
         }
         await log(
           `run ${JSON.stringify(run.argv)} in ${JSON.stringify(run.cwd)}`,
         );
-        return send(res, 200, await runInProcess(io, run.argv, run.cwd));
+        const result = await runInProcess(io, run.argv, run.cwd);
+        const created =
+          result.exitCode === 0 && agentCreated(run.argv, run.cwd);
+        // Unless the pass the index change started has announced it already.
+        if (created && !announced?.has(createdKey(created)))
+          await announce(created);
+        return send(res, 200, result);
+      }
+      if (route === "GET /agents") {
+        return send(res, 200, { agents: await agents.list() });
+      }
+      if (route === "POST /agents/run" || route === "POST /agents/stop") {
+        const text = await readBody(req);
+        if (text === undefined) {
+          return send(res, 413, failure("too-large", "the body is over 1 MiB"));
+        }
+        const target = agentRequest(text);
+        if (typeof target === "string") {
+          return send(res, 400, failure("bad-request", target));
+        }
+        try {
+          return send(
+            res,
+            200,
+            route === "POST /agents/run"
+              ? await agents.run(target.project, target.name)
+              : {
+                  agent: target.name,
+                  ...(await agents.stop(target.project, target.name)),
+                },
+          );
+        } catch (error) {
+          if (!(error instanceof CliError)) throw error;
+          return send(
+            res,
+            400,
+            failure(error.code, error.message, error.details),
+          );
+        }
       }
       if (route === "POST /shutdown") {
         send(res, 200, { stopping: true });
@@ -687,6 +851,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       watcher?.close();
       // Finish the swap in flight: a session is never left half-swapped.
       while (inFlight || queued) await (queued ?? inFlight);
+      // Agents are this daemon's children: none outlives it.
+      await agents.closeAll();
       // Again: the refresh just finished may have rewatched before it saw `stopping`.
       watcher?.close();
       watcher = undefined;
@@ -754,13 +920,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   }
   await log(`started ${options.version} pid ${process.pid} on ${paths.sock}`);
   // The first pass: learn the sessions, start watching, catch up on edits made while stopped.
-  await refresh();
+  await refreshAll();
 
   return {
     socket: paths.sock,
     token,
     startedAt,
-    refresh,
+    refresh: refreshAll,
     close,
     closed,
   };
