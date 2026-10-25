@@ -1,4 +1,3 @@
-import { posix } from "node:path";
 import { z } from "zod";
 
 export const API_VERSION = "donn/v0";
@@ -147,11 +146,29 @@ export type AgentName = z.infer<typeof AgentName>;
 export const AgentTarget = z.enum(["local", "self-host", "vercel"]);
 export type AgentTarget = z.infer<typeof AgentTarget>;
 
+/**
+ * Lexical path normalization with no Node import (this package also runs in browsers): drops
+ * "" and "." segments and resolves ".." against what was kept. A ".." with nothing to pop stays
+ * as a leading "..". A leading "/" is kept, and ".." cannot climb above it.
+ */
+export function normalizeRelative(path: string): string {
+  const absolute = path.startsWith("/");
+  const kept: string[] = [];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment !== "..") kept.push(segment);
+    else if (kept.length > 0 && kept[kept.length - 1] !== "..") kept.pop();
+    else if (!absolute) kept.push("..");
+  }
+  const joined = kept.join("/");
+  return absolute ? `/${joined}` : joined === "" ? "." : joined;
+}
+
 /** A project-relative directory: stays inside the project and outside `.donn/`. */
 export const AgentPath = z.string().refine((value) => {
-  const path = posix.normalize(value);
+  const path = normalizeRelative(value);
   return (
-    !posix.isAbsolute(path) &&
+    !path.startsWith("/") &&
     path !== ".." &&
     !path.startsWith("../") &&
     path !== ".donn" &&
@@ -173,7 +190,7 @@ const EVE_TEMPLATE = /^eve:[a-z0-9]+(-[a-z0-9]+)*$/;
 export const AgentTemplate = z.string().refine((value) => {
   if (value.startsWith("eve:")) return EVE_TEMPLATE.test(value);
   if (value === "") return false;
-  const path = posix.normalize(value);
-  return !posix.isAbsolute(path) && path !== ".." && !path.startsWith("../");
+  const path = normalizeRelative(value);
+  return !path.startsWith("/") && path !== ".." && !path.startsWith("../");
 }, "must be eve:<slug> or a relative path inside the personas root");
 export type AgentTemplate = z.infer<typeof AgentTemplate>;
