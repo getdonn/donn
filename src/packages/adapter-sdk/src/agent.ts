@@ -68,6 +68,9 @@ export type VercelService =
   | "ai-gateway"
   | "github-checkout";
 
+/** What a portability entry is about: a Vercel service, or the route auth every agent has (`vercelOidc()`). */
+export type PortabilityService = VercelService | "route-auth";
+
 export interface TemplateInfo {
   /** The gallery slug: "kody-eve-template". */
   slug: string;
@@ -81,7 +84,7 @@ export interface TemplateInfo {
 
 export interface PortabilityEntry {
   target: "local" | "self-host" | "vercel";
-  service: VercelService;
+  service: PortabilityService;
   /** What to do instead at this target, written to be read as an instruction. */
   instead: string;
   /** Env names the replacement needs, if any. */

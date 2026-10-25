@@ -36,6 +36,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/parser": "^8.0.8",
     "@getdonn/adapter-sdk": "workspace:*",
     "@getdonn/spec": "workspace:*"
   },
