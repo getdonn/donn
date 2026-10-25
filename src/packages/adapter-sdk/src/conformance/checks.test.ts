@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { HarnessAdapter } from "../index.js";
+import { FIXED_CAPABILITY_FIELDS, type HarnessAdapter } from "../index.js";
 import { good } from "../testing/toy.js";
 import { runConformance, type CheckName } from "./index.js";
 
@@ -146,6 +146,25 @@ describe("runConformance", () => {
     "fails exactly %s for the adapter that breaks it",
     async (check, adapter) => {
       expect(await failedChecks(adapter)).toEqual([check]);
+    },
+  );
+
+  it.each(FIXED_CAPABILITY_FIELDS)(
+    "complete-matrix reports a missing %s field",
+    async (field) => {
+      const adapter: HarnessAdapter = {
+        ...good,
+        capabilities: () => {
+          const { [field]: _missing, ...fields } = good.capabilities().fields;
+          return { fields };
+        },
+      };
+      // Other checks may fail too (a field the output relies on), so only this one is pinned.
+      expect(await failedChecks(adapter)).toContain("complete-matrix");
+      const failure = (await runConformance(adapter)).find(
+        (r) => r.name === "complete-matrix" && !r.passed,
+      );
+      expect(JSON.stringify(failure)).toContain(`missing field ${field}`);
     },
   );
 

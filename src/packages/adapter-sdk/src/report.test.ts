@@ -196,6 +196,21 @@ describe("annotateLocks", () => {
     expect(annotated.entries[1]).not.toHaveProperty("lock");
     expect(report.entries[0]).not.toHaveProperty("lock");
   });
+
+  it("marks the models.gateway entry under a lock on models or models.gateway", () => {
+    const report: CompileReport = {
+      adapter: "toy",
+      irVersion: 0,
+      entries: [{ path: "models.gateway", outcome: "dropped", reason: "r" }],
+    };
+    for (const path of ["models", "models.gateway"]) {
+      const locked = { ...emptyIr(), locks: [{ path, layer: "org/base" }] };
+      expect(annotateLocks(report, locked).entries[0]!.lock).toEqual({
+        path,
+        layer: "org/base",
+      });
+    }
+  });
 });
 
 describe("requiredEntries secret locations (I4)", () => {
