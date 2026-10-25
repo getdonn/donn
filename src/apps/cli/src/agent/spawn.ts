@@ -13,6 +13,8 @@ export interface SpawnOptions {
   detached?: boolean;
   /** Written to the child's stdin, which is then closed. */
   stdin?: string;
+  /** Share this process's terminal (a TUI such as `eve dev`); `onLine` then sees nothing. */
+  inherit?: boolean;
 }
 
 export interface SpawnHandle {
@@ -52,7 +54,9 @@ export const nodeSpawn: Spawn = (command, args, options) => {
     cwd: options.cwd,
     env: options.env,
     detached: options.detached === true,
-    stdio: [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    stdio: options.inherit
+      ? "inherit"
+      : [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
   });
   const onLine = options.onLine;
   const out = lineSplitter((l) => onLine?.(l, "stdout"));

@@ -2,6 +2,7 @@ import { create, type CreateOptions } from "../agent/create.js";
 import { agentEnv, exec, formatDotenv } from "../agent/env.js";
 import { projectContext } from "../agent/load.js";
 import { agentStates, formatRows } from "../agent/list.js";
+import { logs, run, stop, type RunOptions } from "../agent/run.js";
 import { sync, type SyncOptions } from "../agent/sync.js";
 import type { CliIo } from "../cli.js";
 
@@ -77,4 +78,31 @@ export async function agentExecCommand(
   options: AgentOptions,
 ): Promise<number> {
   return exec(await projectContext(io, options.project), io, name, command);
+}
+
+/** `donn agent run <name> [--dev]`: see agent/run.ts. */
+export async function agentRunCommand(
+  io: CliIo,
+  name: string,
+  options: RunOptions,
+): Promise<number> {
+  return run(io, name, options);
+}
+
+/** `donn agent stop <name>`: see agent/run.ts. */
+export async function agentStopCommand(
+  io: CliIo,
+  name: string,
+  options: AgentOptions,
+): Promise<number> {
+  return stop(io, name, options);
+}
+
+/** `donn agent logs <name> [--follow]`: see agent/run.ts. */
+export async function agentLogsCommand(
+  io: CliIo,
+  name: string,
+  options: AgentOptions & { follow?: boolean },
+): Promise<number> {
+  return logs(io, name, options);
 }

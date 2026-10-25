@@ -33,6 +33,8 @@ const SIGNALS: NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGHUP"];
 const WORLD_DATABASE = "WORKFLOW_POSTGRES_URL";
 
 export interface AgentEnvironment {
+  /** The project's root folder (the one holding `.donn/`). */
+  root: string;
   /** The agent's folder. */
   dir: string;
   entries: EnvEntry[];
@@ -45,7 +47,7 @@ export async function agentEnvironment(
   name: string,
   options: { resolve: boolean },
 ): Promise<AgentEnvironment> {
-  const { result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
+  const { root, result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
   const agent = result.ir.agents[name]!;
   const output = compile(
     await compileInputs(ctx, result.ir, name, dir, manifest.frameworkVersion),
@@ -116,7 +118,7 @@ export async function agentEnvironment(
     }
     for (const e of entries) if (e.ref !== undefined) e.value = values[e.ref]!;
   }
-  return { dir, entries };
+  return { root, dir, entries };
 }
 
 /** The entries of `agentEnvironment`, for callers that only want the list. */

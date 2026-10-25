@@ -1,12 +1,16 @@
 import type { Probe } from "@getdonn/adapter-sdk";
 import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
+import type { AgentControl } from "./agent/run.js";
 import type { Spawn } from "./agent/spawn.js";
 import {
   agentCreateCommand,
   agentEnvCommand,
   agentExecCommand,
   agentListCommand,
+  agentLogsCommand,
+  agentRunCommand,
+  agentStopCommand,
   agentSyncCommand,
 } from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
@@ -98,6 +102,8 @@ export interface CliIo {
   spawn?: Spawn;
   /** Injected in tests; downloads eve's template tarballs. Defaults to globalThis.fetch. */
   fetch?: typeof fetch;
+  /** Set inside the daemon: its running agents, so `agent run|stop|list` use them directly. */
+  agents?: AgentControl;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -591,6 +597,46 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
             () => agentExecCommand(io, name, passthrough, options),
             { passthrough: true },
           ),
+        );
+
+      agent
+        .command("run")
+        .description(
+          "Build and start a created agent: through the daemon when it runs, else here",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--dev", "run eve dev in the foreground, with its terminal UI")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent } as JSON (with its url and route token)",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentRunCommand(io, name, options)),
+        );
+
+      agent
+        .command("stop")
+        .description("Stop an agent the daemon runs")
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agent, stopped, leftovers } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentStopCommand(io, name, options)),
+        );
+
+      agent
+        .command("logs")
+        .description("Print the log of an agent the daemon ran")
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--follow", "keep printing lines as they are written")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, log, lines } (with --follow, { line } per line)",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentLogsCommand(io, name, options)),
         );
 
       const daemon = program

@@ -114,6 +114,7 @@ export async function daemonRun(
       probe: io.probe,
       ...(io.now && { now: io.now }),
       ...(io.passwdHome && { passwdHome: io.passwdHome }),
+      ...(io.spawn && { spawn: io.spawn }),
     });
   } catch (error) {
     // Under the service "already running" is success, or the manager would restart it in a loop.

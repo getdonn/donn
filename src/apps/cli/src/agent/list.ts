@@ -3,12 +3,16 @@ import { join } from "node:path";
 import { CliError } from "../errors.js";
 import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
+import type { AgentStatus } from "../daemon/client.js";
 import {
   locateAgent,
+  projectContext,
   recreateField,
   resolveProject,
   type RecreateField,
 } from "./load.js";
+import { listCreated } from "./registry.js";
+import { runningAgents } from "./run.js";
 import { recompile } from "./sync.js";
 
 // `donn agent list`: the agents of the project persona and where each stands.
@@ -24,19 +28,23 @@ export interface AgentRow {
   current: boolean;
   /** Set when the persona changed what a sync cannot rewrite. */
   recreate?: RecreateField;
+  /** Where a running agent listens. */
+  url?: string;
 }
 
 /**
- * One row per agent the project persona declares. `running` comes from the daemon, which a
- * later step wires in; until then a running agent shows as `created`.
+ * One row per agent the project persona declares. `running` comes from the daemon (`running`,
+ * or asked here): without a daemon no agent is running.
  */
 export async function agentStates(
   ctx: Context,
-  _io: CliIo,
+  io: CliIo,
+  running?: AgentStatus[],
 ): Promise<AgentRow[]> {
   const project = await resolveProject(ctx);
   if (project === undefined) return [];
   const { root, result } = project;
+  const live: AgentStatus[] = running ?? (await runningAgents(io, ctx.home));
   const rows: AgentRow[] = [];
   for (const name of Object.keys(result.ir.agents).sort()) {
     const agent = result.ir.agents[name]!;
@@ -56,6 +64,11 @@ export async function agentStates(
             "deploy/donn/Dockerfile" in manifest.files
           ? "built"
           : "created";
+      const on = live.find((a) => a.project === root && a.name === name);
+      if (on !== undefined) {
+        row.state = "running";
+        row.url = on.url;
+      }
       const field = recreateField(agent, manifest);
       if (field !== undefined) row.recreate = field;
       else row.current = await isCurrent(ctx, result, name, dir, manifest);
@@ -114,3 +127,64 @@ export function formatRows(rows: AgentRow[]): string {
     })
     .join("");
 }
+
+export interface CreatedRow {
+  name: string;
+  project: string;
+  target: string;
+  state: AgentRow["state"] | "unknown";
+  current: boolean;
+  url?: string;
+}
+
+/** Every agent created on this machine, by project, for `donn status`. */
+export async function createdAgentRows(
+  io: CliIo,
+  home: string,
+  running: AgentStatus[],
+): Promise<CreatedRow[]> {
+  const created = await listCreated(home).catch(() => []);
+  const projects = [...new Set(created.map((c) => c.project))].sort();
+  const rows: CreatedRow[] = [];
+  for (const project of projects) {
+    const names = created
+      .filter((c) => c.project === project)
+      .map((c) => c.name);
+    let states: AgentRow[] | undefined;
+    try {
+      states = await agentStates(
+        await projectContext(io, project),
+        io,
+        running,
+      );
+    } catch {
+      // A project moved or broken since: shown, not resolved.
+    }
+    for (const name of names.sort()) {
+      const row = states?.find((r) => r.name === name);
+      rows.push(
+        row === undefined || row.state === "available"
+          ? { name, project, target: "-", state: "unknown", current: false }
+          : {
+              name,
+              project,
+              target: row.target,
+              state: row.state,
+              current: row.current,
+              ...(row.url !== undefined && { url: row.url }),
+            },
+      );
+    }
+  }
+  return rows;
+}
+
+/** `agent  <name>  <target>  <state>  current|stale` */
+export const createdLine = (row: CreatedRow): string =>
+  [
+    "agent",
+    row.name,
+    row.target,
+    row.state,
+    row.current ? "current" : "stale",
+  ].join("  ");

@@ -66,6 +66,19 @@ export function recreateField(
   return undefined;
 }
 
+export const noProjectPersona = () =>
+  new CliError(
+    "no-project-persona",
+    "no project persona here; an agent is declared in the repo's project persona",
+    { fix: "donn init --extends <persona>" },
+  );
+
+/** The project's root folder (the one holding `.donn/`), without resolving its persona. */
+export function projectRoot(ctx: Context): string {
+  if (ctx.projectDir === undefined) throw noProjectPersona();
+  return dirname(ctx.projectDir);
+}
+
 export const fixCreate = (name: string) => `donn agent create ${name}`;
 
 /** A context for the project folder `--project` names, or for the current directory. */
@@ -96,13 +109,7 @@ export async function loadCreatedAgent(
   name: string,
 ): Promise<CreatedAgent> {
   const project = await resolveProject(ctx);
-  if (project === undefined) {
-    throw new CliError(
-      "no-project-persona",
-      "no project persona here; an agent is declared in the repo's project persona",
-      { fix: "donn init --extends <persona>" },
-    );
-  }
+  if (project === undefined) throw noProjectPersona();
   const { root, result } = project;
   printWarnings(io, result);
   const agent = result.ir.agents[name];
