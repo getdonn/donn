@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { resolveSecrets, SecretResolutionError } from "@getdonn/secrets";
+import {
+  BUILT_IN_TYPES,
+  parseSecretRef,
+  resolveSecrets,
+  SecretResolutionError,
+} from "@getdonn/secrets";
+import type { ResolveResult } from "@getdonn/spec";
 import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
@@ -8,6 +14,7 @@ import { secretContext } from "../secret-context.js";
 import { eveEnv } from "./eve.js";
 import { compile, compileInputs } from "./inputs.js";
 import { nodeSpawn } from "./spawn.js";
+import type { Manifest } from "./files.js";
 import { loadCreatedAgent } from "./load.js";
 
 // `donn agent env` and `donn agent exec`: the environment an agent needs, from the compile's
@@ -39,6 +46,9 @@ export interface AgentEnvironment {
   /** The agent's folder. */
   dir: string;
   entries: EnvEntry[];
+  /** The resolved project persona and the agent's manifest it was read with. */
+  result: ResolveResult;
+  manifest: Manifest;
 }
 
 /** The agent's folder and its env entries; values only for secrets, and only with `resolve`. */
@@ -118,13 +128,27 @@ export async function agentEnvironment(
             name: byRef.get(f.ref) ?? "",
             ref: f.ref,
             reason: f.reason,
+            ...providerType(f.ref, result.ir.secrets.providers),
           })),
         },
       );
     }
     for (const e of entries) if (e.ref !== undefined) e.value = values[e.ref]!;
   }
-  return { root, dir, entries };
+  return { root, dir, entries, result, manifest };
+}
+
+/** The provider type a ref resolves with, when known: `{ type }`, else nothing. */
+function providerType(
+  ref: string,
+  providers: Record<string, { type: string }>,
+): { type?: string } {
+  const provider = parseSecretRef(ref)?.provider;
+  if (provider === undefined) return {};
+  const type =
+    providers[provider]?.type ??
+    (BUILT_IN_TYPES.includes(provider) ? provider : undefined);
+  return type === undefined ? {} : { type };
 }
 
 /**

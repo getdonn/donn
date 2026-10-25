@@ -13,7 +13,7 @@ import {
 } from "../agent/run.js";
 import { syncAgent } from "../agent/sync.js";
 import type { CliIo } from "../cli.js";
-import { CliError } from "../errors.js";
+import { CliError, errorEnvelope } from "../errors.js";
 import type { AgentSyncFailure, DaemonEvent } from "./client.js";
 import { createLog, type DaemonLog } from "./log.js";
 
@@ -58,6 +58,21 @@ interface Entry {
   /** What its env was made from at start (envInputs): a change restarts it. */
   inputs: string;
   stopping: boolean;
+}
+
+/**
+ * A secret the env provider could not resolve, in the daemon: its environment is the service's,
+ * which carries none of the user's shell exports (spec 16), so the fix names that cause.
+ */
+function daemonSecretFix(error: unknown, name: string): unknown {
+  if (!(error instanceof CliError) || error.code !== "secret-unresolved")
+    return error;
+  const failures = (error.details["failures"] ?? []) as { type?: string }[];
+  if (!failures.some((f) => f.type === "env")) return error;
+  return new CliError(error.code, error.message, {
+    ...error.details,
+    fix: `the daemon resolves secrets in its own environment, which has no shell exports: use the keychain provider for this ref, or run \`donn agent run ${name}\` with the daemon stopped`,
+  });
 }
 
 const key = (project: string, name: string) => `${project}\0${name}`;
@@ -125,7 +140,9 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       io,
       name,
       { start: true },
-    );
+    ).catch((error: unknown) => {
+      throw daemonSecretFix(error, name);
+    });
     const path = agentLogPath(options.home, root, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const agentLog = createLog(path, options.now);
@@ -189,8 +206,11 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       });
       return { agent: info(agent), already: false };
     } catch (error) {
-      const code = error instanceof CliError ? error.code : "internal";
-      const message = error instanceof Error ? error.message : String(error);
+      const known = errorEnvelope(error);
+      const code = known?.code ?? "internal";
+      const message =
+        known?.message ??
+        (error instanceof Error ? error.message : String(error));
       await log(`agent ${name} in ${root} failed: ${code}`);
       emit({ type: "agent.failed", name, project: root, code, message });
       throw error;
@@ -240,7 +260,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       const env = await agentEnvironment(ctx, io, name, { resolve: false });
       return envInputs(env.entries);
     } catch (error) {
-      const code = error instanceof CliError ? error.code : "internal";
+      const code = errorEnvelope(error)?.code ?? "internal";
       await log(`agent ${name} in ${project} env not read: ${code}`);
       return undefined;
     }
@@ -279,7 +299,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     try {
       changed = await syncOf(project, name);
     } catch (error) {
-      const code = error instanceof CliError ? error.code : "internal";
+      const code = errorEnvelope(error)?.code ?? "internal";
       if (code === "recreate-needed") {
         failures.delete(k);
         const field = (error as CliError).details?.field;

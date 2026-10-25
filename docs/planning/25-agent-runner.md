@@ -180,6 +180,10 @@ A failure after step 4 leaves the directory for inspection and says so; `donn ag
   status` line; it is never forced. A running local agent is restarted after a sync.
 - An agent whose template, target or path changed in the persona is not synced: `donn agent
   list` marks it `recreate needed`, because those decide files donn does not own.
+- *Amended 2026-10-25 (final review):* without the daemon nothing syncs on an edit, so `build`
+  and `deploy` compare the compile with the manifest's files under the agent's lock and refuse a
+  stale agent (`agent-stale`, fix `donn agent sync <name>`) rather than ship old donn files; a
+  foreground `run` warns and runs.
 
 ## 4. Targets
 
@@ -270,6 +274,10 @@ Workflow world's database variable for `self-host`).
 
 - **`local`:** the daemon resolves refs through the secret providers (spec 08) just before it
   starts the agent, and passes them as the child's env. Nothing is written to disk.
+  *Amended 2026-10-25 (final review):* it resolves them in its own environment; a daemon
+  installed as a service (spec 16) has none of the user's shell exports, so an unresolved
+  `secret://env/…` ref's `fix` names that cause (use the keychain provider, or run with the
+  daemon stopped). A note in `14` records the change to its "never resolves secrets" row.
 - **`self-host`:** two supported paths, both shown in `env.json`:
   - the container resolves at start: the image's entrypoint is `donn agent exec <name> -- <start
     command>`, which works when a secret provider the persona names (for example Vault) is

@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -378,7 +384,32 @@ describe("donn agent run|stop|logs without a daemon", () => {
     });
     expect(r.code).not.toBe(0);
     expect(r.stdout + r.stderr).toContain("secret-unresolved");
+    // Only the daemon's environment lacks the shell's exports.
+    expect(r.stdout).not.toContain("the daemon resolves");
     expect(spawn.calls).toHaveLength(0);
+  });
+
+  it("warns, and still runs, when the agent is stale", async () => {
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      ),
+    );
+    const spawn = serving();
+    const before = process.listenerCount("SIGINT");
+    const pending = run(["run", "kody"], spawn);
+    await vi.waitFor(() => expect(startCall(spawn)).toBeDefined());
+    await vi.waitFor(() =>
+      expect(process.listenerCount("SIGINT")).toBe(before + 1),
+    );
+    process.emit("SIGINT");
+    const r = await pending;
+    expect(r.stderr).toContain(
+      "warning: kody's donn files are older than its persona; `donn agent sync kody` brings them up to date",
+    );
   });
 
   it("--dev runs eve dev in the foreground with the resolved env", async () => {

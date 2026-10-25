@@ -8,11 +8,13 @@ import {
   pendingChanges,
   planFiles,
   posixRelative,
+  readManifest,
   writeAgentFiles,
   writeManifest,
   type Manifest,
   type PlannedFiles,
 } from "./files.js";
+import { CliError } from "../errors.js";
 import { compile, compileInputs } from "./inputs.js";
 import { withFileLock } from "../fs.js";
 import { loadCreatedAgent, projectContext, projectRoot } from "./load.js";
@@ -43,6 +45,57 @@ export async function recompile(
     await compileInputs(ctx, result.ir, name, dir, manifest.frameworkVersion),
   );
   return { output, planned: await planFiles(output, ctx.store) };
+}
+
+/** The files a compile plans are exactly those the manifest records. */
+export function sameFiles(
+  planned: Record<string, string>,
+  recorded: Record<string, string>,
+): boolean {
+  const entries = Object.entries(planned);
+  return (
+    entries.length === Object.keys(recorded).length &&
+    entries.every(([path, hash]) => recorded[path] === hash)
+  );
+}
+
+/**
+ * Whether the agent's donn files are what its persona compiles to now. Under the agent's lock,
+ * with the manifest read again there, so a sync in flight finishes first.
+ */
+export async function isSynced(
+  ctx: Context,
+  agent: {
+    result: ResolveResult;
+    root: string;
+    dir: string;
+    manifest: Manifest;
+  },
+  name: string,
+): Promise<boolean> {
+  const { result, root, dir } = agent;
+  return withFileLock(agentLockPath(ctx.home, root, name), async () => {
+    const manifest = (await readManifest(dir)) ?? agent.manifest;
+    const { planned } = await recompile(ctx, result, name, dir, manifest);
+    return sameFiles(planned.files, manifest.files);
+  });
+}
+
+/** What `build`, `deploy` and a foreground `run` say of an agent older than its persona. */
+export const staleText = (name: string) =>
+  `${name}'s donn files are older than its persona; \`donn agent sync ${name}\` brings them up to date`;
+
+/** Refuses an agent whose donn files are older than its persona: they would ship as they are. */
+export async function assertSynced(
+  ctx: Context,
+  agent: Parameters<typeof isSynced>[1],
+  name: string,
+): Promise<void> {
+  if (await isSynced(ctx, agent, name)) return;
+  throw new CliError("agent-stale", staleText(name), {
+    agent: name,
+    fix: `donn agent sync ${name}`,
+  });
 }
 
 export interface SyncedAgent {

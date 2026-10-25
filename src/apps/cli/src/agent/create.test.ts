@@ -12,6 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeEve, type FakeEveCall } from "../test/fake-eve.js";
 import { seed, zz, type Seeded } from "../test/seed.js";
 import { tarball, type TarEntry } from "../test/tarball.js";
+import { StoreError } from "@getdonn/store-local";
+import { CliError } from "../errors.js";
+import { leftForInspection } from "./create.js";
 import { templateDigest } from "./digest.js";
 import { extractDir } from "./tar.js";
 
@@ -492,6 +495,32 @@ describe("donn agent create", () => {
     expect(third.code).toBe(0);
     expect(manifest().state).toBe("complete");
     expect(existsSync(join(agentDir(), "leftover.txt"))).toBe(false);
+  });
+
+  it("names --force for a known error that is not a CliError; a bug stays as it is", () => {
+    const store = Object.assign(new StoreError("bad mount"), {
+      file: "/x/config.yaml",
+    });
+    const left = leftForInspection(
+      store,
+      "voice",
+      "/p/agents/voice",
+      "agents/voice",
+    );
+    expect(left).toBeInstanceOf(CliError);
+    expect(left).toMatchObject({
+      code: "store",
+      details: {
+        file: "/x/config.yaml",
+        dir: "/p/agents/voice",
+        fix: "donn agent create voice --force",
+      },
+    });
+    expect((left as Error).message).toContain(
+      "agents/voice is left for inspection",
+    );
+    const bug = new TypeError("boom");
+    expect(leftForInspection(bug, "voice", "/p", "p")).toBe(bug);
   });
 
   it("refuses a non-empty path without a manifest, even with --force", async () => {

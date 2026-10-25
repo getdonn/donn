@@ -317,6 +317,36 @@ CMD ["sh", "-c", "/bootstrap/node_modules/.bin/bootstrap && exec node .output/se
     expect(readFileSync(file, "utf8")).toBe(DOCKERFILE);
   });
 
+  it("refuses a stale agent before building: agent-stale, sync first", async () => {
+    await createSelfHost();
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      ),
+    );
+    const spawn = building();
+    const r = await build(["--json"], spawn);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error).toMatchObject({
+      code: "agent-stale",
+      fix: "donn agent sync kody",
+    });
+    expect(spawn.calls).toHaveLength(0);
+    expect(existsSync(join(agentDir(), "deploy/donn/Dockerfile"))).toBe(false);
+
+    const synced = await zz(["agent", "sync", "kody", "--project", s.repo], {
+      cwd: s.root,
+      home: s.home,
+      env: SECRETS,
+      probe: agentProbe(),
+    });
+    expect(synced.code).toBe(0);
+    expect((await build()).code).toBe(0);
+  });
+
   it("a second build over untouched files is fine, and list reports built", async () => {
     await createSelfHost();
     await build();

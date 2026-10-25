@@ -1,15 +1,17 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { withFileLock } from "../fs.js";
 import { managedEnv } from "../managed/env.js";
 import { spawnWithInput } from "../registry.js";
-import { agentEnvironment } from "./env.js";
+import { agentEnvironment, type EnvEntry } from "./env.js";
 import { packageManager, runEve, runTool, eveEnv } from "./eve.js";
-import { readManifest, writeManifest } from "./files.js";
+import { posixRelative, readManifest, writeManifest } from "./files.js";
 import { projectContext } from "./load.js";
 import { agentLockPath } from "./registry.js";
+import { assertSynced } from "./sync.js";
 
 // `donn agent deploy` for `vercel`: link the directory, set the env names Vercel does not have
 // yet (after confirmation: this is outward-facing), then `eve deploy`. Values go to
@@ -43,6 +45,49 @@ export function assertDeployable(name: string, target: string): void {
   );
 }
 
+/** The vercel version the agent's package.json pins, else a placeholder. */
+async function pinnedVercel(dir: string): Promise<string> {
+  try {
+    const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8"));
+    const version: unknown = pkg?.devDependencies?.vercel;
+    if (typeof version === "string" && version !== "") return version;
+  } catch {
+    // No readable package.json: the placeholder.
+  }
+  return "<version>";
+}
+
+/**
+ * The value of each of `names` from the resolved entries. One without a value stops the deploy
+ * (`secret-unresolved`, naming it) before anything is set: never an empty value in Vercel.
+ */
+export function valuesFor(
+  names: string[],
+  entries: EnvEntry[],
+): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const e of entries)
+    if (e.value !== undefined) values.set(e.name, e.value);
+  const missing = names.filter((n) => !values.has(n));
+  if (missing.length > 0) {
+    throw new CliError(
+      "secret-unresolved",
+      `no value for ${missing.join(", ")}; nothing was set in Vercel`,
+      {
+        failures: missing.map((n) => {
+          const ref = entries.find((e) => e.name === n)?.ref;
+          return {
+            name: n,
+            ...(ref !== undefined && { ref }),
+            reason: "no value resolved",
+          };
+        }),
+      },
+    );
+  }
+  return values;
+}
+
 /** `text` with every occurrence of `value` replaced by `***`. */
 const mask = (text: string, value: string) =>
   value === "" ? text : text.split(value).join("***");
@@ -71,10 +116,13 @@ export async function deploy(
   options: DeployOptions,
 ): Promise<number> {
   const ctx = await projectContext(io, options.project);
-  const { root, dir, entries } = await agentEnvironment(ctx, io, name, {
+  const env = await agentEnvironment(ctx, io, name, {
     resolve: false,
     check: (target) => assertDeployable(name, target),
   });
+  const { root, dir, entries } = env;
+  // Stale donn files would be deployed as they are.
+  await assertSynced(ctx, env, name);
   const pm = await packageManager(dir);
   const lock = agentLockPath(ctx.home, root, name);
 
@@ -86,7 +134,7 @@ export async function deploy(
       "vercel-cli-missing",
       "the Vercel CLI is not installed in the agent; eve link and eve deploy need it",
       {
-        fix: `${pm} add -D vercel (in the agent), or donn agent create --force`,
+        fix: `${pm} add -D vercel@${await pinnedVercel(dir)} in ${posixRelative(root, dir)}`,
       },
     );
   }
@@ -150,14 +198,18 @@ export async function deploy(
 
   // The values exist only from here, and only as stdin to vercel. An unresolvable ref stops
   // the deploy before a Vercel project is created or linked.
-  const values = new Map<string, string | undefined>();
-  if (names.length > 0) {
-    const resolved = await agentEnvironment(ctx, io, name, {
-      resolve: true,
-      check: (target) => assertDeployable(name, target),
-    });
-    for (const e of resolved.entries) values.set(e.name, e.value);
-  }
+  const values =
+    names.length > 0
+      ? valuesFor(
+          names,
+          (
+            await agentEnvironment(ctx, io, name, {
+              resolve: true,
+              check: (target) => assertDeployable(name, target),
+            })
+          ).entries,
+        )
+      : new Map<string, string>();
 
   if (unlinked) {
     const linked = await runEve(
@@ -173,7 +225,7 @@ export async function deploy(
   const existing: string[] = [];
   const run = io.runInput ?? spawnWithInput;
   for (const envName of names) {
-    const value = values.get(envName) ?? "";
+    const value = values.get(envName)!;
     const result = await run(
       pm,
       ["exec", "vercel", "env", "add", envName, "production"],

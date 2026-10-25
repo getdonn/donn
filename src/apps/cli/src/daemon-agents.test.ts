@@ -217,6 +217,16 @@ describe("the daemon's agents", () => {
     });
     expect(ran.status).toBe(400);
     expect(ran.body).toMatchObject({ error: { code: "secret-unresolved" } });
+    // The daemon's environment is not the user's shell: the fix says so.
+    const { details } = (ran.body as { error: { details: { fix: string } } })
+      .error;
+    expect(details.fix).toContain(
+      "the daemon resolves secrets in its own environment, which has no shell exports",
+    );
+    expect(details.fix).toContain("keychain provider");
+    expect(details.fix).toContain(
+      "`donn agent run kody` with the daemon stopped",
+    );
     expect(startCall()).toBeUndefined();
     await vi.waitFor(() =>
       expect(events).toContainEqual(
@@ -227,6 +237,38 @@ describe("the daemon's agents", () => {
         }),
       ),
     );
+  });
+
+  it("answers a run on an invalid persona with its code, not internal", async () => {
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(
+        "targets:\n",
+        "permisions: {}\ntargets:\n",
+      ),
+    );
+    const daemon = await start();
+    const ran = await call(daemon, "POST", "/agents/run", {
+      project: s.repo,
+      name: "kody",
+    });
+    expect(ran.status).toBe(400);
+    expect(ran.body).toMatchObject({ error: { code: "invalid-persona" } });
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "agent.failed",
+          name: "kody",
+          code: "invalid-persona",
+        }),
+      ),
+    );
+    const viaCli = await cli(["run", "kody", "--json"]);
+    expect(viaCli.code).toBe(1);
+    expect(JSON.parse(viaCli.stdout).error).toMatchObject({
+      code: "invalid-persona",
+    });
   });
 
   it("refuses a malformed run request", async () => {
@@ -605,6 +647,25 @@ describe("the daemon keeps created agents current", () => {
           syncFailed: "owned-file-edited",
         }),
       ]);
+    },
+  );
+
+  it(
+    "an invalid persona stops the sync with its code: agent.sync-failed",
+    { timeout: 15_000 },
+    async () => {
+      await start();
+      editPersona("targets:\n", "permisions: {}\ntargets:\n");
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual({
+            type: "agent.sync-failed",
+            name: "kody",
+            project: s.repo,
+            code: "invalid-persona",
+          }),
+        { timeout: 5_000 },
+      );
     },
   );
 

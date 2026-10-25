@@ -264,14 +264,19 @@ edits `agent/agent.ts` once to spread `donn`; after that `agent.ts` is yours, an
 (under `agent/lib/donn/`, plus `agent/channels/eve.ts` when the template has no route auth) are
 recorded in `.donn/agent.json`. `sync` rewrites them and stops on one you edited
 (`owned-file-edited`; `--force` overwrites). With the daemon running, a persona edit syncs every
-created agent it reaches and restarts a running one. Secret values never go in the agent's
+created agent it reaches and restarts a running one; without it, `build` and `deploy` refuse an
+agent whose donn files are older than its persona (`agent-stale`: `donn agent sync` first), and a
+foreground `run` warns. Secret values never go in the agent's
 files: `create`, `sync` and `build` write `secret://` refs and env names only.
 
 **`local`** is for trying and developing an agent. `run` builds it and starts `eve start` on
 `127.0.0.1` with a free port, `NODE_ENV=production`, secrets resolved into its environment and a
 route token generated per run: send it as `Authorization: Bearer <token>` (`run --json` and
 `GET /agents` on the daemon give it). Sessions open eve's Docker sandbox, so Docker must be
-running. Without the daemon, `run` stays in the foreground until Ctrl-C.
+running. Without the daemon, `run` stays in the foreground until Ctrl-C. Through the daemon,
+secrets resolve in the daemon's environment: a daemon installed as a service (`donn daemon
+install`) has none of your shell's exports, so a `secret://env/…` ref set only there does not
+resolve; use the keychain provider for it, or run with the daemon stopped.
 
 eve names a sandbox container per session (`eve-sbx-…`). When the server shuts down it stops
 them and keeps them, to start one again when its session resumes, and it removes one when its

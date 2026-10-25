@@ -6,6 +6,7 @@ import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { fsStep } from "../fs.js";
 import { eveEnv, runTool } from "./eve.js";
+import { notTemplate } from "./files.js";
 import { fetchTemplate } from "./template.js";
 
 // Step 4 of `donn agent create`, in two halves. `stageTemplate` builds the template in a fresh
@@ -21,9 +22,6 @@ export type TemplateSource =
   | { kind: "blank"; name: string }
   /** A path template: a folder on disk. */
   | { kind: "path"; dir: string };
-
-/** Never copied from a path template, and never moved out of staging. */
-const NOT_COPIED = new Set([".git", "node_modules"]);
 
 /** The nearest `pnpm-workspace.yaml` or `package.json` above `dir`, if any. */
 function ancestorWorkspace(dir: string): string | undefined {
@@ -126,9 +124,7 @@ export async function stageTemplate(
           recursive: true,
           verbatimSymlinks: true,
           filter: (path) =>
-            !relative(source.dir, path)
-              .split(sep)
-              .some((segment) => NOT_COPIED.has(segment)),
+            !notTemplate(relative(source.dir, path).split(sep).join("/")),
         }),
       );
     }

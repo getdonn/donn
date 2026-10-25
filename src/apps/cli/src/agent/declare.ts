@@ -39,6 +39,13 @@ const notEditable = (file: string, why: string) =>
 const lineStart = (text: string, at: number) =>
   text.lastIndexOf("\n", at - 1) + 1;
 
+/** Where the line holding `at - 1` ends, past its newline: `at` when it is a line's start. */
+const lineEnd = (text: string, at: number) => {
+  if (at === 0 || text[at - 1] === "\n") return at;
+  const newline = text.indexOf("\n", at);
+  return newline === -1 ? text.length : newline + 1;
+};
+
 /** `text`'s lines, each indented by `indent` spaces. */
 const indented = (text: string, indent: number) =>
   text
@@ -55,7 +62,7 @@ function spliceInto(
   node: YAMLMap,
   entry: Record<string, unknown>,
 ): string {
-  const [start, valueEnd, end] = node.range!;
+  const [start, valueEnd] = node.range!;
   if (node.flow) {
     const text = stringify(entry, { collectionStyle: "flow" })
       .trim()
@@ -70,9 +77,12 @@ function spliceInto(
   }
   const first = node.items[0]!.key as YNode;
   const indent = first.range![0] - lineStart(source, first.range![0]);
-  const head = source.slice(0, end);
+  // After the line the last value ends on: the comments and blank lines past it (`end`) may
+  // lead the next section.
+  const at = lineEnd(source, valueEnd);
+  const head = source.slice(0, at);
   const gap = head === "" || head.endsWith("\n") ? "" : "\n";
-  return `${head}${gap}${indented(stringify(entry), indent)}${source.slice(end)}`;
+  return `${head}${gap}${indented(stringify(entry), indent)}${source.slice(at)}`;
 }
 
 /**

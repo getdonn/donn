@@ -13,7 +13,7 @@ import {
 } from "./load.js";
 import { listCreated } from "./registry.js";
 import { runningAgents } from "./run.js";
-import { recompile } from "./sync.js";
+import { recompile, sameFiles } from "./sync.js";
 
 // `donn agent list`: the agents of the project persona and where each stands.
 // See docs/planning/25-agent-runner.md, sections 1 and 3.
@@ -87,11 +87,7 @@ async function isCurrent(
 ): Promise<boolean> {
   try {
     const { planned } = await recompile(ctx, result, name, dir, manifest);
-    const a = Object.entries(planned.files);
-    return (
-      a.length === Object.keys(manifest.files).length &&
-      a.every(([path, hash]) => manifest.files[path] === hash)
-    );
+    return sameFiles(planned.files, manifest.files);
   } catch (error) {
     if (error instanceof CliError) return false; // The compile stops: stale until fixed.
     throw error;

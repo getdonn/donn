@@ -8,10 +8,11 @@ import { cliVersion } from "../commands/daemon.js";
 import type { Context } from "../context.js";
 import { connectDaemon, type AgentInfo } from "../daemon/client.js";
 import { CliError } from "../errors.js";
-import { agentEnvironment, envInputs } from "./env.js";
+import { agentEnvironment, envInputs, type AgentEnvironment } from "./env.js";
 import { eveEnv, packageManager, runEve } from "./eve.js";
 import { projectContext, projectRoot } from "./load.js";
 import { agentStatePath } from "./registry.js";
+import { isSynced, staleText } from "./sync.js";
 import { nodeSpawn } from "./spawn.js";
 
 // `donn agent run|stop|logs`: a created agent built and started with its env resolved, by the
@@ -278,14 +279,17 @@ export async function runEnvironment(
   secrets: string[];
   /** What the env was made from, without a secret's value: see envInputs. */
   inputs: string;
+  /** The created agent the env was read from. */
+  agent: AgentEnvironment;
 }> {
-  const { root, dir, entries } = await agentEnvironment(ctx, io, name, {
+  const env = await agentEnvironment(ctx, io, name, {
     resolve: true,
     // `eve start` cannot serve every target: refused before a secret is resolved.
     ...(options.start && {
       check: (target: string) => assertRunnable(name, target),
     }),
   });
+  const { root, dir, entries } = env;
   const values: Record<string, string> = {};
   const secrets: string[] = [];
   for (const e of entries) {
@@ -293,7 +297,14 @@ export async function runEnvironment(
     values[e.name] = e.value;
     if (e.source === "secret") secrets.push(e.value);
   }
-  return { root, dir, values, secrets, inputs: envInputs(entries) };
+  return {
+    root,
+    dir,
+    values,
+    secrets,
+    inputs: envInputs(entries),
+    agent: env,
+  };
 }
 
 /** The daemon's agents: in-process inside the daemon, else over its socket, else none. */
@@ -414,9 +425,16 @@ async function foreground(
   name: string,
   options: RunOptions,
 ): Promise<number> {
-  const { root, dir, values, secrets } = await runEnvironment(ctx, io, name, {
-    start: true,
-  });
+  const {
+    root,
+    dir,
+    values,
+    secrets,
+    agent: created,
+  } = await runEnvironment(ctx, io, name, { start: true });
+  // Not refused: a local run is how one tries an edit out, but it runs the files as they are.
+  if (!(await isSynced(ctx, created, name)))
+    io.stderr.write(`warning: ${staleText(name)}\n`);
   const abort = new AbortController();
   let agent: RunningAgent | undefined;
   return withSignals(

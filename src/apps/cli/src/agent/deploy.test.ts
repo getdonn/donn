@@ -9,6 +9,7 @@ import {
   SECRETS,
 } from "../test/created-agent.js";
 import { fakeEve, type FakeEve } from "../test/fake-eve.js";
+import { valuesFor } from "./deploy.js";
 import { seed, zz, type Seeded } from "../test/seed.js";
 
 // `donn agent deploy` for vercel: link, push the env names after confirmation, eve deploy.
@@ -384,6 +385,30 @@ describe("donn agent deploy", () => {
     );
     expect(r.code).toBe(1);
     expect(errorOf(r).code).toBe("vercel-cli-missing");
+    // create --force refuses a complete agent: only the dev dependency is the fix.
+    expect(errorOf(r).fix).toBe("pnpm add -D vercel@50.1.0 in agents/kody");
+    expect(pushed).toEqual([]);
+  });
+
+  it("refuses a stale agent before anything leaves the machine: agent-stale", async () => {
+    await create();
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      ),
+    );
+    const { pushed, runInput } = pushing();
+    const spawn = eve();
+    const r = await deploy(["--yes", "--json"], spawn, runInput);
+    expect(r.code).toBe(1);
+    expect(errorOf(r)).toMatchObject({
+      code: "agent-stale",
+      fix: "donn agent sync kody",
+    });
+    expect(spawn.calls).toEqual([]);
     expect(pushed).toEqual([]);
   });
 
@@ -417,4 +442,41 @@ describe("donn agent deploy", () => {
       expect(pushed).toEqual([]);
     },
   );
+});
+
+describe("valuesFor", () => {
+  it("stops with secret-unresolved naming a variable without a value, never pushing ''", () => {
+    const entries = [
+      {
+        name: "GREETING",
+        source: "plain",
+        value: "hello",
+        why: "template-variable",
+      },
+      {
+        name: "API_TOKEN",
+        source: "secret",
+        ref: "secret://env/API_TOKEN",
+        why: "persona-secret",
+      },
+    ] as const;
+    expect(() => valuesFor(["GREETING", "API_TOKEN"], [...entries])).toThrow(
+      expect.objectContaining({
+        code: "secret-unresolved",
+        message: expect.stringContaining("API_TOKEN"),
+        details: {
+          failures: [
+            {
+              name: "API_TOKEN",
+              ref: "secret://env/API_TOKEN",
+              reason: "no value resolved",
+            },
+          ],
+        },
+      }),
+    );
+    expect(valuesFor(["GREETING"], [...entries])).toEqual(
+      new Map([["GREETING", "hello"]]),
+    );
+  });
 });

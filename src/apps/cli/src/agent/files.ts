@@ -92,6 +92,30 @@ export const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
 
 /**
+ * What is never a template's file, so neither copied from a path template nor counted as one of
+ * an agent's own paths: a repository and installs at any depth; build output, a Vercel link and
+ * donn's state at the top; and env files (`.env`, `.env.*`) at any depth, but `.env.example`.
+ */
+export const NOT_TEMPLATE = {
+  anywhere: new Set([".git", "node_modules"]),
+  top: new Set([".output", ".eve", ".donn", ".vercel"]),
+  keptEnv: ".env.example",
+} as const;
+
+/** Whether the POSIX `path`, relative to a template or agent folder, is NOT_TEMPLATE. */
+export function notTemplate(path: string): boolean {
+  if (path === "") return false;
+  const segments = path.split("/");
+  const name = segments.at(-1)!;
+  return (
+    segments.some((s) => NOT_TEMPLATE.anywhere.has(s)) ||
+    NOT_TEMPLATE.top.has(segments[0]!) ||
+    ((name === ".env" || name.startsWith(".env.")) &&
+      name !== NOT_TEMPLATE.keptEnv)
+  );
+}
+
+/**
  * Every file below `dir` (regular, or a link to one), as sorted POSIX paths relative to it. A
  * directory whose relative path `skip` accepts is not entered.
  */

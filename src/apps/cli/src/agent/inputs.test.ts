@@ -37,6 +37,10 @@ describe("compileInputs", () => {
       ".output/server/index.mjs",
       ".eve/state.json",
       ".git/HEAD",
+      ".vercel/project.json",
+      ".env",
+      ".env.local",
+      ".env.example",
     ])
       put(join(dir, file), "x");
     put(
@@ -70,6 +74,7 @@ describe("compileInputs", () => {
       project: { hasSandbox: true, hasRouteAuth: true },
     });
     expect(input.project.existing).toEqual([
+      ".env.example",
       "agent/agent.ts",
       "agent/channels/eve.ts",
       "agent/sandbox/index.ts",

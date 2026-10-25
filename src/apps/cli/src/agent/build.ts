@@ -17,6 +17,7 @@ import {
 import { compile, compileInputs } from "./inputs.js";
 import { loadCreatedAgent, projectContext } from "./load.js";
 import { agentLockPath } from "./registry.js";
+import { assertSynced } from "./sync.js";
 
 // `donn agent build` for `self-host`: `eve build` on the host (it prepares the Docker sandbox's
 // template image on the daemon the agent will run on), then donn's deploy files: a Dockerfile
@@ -165,10 +166,13 @@ export async function build(
   options: BuildOptions,
 ): Promise<number> {
   const ctx = await projectContext(io, options.project);
-  const { root, dir, entries } = await agentEnvironment(ctx, io, name, {
+  const env = await agentEnvironment(ctx, io, name, {
     resolve: false,
     check: (target) => assertBuildable(name, target),
   });
+  const { root, dir, entries } = env;
+  // Stale donn files would be built into the image as they are.
+  await assertSynced(ctx, env, name);
   await assertDocker(io);
 
   // The build evaluates the agent without its run-time env, so it gets no secret.
