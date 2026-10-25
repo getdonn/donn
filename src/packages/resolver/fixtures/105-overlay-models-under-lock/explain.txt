@@ -1,0 +1,15 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t          target
+  3  user/overrides  overlay
+
+models (1)
+  default  anthropic/claude-sonnet-4.5  org/base  locked: models by org/base
+
+locks (1)
+  models  org/base
+
+warnings (1)
+  overlay-lock-ignored  models.default  from user/overrides

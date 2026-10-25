@@ -1,0 +1,7 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: base
+extends: [team/t]
+agents:
+  remove: [a]

@@ -1,0 +1,15 @@
+description: >-
+  A child's models.gateway replaces the inherited one whole. No deep merge: the org's apiKey and
+  headers do not leak into the team's gateway.
+resolve: team/t
+expect:
+  resolved:
+    models:
+      gateway:
+        type: openai-compatible
+        baseURL: https://gw.team.example/v1
+  provenance:
+    "models.gateway": team/t
+  warnings: []
+  history:
+    - { path: models.gateway, layer: team/t, kind: override, from: org/base }

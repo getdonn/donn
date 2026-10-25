@@ -1,0 +1,9 @@
+description: >-
+  Agents belong to the project, not to one user: an overlay that carries agents fails resolution
+  instead of being dropped with a warning.
+resolve: team/t
+overlay: user/overrides
+expect:
+  error:
+    code: agents-in-overlay
+    layer: user/overrides

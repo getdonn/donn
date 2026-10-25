@@ -1,0 +1,24 @@
+description: >-
+  An agent is replaced whole by name: the project's pr-reviewer drops the team's env and custom
+  path (default path, empty env). A path-form template is stored relative to the personas root;
+  an eve:<slug> template is kept verbatim.
+resolve: project/p
+expect:
+  resolved:
+    agents:
+      pr-reviewer:
+        template: eve:github-project-maintainer
+        target: vercel
+        path: agents/pr-reviewer
+        env: {}
+      docs-bot:
+        template: team/templates/docs
+        target: local
+        path: agents/docs-bot
+        env: {}
+  provenance:
+    "agents.pr-reviewer": project/p
+    "agents.docs-bot": team/t
+  warnings: []
+  history:
+    - { path: agents.pr-reviewer, layer: project/p, kind: override, from: team/t }

@@ -123,6 +123,9 @@ describe("resolve", () => {
       });
       const a = (await resolve("project/a", { source })).ir;
       const b = (await resolve("project/b", { source })).ir;
+      expect(a.agents["pr-reviewer"]).toMatchObject({
+        template: "eve:reviewer",
+      });
       expect(a.agents["pr-reviewer"]).toEqual(b.agents["pr-reviewer"]);
       expect(a.instructions).not.toEqual(b.instructions);
     });
@@ -139,6 +142,15 @@ describe("resolve", () => {
       expect(
         await failure(resolve("team/t", { source, overlay: "user/o" })),
       ).toMatchObject({ code: "agents-in-overlay", layer: "user/o" });
+    });
+
+    it("warns remove-unmatched at the IR path for an agent never defined", async () => {
+      const { source } = memory({
+        "team/t": persona("t", { agents: { remove: ["ghost"] } }),
+      });
+      expect((await resolve("team/t", { source })).warnings).toEqual([
+        { code: "remove-unmatched", path: "agents.ghost", layer: "team/t" },
+      ]);
     });
 
     it("stores the path normalized and defaults it to agents/<name>", async () => {

@@ -1,0 +1,9 @@
+p
+
+layers (merge order)
+  1  team/t
+  2  project/p  target
+
+agents (2)
+  docs-bot     team/templates/docs → local at agents/docs-bot                team/t
+  pr-reviewer  eve:github-project-maintainer → vercel at agents/pr-reviewer  project/p  overrides team/t

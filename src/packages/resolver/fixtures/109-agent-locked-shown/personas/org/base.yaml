@@ -1,0 +1,9 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: base
+agents:
+  define:
+    pr-reviewer: { template: "eve:reviewer", target: local }
+locks:
+  - agents.define.pr-reviewer

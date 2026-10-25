@@ -1,0 +1,11 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+agents (1)
+  pr-reviewer  eve:reviewer → local at agents/pr-reviewer  org/base  locked: agents.define.pr-reviewer by org/base
+
+locks (1)
+  agents.define.pr-reviewer  org/base

@@ -1,0 +1,8 @@
+description: Changing a locked models.gateway fails resolution, naming the path, the lock and both layers.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: models.gateway
+    lockedBy: org/base
+    layer: team/t

@@ -1,0 +1,8 @@
+t
+
+layers (merge order)
+  1  org/base
+  2  team/t    target
+
+models (1)
+  gateway  openai-compatible https://gw.team.example/v1  team/t  overrides org/base

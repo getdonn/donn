@@ -398,7 +398,11 @@ export class Merge {
     for (const name of remove) {
       const path = at(["agents", "define", name]);
       if (!this.agents.has(name)) {
-        this.warn("remove-unmatched", path);
+        this.warnings.push({
+          code: "remove-unmatched",
+          path: `agents.${name}`,
+          layer: this.layer,
+        });
         continue;
       }
       if (!this.guard(path, "remove")) continue;
