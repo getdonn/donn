@@ -1,5 +1,15 @@
 # @getdonn/executor
 
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [0a8ed7a]
+- Updated dependencies [4e51f5d]
+  - @getdonn/adapter-sdk@0.5.0
+  - @getdonn/spec@0.4.0
+  - @getdonn/store-local@0.2.2
+
 ## 0.3.2
 
 ### Patch Changes

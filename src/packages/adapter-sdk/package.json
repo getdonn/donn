@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/adapter-sdk",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "The harness adapter contract, compile-report helpers and conformance kit",
   "license": "Apache-2.0",
   "repository": {

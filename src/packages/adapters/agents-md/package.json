@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/adapter-agents-md",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Renders a persona into a marked block of a repo's AGENTS.md",
   "license": "Apache-2.0",
   "repository": {

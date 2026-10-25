@@ -1,5 +1,20 @@
 # @getdonn/adapter-agents-md
 
+## 0.4.0
+
+### Minor Changes
+
+- 4e51f5d: Personas can declare `models` (gateway routing, lockable) and `agents`; every harness adapter reports `models` (not yet supported). See docs/planning/23-models-and-agents.md.
+  
+  A layer that uses a path agent template now publishes that template folder with it (missing or escaping folders are refused). Header names in `models.gateway.headers` and in MCP url-server `headers` must be valid HTTP header names.
+
+### Patch Changes
+
+- Updated dependencies [0a8ed7a]
+- Updated dependencies [4e51f5d]
+  - @getdonn/adapter-sdk@0.5.0
+  - @getdonn/spec@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
