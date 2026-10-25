@@ -13,12 +13,15 @@ import {
 import type { ResolvedPersona } from "@getdonn/spec";
 import { capabilities } from "./capabilities.js";
 import { assertNoSlotCollisions } from "./collisions.js";
+import { configFile, CONFIG_FILE, SANDBOX_FILE, SANDBOX_TS } from "./config.js";
+import { connectionFiles, unknownTargetEntries } from "./connections.js";
+import { ENV_FILE, envFile, SecretNames } from "./env.js";
 import { EveCompileError } from "./errors.js";
 import { connectionName, skillName } from "./names.js";
 
 // A persona as the files of an eve agent's own slots. See docs/planning/24-adapter-eve.md,
-// sections 2 and 3. This file grows by section: instructions and skills here; models,
-// connections, env and the sandbox join it in the compile that follows.
+// sections 2 and 3. Secrets are numbered in one fixed walk (see SecretNames in env.ts): the
+// gateway first, then the connections, so `config.ts` is built before the connection files.
 
 export const INSTRUCTIONS_FILE = "agent/instructions/donn.md";
 
@@ -205,6 +208,25 @@ export function compile(
   const connections = connectionPlan(ir);
   entries.push(...connections.dropped);
 
+  const secrets = new SecretNames();
+  const agent = ir.agents[input.agent]!;
+  const config = configFile(ir, input.agent, secrets);
+  entries.push(...config.entries, ...unknownTargetEntries(ir));
+  files[CONFIG_FILE] = { content: config.content };
+  const mcp = connectionFiles(ir, input.personaId, connections.names, secrets);
+  entries.push(...mcp.entries);
+  Object.assign(files, mcp.files);
+  const secretEnv = { ...secrets.toSecretEnv(), ...config.secretEnv };
+  files[ENV_FILE] = {
+    content: envFile([
+      ...config.envNames,
+      ...Object.keys(secrets.toSecretEnv()),
+      ...Object.keys(agent.env),
+    ]),
+  };
+  if (agent.target === "self-host" && !input.project.hasSandbox)
+    files[SANDBOX_FILE] = { content: SANDBOX_TS };
+
   const text = instructionsText(input, connections.names, entries);
   if (text !== undefined) files[INSTRUCTIONS_FILE] = { content: text };
   const skills = skillFiles(input, files, entries);
@@ -217,8 +239,8 @@ export function compile(
 
   return {
     files,
-    secretEnv: {},
-    env: {},
+    secretEnv,
+    env: { ...agent.env },
     report: annotateLocks(
       { adapter: self.id, irVersion: ir.irVersion, entries },
       ir,

@@ -22,6 +22,7 @@ function input(
           env: {},
         },
       },
+      models: { default: "anthropic/claude-sonnet-5" },
       ...patch,
     },
     agent: "reviewer",
@@ -61,7 +62,12 @@ describe("instructions and knowledge", () => {
         "## Knowledge sources\n- wiki: https://wiki.example.com\n- db: mcp://my_db (connection `donn-my-db`)",
       ].join("\n\n") + "\n",
     );
-    expect(Object.keys(out.files)).toEqual(["agent/instructions/donn.md"]);
+    expect(Object.keys(out.files).sort()).toEqual([
+      "agent/connections/donn-my-db.ts",
+      "agent/instructions/donn.md",
+      "agent/lib/donn/config.ts",
+      "agent/lib/donn/env.ts",
+    ]);
     expect(out.portability).toEqual([]);
   });
 

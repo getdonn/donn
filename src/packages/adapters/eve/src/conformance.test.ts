@@ -19,7 +19,13 @@ const cases: AgentConformanceCase[] = corpus.map(
     name,
     input: {
       personaId,
-      ir: { ...ir, agents },
+      ir: {
+        ...ir,
+        agents,
+        models: ir.models.default
+          ? ir.models
+          : { ...ir.models, default: "anthropic/claude-sonnet-5" },
+      },
       agent: "reviewer",
       frameworkVersion: "0.83.2",
       texts: {
