@@ -61,6 +61,13 @@ function valuesByField(
         (hooks ?? []).map((hook) => `hooks.${event}[${hook.id}]`),
       ],
     ),
+    [
+      "models",
+      [
+        ...(ir.models.gateway ? ["models.gateway"] : []),
+        ...(ir.models.default ? ["models.default"] : []),
+      ],
+    ],
     // Other harnesses' blocks are not this adapter's loss.
     [
       `targets.${adapterId}`,

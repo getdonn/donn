@@ -58,6 +58,7 @@ describe("donn capabilities", () => {
       "permissions.ask",
       "hooks",
       "policy",
+      "models",
       "targets",
     ]);
     expect(r.stdout).toContain("Codex has no per-launch skill root");
