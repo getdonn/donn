@@ -273,6 +273,14 @@ route token generated per run: send it as `Authorization: Bearer <token>` (`run 
 `GET /agents` on the daemon give it). Sessions open eve's Docker sandbox, so Docker must be
 running. Without the daemon, `run` stays in the foreground until Ctrl-C.
 
+eve names a sandbox container per session (`eve-sbx-…`). When the server shuts down it stops
+them and keeps them, to start one again when its session resumes, and it removes one when its
+session ends. `stop` reports how many are still running (none, normally) and how many stopped
+ones are kept; `docker ps -a --filter name=eve-sbx-` lists them, and `docker rm <name>` removes
+one whose session you no longer need. A self-host container stopped with `docker stop` shuts down
+the same way; one removed with `docker rm -f` (SIGKILL) leaves its sandboxes running on the
+host's Docker.
+
 **`self-host`** produces what your infrastructure runs; donn does not operate it. `build` runs
 `eve build` on this host, against the Docker daemon the agent will run on (eve prepares the
 sandbox template image there, at build time), and writes `deploy/donn/Dockerfile` and
@@ -301,7 +309,9 @@ env <name> --resolve`. A third path, documented here and not generated: when a s
 persona names (Vault, say) is reachable from the container, the image can resolve at start itself.
 Install `@getdonn/cli` in it, include the project's `.donn/`, the personas it extends and the
 agent folder, and make the entrypoint `donn agent exec <name> -- node .output/server/index.mjs`.
-The route token is a starting point: put Basic, JWT or OIDC in front before exposing the routes.
+`exec` resolves the persona's secrets only: it does not supply `DONN_ROUTE_TOKEN` (or
+`WORKFLOW_POSTGRES_URL`), which you still pass to the container yourself. The route token is a
+starting point: put Basic, JWT or OIDC in front before exposing the routes.
 
 **`vercel`** uses eve's deploy. `create` adds the Vercel CLI as a pinned dev dependency.
 `deploy` links the folder when it is not linked, lists the variable names it will set in Vercel

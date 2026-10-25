@@ -145,7 +145,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       if (entry.stopping) return;
       running.delete(k);
       // What it left of its group, and its sandbox containers.
-      const { leftovers } = await agent.stop();
+      const { leftovers, exited } = await agent.stop();
       await entry.flushed();
       await log(`agent ${agent.name} in ${agent.project} exited ${exitCode}`);
       emit({
@@ -154,6 +154,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
         project: agent.project,
         exitCode,
         leftovers,
+        exited,
       });
     });
   };
@@ -205,20 +206,21 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     const entry = running.get(k);
     if (entry === undefined) return { stopped: false };
     entry.stopping = true;
-    const { leftovers } = await entry.agent.stop();
+    const { leftovers, exited } = await entry.agent.stop();
     await entry.flushed();
     running.delete(k);
     const { agent } = entry;
     await log(
-      `agent ${name} in ${agent.project} stopped${leftovers > 0 ? `, ${leftovers} eve-sbx- containers left` : ""}`,
+      `agent ${name} in ${agent.project} stopped${leftovers > 0 ? `, ${leftovers} eve-sbx- containers still running` : ""}${exited > 0 ? `, ${exited} stopped eve-sbx- containers kept` : ""}`,
     );
     emit({
       type: "agent.stopped",
       name,
       project: agent.project,
       leftovers,
+      exited,
     });
-    return { stopped: true, leftovers };
+    return { stopped: true, leftovers, exited };
   };
 
   const syncOf =

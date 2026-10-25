@@ -53,7 +53,7 @@ beforeEach(async () => {
       { eve: ["start"], lines: printed, hold: true },
     ],
   });
-  probe = agentProbe(["sbx1"]);
+  probe = agentProbe(["running", "exited"]);
 });
 afterEach(async () => {
   unfollow?.();
@@ -145,10 +145,11 @@ describe("the daemon's agents", () => {
       agent: "kody",
       stopped: true,
       leftovers: 1,
+      exited: 1,
     });
     expect(child.kills).toEqual(["SIGTERM"]);
     expect(probe.dockerCalls).toEqual([
-      ["ps", "-q", "--filter", "name=eve-sbx-"],
+      ["ps", "-a", "--filter", "name=eve-sbx-", "--format", "{{.State}}"],
     ]);
     expect((await call(daemon, "GET", "/agents")).body).toEqual({ agents: [] });
     const again = await call(daemon, "POST", "/agents/stop", {
@@ -179,7 +180,7 @@ describe("the daemon's agents", () => {
       project: s.repo,
       url: "http://127.0.0.1:61131/",
     });
-    expect(events[1]).toMatchObject({ name: "kody", leftovers: 1 });
+    expect(events[1]).toMatchObject({ name: "kody", leftovers: 1, exited: 1 });
     const text = JSON.stringify(events);
     expect(text).not.toContain(startCall()!.env.DONN_ROUTE_TOKEN);
     expect(text).not.toContain("tok-SECRET");
@@ -736,7 +737,12 @@ describe("donn agent run|stop|list and status through the daemon", () => {
     const stopped = await cli(["stop", "kody"]);
     expect(stopped.code).toBe(0);
     expect(stopped.stdout).toContain("stopped kody");
-    expect(stopped.stdout).toContain("1 eve-sbx- sandbox container");
+    expect(stopped.stdout).toContain(
+      "1 eve-sbx- sandbox container still running",
+    );
+    expect(stopped.stdout).toContain(
+      "1 stopped eve-sbx- sandbox container kept",
+    );
     expect(startCall()!.kills).toEqual(["SIGTERM"]);
   });
 
@@ -767,6 +773,7 @@ describe("donn agent run|stop|list and status through the daemon", () => {
       agent: "kody",
       stopped: true,
       leftovers: 1,
+      exited: 1,
     });
   });
 });

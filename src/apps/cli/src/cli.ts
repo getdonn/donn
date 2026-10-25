@@ -652,7 +652,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .description("Stop an agent the daemon runs")
         .argument("<name>", "the agent, as in agents.define")
         .option("--project <dir>", "the project folder (default: here)")
-        .option("--json", "print { agent, stopped, leftovers } as JSON")
+        .option("--json", "print { agent, stopped, leftovers, exited } as JSON")
         .action((name: string, options) =>
           handle(options.json, () => agentStopCommand(io, name, options)),
         );

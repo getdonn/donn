@@ -31,13 +31,20 @@ const STOP_POLL_MS = 50;
 const TAIL_LINES = 20;
 const FOLLOW_MS = 250;
 const SIGNALS: NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGHUP"];
-const LEFTOVERS = ["ps", "-q", "--filter", "name=eve-sbx-"];
+const SANDBOXES = [
+  "ps",
+  "-a",
+  "--filter",
+  "name=eve-sbx-",
+  "--format",
+  "{{.State}}",
+];
 
 export interface RunningAgent extends AgentInfo {
   /** The exit code of `eve start`; it settles on a stop or when the agent ends on its own. */
   exited: Promise<number>;
-  /** SIGTERM to the group, SIGKILL after 10 s, then the `eve-sbx-*` containers still up. */
-  stop(): Promise<{ leftovers: number }>;
+  /** SIGTERM to the group, SIGKILL after 10 s, then the `eve-sbx-*` containers left. */
+  stop(): Promise<Sandboxes>;
 }
 
 export interface StartOptions {
@@ -64,7 +71,7 @@ export interface AgentControl {
   stop(
     project: string,
     name: string,
-  ): Promise<{ stopped: boolean; leftovers?: number }>;
+  ): Promise<{ stopped: boolean } & Partial<Sandboxes>>;
 }
 
 const eveFailed = (
@@ -79,11 +86,26 @@ const eveFailed = (
     tail,
   });
 
-/** How many `eve-sbx-*` containers run; 0 when Docker does not answer. */
-export async function leftoverContainers(io: CliIo): Promise<number> {
-  const result = await io.probe.run("docker", LEFTOVERS).catch(() => undefined);
-  if (result?.exitCode !== 0) return 0;
-  return result.stdout.split("\n").filter((line) => line.trim() !== "").length;
+/**
+ * The `eve-sbx-*` sandbox containers on this Docker: `leftovers` still running, `exited` stopped.
+ * eve stops a session's container when the server shuts down and keeps it, to start it again
+ * when the session resumes; it removes it when the session ends. Both 0 when Docker does not
+ * answer.
+ */
+export interface Sandboxes {
+  leftovers: number;
+  exited: number;
+}
+
+export async function leftoverContainers(io: CliIo): Promise<Sandboxes> {
+  const result = await io.probe.run("docker", SANDBOXES).catch(() => undefined);
+  if (result?.exitCode !== 0) return { leftovers: 0, exited: 0 };
+  const states = result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const running = states.filter((s) => s === "running").length;
+  return { leftovers: running, exited: states.length - running };
 }
 
 /**
@@ -151,7 +173,7 @@ export async function startAgent(
     }
     return true;
   };
-  let stopping: Promise<{ leftovers: number }> | undefined;
+  let stopping: Promise<Sandboxes> | undefined;
   const stop = () =>
     (stopping ??= (async () => {
       // The group, even when `pnpm exec` has gone: the server may outlive it, and its own
@@ -163,7 +185,7 @@ export async function startAgent(
       }
       await exited;
       // Counted once nothing of the group runs: a server mid-shutdown still holds some.
-      return { leftovers: await leftoverContainers(io) };
+      return leftoverContainers(io);
     })());
 
   let timer: NodeJS.Timeout | undefined;
@@ -308,8 +330,22 @@ export interface RunOptions {
   project?: string;
 }
 
-const leftoverNote = (leftovers: number) =>
-  `${leftovers} eve-sbx- sandbox container${leftovers === 1 ? "" : "s"} still running (docker ps --filter name=eve-sbx-)`;
+/** What stop says of the sandbox containers; empty when there are none. */
+export function sandboxNote({ leftovers, exited }: Partial<Sandboxes>): string {
+  const plural = (n: number) => (n === 1 ? "" : "s");
+  return [
+    ...(leftovers
+      ? [
+          `${leftovers} eve-sbx- sandbox container${plural(leftovers)} still running (docker ps --filter name=eve-sbx-)`,
+        ]
+      : []),
+    ...(exited
+      ? [
+          `${exited} stopped eve-sbx- sandbox container${plural(exited)} kept: eve starts one again when its session resumes and removes it when the session ends (docker ps -a --filter name=eve-sbx-; docker rm one whose session you do not need)`,
+        ]
+      : []),
+  ].join("; ");
+}
 
 function printStarted(
   io: CliIo,
@@ -403,9 +439,11 @@ async function foreground(
       printStarted(io, agent, options, { foreground: true });
       if (abort.signal.aborted) void agent.stop();
       const code = await agent.exited;
-      const { leftovers } = await agent.stop();
-      if (leftovers > 0)
-        io.stderr.write(`warning: ${leftoverNote(leftovers)}\n`);
+      const sandboxes = await agent.stop();
+      if (sandboxes.leftovers > 0 || sandboxes.exited > 0)
+        io.stderr.write(
+          `${sandboxes.leftovers > 0 ? "warning" : "note"}: ${sandboxNote(sandboxes)}\n`,
+        );
       return code;
     },
   );
@@ -452,10 +490,8 @@ export async function stop(
     );
     return 0;
   }
-  const leftovers = result.leftovers ?? 0;
-  io.stdout.write(
-    `stopped ${name}${leftovers > 0 ? `; ${leftoverNote(leftovers)}` : ""}\n`,
-  );
+  const note = sandboxNote(result);
+  io.stdout.write(`stopped ${name}${note === "" ? "" : `; ${note}`}\n`);
   return 0;
 }
 

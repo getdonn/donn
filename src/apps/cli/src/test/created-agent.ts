@@ -41,8 +41,9 @@ targets:
 `;
 
 /**
- * Answers `npm view eve versions`, `npm view vercel version` and `docker ps` (the ids in `containers`); anything else
- * fails. `docker` records each call in `dockerCalls`.
+ * Answers `npm view eve versions`, `npm view vercel version` and `docker` (one line per entry of
+ * `containers`, each a container state such as `running` or `exited`, as `docker ps -a --format
+ * {{.State}}` prints); anything else fails. `docker` records each call in `dockerCalls`.
  */
 export function agentProbe(containers: string[] = []): Probe & {
   dockerCalls: string[][];

@@ -271,9 +271,14 @@ describe.skipIf(!ENABLED)("e2e: donn agent with real eve", () => {
       expect(line).toContain("x-team=payments");
       expect(line).toContain("model=stub-model");
     }
-    expect(json(donn(["agent", "stop", "blank", "--json"]))).toMatchObject({
-      stopped: true,
-    });
+    // eve stops the session's sandbox container on shutdown and keeps it to resume the session.
+    const stopped = json(donn(["agent", "stop", "blank", "--json"])) as {
+      stopped: boolean;
+      leftovers: number;
+      exited: number;
+    };
+    expect(stopped.stopped).toBe(true);
+    expect(stopped.exited).toBeGreaterThanOrEqual(1);
     expect(donn(["daemon", "stop"], 60_000).status).toBe(0);
   }, 900_000);
 
