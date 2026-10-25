@@ -3,3 +3,6 @@ resolve: team/t
 expect:
   error:
     code: invalid-persona
+    layer: team/t
+    issues:
+      - "agents.define.x.path: must stay inside the project and outside .donn/"
