@@ -80,5 +80,7 @@ export const kitchenSink: CorpusEntry = {
       codex: { approvalPolicy: "on-request" },
     },
     policy: {},
+    models: {},
+    agents: {},
   },
 };

@@ -145,6 +145,159 @@ describe("policy", () => {
   });
 });
 
+describe("models", () => {
+  const gw = {
+    type: "openai-compatible",
+    baseURL: "https://llm.corp/v1",
+    apiKey: "secret://vault/llm/gateway-key",
+    headers: { "x-bf-vk": "secret://vault/llm/virtual-key" },
+  };
+  const parse = (models: unknown) => Persona.safeParse({ ...base, models });
+
+  it("accepts the spec 23 §1 example", () => {
+    const models = { gateway: gw, default: "anthropic/claude-sonnet-5-5" };
+    expect(Persona.parse({ ...base, models }).models).toEqual(models);
+  });
+
+  it("baseURL is required for openai-compatible and anthropic, refused for vercel-ai-gateway", () => {
+    expect(parse({ gateway: { type: "openai-compatible" } }).success).toBe(
+      false,
+    );
+    expect(parse({ gateway: { type: "anthropic" } }).success).toBe(false);
+    expect(
+      parse({ gateway: { type: "anthropic", baseURL: "https://a.io" } })
+        .success,
+    ).toBe(true);
+    expect(
+      parse({
+        gateway: { type: "vercel-ai-gateway", baseURL: "https://a.io" },
+      }).success,
+    ).toBe(false);
+    expect(parse({ gateway: { type: "vercel-ai-gateway" } }).success).toBe(
+      true,
+    );
+  });
+
+  it("apiKey must be a secret ref", () => {
+    expect(parse({ gateway: { ...gw, apiKey: "sk-live-123" } }).success).toBe(
+      false,
+    );
+  });
+
+  it("apiKey needs something after the scheme", () => {
+    expect(parse({ gateway: { ...gw, apiKey: "secret://" } }).success).toBe(
+      false,
+    );
+  });
+
+  it("unknown gateway type is refused", () => {
+    expect(parse({ gateway: { type: "bedrock" } }).success).toBe(false);
+  });
+
+  it("an overlay may carry models", () => {
+    const overlay = { apiVersion: "donn/v0", kind: "PersonaOverlay" };
+    expect(
+      PersonaOverlay.safeParse({ ...overlay, models: { default: "a/b" } })
+        .success,
+    ).toBe(true);
+  });
+});
+
+describe("agents", () => {
+  const agent = {
+    template: "eve:github-project-maintainer",
+    target: "self-host",
+    path: "agents/pr-reviewer",
+    model: "anthropic/claude-opus-5-5",
+    env: {
+      GITHUB_APP_ID: "123456",
+      GITHUB_APP_PRIVATE_KEY: "secret://vault/gh/reviewer-key",
+    },
+  };
+  const define = (name: string, over: Record<string, unknown> = {}) =>
+    Persona.safeParse({
+      ...base,
+      agents: { define: { [name]: { ...agent, ...over } } },
+    });
+
+  it("accepts the spec 23 §2 example", () => {
+    const agents = {
+      define: { "pr-reviewer": agent },
+      remove: ["old-triage-bot"],
+    };
+    expect(Persona.parse({ ...base, agents }).agents).toEqual(agents);
+  });
+
+  it("agent name rules", () => {
+    expect(define("PR-Reviewer").success).toBe(false);
+    expect(define("a".repeat(65)).success).toBe(false);
+    expect(define("a".repeat(64)).success).toBe(true);
+    expect(
+      Persona.safeParse({ ...base, agents: { remove: ["Bad Name"] } }).success,
+    ).toBe(false);
+  });
+
+  it("target is local, self-host or vercel", () => {
+    expect(define("a", { target: "lambda" }).success).toBe(false);
+    expect(define("a", { target: "vercel" }).success).toBe(true);
+  });
+
+  it("path rules", () => {
+    for (const path of [
+      "./agents/../..",
+      "/abs",
+      ".donn/x",
+      ".donn",
+      "agents/../.donn/x",
+      "..",
+      "../x",
+      ".",
+      "./",
+      "a/..",
+    ]) {
+      expect(define("a", { path }).success, path).toBe(false);
+    }
+    for (const path of ["agents/./pr", "agents/pr", ".donnx/a"]) {
+      expect(define("a", { path }).success, path).toBe(true);
+    }
+  });
+
+  it("env names are uppercase and DONN_ is reserved", () => {
+    expect(define("a", { env: { lower: "x" } }).success).toBe(false);
+    expect(define("a", { env: { "1A": "x" } }).success).toBe(false);
+    expect(define("a", { env: { DONN_HOME: "x" } }).success).toBe(false);
+    expect(define("a", { env: { A_1: "x" } }).success).toBe(true);
+  });
+
+  it("template is eve:<slug> or a relative path", () => {
+    expect(define("a", { template: "eve:blank" }).success).toBe(true);
+    expect(define("a", { template: "templates/reviewer" }).success).toBe(true);
+    for (const template of [
+      "eve:Bad Slug",
+      "/abs",
+      "../x",
+      "a/../../x",
+      "",
+      ".",
+      "a/..",
+      "eve:",
+      "eve:a/b",
+    ]) {
+      expect(define("a", { template }).success, template).toBe(false);
+    }
+  });
+
+  it("an overlay cannot carry agents", () => {
+    const overlay = { apiVersion: "donn/v0", kind: "PersonaOverlay" };
+    expect(
+      PersonaOverlay.safeParse({
+        ...overlay,
+        agents: { define: { a: agent } },
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("PersonaOverlay", () => {
   it("cannot carry metadata, extends or locks", () => {
     const overlay = { apiVersion: "donn/v0", kind: "PersonaOverlay" };

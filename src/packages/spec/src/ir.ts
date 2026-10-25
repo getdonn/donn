@@ -1,5 +1,8 @@
 import { z } from "zod";
 import {
+  AgentName,
+  AgentTarget,
+  EnvName,
   Hook,
   HookEvent,
   Id,
@@ -8,6 +11,7 @@ import {
   KnowledgePointer,
   Labels,
   McpServer,
+  Models,
   Policy,
   Ref,
   SecretProvider,
@@ -19,6 +23,16 @@ import {
 // the control plane. Versioned by IR_VERSION, independently of the persona file apiVersion.
 
 const SortedRules = z.array(z.string().min(1));
+
+export const ResolvedAgent = z.strictObject({
+  template: z.string().min(1),
+  target: AgentTarget,
+  /** Normalized, project-relative; always set (default `agents/<name>`). */
+  path: z.string().min(1),
+  model: z.string().min(1).optional(),
+  env: z.record(EnvName, z.string()),
+});
+export type ResolvedAgent = z.infer<typeof ResolvedAgent>;
 
 export const ResolvedPersona = z.strictObject({
   irVersion: z.literal(IR_VERSION),
@@ -52,6 +66,9 @@ export const ResolvedPersona = z.strictObject({
   targets: Targets,
   /** Added after IR 1 as an optional field with a default, so IR_VERSION is unchanged. */
   policy: Policy.default({}),
+  /** Likewise (spec 23): optional with a default, IR_VERSION unchanged. */
+  models: Models.default({}),
+  agents: z.record(AgentName, ResolvedAgent).default({}),
 });
 export type ResolvedPersona = z.infer<typeof ResolvedPersona>;
 
@@ -66,6 +83,7 @@ export const WARNING_CODES = [
   "security-removal",
   "remove-unmatched",
   "overlay-lock-ignored",
+  "agent-removed",
 ] as const;
 export const WarningCode = z.enum(WARNING_CODES);
 export type WarningCode = z.infer<typeof WarningCode>;
@@ -87,6 +105,7 @@ export const ERROR_CODES = [
   "invalid-lock-path",
   "user-layer-lock",
   "policy-in-lower-layer",
+  "agents-in-overlay",
   "invalid-persona",
 ] as const;
 export const ErrorCode = z.enum(ERROR_CODES);

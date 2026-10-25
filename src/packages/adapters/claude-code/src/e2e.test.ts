@@ -78,6 +78,8 @@ const ir: ResolvedPersona = {
   locks: [],
   targets: {},
   policy: {},
+  models: {},
+  agents: {},
 };
 
 const PROMPT = `Configuration test. Report:
