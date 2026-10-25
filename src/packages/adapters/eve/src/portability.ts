@@ -1,4 +1,5 @@
 import type { PortabilityEntry, ReportEntry } from "@getdonn/adapter-sdk";
+import type { ResolvedPersona } from "@getdonn/spec";
 import type { ConnectProvider, TemplateFacts } from "./templates.js";
 import { templateFacts } from "./templates.js";
 
@@ -50,6 +51,10 @@ const CONNECT: Record<ConnectProvider, { instead: string; env?: string[] }> = {
       "Bring a Discord app: set DISCORD_APPLICATION_ID, DISCORD_BOT_TOKEN and DISCORD_PUBLIC_KEY",
     env: ["DISCORD_APPLICATION_ID", "DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
   },
+  "github-user": {
+    instead:
+      "Per-user GitHub sign-in uses Vercel Connect; off Vercel replace tools/github.ts with your own OAuth or token flow",
+  },
   mcp: {
     instead:
       "Authorize the template's MCP connections yourself: replace the Vercel Connect auth in agent/connections/ with a token or OAuth of your own",
@@ -61,7 +66,8 @@ const NO_EQUIVALENT =
 
 /** The entries for a template's facts at a target. Ordered by service, then provider. */
 export function portabilityFor(
-  facts: Pick<TemplateFacts, "services" | "connect" | "sandboxNetworkPolicy">,
+  facts: Pick<TemplateFacts, "services"> &
+    Partial<Omit<TemplateFacts, "services">>,
   target: Target,
 ): PortabilityEntry[] {
   if (target === "vercel") return [];
@@ -77,7 +83,7 @@ export function portabilityFor(
     entries.push({ target, service, instead, blocking, ...(env && { env }) });
 
   if (has("connect"))
-    for (const provider of facts.connect) {
+    for (const provider of facts.connect ?? []) {
       const { instead, env } = CONNECT[provider];
       add("connect", instead, true, env);
     }
@@ -103,6 +109,13 @@ export function portabilityFor(
       "The template's model string is replaced by lib/donn/config.ts",
       false,
     );
+  if (facts.subagentModels)
+    add(
+      "ai-gateway",
+      "This template's subagents call the Vercel AI Gateway directly (agent/subagents/*/agent.ts): set AI_GATEWAY_API_KEY, or point each subagent's model at your gateway",
+      true,
+      ["AI_GATEWAY_API_KEY"],
+    );
   if (has("drive")) add("drive", NO_EQUIVALENT, true);
   if (has("daemons")) add("daemons", NO_EQUIVALENT, true);
   add(
@@ -125,8 +138,35 @@ export function portability(
   const slug = eveSlug(template);
   const facts = (slug !== undefined && templateFacts(slug)) || {
     services: [],
-    connect: [],
-    sandboxNetworkPolicy: false,
   };
   return portabilityFor(facts, target);
+}
+
+/**
+ * Compile-report advisories that depend on the persona's model: a template whose `agent.ts`
+ * holds Anthropic-only `modelOptions` keeps them when donn replaces `model`.
+ */
+export function templateModelEntries(
+  agent: string,
+  template: string,
+  ir: ResolvedPersona,
+): ReportEntry[] {
+  const slug = eveSlug(template);
+  if (slug === undefined || !templateFacts(slug)?.anthropicModelOptions)
+    return [];
+  const { gateway } = ir.models;
+  const id = ir.agents[agent]?.model ?? ir.models.default ?? "";
+  const anthropic =
+    gateway === undefined
+      ? id.startsWith("anthropic/")
+      : gateway.type === "anthropic";
+  if (anthropic) return [];
+  return [
+    {
+      path: `agents.${agent}.template`,
+      outcome: "advisory",
+      reason:
+        "the template's modelOptions.providerOptions.anthropic (thinking) applies only to Anthropic models; it is ignored otherwise",
+    },
+  ];
 }

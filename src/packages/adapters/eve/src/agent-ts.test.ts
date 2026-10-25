@@ -83,6 +83,23 @@ describe("patchAgentTs edits only its spans", () => {
     expect(text).toContain("defineAgent({\r\n  a: 1,\r\n  ...donn,\r\n});");
   });
 
+  it("keeps \\r\\n whole after a last property with a trailing comment", () => {
+    const text = patched(
+      'import { defineAgent } from "eve";\r\nexport default defineAgent({\r\n  a: 1,\r\n  b: 2 // c\r\n});\r\n',
+    );
+    expect(text).toContain("  b: 2, // c\r\n  ...donn,\r\n});");
+    expect(text.replaceAll("\r\n", "")).not.toMatch(/[\r\n]/);
+  });
+
+  it("with only model keys, keeps what lies between duplicates", () => {
+    const text = patched(
+      'import { defineAgent } from "eve";\nexport default defineAgent({\n  model: "a",\n  // keep me\n  model: "b",\n});\n',
+    );
+    expect(text).toContain("// keep me");
+    expect(text).toContain("...donn");
+    expect(text).not.toContain("model");
+  });
+
   it("handles an empty object", () => {
     expect(
       patched(

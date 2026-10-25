@@ -420,4 +420,47 @@ describe("portability in the compile", () => {
         .portability,
     ).toEqual([]);
   });
+
+  it("personal-agent's Anthropic-only modelOptions are advised unless the model is Anthropic", () => {
+    const advice = (models: ResolvedPersona["models"]) =>
+      adapter
+        .compile({
+          ...withTemplate("eve:personal-agent-template"),
+          ir: {
+            ...withTemplate("eve:personal-agent-template").ir,
+            models,
+            targets: { eve: { contextWindow: 128000 } },
+          },
+        })
+        .report.entries.filter((e) =>
+          e.reason.includes("providerOptions.anthropic"),
+        );
+    expect(advice({ default: "anthropic/claude-sonnet-5" })).toEqual([]);
+    expect(
+      advice({
+        gateway: {
+          type: "anthropic",
+          baseURL: "https://g/v1",
+          apiKey: "secret://v/k",
+        },
+        default: "claude-sonnet-5",
+      }),
+    ).toEqual([]);
+    expect(advice({ default: "openai/gpt-5" })).toEqual([
+      expect.objectContaining({
+        outcome: "advisory",
+        path: "agents.reviewer.template",
+      }),
+    ]);
+    expect(
+      advice({
+        gateway: {
+          type: "openai-compatible",
+          baseURL: "https://g/v1",
+          apiKey: "secret://v/k",
+        },
+        default: "gpt-5",
+      }),
+    ).toHaveLength(1);
+  });
 });

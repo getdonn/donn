@@ -15,7 +15,8 @@ import type { TemplateInfo, VercelService } from "@getdonn/adapter-sdk";
 // eve-chat-template, uses Vercel Blob (EVE_MEMORY_BLOB_*), which is not a listed service.
 
 /** The Connect providers a template's code reaches, each with its own self-host replacement. */
-export type ConnectProvider = "github" | "slack" | "discord" | "mcp";
+export type ConnectProvider =
+  "github" | "github-user" | "slack" | "discord" | "mcp";
 
 /** What the table knows about a template beyond `TemplateInfo`. */
 export interface TemplateFacts {
@@ -24,6 +25,10 @@ export interface TemplateFacts {
   connect: ConnectProvider[];
   /** The Vercel sandbox uses a domain allow-list or credential transform (Docker has neither). */
   sandboxNetworkPolicy: boolean;
+  /** Subagents (`agent/subagents/*`) name their own AI Gateway models; only the top agent.ts is patched. */
+  subagentModels: boolean;
+  /** `agent.ts` carries `modelOptions.providerOptions.anthropic`, which only Anthropic models read. */
+  anthropicModelOptions: boolean;
 }
 
 interface Row {
@@ -35,9 +40,11 @@ interface Row {
 }
 
 const REPO_ROOT = "apps/templates";
-const none = (): Pick<TemplateFacts, "connect" | "sandboxNetworkPolicy"> => ({
+const none = (): Omit<TemplateFacts, "services"> => ({
   connect: [],
   sandboxNetworkPolicy: false,
+  subagentModels: false,
+  anthropicModelOptions: false,
 });
 
 const ROWS: Row[] = [
@@ -57,6 +64,7 @@ const ROWS: Row[] = [
     slug: "eve-coding-agent-template",
     title: "Coding Agent on Slack",
     facts: {
+      ...none(),
       // connect: channels/github.ts connectGitHubCredentials(), channels/slack.ts
       //   connectSlackCredentials(), lib/github.ts GITHUB_CONNECTOR.
       // sandbox: agent/sandbox.ts VercelSandbox.environment(); lib/github.ts brokerGitHubLease
@@ -127,6 +135,7 @@ const ROWS: Row[] = [
       //   ("anthropic/claude-opus-5", "spacexai/grok-4.7", "moonshotai/kimi-k3",
       //   "openai/gpt-5.6-sol"); only the top-level model is replaced by lib/donn/config.ts.
       services: ["ai-gateway"],
+      subagentModels: true,
     },
   },
   {
@@ -135,10 +144,13 @@ const ROWS: Row[] = [
     facts: {
       ...none(),
       // connect: channels/slack.ts connectSlackCredentials(); connections/linear.ts connect();
-      //   tools/github.ts getToken() from @vercel/connect.
+      //   tools/github.ts getToken() + UserAuthorizationRequiredError from @vercel/connect
+      //   (per-user OAuth, not a GitHub App).
+      // anthropicModelOptions: agent/agent.ts modelOptions.providerOptions.anthropic.thinking.
       // ai-gateway: agent/agent.ts `model: "anthropic/claude-sonnet-4.6"`.
       services: ["connect", "ai-gateway"],
-      connect: ["slack", "mcp", "github"],
+      connect: ["slack", "mcp", "github-user"],
+      anthropicModelOptions: true,
     },
   },
 ];

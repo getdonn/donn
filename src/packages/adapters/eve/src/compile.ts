@@ -20,6 +20,7 @@ import { EveCompileError } from "./errors.js";
 import {
   isKnownTemplate,
   portability,
+  templateModelEntries,
   unknownTemplateEntry,
 } from "./portability.js";
 import { connectionName, skillName } from "./names.js";
@@ -238,6 +239,7 @@ export function compile(
   const template = agent.template;
   if (!isKnownTemplate(template))
     entries.push(unknownTemplateEntry(input.agent, template));
+  entries.push(...templateModelEntries(input.agent, template, ir));
 
   const text = instructionsText(input, connections.names, entries);
   if (text !== undefined) files[INSTRUCTIONS_FILE] = { content: text };

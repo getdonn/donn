@@ -204,43 +204,43 @@ export function patchAgentTs(source: string): AgentTsResult {
   const nl = source.includes("\r\n") ? "\r\n" : "\n";
   const edits: Edit[] = [];
 
-  // Remove each literal model property with its trailing comma.
-  for (const model of models) {
+  // Each literal model property is removed with its own trailing comma (and its line, when it
+  // has the line to itself); nothing between two of them is touched.
+  const removal = (model: Node): Edit => {
     let end = model.end;
     const comma = commaAfter(source, end);
     if (comma !== -1) end = comma + 1;
     const first = lineStart(source, model.start);
     const own =
       /^[ \t]*$/.test(source.slice(first, model.start)) &&
-      /^[ \t]*(?:\/\/[^\n]*)?\r?$/.test(
+      /^[ \t]*(?:\/\/[^\r\n]*)?\r?$/.test(
         source.slice(end, lineEnd(source, end)),
       );
     if (own) {
       const stop = lineEnd(source, end);
-      edits.push({
+      return {
         start: first,
         end: Math.min(source.length, stop + (source[stop] === "\n" ? 1 : 0)),
         text: "",
-      });
-    } else {
-      let stop = end;
-      while (source[stop] === " " || source[stop] === "\t") stop++;
-      edits.push({ start: model.start, end: stop, text: "" });
+      };
     }
-  }
+    let stop = end;
+    while (source[stop] === " " || source[stop] === "\t") stop++;
+    return { start: model.start, end: stop, text: "" };
+  };
+  edits.push(...models.map(removal));
 
   if (!hasSpread) {
     const kept = props.filter((p) => !models.includes(p));
     const open = object.start + 1;
     if (kept.length === 0 && props.length > 0) {
-      // Only `model` was there: the spread takes its place (the line edit above is replaced).
+      // Only `model` was there: the spread takes the first one's place.
+      const [first, ...rest] = models;
       edits.length = 0;
-      const lastProp = props[props.length - 1]!;
-      edits.push({
-        start: props[0]!.start,
-        end: lastProp.end,
-        text: "...donn",
-      });
+      edits.push(
+        { start: first!.start, end: first!.end, text: "...donn" },
+        ...rest.map(removal),
+      );
     } else if (kept.length === 0) {
       const inner = source.slice(open, object.end - 1);
       if (/^\s*$/.test(inner))
@@ -262,7 +262,7 @@ export function patchAgentTs(source: string): AgentTsResult {
           lastKept.start,
         );
         // Past a trailing `// comment` on the property's line, so the comment stays with it.
-        const rest = /^[ \t]*(?:\/\/[^\n]*)?/.exec(
+        const rest = /^[ \t]*(?:\/\/[^\r\n]*)?/.exec(
           source.slice(after, lineEnd(source, after)),
         )![0];
         const at = after + rest.length;

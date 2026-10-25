@@ -110,6 +110,48 @@ describe("portability", () => {
     });
   }
 
+  for (const target of targets) {
+    it(`llm-council's subagents need the AI Gateway at ${target}`, () => {
+      const entries = find(
+        portability("eve:eve-llm-council-template", target),
+        "ai-gateway",
+      );
+      expect(entries).toHaveLength(2);
+      expect(entries[1]).toMatchObject({
+        blocking: true,
+        env: ["AI_GATEWAY_API_KEY"],
+        instead: expect.stringContaining(
+          "subagents call the Vercel AI Gateway",
+        ),
+      });
+    });
+
+    it(`personal-agent's GitHub is per-user Connect OAuth at ${target}`, () => {
+      const entries = find(
+        portability("eve:personal-agent-template", target),
+        "connect",
+        "Per-user GitHub sign-in",
+      );
+      expect(entries).toEqual([
+        expect.objectContaining({
+          blocking: true,
+          instead: expect.stringContaining("tools/github.ts"),
+        }),
+      ]);
+      expect(
+        find(
+          portability("eve:personal-agent-template", target),
+          "connect",
+          "GitHub App",
+        ),
+      ).toEqual([]);
+    });
+  }
+
+  it("llm-council's subagents need nothing on vercel (OIDC)", () => {
+    expect(portability("eve:eve-llm-council-template", "vercel")).toEqual([]);
+  });
+
   it("an unknown slug is not known; it still carries route auth", () => {
     expect(isKnownTemplate("eve:kody-eve-template")).toBe(false);
     expect(isKnownTemplate("eve:blank")).toBe(true);
