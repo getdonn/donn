@@ -1,3 +1,4 @@
+import { StatusOutput } from "@getdonn/cli-schemas";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:net";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -93,6 +94,8 @@ describe("donn status", () => {
     expect(out.version).toBe(cliVersion());
     expect(out.sessions).toHaveLength(1);
     expect(out.sessions[0]).toMatchObject({ launched: "team/payments" });
+    // The schema the GUI's bridge parses it with (docs/planning/26-gui.md section 4).
+    StatusOutput.parse(JSON.parse(r.stdout));
   });
 
   it("lists sessions without state when no daemon runs", async () => {
@@ -110,6 +113,7 @@ describe("donn status", () => {
     };
     expect(out.daemon).toBe(false);
     expect(out.sessions).toMatchObject([{ launched: "team/payments" }]);
+    StatusOutput.parse(JSON.parse(json.stdout));
   });
 
   it("falls back when the socket is dead", async () => {
