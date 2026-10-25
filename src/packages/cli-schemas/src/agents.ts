@@ -132,11 +132,6 @@ export const AgentRunOutput = z.strictObject({
     pid: z.number().int().optional(),
     startedAt: z.string(),
     token: z.string(),
-    /**
-     * Only in the foreground run, where the agent is the process itself: its `exited` promise
-     * serialises as `{}`. A quirk of today's output; the daemon's run does not have it.
-     */
-    exited: z.strictObject({}).optional(),
   }),
   already: z.boolean().optional(),
 });

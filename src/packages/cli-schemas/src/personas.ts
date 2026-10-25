@@ -1,126 +1,10 @@
+import { ResolveResult } from "@getdonn/spec";
 import { z } from "zod";
 import { Change, CompileReport, Ref } from "./common.js";
 
 // The persona commands: list, resolve, compile, diff, switch and write.
 
-const HOOK_EVENTS = [
-  "session-start",
-  "session-end",
-  "user-prompt-submit",
-  "pre-tool-use",
-  "post-tool-use",
-  "stop",
-  "subagent-stop",
-  "pre-compact",
-  "notification",
-] as const;
-
-// ---- the resolved persona (@getdonn/spec's ResolvedPersona, without its validation) ----------
-
-const Instruction = z.union([
-  z.strictObject({ id: z.string(), file: z.string() }),
-  z.strictObject({ id: z.string(), inline: z.string() }),
-]);
-
-const McpServer = z.union([
-  z.strictObject({ ref: z.string() }),
-  z.strictObject({
-    command: z.string(),
-    args: z.array(z.string()).optional(),
-    env: z.record(z.string(), z.string()).optional(),
-  }),
-  z.strictObject({
-    url: z.string(),
-    transport: z.enum(["http", "sse"]).optional(),
-    headers: z.record(z.string(), z.string()).optional(),
-  }),
-]);
-
-const Hook = z.strictObject({
-  id: z.string(),
-  run: z.string(),
-  matcher: z.string().optional(),
-});
-
-const ResolvedAgent = z.strictObject({
-  template: z.string(),
-  target: z.enum(["local", "self-host", "vercel"]),
-  path: z.string(),
-  model: z.string().optional(),
-  world: z.enum(["local", "postgres"]).optional(),
-  env: z.record(z.string(), z.string()),
-});
-
-export const ResolvedPersona = z.strictObject({
-  irVersion: z.number().int(),
-  layers: z.array(Ref),
-  metadata: z.strictObject({
-    name: z.string(),
-    version: z.number().int().optional(),
-    description: z.string().optional(),
-    labels: z.record(z.string(), z.string()),
-  }),
-  instructions: z.array(Instruction),
-  skills: z.array(z.strictObject({ name: z.string(), source: z.string() })),
-  mcp: z.strictObject({
-    gateway: z.string().optional(),
-    servers: z.record(z.string(), McpServer),
-  }),
-  permissions: z.strictObject({
-    allow: z.array(z.string()),
-    deny: z.array(z.string()),
-    ask: z.array(z.string()),
-  }),
-  hooks: z.partialRecord(z.enum(HOOK_EVENTS), z.array(Hook)),
-  knowledge: z.array(z.strictObject({ id: z.string(), source: z.string() })),
-  secrets: z.strictObject({
-    providers: z.record(z.string(), z.looseObject({ type: z.string() })),
-  }),
-  locks: z.array(z.strictObject({ path: z.string(), layer: Ref })),
-  targets: z.record(z.string(), z.record(z.string(), z.unknown())),
-  policy: z.strictObject({
-    permissions: z.literal("exclusive").optional(),
-    hooks: z.literal("exclusive").optional(),
-    mcp: z.literal("exclusive").optional(),
-    bypassPermissions: z.literal("disabled").optional(),
-  }),
-  models: z.strictObject({
-    gateway: z
-      .strictObject({
-        type: z.enum(["openai-compatible", "anthropic", "vercel-ai-gateway"]),
-        baseURL: z.string().optional(),
-        apiKey: z.string().optional(),
-        headers: z.record(z.string(), z.string()).optional(),
-      })
-      .optional(),
-    default: z.string().optional(),
-  }),
-  agents: z.record(z.string(), ResolvedAgent),
-});
-export type ResolvedPersona = z.infer<typeof ResolvedPersona>;
-
-const ResolveWarning = z.strictObject({
-  code: z.enum([
-    "allow-shadowed-by-deny",
-    "ask-shadowed-by-deny",
-    "allow-shadowed-by-ask",
-    "security-removal",
-    "remove-unmatched",
-    "overlay-lock-ignored",
-    "agent-removed",
-  ]),
-  path: z.string(),
-  layer: Ref,
-  message: z.string().optional(),
-});
-
-const HistoryEntry = z.strictObject({
-  path: z.string(),
-  layer: Ref,
-  kind: z.enum(["override", "remove"]),
-  from: Ref,
-  replacedBy: z.string().optional(),
-});
+// The resolved persona is @getdonn/spec's own schema (browser-safe: no Node imports).
 
 // ---- the commands ------------------------------------------------------------------------
 
@@ -135,11 +19,7 @@ export type ListOutput = z.infer<typeof ListOutput>;
  * by path), what each displaced (`history`), and the registry versions the resolve used
  * (`builtFrom`, only for layers that came from the registry cache).
  */
-export const ResolveOutput = z.strictObject({
-  ir: ResolvedPersona,
-  provenance: z.record(z.string(), Ref),
-  warnings: z.array(ResolveWarning),
-  history: z.array(HistoryEntry),
+export const ResolveOutput = ResolveResult.extend({
   builtFrom: z.record(z.string(), z.number().int()),
 });
 export type ResolveOutput = z.infer<typeof ResolveOutput>;

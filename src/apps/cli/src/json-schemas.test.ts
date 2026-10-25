@@ -577,6 +577,9 @@ describe("agent commands", () => {
       const r = await pending;
       const out = parses("agent run", r.stdout) as { agent: { token: string } };
       expect(out.agent.token).toMatch(/^[0-9a-f]{64}$/);
+      // A foreground run once printed its exited promise as `exited: {}`.
+      expect(out.agent).not.toHaveProperty("exited");
+      expect(JSON.parse(r.stdout).agent).not.toHaveProperty("exited");
       expect(AgentRunOutput).toBe(COMMAND_OUTPUTS["agent run"]);
     });
   });

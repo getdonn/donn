@@ -366,10 +366,20 @@ function printStarted(
 ): void {
   const { name, url, pid, token } = agent;
   if (options.json) {
+    // Only AgentInfo's own fields: a foreground run is the process handle, whose `exited`
+    // promise would print as `{}`.
+    const { project, startedAt } = agent;
     io.stdout.write(
       `${JSON.stringify(
         {
-          agent,
+          agent: {
+            name,
+            project,
+            url,
+            ...(pid !== undefined && { pid }),
+            startedAt,
+            token,
+          },
           ...(extra.already !== undefined && { already: extra.already }),
         },
         null,
