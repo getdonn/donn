@@ -137,7 +137,7 @@ function where(io: CliIo) {
   if (!isAbsolute(user)) {
     throw new CliError(
       "migrate-home",
-      `could not find an absolute home folder (${io.env.HOME ? `HOME is "${io.env.HOME}"` : `HOME is empty and the system gave "${user}"`}); set HOME to an absolute path and run donn migrate again`,
+      `could not find an absolute home folder (${io.env.HOME ? `HOME is "${io.env.HOME}"` : `HOME is ${io.env.HOME === undefined ? "not set" : "empty"} and the system gave "${user}"`}); set HOME to an absolute path and run donn migrate again`,
     );
   }
   const src = legacyHome(io);

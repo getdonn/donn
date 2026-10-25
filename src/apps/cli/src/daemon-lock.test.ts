@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { daemonRequest } from "./daemon/client.js";
 import { daemonPaths } from "./daemon/paths.js";
 import { isDaemonProcess, processCommand } from "./daemon/process.js";
@@ -303,6 +303,24 @@ describe("the daemon lock", () => {
       "/status",
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("the daemon's home lookup", () => {
+  it("expands ~/ in config.yaml with the home lookup it was given", async () => {
+    const home = join(root, "home");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "config.yaml"), "personas: ~/nowhere\n");
+    const passwdHome = vi.fn(() => root);
+    const daemon = await startDaemon({
+      home,
+      env: {},
+      version: "9.9.9",
+      passwdHome,
+    });
+    daemons.push(daemon);
+    await daemon.refresh();
+    expect(passwdHome).toHaveBeenCalled();
   });
 });
 
