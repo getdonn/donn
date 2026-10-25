@@ -23,6 +23,8 @@ export interface DeployOptions {
 }
 
 const ROUTE_TOKEN = "DONN_ROUTE_TOKEN";
+const ALREADY_EXISTS = /already exists/i;
+const TAIL_LINES = 10;
 const DEPLOYMENT_URL = /https:\/\/[A-Za-z0-9.-]+\.vercel\.app\b[^\s]*/;
 
 /** Only a vercel agent deploys; the others are told what to run instead. */
@@ -40,6 +42,10 @@ export function assertDeployable(name: string, target: string): void {
     },
   );
 }
+
+/** `text` with every occurrence of `value` replaced by `***`. */
+const mask = (text: string, value: string) =>
+  value === "" ? text : text.split(value).join("***");
 
 /** Adds `names` to the manifest's `pushedEnv` under the agent's lock. */
 async function recordPushed(
@@ -93,21 +99,31 @@ export async function deploy(
     )
     .map((e) => e.name);
 
-  // Before any secret is resolved or anything leaves this machine.
-  if (names.length > 0) {
+  const unlinked = !existsSync(join(dir, ".vercel/project.json"));
+
+  // Before any secret is resolved or anything leaves this machine. A first deploy always asks
+  // (it creates a Vercel project), even with no variable to set.
+  if (names.length > 0 || unlinked) {
+    const what =
+      names.length > 0
+        ? `set ${names.join(", ")} in Vercel production`
+        : `link ${name} to a Vercel project and deploy it`;
     if (options.json && options.yes !== true) {
       throw new CliError(
         "confirmation-required",
-        `deploy sets ${names.join(", ")} in Vercel production; re-run with --yes to confirm`,
+        `deploy would ${what}; re-run with --yes to confirm`,
         { names, fix: "--yes" },
       );
     }
     if (options.yes !== true) {
-      (options.json ? io.stderr : io.stdout).write(
-        `will set in Vercel production:\n${names.map((n) => `  ${n}\n`).join("")}`,
-      );
+      if (names.length > 0)
+        (options.json ? io.stderr : io.stdout).write(
+          `will set in Vercel production:\n${names.map((n) => `  ${n}\n`).join("")}`,
+        );
       const answer = await managedEnv(io).confirm(
-        `Set these ${names.length} variables in Vercel production?`,
+        names.length > 0
+          ? `Set these ${names.length} variables in Vercel production?`
+          : `Link ${name} to a Vercel project and deploy it?`,
       );
       if (answer === undefined) {
         throw new CliError(
@@ -132,7 +148,18 @@ export async function deploy(
       { exitCode: result.exitCode, tail: result.tail },
     );
 
-  if (!existsSync(join(dir, ".vercel/project.json"))) {
+  // The values exist only from here, and only as stdin to vercel. An unresolvable ref stops
+  // the deploy before a Vercel project is created or linked.
+  const values = new Map<string, string | undefined>();
+  if (names.length > 0) {
+    const resolved = await agentEnvironment(ctx, io, name, {
+      resolve: true,
+      check: (target) => assertDeployable(name, target),
+    });
+    for (const e of resolved.entries) values.set(e.name, e.value);
+  }
+
+  if (unlinked) {
     const linked = await runEve(
       io,
       dir,
@@ -143,34 +170,45 @@ export async function deploy(
   }
 
   const done: string[] = [];
-  if (names.length > 0) {
-    // The values exist only from here, and only as stdin to vercel.
-    const resolved = await agentEnvironment(ctx, io, name, {
-      resolve: true,
-      check: (target) => assertDeployable(name, target),
-    });
-    const values = new Map(resolved.entries.map((e) => [e.name, e.value]));
-    const run = io.runInput ?? spawnWithInput;
-    for (const envName of names) {
-      const value = values.get(envName) ?? "";
-      const result = await run(
-        pm,
-        ["exec", "vercel", "env", "add", envName, "production"],
-        value,
-        { cwd: dir },
-      );
-      if (result.exitCode !== 0) {
-        await recordPushed(lock, dir, done);
-        throw new CliError(
-          "vercel-env-failed",
-          `vercel env add ${envName} production exited ${result.exitCode}`,
-          { name: envName, exitCode: result.exitCode, pushed: done },
-        );
+  const existing: string[] = [];
+  const run = io.runInput ?? spawnWithInput;
+  for (const envName of names) {
+    const value = values.get(envName) ?? "";
+    const result = await run(
+      pm,
+      ["exec", "vercel", "env", "add", envName, "production"],
+      value,
+      { cwd: dir },
+    );
+    if (result.exitCode !== 0) {
+      const output = `${result.stderr}\n${result.stdout}`;
+      if (ALREADY_EXISTS.test(output)) {
+        // Set before (a dashboard edit, a recreate): kept, never overwritten.
+        existing.push(envName);
+        continue;
       }
-      done.push(envName);
+      const tail = mask(output, value)
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l !== "")
+        .slice(-TAIL_LINES);
+      // A failure to record must not hide the refusal.
+      await recordPushed(lock, dir, [...done, ...existing]).catch(() => {});
+      throw new CliError(
+        "vercel-env-failed",
+        `vercel env add ${envName} production exited ${result.exitCode}: ${tail.at(-1) ?? "no output"}`,
+        {
+          name: envName,
+          exitCode: result.exitCode,
+          tail,
+          pushed: done,
+          fix: `check the Vercel project's environment variables, then run donn agent deploy ${name} again`,
+        },
+      );
     }
-    await recordPushed(lock, dir, done);
+    done.push(envName);
   }
+  await recordPushed(lock, dir, [...done, ...existing]);
 
   const lines: string[] = [];
   const deployed = await runEve(
@@ -190,11 +228,13 @@ export async function deploy(
 
   if (options.json) {
     io.stdout.write(
-      `${JSON.stringify({ agent: name, dir, pushed: done, ...(url && { url }) }, null, 2)}\n`,
+      `${JSON.stringify({ agent: name, dir, pushed: done, ...(existing.length > 0 && { existing }), ...(url && { url }) }, null, 2)}\n`,
     );
   } else {
     if (done.length > 0)
       io.stdout.write(`set in Vercel production: ${done.join(", ")}\n`);
+    for (const n of existing)
+      io.stdout.write(`${n} already set in Vercel; not overwritten\n`);
     io.stdout.write(url ? `deployed ${name}: ${url}\n` : `deployed ${name}\n`);
   }
   return 0;

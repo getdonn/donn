@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -54,7 +55,10 @@ interface Pushed {
   cwd: string | undefined;
 }
 
-function pushing(failOn?: string) {
+function pushing(
+  failOn?: string,
+  stderr: (input: string | undefined) => string = (i) => `boom ${i}`,
+) {
   const pushed: Pushed[] = [];
   const runInput = async (
     command: string,
@@ -64,7 +68,7 @@ function pushing(failOn?: string) {
   ) => {
     pushed.push({ command, args, input, cwd: options?.cwd });
     return args[4] === failOn
-      ? { exitCode: 1, stdout: "", stderr: `boom ${input}` }
+      ? { exitCode: 1, stdout: "", stderr: stderr(input) }
       : { exitCode: 0, stdout: "", stderr: "" };
   };
   return { pushed, runInput };
@@ -239,6 +243,7 @@ describe("donn agent deploy", () => {
   it("a secret that does not resolve stops after the confirmation, naming variable and ref", async () => {
     await create();
     const { pushed, runInput } = pushing();
+    const spawn = eve();
     const r = await zz(
       ["agent", "deploy", "kody", "--project", s.repo, "--yes", "--json"],
       {
@@ -246,15 +251,97 @@ describe("donn agent deploy", () => {
         home: s.home,
         env: { GATEWAY_KEY: "x" },
         probe: agentProbe(),
-        spawn: eve(),
+        spawn,
         runInput,
       },
     );
     expect(r.code).toBe(1);
     expect(errorOf(r).code).toBe("secret-unresolved");
+    // Stopped before any Vercel project was created or linked.
+    expect(spawn.calls.some((c) => c.args.includes("link"))).toBe(false);
     expect(r.stdout).toContain("API_TOKEN");
     expect(r.stdout).toContain("secret://env/API_TOKEN");
     expect(pushed).toEqual([]);
+  });
+
+  it("an existing variable is kept, recorded and reported; the deploy goes on", async () => {
+    await create();
+    const { pushed, runInput } = pushing(
+      "API_TOKEN",
+      () => 'Error: Environment Variable "API_TOKEN" Already Exists',
+    );
+    const text = await deploy(["--yes"], eve(), runInput);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain(
+      "API_TOKEN already set in Vercel; not overwritten",
+    );
+    expect(text.stdout).toContain("deployed kody");
+    expect(pushed).toHaveLength(3);
+    expect(manifest().pushedEnv).toEqual([
+      "API_TOKEN",
+      "DONN_SECRET_1",
+      "GREETING",
+    ]);
+  });
+
+  it("--json lists the existing variables", async () => {
+    await create();
+    const { runInput } = pushing("GREETING", () => "already exists");
+    const r = await deploy(["--yes", "--json"], eve(), runInput);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({
+      pushed: ["API_TOKEN", "DONN_SECRET_1"],
+      existing: ["GREETING"],
+    });
+  });
+
+  it("another refusal carries Vercel's words with the value masked, and a fix", async () => {
+    await create();
+    const { runInput } = pushing(
+      "DONN_SECRET_1",
+      (input) => `Error: invalid value ${input} for this project\nTry again`,
+    );
+    const r = await deploy(["--yes", "--json"], eve(), runInput);
+    expect(r.code).toBe(1);
+    const error = errorOf(r);
+    expect(error.code).toBe("vercel-env-failed");
+    expect(error.tail).toEqual([
+      "Error: invalid value *** for this project",
+      "Try again",
+    ]);
+    expect(error.fix).toContain("donn agent deploy kody");
+    expect(r.stdout + r.stderr).not.toContain("sk-gw-SECRET");
+    expect(manifest().pushedEnv).toEqual(["API_TOKEN"]);
+  });
+
+  it("a first deploy asks even with no variable to set; a later one does not", async () => {
+    await create();
+    await deploy(["--yes"], eve(), pushing().runInput);
+
+    const later: string[] = [];
+    const quiet = await deploy([], eve(), pushing().runInput, async (q) => {
+      later.push(q);
+      return true;
+    });
+    expect(quiet.code).toBe(0);
+    expect(later).toEqual([]);
+
+    await rm(join(agentDir(), ".vercel"), { recursive: true });
+    const asked: string[] = [];
+    const spawn = eve();
+    const declined = await deploy([], spawn, pushing().runInput, async (q) => {
+      asked.push(q);
+      return false;
+    });
+    expect(asked).toEqual(["Link kody to a Vercel project and deploy it?"]);
+    expect(declined.code).toBe(1);
+    expect(spawn.calls.some((c) => c.args.includes("link"))).toBe(false);
+
+    const json = await deploy(["--json"], eve(), pushing().runInput);
+    expect(errorOf(json)).toMatchObject({
+      code: "confirmation-required",
+      names: [],
+    });
   });
 
   it("a failed vercel env add stops, names the variable not the value, records what was pushed", async () => {
