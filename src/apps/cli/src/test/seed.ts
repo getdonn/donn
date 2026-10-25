@@ -127,6 +127,7 @@ export async function zz(
       | "openBrowser"
       | "sleep"
       | "signal"
+      | "passwdHome"
     >
   >,
 ): Promise<RunResult> {
@@ -157,6 +158,8 @@ export async function zz(
     ...(options.openBrowser && { openBrowser: options.openBrowser }),
     ...(options.sleep && { sleep: options.sleep }),
     ...(options.signal && { signal: options.signal }),
+    // No test reaches the real passwd entry unless it opts in.
+    passwdHome: options.passwdHome ?? (() => NO_USER_HOME),
   });
   const code = await cli.run(argv);
   return { code, stdout, stderr };
@@ -175,5 +178,6 @@ export function quietIo(options: {
     stderr: { write: () => true },
     probe: installedProbe,
     managed: safeManaged(),
+    passwdHome: () => NO_USER_HOME,
   };
 }

@@ -1,9 +1,10 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { CliError } from "../errors.js";
+import { userHomeDir } from "../userhome.js";
 import { RESTART } from "./client.js";
 import { currentUid } from "./paths.js";
 
@@ -38,7 +39,7 @@ const UNLOAD_WAIT_MS = 5_000;
 const UNLOAD_POLL_MS = 50;
 const UNIT = "donn-daemon";
 
-type ServiceIo = Pick<CliIo, "env" | "probe">;
+type ServiceIo = Pick<CliIo, "env" | "probe" | "passwdHome">;
 
 /** The manager tests inject, else the platform's. */
 export const serviceOf = (io: CliIo): ServiceManager | undefined =>
@@ -59,8 +60,8 @@ export function serviceManager(
   io: ServiceIo,
   options: ServiceManagerOptions = {},
 ): ServiceManager | undefined {
-  const home = io.env.HOME;
-  if (io.probe.platform === "win32" || !home) return undefined;
+  const home = userHomeDir(io.env, io.passwdHome);
+  if (io.probe.platform === "win32" || !isAbsolute(home)) return undefined;
   // Test-only: a scratch label, so the e2e never touches the real service.
   const override = options.label ?? io.env.DONN_SERVICE_LABEL;
   return io.probe.platform === "darwin"

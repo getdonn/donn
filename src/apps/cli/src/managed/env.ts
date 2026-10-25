@@ -1,11 +1,11 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { lstat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { MANAGED_ROOTS } from "@getdonn/adapter-claude-code";
 import type { ManagedOs } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
+import { userHomeDir } from "../userhome.js";
 import { defaultOs } from "./build.js";
 
 // Everything `managed install|uninstall|check` reads or writes outside the bundle comes from
@@ -134,7 +134,8 @@ export function managedEnv(io: CliIo): ManagedEnv {
   const os = seam.os ?? defaultOs();
   const root = seam.root ?? MANAGED_ROOTS[os];
   const configDir =
-    io.env.CLAUDE_CONFIG_DIR || join(io.env.HOME ?? homedir(), ".claude");
+    io.env.CLAUDE_CONFIG_DIR ||
+    join(userHomeDir(io.env, io.passwdHome), ".claude");
   return {
     os,
     root,

@@ -37,6 +37,8 @@ import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
+import { userHomeDir } from "../userhome.js";
+import { absoluteHome } from "../daemon/service.js";
 import { HARNESSES } from "../harness.js";
 import { LEGACY } from "../migrate/legacy.js";
 import {
@@ -162,7 +164,7 @@ async function registryChecks(
       "registry-token",
       "warn",
       `not logged in to ${url}`,
-      `donn login ${url} --token-stdin`,
+      `donn login ${shellWord(url)} --token-stdin`,
     );
   } else {
     try {
@@ -189,7 +191,7 @@ async function registryChecks(
           "registry-token",
           "warn",
           `session ends ${who.expiresAt.slice(0, 10)}`,
-          `donn login ${url}`,
+          `donn login ${shellWord(url)}`,
         );
       } else if (inFile) {
         add(
@@ -208,7 +210,7 @@ async function registryChecks(
           "registry-token",
           "error",
           "the registry refused the token",
-          `donn login ${url} --token-stdin`,
+          `donn login ${shellWord(url)} --token-stdin`,
         );
       } else {
         add(
@@ -259,7 +261,8 @@ export async function runChecks(
   const add = (id: string, status: Status, message: string, fix?: string) =>
     checks.push({ id, status, message, ...(fix !== undefined && { fix }) });
   const skip = (id: string, because: string) => add(id, "skipped", because);
-  const home = homeOf(io);
+  // As donn uses it: a relative DONN_HOME is relative to the working folder.
+  const home = absoluteHome(io, homeOf(io));
 
   // migrate: a home from before the rename, not migrated yet (spec 22 §3). First, because running
   // other fixes (init, mod install) first would make the new home and stand in migrate's way.
@@ -322,7 +325,7 @@ export async function runChecks(
   // config
   let config: Config | undefined;
   try {
-    config = await loadConfig(home, io.env);
+    config = await loadConfig(home, io.env, io.passwdHome);
     if (config.personas === undefined) {
       add(
         "config",
@@ -359,7 +362,7 @@ export async function runChecks(
     if (!insideGit(config.personas)) {
       problems.push(`${config.personas} is not a git repository`);
       fixes.push(
-        `run \`git init\` in ${config.personas} to track your personas`,
+        `run \`git init\` in ${shellWord(config.personas)} to track your personas`,
       );
     }
     const strays = await createLocalStore({
@@ -370,7 +373,7 @@ export async function runChecks(
       problems.push(
         `${dir} is ignored (project/ and user/ layers are mounted elsewhere)`,
       );
-      fixes.push(`move or remove ${dir}`);
+      fixes.push(`move or remove ${shellWord(dir)}`);
     }
     if (problems.length > 0)
       add("personas", "warn", problems.join("; "), fixes.join("; "));
@@ -390,10 +393,9 @@ export async function runChecks(
     const missing = Object.keys(state.projects).filter(
       (key) => !existsSync(join(key, "persona.yaml")),
     );
-    waiting = [
-      ...new Set(missing.flatMap((key) => unmigratedRepo(key) ?? [])),
-    ].sort();
-    const orphans = missing.filter((key) => unmigratedRepo(key) === undefined);
+    const repos = await Promise.all(missing.map((key) => unmigratedRepo(key)));
+    waiting = [...new Set(repos.flatMap((repo) => repo ?? []))].sort();
+    const orphans = missing.filter((_, i) => repos[i] === undefined);
     const removable = orphans.filter(
       (key) => !existsSync(dirname(key)) && existsSync(dirname(dirname(key))),
     );
@@ -459,7 +461,11 @@ export async function runChecks(
     add("plugins", "ok", "no plugins configured");
   } else {
     try {
-      const where = { home, config };
+      const where = {
+        home,
+        config,
+        ...(io.passwdHome && { passwdHome: io.passwdHome }),
+      };
       const lines = [
         ...(await loadAdapters(where, io.env)).map(
           (p) =>
@@ -578,12 +584,12 @@ export async function runChecks(
             await shellLookup("claude", io),
             claudePath,
             "",
-            io.env.HOME,
+            userHomeDir(io.env, io.passwdHome),
           );
     if (differs) {
       findings.push(differs);
       fixes.push(
-        `point the alias at ${claudePath}, or remove it so the shell and donn run the same claude`,
+        `point the alias at ${shellWord(claudePath!)}, or remove it so the shell and donn run the same claude`,
       );
     }
     if (detection.version && olderThan(detection.version, VERIFIED_CLAUDE)) {
@@ -816,7 +822,7 @@ export async function runChecks(
         "build",
         "warn",
         summary,
-        `donn doctor --fix (it removes only what no running session uses; deleting ${buildRoot} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
+        `donn doctor --fix (it removes only what no running session uses; deleting ${shellWord(absoluteHome(io, buildRoot))} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
       );
     }
   }
