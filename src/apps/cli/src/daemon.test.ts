@@ -64,6 +64,7 @@ describe("the daemon", () => {
       watching: expect.arrayContaining([join(homeIn(), "sessions")]),
       sessions: [],
       agents: [],
+      syncFailed: [],
     });
     const client = await connectDaemon(homeIn());
     expect((await client!.status()).version).toBe("9.9.9");

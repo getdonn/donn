@@ -41,7 +41,12 @@ export async function statusCommand(
   const managed = await managedStatus(io);
   const managedLine = managed.line === undefined ? [] : [managed.line];
   // One line per agent created on this machine; running only when the daemon says so.
-  const agents = await createdAgentRows(io, home, client?.probed.agents ?? []);
+  const agents = await createdAgentRows(
+    io,
+    home,
+    client?.probed.agents ?? [],
+    client?.probed.syncFailed,
+  );
   const agentLines = agents.map(createdLine);
   if (client) {
     const status = client.probed;

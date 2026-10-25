@@ -40,6 +40,15 @@ export interface AgentInfo extends AgentStatus {
   token: string;
 }
 
+/** A created agent whose last sync by the daemon stopped (spec 25 §3); never forced. */
+export interface AgentSyncFailure {
+  name: string;
+  /** The project's root folder. */
+  project: string;
+  /** The stop's error code, e.g. `owned-file-edited`. */
+  code: string;
+}
+
 export interface DaemonStatus {
   version: string;
   pid: number;
@@ -50,6 +59,8 @@ export interface DaemonStatus {
   sessions: SessionStatus[];
   /** Running agents, without their tokens; absent from a daemon older than spec 25. */
   agents?: AgentStatus[];
+  /** Created agents whose last sync stopped; absent from a daemon older than spec 25. */
+  syncFailed?: AgentSyncFailure[];
 }
 
 export type DaemonEventType =
@@ -59,6 +70,8 @@ export type DaemonEventType =
   | "session.stale"
   | "session.refresh-failed"
   | "agent.created"
+  | "agent.synced"
+  | "agent.sync-failed"
   | "agent.started"
   | "agent.stopped"
   | "agent.failed"

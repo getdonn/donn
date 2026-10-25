@@ -43,17 +43,34 @@ export async function recompile(
   return { output, planned: await planFiles(output, ctx.store) };
 }
 
-export async function sync(
+export interface SyncedAgent {
+  root: string;
+  dir: string;
+  output: AgentCompileOutput;
+  written: string[];
+  removed: string[];
+  /** Owned files edited by hand: overwritten with `force`, else the sync stops on them. */
+  edited: string[];
+}
+
+/**
+ * The sync itself, for the command and the daemon: recompile `name` and, unless `dryRun`, write
+ * donn's files and the manifest. An owned file edited by hand stops it (`owned-file-edited`)
+ * unless `force`. `onCompiled` sees the compile before any stop.
+ */
+export async function syncAgent(
+  ctx: Context,
   io: CliIo,
   name: string,
-  options: SyncOptions,
-): Promise<number> {
-  const ctx = await projectContext(io, options.project);
+  options: {
+    force?: boolean;
+    dryRun?: boolean;
+    onCompiled?: (output: AgentCompileOutput) => void;
+  } = {},
+): Promise<SyncedAgent> {
   const { root, result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
-  const shown = posixRelative(root, dir);
-
   const { output, planned } = await recompile(ctx, result, name, dir, manifest);
-  if (!options.json) printReport(io, output);
+  options.onCompiled?.(output);
   const { written, removed } = await pendingChanges(dir, planned, manifest);
   // A dry run stops where the real sync would; with --force it reports the overwrites.
   const edited = await checkOwned(dir, manifest, options.force === true);
@@ -64,6 +81,26 @@ export async function sync(
     });
     await writeManifest(dir, { ...manifest, files });
   }
+  return { root, dir, output, written, removed, edited };
+}
+
+export async function sync(
+  io: CliIo,
+  name: string,
+  options: SyncOptions,
+): Promise<number> {
+  const ctx = await projectContext(io, options.project);
+  const { root, dir, output, written, removed, edited } = await syncAgent(
+    ctx,
+    io,
+    name,
+    {
+      force: options.force,
+      dryRun: options.dryRun,
+      ...(!options.json && { onCompiled: (o) => printReport(io, o) }),
+    },
+  );
+  const shown = posixRelative(root, dir);
 
   if (options.json) {
     io.stdout.write(

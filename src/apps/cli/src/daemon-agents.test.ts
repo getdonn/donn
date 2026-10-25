@@ -1,7 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentLogPath } from "./agent/run.js";
+import { agentRunner } from "./daemon/agents.js";
 import { cliVersion } from "./commands/daemon.js";
 import {
   connectDaemon,
@@ -19,7 +26,7 @@ import {
   START_LINES,
 } from "./test/created-agent.js";
 import { fakeEve, type FakeEve } from "./test/fake-eve.js";
-import { NO_USER_HOME, seed, zz, type Seeded } from "./test/seed.js";
+import { NO_USER_HOME, quietIo, seed, zz, type Seeded } from "./test/seed.js";
 
 // The daemon runs created agents: GET /agents, POST /agents/run|stop, the agent.* events, the
 // agent's log, and `donn agent run|stop|list` and `donn status` through it.
@@ -347,6 +354,277 @@ describe("the daemon's agents", () => {
       ),
     );
     expect(existsSync(join(s.repo, "agents/rex/.donn/agent.json"))).toBe(true);
+    // The index changed too: the daemon's own pass over it does not announce rex again.
+    await call(daemon, "POST", "/refresh");
+    expect(
+      events.filter((e) => e.type === "agent.created" && e.name === "rex"),
+    ).toHaveLength(1);
+  });
+
+  it("emits agent.created for an agent created in a terminal", async () => {
+    await start();
+    const created = await zz(
+      [
+        "agent",
+        "create",
+        "rex",
+        "--template",
+        "./templates/kody",
+        "--target",
+        "local",
+        "--project",
+        s.repo,
+      ],
+      {
+        cwd: s.root,
+        home: s.home,
+        env: SECRETS,
+        probe: agentProbe(),
+        spawn: installingEve(),
+      },
+    );
+    expect(created.code).toBe(0);
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "agent.created",
+          name: "rex",
+          project: s.repo,
+        }),
+      ),
+    );
+    expect(events.filter((e) => e.type === "agent.created")).toHaveLength(1);
+  });
+});
+
+describe("the daemon keeps created agents current", () => {
+  const persona = () => join(s.repo, ".donn/persona.yaml");
+  const editPersona = (from: string, to: string) => {
+    const text = readFileSync(persona(), "utf8");
+    expect(text).toContain(from);
+    writeFileSync(persona(), text.replace(from, to));
+  };
+  const agentDir = () => join(s.repo, "agents/kody");
+  /** Every file under the agent's folder, by path, except node_modules. */
+  const files = (dir = agentDir(), prefix = ""): Record<string, string> =>
+    Object.fromEntries(
+      readdirSync(dir, { withFileTypes: true })
+        .filter((d) => d.name !== "node_modules")
+        .flatMap((d) =>
+          d.isDirectory()
+            ? Object.entries(files(join(dir, d.name), `${prefix}${d.name}/`))
+            : [[`${prefix}${d.name}`, readFileSync(join(dir, d.name), "utf8")]],
+        ),
+    );
+  const starts = () => spawn.calls.filter((c) => c.args.includes("start"));
+  const daemonLog = () =>
+    readFileSync(join(s.home, "daemon/daemon.log"), "utf8");
+
+  it(
+    "syncs on a persona edit and restarts a running agent",
+    { timeout: 15_000 },
+    async () => {
+      const daemon = await start();
+      await call(daemon, "POST", "/agents/run", {
+        project: s.repo,
+        name: "kody",
+      });
+      editPersona(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      );
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual(
+            expect.objectContaining({ type: "agent.synced", name: "kody" }),
+          ),
+        { timeout: 5_000 },
+      );
+      const synced = events.find((e) => e.type === "agent.synced")!;
+      expect(synced).toMatchObject({ project: s.repo, removed: [] });
+      expect((synced.written as string[]).length).toBeGreaterThan(0);
+      expect(Object.values(files()).join("\n")).toContain(
+        "Checkout overview v2.",
+      );
+      // Stopped, then built and started again with a new route token.
+      await vi.waitFor(() => expect(starts()).toHaveLength(2), {
+        timeout: 5_000,
+      });
+      expect(starts()[0]!.kills).toEqual(["SIGTERM"]);
+      expect(starts()[1]!.env.DONN_ROUTE_TOKEN).not.toBe(
+        starts()[0]!.env.DONN_ROUTE_TOKEN,
+      );
+      expect(starts()[1]!.env.API_TOKEN).toBe("tok-SECRET");
+      await vi.waitFor(() =>
+        expect(events.map((e) => e.type)).toEqual([
+          "agent.started",
+          "agent.synced",
+          "agent.stopped",
+          "agent.started",
+        ]),
+      );
+      const text = JSON.stringify(events);
+      expect(text).not.toContain("tok-SECRET");
+      expect(text).not.toContain(starts()[1]!.env.DONN_ROUTE_TOKEN);
+    },
+  );
+
+  it(
+    "syncs an agent that is not running without starting it",
+    { timeout: 15_000 },
+    async () => {
+      await start();
+      editPersona(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      );
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual(
+            expect.objectContaining({ type: "agent.synced", name: "kody" }),
+          ),
+        { timeout: 5_000 },
+      );
+      expect(starts()).toHaveLength(0);
+    },
+  );
+
+  it(
+    "an edit to a shared layer syncs the agents that inherit it",
+    { timeout: 15_000 },
+    async () => {
+      await start();
+      writeFileSync(
+        join(s.personas, "org/instructions/conduct.md"),
+        "Review kindly, v2.",
+      );
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual(
+            expect.objectContaining({ type: "agent.synced", name: "kody" }),
+          ),
+        { timeout: 5_000 },
+      );
+      expect(Object.values(files()).join("\n")).toContain("Review kindly, v2.");
+    },
+  );
+
+  it(
+    "an edited owned file stops the sync: agent.sync-failed, a status line, no write",
+    { timeout: 15_000 },
+    async () => {
+      const daemon = await start();
+      await call(daemon, "POST", "/agents/run", {
+        project: s.repo,
+        name: "kody",
+      });
+      writeFileSync(join(agentDir(), "agent/lib/donn/config.ts"), "// mine\n");
+      const before = files();
+      editPersona(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      );
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual({
+            type: "agent.sync-failed",
+            name: "kody",
+            project: s.repo,
+            code: "owned-file-edited",
+          }),
+        { timeout: 5_000 },
+      );
+      expect(files()).toEqual(before);
+      expect(events.map((e) => e.type)).not.toContain("agent.synced");
+      // Never forced, and the running agent is left as it was.
+      expect(starts()).toHaveLength(1);
+      expect(starts()[0]!.kills).toEqual([]);
+
+      const status = await zz(["status"], { cwd: s.root, home: s.home });
+      expect(status.stdout).toContain(
+        "agent  kody  local  running  stale  sync-failed: owned-file-edited",
+      );
+      const json = await zz(["status", "--json"], {
+        cwd: s.root,
+        home: s.home,
+      });
+      expect(JSON.parse(json.stdout).agents).toEqual([
+        expect.objectContaining({
+          name: "kody",
+          syncFailed: "owned-file-edited",
+        }),
+      ]);
+    },
+  );
+
+  it(
+    "a changed target is not synced: status says recreate needed",
+    { timeout: 15_000 },
+    async () => {
+      await start();
+      editPersona("target: local", "target: self-host");
+      await vi.waitFor(
+        () => expect(daemonLog()).toContain("recreate needed (target)"),
+        { timeout: 5_000 },
+      );
+      expect(events.filter((e) => e.type.startsWith("agent.sync"))).toEqual([]);
+      const status = await zz(["status"], { cwd: s.root, home: s.home });
+      expect(status.stdout).toContain(
+        "agent  kody  self-host  created  stale  recreate needed (target)",
+      );
+      const json = await zz(["status", "--json"], {
+        cwd: s.root,
+        home: s.home,
+      });
+      expect(JSON.parse(json.stdout).agents).toEqual([
+        expect.objectContaining({ name: "kody", recreate: "target" }),
+      ]);
+    },
+  );
+
+  it("watches the projects with created agents, not the others", async () => {
+    const other = join(s.root, "other-repo");
+    mkdirSync(join(other, ".donn"), { recursive: true });
+    writeFileSync(
+      join(other, ".donn/persona.yaml"),
+      readFileSync(persona(), "utf8"),
+    );
+    const daemon = await start();
+    const { watching } = (await call(daemon, "GET", "/status")).body as {
+      watching: string[];
+    };
+    expect(watching).toContain(join(s.repo, ".donn"));
+    expect(watching).toContain(join(s.home, "agents", "index.json"));
+    expect(watching).not.toContain(join(other, ".donn"));
+  });
+
+  it("serialises the syncs of one agent: a burst runs one, then one more", async () => {
+    let active = 0;
+    let most = 0;
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const runner = agentRunner({
+      home: s.home,
+      io: quietIo({ cwd: s.root, home: s.home }),
+      emit: () => {},
+      log: async () => {},
+      now: Date.now,
+      syncAgent: async () => {
+        calls++;
+        active++;
+        most = Math.max(most, active);
+        await gate;
+        active--;
+        return { written: [], removed: [] };
+      },
+    });
+    const burst = [1, 2, 3, 4].map(() => runner.sync(s.repo, "kody"));
+    release();
+    await Promise.all(burst);
+    expect(most).toBe(1);
+    expect(calls).toBe(2);
+    await runner.closeAll();
   });
 });
 

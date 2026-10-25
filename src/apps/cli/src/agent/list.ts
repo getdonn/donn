@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { CliError } from "../errors.js";
 import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
-import type { AgentStatus } from "../daemon/client.js";
+import type { AgentStatus, AgentSyncFailure } from "../daemon/client.js";
 import {
   locateAgent,
   projectContext,
@@ -135,13 +135,21 @@ export interface CreatedRow {
   state: AgentRow["state"] | "unknown";
   current: boolean;
   url?: string;
+  /** Set when the persona changed what a sync cannot rewrite. */
+  recreate?: RecreateField;
+  /** The code the daemon's last sync of it stopped with. */
+  syncFailed?: string;
 }
 
-/** Every agent created on this machine, by project, for `donn status`. */
+/**
+ * Every agent created on this machine, by project, for `donn status`; `syncFailed` is what the
+ * daemon reports of its syncs.
+ */
 export async function createdAgentRows(
   io: CliIo,
   home: string,
   running: AgentStatus[],
+  syncFailed: AgentSyncFailure[] = [],
 ): Promise<CreatedRow[]> {
   const created = await listCreated(home).catch(() => []);
   const projects = [...new Set(created.map((c) => c.project))].sort();
@@ -162,8 +170,11 @@ export async function createdAgentRows(
     }
     for (const name of names.sort()) {
       const row = states?.find((r) => r.name === name);
-      rows.push(
-        row === undefined || row.state === "available"
+      const failed = syncFailed.find(
+        (f) => f.project === project && f.name === name,
+      );
+      rows.push({
+        ...(row === undefined || row.state === "available"
           ? { name, project, target: "-", state: "unknown", current: false }
           : {
               name,
@@ -172,14 +183,16 @@ export async function createdAgentRows(
               state: row.state,
               current: row.current,
               ...(row.url !== undefined && { url: row.url }),
-            },
-      );
+              ...(row.recreate !== undefined && { recreate: row.recreate }),
+            }),
+        ...(failed !== undefined && { syncFailed: failed.code }),
+      });
     }
   }
   return rows;
 }
 
-/** `agent  <name>  <target>  <state>  current|stale` */
+/** `agent  <name>  <target>  <state>  current|stale[  recreate needed (<field>)|sync-failed: <code>]` */
 export const createdLine = (row: CreatedRow): string =>
   [
     "agent",
@@ -187,4 +200,9 @@ export const createdLine = (row: CreatedRow): string =>
     row.target,
     row.state,
     row.current ? "current" : "stale",
+    ...(row.recreate !== undefined
+      ? [`recreate needed (${row.recreate})`]
+      : row.syncFailed !== undefined
+        ? [`sync-failed: ${row.syncFailed}`]
+        : []),
   ].join("  ");
