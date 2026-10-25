@@ -59,6 +59,11 @@ describe("isValidLockPath", () => {
     "hooks.pre-tool-use[block-prod-db]",
     "secrets.providers.vault",
     "targets.claude-code.model",
+    "models",
+    "models.gateway",
+    "models.default",
+    "agents.define",
+    "agents.define.pr-reviewer",
   ])("accepts %s", (path) => {
     expect(isValidLockPath(path)).toBe(true);
   });
@@ -74,6 +79,13 @@ describe("isValidLockPath", () => {
     "locks",
     "extends",
     "instructions.foo",
+    "models.gateway.baseURL",
+    "models.other",
+    "models[x]",
+    "agents",
+    "agents.remove",
+    "agents.define.x.env",
+    "agents.define[x]",
   ])("rejects %s", (path) => {
     expect(isValidLockPath(path)).toBe(false);
   });

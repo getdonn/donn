@@ -5,6 +5,7 @@ import {
   IR_VERSION,
   isValidLockPath,
   lockCovers,
+  normalizeRelative,
   parsePath,
   ResolvedPersona,
   type Hook,
@@ -12,6 +13,8 @@ import {
   type HookEvent,
   type KnowledgePointer,
   type McpServer,
+  type Models,
+  type ResolvedAgent,
   type Persona,
   type PersonaOverlay,
   type PersonaPath,
@@ -84,6 +87,8 @@ export class Merge {
   private readonly providers = new Map<string, SecretProvider>();
   private readonly targets: Record<string, unknown> = {};
   private readonly policy: Policy = {};
+  private models: Models = {};
+  private readonly agents = new Map<string, ResolvedAgent>();
 
   apply(layer: Ref, doc: Persona | PersonaOverlay, dir?: string): void {
     this.layer = layer;
@@ -124,6 +129,8 @@ export class Merge {
     const { managed, rest } = this.takeManaged(doc.targets);
     this.mergePolicy(doc.kind === "Persona" ? doc.policy : undefined, managed);
     this.mergeTargets(rest ?? {}, ["targets"]);
+    this.mergeModels(doc.models ?? {});
+    this.mergeAgents(doc.kind === "Persona" ? doc.agents : undefined);
 
     // A lock applies to every layer after the one that declared it.
     for (const path of declared)
@@ -178,6 +185,10 @@ export class Merge {
       locks: this.locks.map(({ path, layer }) => ({ path, layer })),
       targets: this.targets,
       policy: this.policy,
+      models: this.models,
+      agents: Object.fromEntries(
+        [...this.agents].sort(([a], [b]) => (a < b ? -1 : 1)),
+      ),
     });
     return {
       ir,
@@ -327,6 +338,77 @@ export class Merge {
       if (list.length === 0) this.hooks.delete(event);
       this.forget(formatPath(path));
       this.warn("security-removal", path);
+    }
+  }
+
+  /** `gateway` and `default` are each replaced whole: a child's gateway drops the parent's keys. */
+  private mergeModels({ gateway, default: model }: Models): void {
+    if (
+      gateway !== undefined &&
+      !isDeepStrictEqual(gateway, this.models.gateway)
+    ) {
+      if (
+        this.guard(
+          at(["models", "gateway"]),
+          this.models.gateway === undefined ? "add" : "set",
+        )
+      ) {
+        this.models.gateway = gateway;
+        this.record("models.gateway");
+      }
+    }
+    if (model !== undefined && model !== this.models.default) {
+      if (
+        this.guard(
+          at(["models", "default"]),
+          this.models.default === undefined ? "add" : "set",
+        )
+      ) {
+        this.models.default = model;
+        this.record("models.default");
+      }
+    }
+  }
+
+  private mergeAgents(agents: Persona["agents"]): void {
+    const { define = {}, remove = [] } = agents ?? {};
+    for (const [name, agent] of Object.entries(define)) {
+      const resolved: ResolvedAgent = {
+        template: agent.template.startsWith("eve:")
+          ? agent.template
+          : this.local(agent.template),
+        target: agent.target,
+        path: normalizeRelative(agent.path ?? `agents/${name}`),
+        ...(agent.model !== undefined && { model: agent.model }),
+        env: { ...agent.env },
+      };
+      const current = this.agents.get(name);
+      if (current !== undefined && isDeepStrictEqual(current, resolved))
+        continue;
+      if (
+        !this.guard(
+          at(["agents", "define", name]),
+          current === undefined ? "add" : "set",
+        )
+      )
+        continue;
+      this.agents.set(name, resolved);
+      this.record(`agents.${name}`);
+    }
+    for (const name of remove) {
+      const path = at(["agents", "define", name]);
+      if (!this.agents.has(name)) {
+        this.warn("remove-unmatched", path);
+        continue;
+      }
+      if (!this.guard(path, "remove")) continue;
+      this.agents.delete(name);
+      this.forget(`agents.${name}`);
+      this.warnings.push({
+        code: "agent-removed",
+        path: `agents.${name}`,
+        layer: this.layer,
+      });
     }
   }
 

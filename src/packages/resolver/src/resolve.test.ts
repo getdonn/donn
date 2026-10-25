@@ -104,6 +104,66 @@ describe("resolve", () => {
     );
   });
 
+  describe("agents", () => {
+    const agent = { template: "eve:reviewer", target: "local" };
+
+    it("an agent resolves against the persona it is used in", async () => {
+      const { source } = memory({
+        "team/t": persona("t", {
+          agents: { define: { "pr-reviewer": agent } },
+        }),
+        "project/a": persona("a", {
+          extends: ["team/t"],
+          instructions: [{ id: "x", inline: "A" }],
+        }),
+        "project/b": persona("b", {
+          extends: ["team/t"],
+          instructions: [{ id: "x", inline: "B" }],
+        }),
+      });
+      const a = (await resolve("project/a", { source })).ir;
+      const b = (await resolve("project/b", { source })).ir;
+      expect(a.agents["pr-reviewer"]).toEqual(b.agents["pr-reviewer"]);
+      expect(a.instructions).not.toEqual(b.instructions);
+    });
+
+    it("an overlay with agents fails with agents-in-overlay", async () => {
+      const { source } = memory({
+        "team/t": persona("t"),
+        "user/o": {
+          apiVersion: "donn/v0",
+          kind: "PersonaOverlay",
+          agents: { define: { x: agent } },
+        },
+      });
+      expect(
+        await failure(resolve("team/t", { source, overlay: "user/o" })),
+      ).toMatchObject({ code: "agents-in-overlay", layer: "user/o" });
+    });
+
+    it("stores the path normalized and defaults it to agents/<name>", async () => {
+      const { source } = memory({
+        "team/t": persona("t", {
+          agents: {
+            define: {
+              plain: agent,
+              dotted: { ...agent, path: "agents/./pr" },
+              local: { ...agent, template: "templates/reviewer" },
+            },
+          },
+        }),
+      });
+      const { agents } = (await resolve("team/t", { source })).ir;
+      expect(agents["plain"]).toMatchObject({
+        path: "agents/plain",
+        template: "eve:reviewer",
+        env: {},
+      });
+      expect(agents["dotted"]!.path).toBe("agents/pr");
+      expect(agents["local"]!.template).toBe("team/templates/reviewer");
+    });
+  });
+
   describe("managed keys", () => {
     const managed = (value: unknown) => ({
       targets: { "claude-code": { managed: value } },
