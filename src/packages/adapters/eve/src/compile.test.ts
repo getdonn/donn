@@ -76,6 +76,32 @@ describe("instructions and knowledge", () => {
     expect(byPath["permissions.allow[Read(./**)]"]).toBe("dropped");
   });
 
+  it("marks a pointer to an mcp server with no connection, and reports it", () => {
+    const out = adapter.compile(
+      input({
+        knowledge: [
+          { id: "a", source: "mcp://local_cmd" },
+          { id: "b", source: "mcp://absent" },
+        ],
+        mcp: { servers: { local_cmd: { command: "npx" } } },
+      }),
+    );
+    const content = (out.files["agent/instructions/donn.md"] as any).content;
+    expect(content).toContain(
+      "- a: mcp://local_cmd (not available to this agent)",
+    );
+    expect(content).toContain(
+      "- b: mcp://absent (not available to this agent)",
+    );
+    for (const id of ["a", "b"]) {
+      expect(out.report.entries).toContainEqual({
+        path: `knowledge[${id}]`,
+        outcome: "advisory",
+        reason: expect.stringContaining("no connection"),
+      });
+    }
+  });
+
   it("throws when an instruction file has no text", () => {
     expect(() =>
       adapter.compile(
@@ -192,6 +218,38 @@ describe("skills", () => {
     expect(out.files["agent/skills/donn-review"]).toBeDefined();
   });
 
+  it("throws when a local skill's SKILL.md text is missing", () => {
+    expect(() => adapter.compile(input({ skills: [skill] }))).toThrow(
+      "no text supplied for skill file team/skills/review/SKILL.md",
+    );
+  });
+
+  it("finds the closing frontmatter fence despite trailing whitespace", () => {
+    const out = adapter.compile(
+      input(
+        { skills: [skill] },
+        {
+          texts: {
+            "team/skills/review/SKILL.md": "---  \ndescription: Hi\n---  \nB",
+          },
+        },
+      ),
+    );
+    expect(out.files["agent/skills/donn-review"]).toBeDefined();
+    const dropped = adapter.compile(
+      input(
+        { skills: [skill] },
+        {
+          texts: {
+            "team/skills/review/SKILL.md":
+              "---\nname: r\n--- \ndescription: Hi\n",
+          },
+        },
+      ),
+    );
+    expect(dropped.files["agent/skills/donn-review"]).toBeUndefined();
+  });
+
   it("drops a registry skill and a name eve rejects", () => {
     const out = adapter.compile(
       input({
@@ -239,6 +297,7 @@ describe("names and collisions", () => {
     skills: [{ name: "x", source: "team/skills/x" }],
     mcp: { servers: { x: server } },
   };
+  const skillTexts = { "team/skills/x/SKILL.md": "---\ndescription: x\n---\n" };
   it.each([
     ["a template skill file", "agent/skills/donn-x.md"],
     ["a template skill directory", "agent/skills/donn-x/SKILL.md"],
@@ -254,10 +313,24 @@ describe("names and collisions", () => {
       adapter.compile(
         input(skillIr, {
           project: { hasSandbox: false, existing: [existing] },
+          texts: skillTexts,
         }),
       );
     expect(run).toThrow(/slot-collision/);
     expect(run).toThrow(existing);
+  });
+
+  it("matches an existing path given without the agent/ prefix", () => {
+    expect(() =>
+      adapter.compile(
+        input(skillIr, {
+          project: { hasSandbox: false, existing: ["skills/donn-x.md"] },
+          texts: {
+            "team/skills/x/SKILL.md": "---\ndescription: x\n---\n",
+          },
+        }),
+      ),
+    ).toThrow(/slot-collision/);
   });
 
   it("refuses a template instructions/donn.md when the persona has text", () => {
@@ -279,6 +352,7 @@ describe("names and collisions", () => {
   it("ignores template files that do not touch donn names", () => {
     const out = adapter.compile(
       input(skillIr, {
+        texts: skillTexts,
         project: {
           hasSandbox: false,
           existing: [

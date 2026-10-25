@@ -25,6 +25,8 @@ const cases: AgentConformanceCase[] = corpus.map(
       texts: {
         ...texts,
         "team/skills/local-skill/SKILL.md": "---\ndescription: A skill\n---\n",
+        "team/skills/run-payment-sim/SKILL.md":
+          "---\ndescription: A skill\n---\n",
       },
       project: { hasSandbox: false, existing: [] },
     },

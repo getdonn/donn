@@ -65,8 +65,8 @@ export function connectionPlan(ir: ResolvedPersona): {
 /** Whether a `SKILL.md` has a non-empty `description` in its frontmatter (eve requires one). */
 export function hasDescription(skillMd: string): boolean {
   const lines = skillMd.replaceAll("\r\n", "\n").split("\n");
-  if (lines[0]?.trim() !== "---") return false;
-  const end = lines.indexOf("---", 1);
+  if (lines[0]?.trimEnd() !== "---") return false;
+  const end = lines.findIndex((line, i) => i > 0 && line.trimEnd() === "---");
   const front = lines.slice(1, end === -1 ? undefined : end);
   const at = front.findIndex((line) => /^description\s*:/.test(line));
   if (at === -1) return false;
@@ -80,6 +80,7 @@ export function hasDescription(skillMd: string): boolean {
 function instructionsText(
   input: AgentCompileInput,
   names: Map<string, string>,
+  entries: ReportEntry[],
 ): string | undefined {
   const { ir, personaId, texts } = input;
   const parts = ir.instructions.map((fragment) => {
@@ -97,7 +98,19 @@ function instructionsText(
       // An `mcp://<server>` pointer names the connection that serves it.
       const server = /^mcp:\/\/([^/?#]+)/.exec(source)?.[1];
       const connection = server === undefined ? undefined : names.get(server);
-      return `- ${id}: ${source}${connection ? ` (connection \`${connection}\`)` : ""}`;
+      let note = "";
+      if (server !== undefined) {
+        if (connection) note = ` (connection \`${connection}\`)`;
+        else {
+          note = " (not available to this agent)";
+          entries.push({
+            path: `knowledge[${id}]`,
+            outcome: "advisory",
+            reason: `server "${server}" has no connection in this agent (stdio, gateway ref, unmappable name or not in the persona), so the pointer cannot be followed`,
+          });
+        }
+      }
+      return `- ${id}: ${source}${note}`;
     });
     parts.push(`## Knowledge sources\n${lines.join("\n")}`);
   }
@@ -141,9 +154,14 @@ function skillFiles(
       );
     }
     const source = skill.source.replace(/\/+$/, "");
-    // The CLI supplies the text of a skill's files; without SKILL.md's, eve checks at build.
+    // The CLI supplies the text of every file of a local skill (see AgentCompileInput.texts).
     const skillMd = texts[`${source}/SKILL.md`];
-    if (skillMd !== undefined && !hasDescription(skillMd)) {
+    if (skillMd === undefined) {
+      throw new AdapterInputError(
+        `no text supplied for skill file ${source}/SKILL.md`,
+      );
+    }
+    if (!hasDescription(skillMd)) {
       entries.push({
         path,
         outcome: "dropped",
@@ -187,7 +205,7 @@ export function compile(
   const connections = connectionPlan(ir);
   entries.push(...connections.dropped);
 
-  const text = instructionsText(input, connections.names);
+  const text = instructionsText(input, connections.names, entries);
   if (text !== undefined) files[INSTRUCTIONS_FILE] = { content: text };
   const skills = skillFiles(input, files, entries);
 
