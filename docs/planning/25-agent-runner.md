@@ -19,15 +19,21 @@
 >   an unknown template from the compile's `portability-unknown` entry.
 > - **Dependencies.** Besides eve, `create` adds `ai@^7.0.152` and the gateway's AI SDK package
 >   (`@ai-sdk/openai-compatible@^3` or `@ai-sdk/anthropic@^4`) to the agent's `package.json`
->   (plus `@workflow/world-postgres` for `self-host`).
+>   (plus `@workflow/world-postgres` for `self-host`, whose connection variable is
+>   `WORKFLOW_POSTGRES_URL`, falling back to `DATABASE_URL`).
 > - **`pnpm add` and `install`** can exit non-zero with `ERR_PNPM_IGNORED_BUILDS` (`cbor-extract`)
 >   after the install completed; treat that code as success when the dependencies are in place.
 > - **Docker.** A pinned Docker `sandbox.ts` (self-host) makes `eve build` fail on a host without
 >   a Docker daemon; `eve build --skip-sandbox-prewarm` avoids it.
 > - **tsconfig.** A template's `tsconfig.json` may need `skipLibCheck: true` for the agent to
 >   type-check with the AI SDK packages; `create` checks and says so rather than editing it.
-> - **Running.** Session routes answer 401 under `eve start`; the e2e drives `eve dev --no-ui`
->   with `NODE_ENV=development`.
+> - **Running (unverified in production).** Session routes answer 401 under `eve start`. The e2e
+>   proves the model route only under `eve dev --no-ui` with `NODE_ENV=development` (under
+>   vitest's `NODE_ENV=test` the session never reached the gateway). The production path, `eve
+>   build` plus a production run, which `donn agent run` and `deploy` use, is NOT verified: it is
+>   an open question and a required check in this spec's spike (a turn through the gateway with
+>   the configured key and headers). `donn agent run` must not inherit a test `NODE_ENV`; it sets
+>   its own.
 
 ## Intent
 

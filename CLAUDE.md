@@ -93,7 +93,7 @@ package with the next release); specs 25–26 are designed, not built.
 - Node: develop on 26 (pnpm downloads it via `devEngines.runtime`; system Node is irrelevant);
   `engines` floor is >=24, and `@types/node` tracks the floor, not the dev version.
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
-  never at the repo root. The 13 runtime packages are public (published from `release.yml`, spec 27); tooling (`eslint-config`, `typescript-config`, `release`) and the root stay `"private": true`.
+  never at the repo root. The runtime packages are public (13 at 0.14.0; `@getdonn/adapter-eve` is the 14th from the release that carries spec 24; published from `release.yml`, spec 27); tooling (`eslint-config`, `typescript-config`, `release`) and the root stay `"private": true`.
 - Every CLI command supports `--json`.
 - Formatting: Prettier at width 80 (`.prettierrc.json`). `pnpm format` before committing;
   `pnpm format:check` must pass. `.prettierignore` excludes generated files, test fixtures and

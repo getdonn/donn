@@ -1,13 +1,18 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { corpus } from "@getdonn/adapter-sdk/conformance";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import adapter, { patchAgentTs } from "./index.js";
 
 // Opt-in (DONN_E2E=1): compile a persona into a copy of a real eve template, run the real eve
@@ -28,9 +33,13 @@ interface Seen {
 }
 
 describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
-  const dir = mkdtempSync(join(tmpdir(), "donn-eve-e2e-"));
+  let dir = "";
   let gateway: Server | undefined;
   let eve: ChildProcess | undefined;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "donn-eve-e2e-"));
+  });
 
   afterAll(async () => {
     if (eve?.pid !== undefined) {
@@ -44,7 +53,7 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
       gateway ? gateway.close(() => done()) : done(),
     );
     if (process.env.DONN_E2E_KEEP === "1") console.log(`kept ${dir}`);
-    else rmSync(dir, { recursive: true, force: true });
+    else if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
   it("answers a turn through the configured gateway", async () => {
@@ -154,7 +163,7 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
         targets: { eve: { contextWindow: 128000 } },
         agents: {
           e2e: {
-            template: `eve:${"eve-slack-agent"}`,
+            template: "eve:eve-slack-agent",
             target: "local",
             path: "agents/e2e",
             env: {},
@@ -210,7 +219,7 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
     );
     eve.stdout?.on("data", (c: Buffer) => log.push(String(c)));
     eve.stderr?.on("data", (c: Buffer) => log.push(String(c)));
-    const base_ = `http://127.0.0.1:${port}`;
+    const baseUrl = `http://127.0.0.1:${port}`;
     const until = async (what: string, ok: () => Promise<boolean>) => {
       const deadline = Date.now() + 120_000;
       while (Date.now() < deadline) {
@@ -222,14 +231,14 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
       );
     };
     await until("eve health", async () => {
-      return (await fetch(`${base_}/eve/v1/health`)).ok;
+      return (await fetch(`${baseUrl}/eve/v1/health`)).ok;
     });
 
     // 6. One HTTP-channel turn.
     let started = 0;
     let sessionId = "";
     await until("session accepted", async () => {
-      const res = await fetch(`${base_}/eve/v1/session`, {
+      const res = await fetch(`${baseUrl}/eve/v1/session`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: "Say hello." }),
@@ -245,7 +254,7 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
       await until("the gateway call", async () => seen.length > 0);
     } catch (error) {
       const stream = await fetch(
-        `${base_}/eve/v1/session/${sessionId}/stream?startIndex=0`,
+        `${baseUrl}/eve/v1/session/${sessionId}/stream?startIndex=0`,
         { signal: AbortSignal.timeout(5000) },
       )
         .then((r) => r.text())

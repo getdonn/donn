@@ -189,10 +189,11 @@ slots under `donn` names. `agent.ts` without a template file, the AI SDK majors,
 - **Dependencies.** The generated config imports `ai` (for the guard) and the provider package,
   so `25` adds `ai@^7.0.152` and `@ai-sdk/openai-compatible@^3` or `@ai-sdk/anthropic@^4` to the
   agent's `package.json`.
-- **Real eve.** The opt-in e2e (`src/packages/adapters/eve/src/e2e.test.ts`) ran the form against
-  `eve dev --no-ui` and a stub gateway: the call arrived with the configured bearer key and
-  header. It runs eve with `NODE_ENV=development`; under vitest's `NODE_ENV=test` eve's session
-  never reached the gateway.
+- **Real eve.** The opt-in e2e (`src/packages/adapters/eve/src/e2e.test.ts`) ran the form
+  against `eve dev --no-ui` with `NODE_ENV=development` and a stub gateway: the call arrived with
+  the configured bearer key and header. That is the only path verified. Under vitest's
+  `NODE_ENV=test` eve's session never reached the gateway, and the production path (`eve build`
+  and a production run) is unverified; `25`'s spike must check it.
 
 ```
 agents/pr-reviewer/                    (the eve project; `25` creates it from the template)
@@ -451,6 +452,7 @@ golden builds and refusals gain names and collisions.
 - **Real eve (`DONN_E2E=1`):** compile into a scratch copy of a template, `eve build`, start it
   with a stub OpenAI-compatible gateway that records requests; the agent answers one HTTP-channel
   turn and the gateway saw the call with the configured key and headers.
+  *(2026-10-25, build:)* as built it drives `eve dev --no-ui`, not `eve build`; see §2's build note.
 
 ## Non-goals
 

@@ -9,9 +9,9 @@
 > *2026-10-24: built and released.* 0.14.0 is on npm: all 13 packages published from
 > `release.yml` with provenance (`npm audit signatures` verifies them). Left with the maintainer:
 > runbook step 7 and deprecating the `0.0.0` placeholders. See "Amendments from the release".
-> *Amended 2026-10-25:* `@getdonn/adapter-eve` (spec 24) is the fourteenth public package; every "13"
-> above is the count at the 0.14.0 release. Its first publish needs the step 3 setup (claim the name,
-> `npm trust github`, deprecate the placeholder) before the release that carries it.
+> *Amended 2026-10-25:* `@getdonn/adapter-eve` (spec 24) is the fourteenth public package; every
+> "13" above is the count at the 0.14.0 release. Its first publish needs the step 3 setup (claim
+> the name, `npm trust github`, deprecate the placeholder) before the release that carries it.
 
 ## Intent
 
