@@ -1,0 +1,20 @@
+{
+  "name": "eve-slots-spike",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.87",
+    "@ai-sdk/openai-compatible": "^3.0.77",
+    "@types/node": "^26.6.5",
+    "@workflow/world-postgres": "5.0.5",
+    "ai": "^7.0.152",
+    "eve": "0.83.2",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/json-schema": "^7.0.15"
+  }
+}
