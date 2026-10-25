@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, posix, resolve as resolvePath } from "node:path";
 import adapter, {
+  CHANNEL_FILE,
   createdAgentTs,
   EveCompileError,
   manifestFiles,
@@ -402,6 +403,12 @@ export async function create(
   });
   let output: AgentCompileOutput;
   try {
+    // The agent/channels/eve.ts that `eve init` scaffolds (vercelOidc, localDev,
+    // placeholderAuth) is eve's boilerplate, not a template author's route auth: off Vercel,
+    // eve:blank drops it so donn writes and owns its own channel. A slug or path template keeps
+    // its channel (and the blocking entry with the two lines); vercel keeps eve's file.
+    if (source.kind === "blank" && agent.target !== "vercel")
+      await rm(join(staging, CHANNEL_FILE), { force: true });
     output = compile(
       await compileInputs(ctx, result.ir, name, staging, version),
     );

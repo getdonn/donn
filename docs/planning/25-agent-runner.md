@@ -140,7 +140,9 @@ this machine), `self-host` (a Node server and a container image the user operate
    - **`eve:blank`:** `eve init` walks up to the nearest ancestor `pnpm-workspace.yaml` and edits
      it (root `package.json` engines, workspace globs, the root lockfile). donn runs it in a
      fresh temporary staging directory with no workspace file above it and moves the result into
-     `path`.
+     `path`. _(2026-10-25)_ For `local` and `self-host`, donn drops the `agent/channels/eve.ts`
+     that `eve init` scaffolds (eve's boilerplate, not an author's route auth) before compiling,
+     so donn writes its own channel; `vercel` keeps eve's file.
 5. **Pin and add dependencies.** Set `eve` to the exact pinned version in the agent's
    `package.json` and add the provider packages `24` needs, pinned. Install with the package
    manager the template's lockfile names, isolated from any workspace at the project root (for

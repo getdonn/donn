@@ -354,14 +354,7 @@ describe("donn agent create", () => {
       ],
     });
     const { code, stdout, stderr } = await create(
-      [
-        "blank",
-        "--template",
-        "eve:blank",
-        "--target",
-        "local",
-        "--accept-portability",
-      ],
+      ["blank", "--template", "eve:blank", "--target", "local"],
       { spawn },
     );
     expect(stderr).not.toContain("error:");
@@ -395,14 +388,38 @@ describe("donn agent create", () => {
     expect(JSON.parse(read(join(dir, "package.json"))).dependencies.eve).toBe(
       "0.83.2",
     );
-    // eve init wrote its own channel, so donn writes none and reports the two lines.
-    expect(read(join(dir, "agent/channels/eve.ts"))).toContain(
-      "eveChannel({})",
-    );
-    expect(stderr).toContain("blocking: route-auth (local)");
+    // eve init's scaffolded channel is dropped for local: donn writes and owns its own.
+    const channel = read(join(dir, "agent/channels/eve.ts"));
+    expect(channel).toContain("donnToken");
+    expect(channel).not.toContain("eveChannel({})");
+    expect(stderr).not.toContain("blocking:");
+    expect(stderr).toContain("advisory: route-auth (local)");
     expect(manifest("blank").state).toBe("complete");
+    expect(Object.keys(manifest("blank").files)).toContain(
+      "agent/channels/eve.ts",
+    );
     expect(stdout).toContain("created agents/blank");
     expect(stdout).toContain("donn agent run blank");
+  });
+
+  it("keeps eve init's channel for eve:blank on vercel", async () => {
+    const spawn = fakeEve({
+      replies: [
+        { when: isInit, effect: initialised },
+        { when: isInstall, effect: installed },
+      ],
+    });
+    const { code } = await create(
+      ["blank", "--template", "eve:blank", "--target", "vercel"],
+      { spawn },
+    );
+    expect(code).toBe(0);
+    expect(read(join(agentDir("blank"), "agent/channels/eve.ts"))).toContain(
+      "eveChannel({})",
+    );
+    expect(Object.keys(manifest("blank").files)).not.toContain(
+      "agent/channels/eve.ts",
+    );
   });
 
   it("copies a path template without its .git, and records the template's virtual path", async () => {
