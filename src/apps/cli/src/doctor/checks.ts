@@ -162,7 +162,7 @@ async function registryChecks(
       "registry-token",
       "warn",
       `not logged in to ${url}`,
-      `donn login ${url} --token-stdin`,
+      `donn login ${shellWord(url)} --token-stdin`,
     );
   } else {
     try {
@@ -189,7 +189,7 @@ async function registryChecks(
           "registry-token",
           "warn",
           `session ends ${who.expiresAt.slice(0, 10)}`,
-          `donn login ${url}`,
+          `donn login ${shellWord(url)}`,
         );
       } else if (inFile) {
         add(
@@ -208,7 +208,7 @@ async function registryChecks(
           "registry-token",
           "error",
           "the registry refused the token",
-          `donn login ${url} --token-stdin`,
+          `donn login ${shellWord(url)} --token-stdin`,
         );
       } else {
         add(
@@ -359,7 +359,7 @@ export async function runChecks(
     if (!insideGit(config.personas)) {
       problems.push(`${config.personas} is not a git repository`);
       fixes.push(
-        `run \`git init\` in ${config.personas} to track your personas`,
+        `run \`git init\` in ${shellWord(config.personas)} to track your personas`,
       );
     }
     const strays = await createLocalStore({
@@ -370,7 +370,7 @@ export async function runChecks(
       problems.push(
         `${dir} is ignored (project/ and user/ layers are mounted elsewhere)`,
       );
-      fixes.push(`move or remove ${dir}`);
+      fixes.push(`move or remove ${shellWord(dir)}`);
     }
     if (problems.length > 0)
       add("personas", "warn", problems.join("; "), fixes.join("; "));
@@ -390,10 +390,9 @@ export async function runChecks(
     const missing = Object.keys(state.projects).filter(
       (key) => !existsSync(join(key, "persona.yaml")),
     );
-    waiting = [
-      ...new Set(missing.flatMap((key) => unmigratedRepo(key) ?? [])),
-    ].sort();
-    const orphans = missing.filter((key) => unmigratedRepo(key) === undefined);
+    const repos = await Promise.all(missing.map((key) => unmigratedRepo(key)));
+    waiting = [...new Set(repos.flatMap((repo) => repo ?? []))].sort();
+    const orphans = missing.filter((_, i) => repos[i] === undefined);
     const removable = orphans.filter(
       (key) => !existsSync(dirname(key)) && existsSync(dirname(dirname(key))),
     );
@@ -583,7 +582,7 @@ export async function runChecks(
     if (differs) {
       findings.push(differs);
       fixes.push(
-        `point the alias at ${claudePath}, or remove it so the shell and donn run the same claude`,
+        `point the alias at ${shellWord(claudePath!)}, or remove it so the shell and donn run the same claude`,
       );
     }
     if (detection.version && olderThan(detection.version, VERIFIED_CLAUDE)) {
@@ -816,7 +815,7 @@ export async function runChecks(
         "build",
         "warn",
         summary,
-        `donn doctor --fix (it removes only what no running session uses; deleting ${buildRoot} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
+        `donn doctor --fix (it removes only what no running session uses; deleting ${shellWord(buildRoot)} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
       );
     }
   }

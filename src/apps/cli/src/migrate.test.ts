@@ -24,7 +24,14 @@ import { startDaemon, type Daemon } from "./daemon/server.js";
 import { serviceManager } from "./daemon/service.js";
 import type { ManagedEnv } from "./managed/env.js";
 import { planMigration, runMigration } from "./migrate/plan.js";
-import { moveHome, rewriteApiVersion } from "./migrate/steps.js";
+import {
+  initOrLoginAdvice,
+  madeByDonnAdvice,
+  moveHome,
+  rewriteApiVersion,
+  shellWord,
+  unmigratedRepo,
+} from "./migrate/steps.js";
 import { projectKey } from "./state.js";
 import { installedProbe, safeManaged, seed, zz } from "./test/seed.js";
 
@@ -2263,5 +2270,186 @@ describe("rename leftovers: exit codes and paths", () => {
     expect(r.code).toBe(1);
     expect(json(r).error.code).toBe("migrate-old-home");
     expect(existsSync(newHome())).toBe(false);
+  });
+});
+
+describe("review notes: a project is not migrated yet only when migrate --project would run", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+  const dir = (name: string) => {
+    mkdirSync(join(root, name), { recursive: true });
+    return realpathSync(join(root, name));
+  };
+
+  it("leaves out a project whose .donn/ holds something, in migrate and in doctor", async () => {
+    const m = machine();
+    oldInstall(m);
+    const full = dir("full");
+    const empty = dir("empty");
+    const keyed = dir("keyed");
+    for (const repo of [full, empty, keyed])
+      put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    put(join(full, ".donn/notes.md"), "mine\n");
+    mkdirSync(join(empty, ".donn"));
+    put(join(keyed, ".donn/notes.md"), "mine\n");
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects: { [join(full, ".donn")]: "a/b", [join(empty, ".donn")]: "a/b", [join(keyed, ".zzpersona")]: "a/b" } })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).projects).toEqual([
+      { dir: empty, next: `donn migrate --project ${empty}` },
+    ]);
+    const d = await donn(m, ["doctor", "--json"]);
+    const projects = (json(d).checks as Check[]).find(
+      (c) => c.id === "projects",
+    );
+    expect(projects?.fix).toBe(`donn migrate --project ${empty}`);
+  });
+
+  it("applies the same test to a key still named .zzpersona", async () => {
+    const repo = dir("old-key");
+    put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    expect(await unmigratedRepo(join(repo, ".zzpersona"))).toBe(repo);
+    put(join(repo, ".donn/notes.md"), "mine\n");
+    expect(await unmigratedRepo(join(repo, ".zzpersona"))).toBeUndefined();
+    expect(await unmigratedRepo(join(repo, ".donn"))).toBeUndefined();
+  });
+});
+
+describe("review notes: advice is pasteable", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+
+  it("quotes only what a shell would split or expand", () => {
+    expect(shellWord("/a/b-c_d.e,f@g+h=i:j%k")).toBe("/a/b-c_d.e,f@g+h=i:j%k");
+    expect(shellWord("~/personas")).toBe("~/personas");
+    expect(shellWord("/my repo")).toBe("'/my repo'");
+    expect(shellWord("it's")).toBe("'it'\\''s'");
+    expect(shellWord("~/my repo")).toBe("'~/my repo'");
+    expect(shellWord("$HOME")).toBe("'$HOME'");
+  });
+
+  it("quotes the repo in the doctor and migrate commands", async () => {
+    const m = machine();
+    oldInstall(m);
+    const repo = join(root, "my 'repo");
+    put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    const real = realpathSync(repo);
+    const quoted = `'${real.replaceAll("'", "'\\''")}'`;
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects: { [join(real, ".zzpersona")]: "a/b" } })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(json(r).projects).toEqual([
+      { dir: real, next: `donn migrate --project ${quoted}` },
+    ]);
+    const d = await donn(m, ["doctor", "--json"]);
+    expect(
+      (json(d).checks as Check[]).find((c) => c.id === "projects")?.fix,
+    ).toBe(`donn migrate --project ${quoted}`);
+  });
+
+  it("quotes the folder to remove and the values to set again", async () => {
+    const target = join(root, "a b", "it's");
+    mkdirSync(target, { recursive: true });
+    writeFileSync(
+      join(target, "config.yaml"),
+      `personas: ${JSON.stringify("/my p/it's")}\nregistry:\n  url: http://h/?a=1&b=2\n`,
+    );
+    writeFileSync(join(target, "registry-token"), "t\n");
+    const q = (v: string) => `'${v.replaceAll("'", "'\\''")}'`;
+    expect(await madeByDonnAdvice(target)).toContain(`remove ${q(target)} and`);
+    const advice = await initOrLoginAdvice(target, [
+      "config.yaml (personas, registry)",
+      "registry-token",
+    ]);
+    expect(advice).toContain(`remove ${q(target)} (`);
+    expect(advice).toContain(`personas: ${q("/my p/it's")}`);
+    expect(advice).toContain(`donn login ${q("http://h/?a=1&b=2")}\` again`);
+  });
+});
+
+describe("review notes: a relative link moved to another folder", () => {
+  /** <root>/u/.zzpersona -> real-home, to be <root>/other/.donn. */
+  function setup() {
+    const real = join(root, "u/real-home");
+    put(join(real, "config.yaml"), "x: 1\n");
+    symlinkSync("real-home", join(root, "u/.zzpersona"));
+    return {
+      src: join(root, "u/.zzpersona"),
+      target: join(root, "other/.donn"),
+      real,
+    };
+  }
+  /** A rename that fails on its nth call, before doing anything. */
+  const failing = (n: number) => {
+    let calls = 0;
+    return async (from: string, to: string) => {
+      if (++calls === n) throw new Error("interrupted");
+      await rename(from, to);
+    };
+  };
+  const leftovers = () => [
+    ...readdirSync(join(root, "u")),
+    ...readdirSync(join(root, "other")),
+  ];
+
+  it.each([
+    ["after the new link is made, before the old one is set aside", 1],
+    ["after the old link is set aside, before the new one is put in place", 2],
+  ])("finishes when interrupted %s", async (_name, call) => {
+    const { src, target, real } = setup();
+    await expect(
+      moveHome(src, target, { rename: failing(call) }),
+    ).rejects.toThrow("interrupted");
+    await moveHome(src, target);
+    expect(existsSync(src)).toBe(false);
+    expect(realpathSync(target)).toBe(realpathSync(real));
+    expect(read(join(real, "config.yaml"))).toBe("x: 1\n");
+    expect(read(join(target, "config.yaml"))).toBe("x: 1\n");
+    expect(leftovers().sort()).toEqual([".donn", "real-home"]);
+  });
+
+  it("changes nothing when it refuses", async () => {
+    mkdirSync(join(root, "u"), { recursive: true });
+    symlinkSync("missing", join(root, "u/.zzpersona"));
+    await expect(
+      moveHome(join(root, "u/.zzpersona"), join(root, "fresh/sub/.donn")),
+    ).rejects.toMatchObject({ code: "migrate-copy" });
+    expect(existsSync(join(root, "fresh"))).toBe(false);
+
+    mkdirSync(join(root, "other/.donn"), { recursive: true });
+    await expect(
+      moveHome(join(root, "u/.zzpersona"), join(root, "other/.donn")),
+    ).rejects.toMatchObject({ code: "migrate-copy" });
+    expect(readdirSync(join(root, "other/.donn"))).toEqual([]);
+    expect(readdirSync(join(root, "other"))).toEqual([".donn"]);
+  });
+});
+
+describe("review notes: an empty HOME counts as unset", () => {
+  it("finds the old home under the system's home folder", async () => {
+    const m = machine();
+    oldInstall(m);
+    const saved = process.env.HOME;
+    process.env.HOME = user();
+    try {
+      const d = await donn(m, ["doctor", "--json"], { env: { HOME: "" } });
+      const first = (json(d).checks as { id: string; message: string }[])[0]!;
+      expect(first.id).toBe("migrate");
+      expect(first.message).toBe(
+        `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+      );
+      const r = await donn(m, ["migrate", "--yes", "--json"], {
+        env: { HOME: "" },
+      });
+      expect(r.code, r.stdout + r.stderr).toBe(0);
+      expect(existsSync(newHome())).toBe(true);
+      expect(existsSync(oldHome())).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.HOME;
+      else process.env.HOME = saved;
+    }
   });
 });

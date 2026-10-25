@@ -29,7 +29,7 @@ export interface Context {
 
 /** DONN_HOME, or ~/.donn. An empty DONN_HOME counts as unset. */
 export function homeOf(io: CliIo): string {
-  return io.env.DONN_HOME || join(io.env.HOME ?? homedir(), ".donn");
+  return io.env.DONN_HOME || join(io.env.HOME || homedir(), ".donn");
 }
 
 export async function createContext(

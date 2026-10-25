@@ -295,7 +295,7 @@ export async function pendingProjects(
   const state = await readState(w.live()).catch(() => undefined);
   const dirs = new Set<string>();
   for (const key of Object.keys(state?.projects ?? {})) {
-    const dir = unmigratedRepo(key);
+    const dir = await unmigratedRepo(key);
     if (dir !== undefined) dirs.add(dir);
   }
   return [...dirs]
@@ -722,7 +722,7 @@ export async function planMigration(
         "claude-not-on-path",
         removed
           ? `claude is not on PATH, so the donn mod cannot be installed (the old one is already unregistered); ${hint}; then run donn migrate again`
-          : `claude is not on PATH, so the old mod cannot be unregistered; ${hint}; or, if Claude Code is gone, remove ${join(w.live(), "mod")}; then run donn migrate again`,
+          : `claude is not on PATH, so the old mod cannot be unregistered; ${hint}; or, if Claude Code is gone, remove ${shellWord(join(w.live(), "mod"))}; then run donn migrate again`,
         { hint },
       );
     }
