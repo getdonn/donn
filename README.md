@@ -233,6 +233,92 @@ last pulled (run `donn pull` first for the latest).
 developer's. `doctor` and `status` show the result. The design is
 `docs/planning/21-managed-settings.md`.
 
+## Agents
+
+A project persona can declare agents (`agents.define.<name>`: a template, a target, optionally a
+path, a world and env) that run on the persona: its instructions, skills, MCP connections and
+model routing through the org's gateway. donn materialises the template, writes its own files
+beside it and drives the agent's own eve (pinned in its `package.json`) without prompts. eve is
+the first agent framework.
+
+```sh
+donn agent create pr-bot --template eve:blank --target local   # declares it if the persona does not
+donn agent list                  # state: available, created, running, built, deployed; current or stale
+donn agent sync pr-bot           # recompile the persona into donn's files (--dry-run, --force)
+donn agent run pr-bot            # eve build + eve start, through the daemon when it runs (--dev: eve dev)
+donn agent logs pr-bot --follow  # the daemon run's log
+donn agent stop pr-bot
+donn agent env pr-bot            # names and secret refs; --resolve prints values, --format dotenv|json
+donn agent exec pr-bot -- <cmd>  # a command in the agent's folder with its env resolved
+donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile and env.json
+donn agent deploy pr-bot         # vercel: eve link, env push after confirming, eve deploy
+```
+
+Every subcommand takes `--json` and `--project <dir>`.
+
+**`create`.** The template is `eve:<slug>` (fetched from the eve repository at the tag the adapter
+was verified against, its commit and digest checked), `eve:blank` (`eve init`), or a path to a
+local folder. `create` prints the compile and portability reports and stops on a blocking entry
+(a service the template needs that the target does not have) unless `--accept-portability`. It
+edits `agent/agent.ts` once to spread `donn`; after that `agent.ts` is yours, and donn's files
+(under `agent/lib/donn/`, plus `agent/channels/eve.ts` when the template has no route auth) are
+recorded in `.donn/agent.json`. `sync` rewrites them and stops on one you edited
+(`owned-file-edited`; `--force` overwrites). With the daemon running, a persona edit syncs every
+created agent it reaches and restarts a running one. Secret values never go in the agent's
+files: `create`, `sync` and `build` write `secret://` refs and env names only.
+
+**`local`** is for trying and developing an agent. `run` builds it and starts `eve start` on
+`127.0.0.1` with a free port, `NODE_ENV=production`, secrets resolved into its environment and a
+route token generated per run: send it as `Authorization: Bearer <token>` (`run --json` and
+`GET /agents` on the daemon give it). Sessions open eve's Docker sandbox, so Docker must be
+running. Without the daemon, `run` stays in the foreground until Ctrl-C.
+
+**`self-host`** produces what your infrastructure runs; donn does not operate it. `build` runs
+`eve build` on this host, against the Docker daemon the agent will run on (eve prepares the
+sandbox template image there, at build time), and writes `deploy/donn/Dockerfile` and
+`deploy/donn/env.json`. Two images to ship:
+
+- the agent's: `docker build -f deploy/donn/Dockerfile -t <name> .` in the agent folder;
+- the sandbox template image `build` names (also `sandboxImage` in `env.json`), which must reach
+  the run-time Docker daemon under the same tag (`docker save | docker load`, or a registry).
+
+`env.json` lists each variable with its source (a `secret://` ref, a plain value, or set at run
+time, such as `DONN_ROUTE_TOKEN`) and why it is needed, never a secret's value, plus what the
+container needs: the Docker socket mount (`/var/run/docker.sock`, for the sandbox), a volume on
+`/agent/.eve`, and the proxy rule (forward both `/eve/` and `/.well-known/workflow/`). By default
+the agent uses eve's local Workflow world: state in that volume, one replica. `world: postgres`
+on the agent selects `@workflow/world-postgres`; the image creates its schema before the server
+starts, and `WORKFLOW_POSTGRES_URL` (or `DATABASE_URL`) must be set. Run the image with `docker
+run --init` (or tini as its entrypoint), so SIGTERM reaches the server:
+
+```sh
+docker run --init -p 3000:3000 -v /var/run/docker.sock:/var/run/docker.sock \
+  -v pr-bot-eve:/agent/.eve -e DONN_ROUTE_TOKEN -e DONN_SECRET_1 pr-bot
+```
+
+The values come from your own secret store (names and refs from `env.json`), or from `donn agent
+env <name> --resolve`. A third path, documented here and not generated: when a secret provider the
+persona names (Vault, say) is reachable from the container, the image can resolve at start itself.
+Install `@getdonn/cli` in it, include the project's `.donn/`, the personas it extends and the
+agent folder, and make the entrypoint `donn agent exec <name> -- node .output/server/index.mjs`.
+The route token is a starting point: put Basic, JWT or OIDC in front before exposing the routes.
+
+**`vercel`** uses eve's deploy. `create` adds the Vercel CLI as a pinned dev dependency.
+`deploy` links the folder when it is not linked, lists the variable names it will set in Vercel
+production (never values) and asks (always on a first deploy; `--yes` for scripts), sets each with
+the value on stdin, then runs `eve deploy`. A variable Vercel already has is kept. `run` refuses a
+`vercel` agent (its routes take Vercel's OIDC); `run --dev` works.
+
+**`exec`** forwards SIGTERM, SIGINT and SIGHUP to its child, but the child gets no stdin or
+terminal and its output is passed on line by line: it is meant for entrypoints and scripts, not
+for interactive programs. A secret that does not resolve stops `run`, `exec` and `deploy`, naming
+the variable and its ref.
+
+`donn status` adds a line per created agent, and `donn doctor` checks each one: the pinned eve
+inside the range this donn compiles for, Docker reachable (`local`, `self-host`), the gateway
+answering, `agent.ts` still spreading `donn`, donn's files present, the Vercel CLI (`vercel`),
+and agents the persona no longer declares. The design is `docs/planning/25-agent-runner.md`.
+
 ## Upgrading from zzpersona
 
 donn was called zzpersona until 2026-10-23. On a machine that ran zzpersona, run `donn migrate`
