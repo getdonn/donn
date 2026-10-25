@@ -184,6 +184,12 @@ describe("models", () => {
     );
   });
 
+  it("apiKey needs something after the scheme", () => {
+    expect(parse({ gateway: { ...gw, apiKey: "secret://" } }).success).toBe(
+      false,
+    );
+  });
+
   it("unknown gateway type is refused", () => {
     expect(parse({ gateway: { type: "bedrock" } }).success).toBe(false);
   });
@@ -245,6 +251,9 @@ describe("agents", () => {
       "agents/../.donn/x",
       "..",
       "../x",
+      ".",
+      "./",
+      "a/..",
     ]) {
       expect(define("a", { path }).success, path).toBe(false);
     }
@@ -263,7 +272,17 @@ describe("agents", () => {
   it("template is eve:<slug> or a relative path", () => {
     expect(define("a", { template: "eve:blank" }).success).toBe(true);
     expect(define("a", { template: "templates/reviewer" }).success).toBe(true);
-    for (const template of ["eve:Bad Slug", "/abs", "../x", "a/../../x", ""]) {
+    for (const template of [
+      "eve:Bad Slug",
+      "/abs",
+      "../x",
+      "a/../../x",
+      "",
+      ".",
+      "a/..",
+      "eve:",
+      "eve:a/b",
+    ]) {
       expect(define("a", { template }).success, template).toBe(false);
     }
   });

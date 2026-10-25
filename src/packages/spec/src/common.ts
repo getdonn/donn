@@ -111,7 +111,7 @@ export const ModelGateway = z
     baseURL: z.url().optional(),
     apiKey: z
       .string()
-      .regex(/^secret:\/\//, "must be a secret:// ref")
+      .regex(/^secret:\/\/.+/, "must be a secret:// ref")
       .optional(),
     headers: z.record(z.string(), z.string()).optional(),
   })
@@ -169,6 +169,7 @@ export const AgentPath = z.string().refine((value) => {
   const path = normalizeRelative(value);
   return (
     !path.startsWith("/") &&
+    path !== "." &&
     path !== ".." &&
     !path.startsWith("../") &&
     path !== ".donn" &&
@@ -191,6 +192,11 @@ export const AgentTemplate = z.string().refine((value) => {
   if (value.startsWith("eve:")) return EVE_TEMPLATE.test(value);
   if (value === "") return false;
   const path = normalizeRelative(value);
-  return !path.startsWith("/") && path !== ".." && !path.startsWith("../");
+  return (
+    !path.startsWith("/") &&
+    path !== "." &&
+    path !== ".." &&
+    !path.startsWith("../")
+  );
 }, "must be eve:<slug> or a relative path inside the personas root");
 export type AgentTemplate = z.infer<typeof AgentTemplate>;
