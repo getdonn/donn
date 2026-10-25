@@ -1,0 +1,5 @@
+apiVersion: donn/v0
+kind: PersonaOverlay
+agents:
+  define:
+    x: { template: "eve:blank", target: local }

@@ -1,4 +1,4 @@
-import { HOOK_EVENTS } from "./common.js";
+import { AgentName, HOOK_EVENTS } from "./common.js";
 
 // Paths name a value inside a persona or the IR. Used by locks, provenance, warnings and errors.
 //
@@ -69,6 +69,18 @@ export function isValidLockPath(path: string): boolean {
     case "secrets":
       return (
         !hasEntry && (depth === 1 || (second === "providers" && depth <= 3))
+      );
+    case "models":
+      return (
+        !hasEntry &&
+        (depth === 1 ||
+          (depth === 2 && (second === "gateway" || second === "default")))
+      );
+    case "agents":
+      return (
+        !hasEntry &&
+        second === "define" &&
+        (depth === 2 || (depth === 3 && AgentName.safeParse(keys[2]).success))
       );
     case "targets":
       return !hasEntry;

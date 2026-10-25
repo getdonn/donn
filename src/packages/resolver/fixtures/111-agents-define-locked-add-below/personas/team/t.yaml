@@ -1,0 +1,8 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+agents:
+  define:
+    triage-bot: { template: "eve:blank", target: local }

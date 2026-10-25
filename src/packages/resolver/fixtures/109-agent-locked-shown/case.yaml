@@ -1,0 +1,14 @@
+description: >-
+  A lock on agents.define.<name> shows on the agent's row in explain, whose path is agents.<name>.
+resolve: team/t
+expect:
+  resolved:
+    agents:
+      pr-reviewer:
+        template: eve:reviewer
+        target: local
+        path: agents/pr-reviewer
+        env: {}
+  provenance:
+    "agents.pr-reviewer": org/base
+  warnings: []

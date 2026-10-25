@@ -39,6 +39,8 @@ const ir = (
     locks: [],
     targets: {},
     policy: {},
+    models: {},
+    agents: {},
     ...fields,
   });
 
@@ -591,6 +593,36 @@ describe("compileManaged: advisory", () => {
       ["permissions.ask", "team/payments", "advisory"],
     ]);
     await goldens("advisory", persona);
+  });
+});
+
+describe("compileManaged: locks on models and agents", () => {
+  it("are lock-only, not 'covers nothing', when the chain sets them", () => {
+    const agent = {
+      template: "eve:blank",
+      target: "local" as const,
+      path: "agents/rev",
+    };
+    const persona = ir({
+      models: {
+        gateway: { type: "vercel-ai-gateway" },
+        default: "anthropic/claude-sonnet-5-5",
+      },
+      agents: { rev: { ...agent, env: {} } },
+      locks: [
+        { path: "models", layer: "org/acme" },
+        { path: "models.gateway", layer: "org/acme" },
+        { path: "models.default", layer: "org/acme" },
+        { path: "agents.define", layer: "org/acme" },
+        { path: "agents.define.rev", layer: "org/acme" },
+      ],
+    });
+    const { report } = compileManaged(input(persona));
+    expect(report.entries).toHaveLength(5);
+    for (const entry of report.entries) {
+      expect(entry.outcome).toBe("advisory");
+      expect(entry.reason, entry.path).not.toMatch(/covers nothing/);
+    }
   });
 });
 

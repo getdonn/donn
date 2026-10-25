@@ -1,0 +1,6 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: base
+models:
+  default: anthropic/claude-sonnet-4.5

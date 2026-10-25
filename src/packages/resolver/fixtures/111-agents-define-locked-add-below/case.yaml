@@ -1,0 +1,9 @@
+description: Adding an agent under a lock on agents.define fails resolution, naming the lock's layer and the adding layer.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: agents.define.triage-bot
+    lock: agents.define
+    lockedBy: org/base
+    layer: team/t

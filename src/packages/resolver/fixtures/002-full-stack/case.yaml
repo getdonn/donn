@@ -74,6 +74,8 @@ expect:
         model: opus
         outputStyle: concise
     policy: {}
+    models: {}
+    agents: {}
   provenance:
     "metadata.version": project/checkout-api
     "metadata.labels.org": org/base

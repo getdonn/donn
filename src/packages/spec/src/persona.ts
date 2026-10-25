@@ -1,6 +1,11 @@
 import { z } from "zod";
 import {
+  AgentName,
+  AgentPath,
+  AgentTarget,
+  AgentTemplate,
   API_VERSION,
+  EnvName,
   Hook,
   HOOK_EVENTS,
   HookEvent,
@@ -9,6 +14,7 @@ import {
   KnowledgePointer,
   Labels,
   McpServer,
+  Models,
   Policy,
   Ref,
   SecretProvider,
@@ -62,6 +68,16 @@ const Hooks = z.strictObject({
   remove: z.array(HookRemoval).optional(),
 }) as z.ZodType<Partial<Record<HookEvent, Hook[]>> & { remove?: string[] }>;
 
+export const Agent = z.strictObject({
+  template: AgentTemplate,
+  target: AgentTarget,
+  /** Stored as written; the resolver normalizes it. Default `agents/<name>`. */
+  path: AgentPath.optional(),
+  model: z.string().min(1).optional(),
+  env: z.record(EnvName, z.string()).optional(),
+});
+export type Agent = z.infer<typeof Agent>;
+
 /** Everything a layer can contribute. Shared by Persona and PersonaOverlay. */
 const LayerBody = {
   instructions: z.array(InstructionFragment).optional(),
@@ -89,6 +105,7 @@ const LayerBody = {
       providers: z.record(ServerName, SecretProvider).optional(),
     })
     .optional(),
+  models: Models.optional(),
   targets: Targets.optional(),
 };
 
@@ -105,6 +122,13 @@ export const Persona = z.strictObject({
   locks: z.array(z.string().min(1)).optional(),
   /** Persona files only: the overlay cannot carry it. */
   policy: Policy.optional(),
+  /** Persona files only: an agent belongs to a project or team, not one machine. */
+  agents: z
+    .strictObject({
+      define: z.record(AgentName, Agent).optional(),
+      remove: z.array(AgentName).optional(),
+    })
+    .optional(),
   ...LayerBody,
 });
 export type Persona = z.infer<typeof Persona>;

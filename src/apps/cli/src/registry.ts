@@ -246,7 +246,7 @@ export async function freshen(
   options: { budgetMs: number },
 ): Promise<void> {
   const home = homeOf(io);
-  const config = await loadConfig(home, io.env);
+  const config = await loadConfig(home, io.env, io.passwdHome);
   await ensureFresh(io, { home, config }, options);
 }
 

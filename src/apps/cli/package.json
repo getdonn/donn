@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/cli",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "description": "The donn command line",
   "license": "Apache-2.0",
   "repository": {
@@ -34,6 +34,7 @@
     "@getdonn/adapter-agents-md": "workspace:*",
     "@getdonn/adapter-claude-code": "workspace:*",
     "@getdonn/adapter-codex": "workspace:*",
+    "@getdonn/adapter-eve": "workspace:*",
     "@getdonn/adapter-sdk": "workspace:*",
     "@getdonn/executor": "workspace:*",
     "@getdonn/mod-claude-code": "workspace:*",

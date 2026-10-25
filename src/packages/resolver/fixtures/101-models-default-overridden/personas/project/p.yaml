@@ -1,0 +1,7 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: p
+extends: [org/base]
+models:
+  default: anthropic/claude-opus-4.5

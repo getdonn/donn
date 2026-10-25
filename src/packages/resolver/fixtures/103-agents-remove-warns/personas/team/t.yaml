@@ -1,0 +1,8 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: t
+agents:
+  define:
+    a: { template: "eve:blank", target: local }
+    b: { template: "eve:blank", target: local }

@@ -1,0 +1,8 @@
+p
+
+layers (merge order)
+  1  org/base
+  2  project/p  target
+
+models (1)
+  default  anthropic/claude-opus-4.5  project/p  overrides org/base

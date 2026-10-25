@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/store-local",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Personas from a personas folder, the project's .donn/ and ~/.donn/, mounted onto one root",
   "license": "Apache-2.0",
   "repository": {

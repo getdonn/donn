@@ -1,0 +1,8 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: t
+extends: [org/base]
+agents:
+  define:
+    pr-reviewer: { template: "eve:blank", target: vercel }

@@ -1,0 +1,14 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: t
+agents:
+  define:
+    pr-reviewer:
+      template: eve:blank
+      target: self-host
+      path: tools/reviewer
+      env: { GITHUB_APP_PRIVATE_KEY: secret://vault/gh/key }
+    docs-bot:
+      template: ./templates/docs
+      target: local

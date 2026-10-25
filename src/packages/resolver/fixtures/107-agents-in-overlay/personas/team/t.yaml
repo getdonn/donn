@@ -1,0 +1,4 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: t

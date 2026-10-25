@@ -1,3 +1,4 @@
+import eve from "@getdonn/adapter-eve";
 import {
   capabilityFields,
   UNDECLARED,
@@ -28,6 +29,14 @@ const SYMBOL: Record<Support, string> = {
 /** The first-party adapters' full matrices, without detection: the published doc. */
 export function firstPartyColumns(): Column[] {
   return Object.values(HARNESSES).map((adapter) => ({
+    id: adapter.id,
+    matrix: adapter.capabilities(),
+  }));
+}
+
+/** The agent adapters' matrices (eve): the published doc's second section. */
+export function agentColumns(): Column[] {
+  return [eve].map((adapter) => ({
     id: adapter.id,
     matrix: adapter.capabilities(),
   }));
@@ -81,6 +90,7 @@ function rows(columns: Column[]): Row[] {
       columns,
     ),
     single("policy"),
+    single("models"),
     { label: "targets", field: (column) => `targets.${column.id}` },
   ];
 }
@@ -185,8 +195,7 @@ const DOC_HEADER = [
   "Harnesses without an adapter yet: Copilot CLI, Cursor, Gemini CLI, Antigravity.",
 ];
 
-/** The published Markdown form: the header, the table, then the numbered notes. */
-export function capabilitiesDoc(columns: Column[]): string {
+function markdownTable(columns: Column[]): string {
   const { body, notes } = table(columns);
   const cell = (c: (typeof body)[number]["cells"][number]) =>
     `${c.symbol}${c.caveat ? "\\*" : ""}${c.refs.length > 0 ? ` ${c.refs.join(", ")}` : ""}`;
@@ -195,10 +204,29 @@ export function capabilitiesDoc(columns: Column[]): string {
     `|---|${columns.map(() => "---|").join("")}`,
     ...body.map((r) => `| ${r.label} | ${r.cells.map(cell).join(" | ")} |`),
   ];
-  return `${[
-    DOC_HEADER.join("\n"),
+  return [
     tableLines.join("\n"),
     `Notes:\n\n${notes.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
+  ].join("\n\n");
+}
+
+/**
+ * The published Markdown form: the header, the harness table with its numbered notes, then the
+ * agent adapters' table (a persona compiled into an agent project, not a harness launch).
+ */
+export function capabilitiesDoc(
+  columns: Column[],
+  agents: Column[] = agentColumns(),
+): string {
+  return `${[
+    DOC_HEADER.join("\n"),
+    markdownTable(columns),
+    ...(agents.length > 0
+      ? [
+          "## Agent adapters\n\nA persona compiled into an agent project rather than a harness launch (`docs/planning/24-adapter-eve.md`). The same marks apply.",
+          markdownTable(agents),
+        ]
+      : []),
   ].join("\n\n")}\n`;
 }
 

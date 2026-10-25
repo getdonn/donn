@@ -146,5 +146,7 @@
       "outputStyle": "concise"
     }
   },
-  "policy": {}
+  "policy": {},
+  "models": {},
+  "agents": {}
 }

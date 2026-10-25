@@ -24,7 +24,8 @@ Harnesses without an adapter yet: Copilot CLI, Cursor, Gemini CLI, Antigravity.
 | permissions.ask | ● | ◐ 12 | ◐ 13 |
 | hooks | ● | ✕ 15 | ✕ 16 |
 | policy | ● 17 | ✕ 18 | ✕ 18 |
-| targets | ●\* 19 | ✕ 20 | ●\* 21 |
+| models | ✕ 19 | ✕ 20 | ✕ 21 |
+| targets | ●\* 22 | ✕ 23 | ●\* 24 |
 
 Notes:
 
@@ -46,6 +47,36 @@ Notes:
 16. untrusted hooks do not run, and donn never bypasses Codex's hook trust
 17. managed policy bundle
 18. not rendered; enforced only by managed bundles for Claude Code
-19. secret refs and permission lists in targets are dropped
-20. AGENTS.md is plain text; use a harness adapter for harness settings
-21. only sandbox, approval and model are read
+19. Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec
+20. AGENTS.md is text; model routing is the harness's
+21. Not yet: Codex takes a model_provider; a later spec
+22. secret refs and permission lists in targets are dropped
+23. AGENTS.md is plain text; use a harness adapter for harness settings
+24. only sandbox, approval and model are read
+
+## Agent adapters
+
+A persona compiled into an agent project rather than a harness launch (`docs/planning/24-adapter-eve.md`). The same marks apply.
+
+| Field | eve |
+|---|---|
+| instructions | ● |
+| skills | ●\* 1 |
+| mcp.servers | ●\* 2 |
+| secrets | ● |
+| knowledge | ○ 3 |
+| permissions | ✕ 4 |
+| hooks | ✕ 5 |
+| policy | ✕ 6 |
+| models | ● |
+| targets | ●\* 7 |
+
+Notes:
+
+1. supporting scripts/ run only where the agent has a sandbox, which is eve's rule; eve names the skill from its directory and requires description frontmatter in SKILL.md, so a skill without one is dropped
+2. stdio servers and gateway:// refs are dropped: eve connects to HTTP MCP and OpenAPI only
+3. listed as pointers in instructions/donn.md
+4. Harness permission rules do not map to eve; eve's tool allow-lists per connection are a later mapping
+5. eve hooks are TypeScript modules; author them in the agent's hooks/
+6. Managed policy is harness enforcement; eve has no managed surface
+7. contextWindow sets modelContextWindowTokens; unknown keys are reported

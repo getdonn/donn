@@ -171,7 +171,7 @@ jobs:
             > "$RUNNER_TEMP/summary.json" || status=$?
           cat "$RUNNER_TEMP/summary.json"
           [ "$status" -eq 0 ] || exit "$status"
-          jq -e '.published | length == 13' "$RUNNER_TEMP/summary.json"
+          jq -e '.published | length == 14' "$RUNNER_TEMP/summary.json"
       - name: Smoke
         run: node src/packages/release/dist/bin.js smoke --registry http://localhost:4873
       - name: Publish again skips everything
@@ -182,7 +182,7 @@ jobs:
             > "$RUNNER_TEMP/summary-again.json" || status=$?
           cat "$RUNNER_TEMP/summary-again.json"
           [ "$status" -eq 0 ] || exit "$status"
-          jq -e '(.published | length == 0) and (.skipped | length == 13)
+          jq -e '(.published | length == 0) and (.skipped | length == 14)
             and ((.conflicted // []) | length == 0)' \
             "$RUNNER_TEMP/summary-again.json"
       - name: Verdaccio log

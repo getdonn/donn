@@ -1,0 +1,10 @@
+apiVersion: donn/v0
+kind: Persona
+metadata:
+  name: p
+extends: [team/t]
+agents:
+  define:
+    pr-reviewer:
+      template: eve:github-project-maintainer
+      target: vercel

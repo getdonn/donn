@@ -305,6 +305,15 @@ export function compile(
     });
   }
 
+  dropAll(
+    entries,
+    [
+      ...(ir.models.gateway ? ["models.gateway"] : []),
+      ...(ir.models.default ? ["models.default"] : []),
+    ],
+    notes.models!.note!,
+  );
+
   const mode = modeFor(input.detection);
   let secretEnv: Record<string, SecretRef> = {};
   if (mode === "partial") {

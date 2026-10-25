@@ -97,10 +97,18 @@ describe("resolver fixtures", () => {
         "error" in exp && (exp.error as Doc).code === "missing-ref"
           ? (exp.error as Doc).ref
           : undefined;
+      // These errors are the schema (or its overlay guard) refusing the file, so the file cannot
+      // validate by definition.
+      const refused =
+        "error" in exp &&
+        ["invalid-persona", "agents-in-overlay"].includes(
+          (exp.error as Doc).code as string,
+        );
       for (const file of personaFiles(root)) {
         const ref = relative(root, file).replace(/\.yaml$/, "");
         expect(LAYERS, ref).toContain(ref.split("/")[0]);
         const parsed = PersonaDocument.safeParse(readYaml(file));
+        if (refused && parsed.error !== undefined) continue;
         expect(parsed.error, ref).toBeUndefined();
         if (parsed.data?.kind !== "Persona") continue;
         for (const parent of parsed.data.extends ?? []) {

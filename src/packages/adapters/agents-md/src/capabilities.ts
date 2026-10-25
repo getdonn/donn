@@ -39,6 +39,10 @@ export function capabilities(): CapabilityMatrix {
       secrets: none("secrets"),
       "targets.agents-md": none("harness settings"),
       policy: POLICY,
+      models: {
+        support: "none",
+        note: "AGENTS.md is text; model routing is the harness's",
+      },
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, none("hooks")]),
       ),

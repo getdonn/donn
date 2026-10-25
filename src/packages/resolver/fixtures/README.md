@@ -69,6 +69,9 @@ expect:
 | `secrets` | `{ providers: { <name>: <def> } }` | |
 | `locks` | `[{ path, layer }]` | declaration order |
 | `targets` | `{ <harness>: <object> }` | |
+| `policy` | `{ ... }` (spec 21) | |
+| `models` | `{ gateway?, default? }`; `gateway` replaced whole | |
+| `agents` | `{ <name>: { template, target, path, model?, env } }`; replaced whole by name | |
 
 - File paths (`instructions[].file`, `hooks[].run`, local skill sources) are normalized to be
   relative to the personas root: `./hooks/x.sh` declared in `org/base.yaml` becomes `org/hooks/x.sh`.
@@ -86,11 +89,13 @@ Dots for object keys, `[x]` for an entry in a keyed list or set: `mcp.gateway`,
 ## Codes
 
 Warnings: `allow-shadowed-by-deny`, `ask-shadowed-by-deny`, `allow-shadowed-by-ask`,
-`security-removal`, `remove-unmatched`, `overlay-lock-ignored`.
+`security-removal`, `remove-unmatched`, `overlay-lock-ignored`, `agent-removed`.
 
 Errors: `missing-ref`, `cycle`, `linearization-conflict`, `replace-target-missing`,
-`lock-violation`, `invalid-lock-path`, `user-layer-lock`, `invalid-persona` (a file that fails
-the `@getdonn/spec` schema; no fixture yet, since every fixture file must validate).
+`lock-violation`, `invalid-lock-path`, `user-layer-lock`, `agents-in-overlay`, `invalid-persona`
+(a file that fails the `@getdonn/spec` schema; `108`, whose file cannot validate, so the fixture
+suite skips its own schema check for it; `107`'s code is `agents-in-overlay`, and its overlay file
+is skipped by the same check).
 
 `@getdonn/spec` is the source of truth for the IR shape, path grammar and codes above;
 `src/fixtures.test.ts` validates every fixture against it, so this README and the spec cannot

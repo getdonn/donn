@@ -26,6 +26,8 @@ const emptyIr = (): ResolvedPersona => ({
   locks: [],
   targets: {},
   policy: {},
+  models: {},
+  agents: {},
 });
 
 const ir: ResolvedPersona = {
@@ -93,6 +95,34 @@ describe("requiredEntries", () => {
       ]),
     );
     expect(required).toHaveLength(4);
+  });
+
+  it("an IR with models gets a dropped models entry per set key, with the adapter's note", () => {
+    const withModels: ResolvedPersona = {
+      ...emptyIr(),
+      models: {
+        gateway: { type: "anthropic", baseURL: "https://gw.example.com" },
+        default: "claude-x",
+      },
+    };
+    const required = requiredEntries(
+      "toy",
+      { fields: { models: { support: "none", note: "not yet" } } },
+      withModels,
+    );
+    expect(required).toEqual([
+      { path: "models.gateway", outcome: "dropped", reason: "not yet" },
+      { path: "models.default", outcome: "dropped", reason: "not yet" },
+    ]);
+  });
+
+  it("an IR without models gets none", () => {
+    const required = requiredEntries(
+      "toy",
+      { fields: { models: { support: "none", note: "not yet" } } },
+      emptyIr(),
+    );
+    expect(required).toEqual([]);
   });
 
   it("ignores other harnesses' targets but reports the adapter's own", () => {
@@ -165,6 +195,21 @@ describe("annotateLocks", () => {
     });
     expect(annotated.entries[1]).not.toHaveProperty("lock");
     expect(report.entries[0]).not.toHaveProperty("lock");
+  });
+
+  it("marks the models.gateway entry under a lock on models or models.gateway", () => {
+    const report: CompileReport = {
+      adapter: "toy",
+      irVersion: 0,
+      entries: [{ path: "models.gateway", outcome: "dropped", reason: "r" }],
+    };
+    for (const path of ["models", "models.gateway"]) {
+      const locked = { ...emptyIr(), locks: [{ path, layer: "org/base" }] };
+      expect(annotateLocks(report, locked).entries[0]!.lock).toEqual({
+        path,
+        layer: "org/base",
+      });
+    }
   });
 });
 
