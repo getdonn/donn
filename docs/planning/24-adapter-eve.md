@@ -5,6 +5,35 @@
 > research this spec relies on), `05` (adapter SDK, compile report, conformance kit), `11`
 > (knowledge pointers as text) and `13` (every field declared). Built as a `gh stack` after `23`'s
 > layers.
+> *Amended 2026-10-25:* re-checked against eve 0.83.2. The persona is no longer an extension: donn
+> writes `donn`-named files straight into the agent's own slots (see "Re-check 2026-10-25").
+
+## Re-check 2026-10-25
+
+eve moved from 0.82.0 to 0.83.2 between this spec's first draft and this re-check, before any of
+it was built. Read from the `eve@0.83.2` npm tarball (its `docs/` and `CHANGELOG.md`), the
+`vercel/eve` repository and `eve.dev/templates`. What changed for this spec, and why:
+
+- **No directory mount.** An `agent/extensions/<name>` mount must default-export an installed
+  extension *package* (`package.json#eve.extension`, built by `eve extension build`, checked
+  against a compatibility manifest). The folder of contributions this spec put at
+  `agent/extensions/donn/` is not a valid mount, which answers open question 1. The maintainer
+  chose (2026-10-25) to drop the extension and write into the agent's slots (Decisions, §2–§4).
+- **Slots that make that easy:** `agent/instructions/` is a directory of instruction fragments
+  that eve appends after the root `instructions.md`; `skills/` and `connections/` are path-named.
+- **Connections:** names are lowercase letters, digits and dashes; bearer tokens go in
+  `auth: { getToken }`, other schemes in `headers`; there is no transport option, the URL speaks
+  Streamable HTTP or SSE (§3).
+- **Models:** eve peers `ai@^7` and builds on `@ai-sdk/*@^4`; `includeUsage: true` is still the
+  documented OpenAI-compatible form (§2).
+- **Sandbox:** the default sandbox picks Docker when a daemon answers at build time; Docker takes
+  only `allow-all` or `deny-all` network policies (§2, §5).
+- **Templates:** the real gallery slugs differ from the ones this spec used, and only some
+  templates live in eve's repository (§1, §5). The GitHub channel checks a pull request out into
+  the sandbox only on Vercel (§5).
+- **Breaking minors:** 0.82.0 replaced the per-session token limits with `limits.sessionUsage`;
+  0.83.0 changed the custom sandbox provider API and `VercelSandbox`'s relative working directory.
+  The pin and range below follow from that (§2).
 
 ## Intent
 
@@ -17,15 +46,24 @@ tools, hooks and channels live next to donn's files and survive every regenerati
 
 ## Decisions (and the alternatives rejected)
 
+*Amended 2026-10-25:* row 2 first read "The persona becomes a **directory extension** mounted at
+`agent/extensions/donn/`", rejecting a published npm extension per persona and files written
+straight into `agent/skills/` and `agent/connections/`. eve 0.83 has no such mount, so the
+rejected slot option is now the decision (option A); row 3 follows it.
+
 | Decision | Rejected | Why |
 |---|---|---|
 | A new `AgentAdapter` contract in `@getdonn/adapter-sdk`, beside `HarnessAdapter` | eve as a `HarnessAdapter`; an `agent?` hook on `HarnessAdapter` | An agent is not a harness session: `switch`, `launch` and live refresh do not apply, and `donn switch` would offer eve as a harness. A separate contract keeps both small, and leaves room for other agent frameworks later |
-| The persona becomes a **directory extension** mounted at `agent/extensions/donn/` | A published npm extension package per persona; files written straight into `agent/skills/` and `agent/connections/` | A local mount needs no publishing; the mount keeps donn's files in one folder with one name prefix, apart from the template's |
-| donn owns `agent/lib/donn/` and the extension; `agent.ts` stays the template's, with a one-time edit at create | donn owns `agent.ts` | Templates put real settings in `agent.ts` (compaction, workflow world, build options); owning it would erase them on every regeneration |
+| **Option A:** the persona is written into the agent's own slots under donn-reserved names (`instructions/donn.md`, `skills/donn-<name>/`, `connections/donn-<name>.ts`), each file in the ownership manifest; a name the template already uses is refused, never overwritten | **Option B:** generate a real extension package (`package.json` with `eve.extension`, `extension/…`) and run `eve extension build` on every sync, mounted by `agent/extensions/donn.ts`; the first draft's directory mount (eve has none); a published npm extension per persona | Slots are first-class in eve and need no build, so the compile stays pure (files only) and the manifest's per-file hashes already cover them. B adds a package to every agent, puts a build step outside the compile, and ties donn to eve's extension format and its compatibility manifest, which eve checks per version and has kept changing within 0.x (mount-scoped extension state in 0.69) |
+| donn owns `agent/lib/donn/` and its `donn`-named slot files; `agent.ts` stays the template's, with a one-time edit at create | donn owns `agent.ts` | Templates put real settings in `agent.ts` (compaction, workflow world, build options); owning it would erase them on every regeneration |
 | An ownership manifest with a hash per file; a hand-edited donn file stops regeneration | Overwrite donn's files silently | The same rule as overlays and managed bundles: never clobber a hand edit without `--force` |
 | The portability report is a static table in the adapter, per template and target | Discover it from the template's code; no report | It must be shown before anything is created; a table is reviewable and tested |
 
 ## 1. The `AgentAdapter` contract
+
+*Amended 2026-10-25:* `project` gains `existing` (the compile needs the template's names to refuse
+a collision, §3); `TemplateInfo` takes eve's real gallery slugs and gains `repoPath`; the
+`VercelService` list gains `github-checkout` (§5).
 
 ```ts
 interface AgentAdapter {
@@ -52,7 +90,11 @@ interface AgentCompileInput {
   /** Text of every file the IR references by path, as for harnesses. */
   texts: Record<string, string>;
   /** Facts about the created project that change the output (did the template author a sandbox). */
-  project: { hasSandbox: boolean };
+  project: {
+    hasSandbox: boolean;
+    /** Agent-directory paths not in the manifest (template- or user-owned), for collisions. */
+    existing: string[];
+  };
 }
 
 interface AgentCompileOutput {
@@ -67,10 +109,13 @@ interface AgentCompileOutput {
 }
 
 interface TemplateInfo {
-  slug: string;                       // "github-project-maintainer"
-  title: string;
+  slug: string;                       // the eve.dev gallery slug: "kody-eve-template"
+  title: string;                      // "GitHub Project Maintainer"
+  /** Directory in the eve repository at the version tag; absent for a template kept elsewhere. */
+  repoPath?: string;                  // "apps/templates/eve-slack-agent-template"
   /** Vercel-only services the template's code uses. */
   services: VercelService[];          // "connect" | "sandbox" | "drive" | "daemons" | "ai-gateway"
+                                      // | "github-checkout"
 }
 
 interface PortabilityEntry {
@@ -90,11 +135,16 @@ interface PortabilityEntry {
 - **Conformance kit**, an agent half beside the harness half: every field declared with a note when
   not native; compile is deterministic; no `secret://` string and no secret value in any file;
   every path stays inside the agent directory; every `env` name a file reads is in `env` or
-  `secretEnv`; `templates()` slugs are unique.
+  `secretEnv`; `templates()` slugs are unique; every skill and connection donn writes is named
+  `donn-…` and passes eve's name rule (added 2026-10-25).
 - Loading: first-party only in this track. Third-party agent adapters can follow the plugin rules
   of spec 08 later; the contract is ready for it.
 
 ## 2. What the compile writes
+
+*Amended 2026-10-25:* the `extensions/donn/` folder is gone; donn's files sit in the agent's own
+slots under `donn` names. `agent.ts` without a template file, the AI SDK majors, the
+`sandbox.ts` form and the pinned version are updated for eve 0.83.2.
 
 ```
 agents/pr-reviewer/                    (the eve project; `25` creates it from the template)
@@ -102,25 +152,36 @@ agents/pr-reviewer/                    (the eve project; `25` creates it from th
   agent/
     agent.ts                           template-owned; `25` edits it once (below)
     instructions.md                    template-owned: the agent's own role
+    instructions/donn.md               donn: the persona's instructions, a fragment after the role
     channels/github.ts                 template-owned; the user may edit it
-    tools/…  hooks/…                   template- or user-owned
+    tools/…  hooks/…  skills/…         template- or user-owned
+    skills/donn-<name>/SKILL.md …      donn: the persona's skills
+    connections/donn-<name>.ts         donn: the persona's HTTP MCP servers
     lib/donn/config.ts                 donn: model and runtime settings for the target
-    lib/donn/env.ts                    donn: the env names the extension reads, checked at start
-    extensions/donn/
-      instructions.md                  donn: the persona's instructions
-      skills/<name>/SKILL.md …         donn: the persona's skills
-      connections/<name>.ts            donn: the persona's HTTP MCP servers
-    sandbox.ts                         donn, only for `self-host` when the template has none
+    lib/donn/env.ts                    donn: the env names donn's files read, checked at start
+    sandbox.ts                         donn, only to pin Docker for `self-host` (below)
   .donn/agent.json                     donn: the ownership manifest (§4)
 ```
 
+- **Instruction order.** eve reads the root `instructions.md` (or `.ts`) first, then the
+  `instructions/` entries non-recursively in filename order (`localeCompare`), all as system
+  instructions. `donn.md` therefore always follows the template's role file. When the template
+  has its own `instructions/` directory, `donn.md` sorts among its entries; that is acceptable,
+  since the persona text is project context, not a rule that must come last.
+- **Layout.** donn writes into `agent/`. eve also accepts a flat layout (agent files at the app
+  root) and workspace members (`agents/<name>/agent/`); see open question 2.
+
 **The edit to `agent.ts`.** `donn agent create` (`25` §2) edits the template's `agent.ts` once:
 it imports `donn` from `./lib/donn/config` and spreads it as the last property of the
-`defineAgent({...})` call, removing a literal `model` property if there is one. The edit uses the
-TypeScript parser and refuses (`agent-ts-unrecognised`, with the two lines to add by hand) unless
-the file has exactly one default-exported `defineAgent` call with an object literal. Regeneration
-never touches `agent.ts` again; `donn doctor` warns when it no longer spreads `donn`, because the
-gateway is then no longer enforced for that agent.
+`defineAgent({...})` call (`import { defineAgent } from "eve"`, unchanged in 0.83), removing a
+literal `model` property if there is one. The edit uses the TypeScript parser and refuses
+(`agent-ts-unrecognised`, with the two lines to add by hand) unless the file has exactly one
+default-exported `defineAgent` call with an object literal. eve 0.83 makes `agent.ts` optional
+(the default model is then eve's own); a template without one gets a minimal
+`export default defineAgent({ ...donn })` from `create`, which satisfies eve's rule that a present
+`agent.ts` names a `model`, and is the user's file from then on (`agentTs: "created"` in the
+manifest). Regeneration never touches `agent.ts` again; `donn doctor` warns when it no longer
+spreads `donn`, because the gateway is then no longer enforced for that agent.
 
 **`lib/donn/config.ts`** exports `{ model, modelContextWindowTokens?, experimental? }`:
 
@@ -140,24 +201,54 @@ gateway is then no longer enforced for that agent.
   `approximated` entry naming the default eve falls back to.
 - For `self-host`, `experimental.workflow.world` is `@workflow/world-postgres`, and its connection
   variable is added to the env the agent needs (`25` §4). `local` and `vercel` leave the world to
-  eve's default for the host.
+  eve's default for the host. *(2026-10-25)* At 5.0.4 or later: eve's session handoff needs it,
+  and the world must match the `@workflow/*` 5.x line eve vendors.
 - Any added provider package (`@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`,
   `@workflow/world-postgres`) is a dependency `25` adds to the agent's `package.json`, pinned.
+- *(2026-10-25)* **AI SDK majors.** eve 0.83.2 peers `ai@^7.0.137` and builds against
+  `@ai-sdk/anthropic@^4` and `@ai-sdk/provider@^4`. `@ai-sdk/openai-compatible@3.0.78` (npm
+  `latest`) depends on `@ai-sdk/provider` 4.x and npm's `ai-v6` tag points at its 2.x line, so the
+  pairing is presumed `@ai-sdk/openai-compatible@^3` and `@ai-sdk/anthropic@^4`; layer 1 confirms
+  it by building. `createOpenAICompatible({ name, baseURL, apiKey, includeUsage: true })` is the
+  form eve's own docs show.
+- *(2026-10-25)* **The pin.** The adapter compiles for eve 0.83.2 at this re-check. eve breaks
+  within 0.x minors (0.82.0 and 0.83.0 both did), so `frameworkRange` spans one minor
+  (`>=0.83.2 <0.84.0`) and widens only after the next re-check.
 
-**`sandbox.ts`** (self-host only, and only when the template authored none): selects
-`DockerSandbox.environment()` from `eve/sandbox/docker` explicitly, because a production build
-outside Vercel without a reachable Docker daemon records no sandbox provider and fails.
+**`sandbox.ts`** (self-host only, and only when the template authored none). *Amended
+2026-10-25:* eve's default sandbox selects Vercel Sandbox on Vercel and otherwise Docker when
+`docker version` answers within five seconds **at build time**, and records the choice in the
+build; a production build with neither still succeeds and the first session that opens the
+sandbox fails. donn writes `sandbox.ts` only to pin Docker, so the provider no longer depends on
+what the build host can reach (whether `eve build` then needs a daemon to prepare the image is
+checked in layer 1):
+
+```ts
+import { defineSandbox } from "eve/sandbox";
+import { DockerSandbox } from "eve/sandbox/docker";
+
+export const environment = DockerSandbox.environment();
+export default defineSandbox(() => environment.open({ networkPolicy: "allow-all" }));
+```
+
+donn emits `allow-all`, because the persona's skills and the agent's tools reach the network.
+Docker accepts only `"allow-all"` and `"deny-all"`; domain allow-lists and credential transforms
+are Vercel Sandbox features (§5).
 
 ## 3. Field mapping
 
+*Amended 2026-10-25:* outputs move from `extensions/donn/` to the agent's slots; secrets use
+`auth.getToken` for bearer tokens; the SSE condition is dropped; names follow eve 0.83's rules
+with a `donn-` prefix in place of the `donn__` mount prefix, and collisions are refused.
+
 | Persona field | eve output | Support | Note |
 |---|---|---|---|
-| `instructions` | `extensions/donn/instructions.md`, fragments in resolved order | native | The template's `agent/instructions.md` stays the agent's role; the persona's text is the project context |
-| `skills` | `extensions/donn/skills/<name>/` (the `SKILL.md` directory, copied whole) | native | caveat: supporting `scripts/` run only where the agent has a sandbox, which is eve's rule |
-| `mcp.servers` (url) | `extensions/donn/connections/<name>.ts` with `defineMcpClientConnection({ url, description, headers })` | native | caveat: stdio servers and `gateway://` refs are dropped (below) |
+| `instructions` | `instructions/donn.md`, fragments in resolved order | native | The template's `agent/instructions.md` stays the agent's role; the persona's text is the project context (order: §2) |
+| `skills` | `skills/donn-<name>/` (the `SKILL.md` directory, copied whole) | native | caveat: supporting `scripts/` run only where the agent has a sandbox, which is eve's rule. eve names the skill from the directory and requires `description` frontmatter in a packaged `SKILL.md`; a skill without one is dropped with that reason |
+| `mcp.servers` (url) | `connections/donn-<name>.ts` with `defineMcpClientConnection({ url, description, auth?, headers? })` | native | caveat: stdio servers and `gateway://` refs are dropped (below) |
 | `mcp.servers` (stdio) | — | (item) dropped | "eve connects to HTTP MCP and OpenAPI only" |
 | `mcp.servers` (`gateway://`) | — | (item) dropped | The same reason as the other adapters until gateway resolution exists |
-| `knowledge` | pointer lines in `extensions/donn/instructions.md`; an `mcp://<server>` pointer names the matching connection | advisory | As `agents-md` renders it (spec 11) |
+| `knowledge` | pointer lines in `instructions/donn.md`; an `mcp://<server>` pointer names the `donn-<server>` connection (the mapped name below) | advisory | As `agents-md` renders it (spec 11) |
 | `secrets` | `process.env.DONN_SECRET_<n>` reads; `secretEnv` maps each to its ref | native | Values reach the process at run or deploy time (`25` §5) |
 | `permissions.allow\|deny\|ask` | — | none | "Harness permission rules do not map to eve; eve's tool allow-lists per connection are a later mapping" |
 | `hooks.*` | — | none | "eve hooks are TypeScript modules; author them in the agent's hooks/" |
@@ -169,14 +260,32 @@ outside Vercel without a reachable Docker daemon records no sandbox provider and
   has none, so donn writes "`<name>` MCP server from persona `<id>`" unless
   `targets.eve.connections.<name>.description` gives one. The report does not flag this; the
   conformance kit checks every connection has a description.
-- **Secrets in headers.** A header whose value is a secret ref becomes `process.env.DONN_SECRET_<n>`
-  in the connection file. `transport: sse` is passed through if eve's MCP client supports SSE at
-  the pinned version (checked in layer 1); otherwise the server is dropped with that reason.
-- **Names.** Contributed names carry eve's `donn__` mount prefix where eve applies one. Skill and
-  connection file names follow eve's rules (ASCII letters, digits, `_` and `-`, at most 64);
-  a persona name eve rejects is dropped with the reason.
+- **Secrets in headers.** A secret ref becomes `process.env.DONN_SECRET_<n>` in the connection
+  file. An `Authorization: Bearer <ref>` header becomes
+  `auth: { getToken: async () => ({ token: process.env.DONN_SECRET_<n>! }) }`, eve's bearer
+  form (an app-owned credential by default); any other header, secret or plain, stays in
+  `headers`, which eve stacks on top of `auth`.
+- **Transport.** eve's MCP client has no transport option: the URL must speak Streamable HTTP or
+  SSE, and eve uses either. A persona server's `transport` (`http` or `sse`) is therefore not
+  written, and an SSE server compiles like any other URL server.
+- **Names.** donn's slot files carry a `donn-` prefix, which replaces eve's `donn__` mount prefix:
+  - **Connections** (eve 0.83: lowercase ASCII letters, digits and dashes, starting with a letter,
+    at most 64): the persona name is lowercased and `_` becomes `-`; a name with any other
+    character outside `[a-z0-9-]` after that, or longer than 64 with the prefix, is dropped with
+    the reason (`name-unmappable`). Two persona servers that map to one name (`my_db`, `My-DB`) are
+    a compile error (`name-collision`) naming both, since dropping either would be arbitrary.
+    A connection owns `donn-<name>__…`, so no tool or subagent may use that prefix.
+  - **Skills** (ASCII letters, digits, `_` and `-`, starting with a letter or digit, at most 64):
+    the persona name is kept after the prefix; a name eve rejects is dropped with the reason.
+  - **Collisions with the template are refused**, never overwritten: a donn path or name that is
+    already in `project.existing` and not in the manifest (a template `instructions/donn.md`,
+    `skills/donn-x.md` or `skills/donn-x/`, `connections/donn-x.ts`, a file under `lib/donn/`,
+    a tool or subagent named `donn-x__…`) is a compile error, `slot-collision`, naming both files.
 
 ## 4. The ownership manifest
+
+*Amended 2026-10-25:* the paths are the slot files of §2, the pinned version is 0.83.2, the
+template uses its gallery slug, and `agentTs` can be `created`.
 
 `<agent dir>/.donn/agent.json`, committed with the project:
 
@@ -185,10 +294,17 @@ outside Vercel without a reachable Docker daemon records no sandbox provider and
   "agent": "pr-reviewer",
   "persona": "project/payments-api",
   "adapter": "eve",
-  "frameworkVersion": "0.82.0",
-  "template": "eve:github-project-maintainer",
+  "frameworkVersion": "0.83.2",
+  "template": "eve:kody-eve-template",
   "target": "self-host",
-  "files": { "agent/lib/donn/config.ts": "sha256:…", "…": "…" },
+  "files": {
+    "agent/instructions/donn.md": "sha256:…",
+    "agent/skills/donn-review-conventions/SKILL.md": "sha256:…",
+    "agent/connections/donn-github.ts": "sha256:…",
+    "agent/lib/donn/config.ts": "sha256:…",
+    "agent/lib/donn/env.ts": "sha256:…",
+    "agent/sandbox.ts": "sha256:…"
+  },
   "agentTs": "patched"
 }
 ```
@@ -196,23 +312,53 @@ outside Vercel without a reachable Docker daemon records no sandbox provider and
 - **Regenerating** (`donn agent sync`, or the daemon on a persona edit): a donn-owned file whose
   hash no longer matches the manifest stops the sync with `owned-file-edited`, naming the file;
   `--force` overwrites it. Files the new compile no longer produces are removed (a skill removed
-  from the persona leaves the extension). Files outside the manifest are never touched.
+  from the persona removes its `skills/donn-<name>/` directory). Files outside the manifest are
+  never touched; a new donn path that a template or user file already holds stops the sync with
+  `slot-collision` (§3), and `--force` does not override it.
+- `agentTs` is `patched` (the template's file, edited once) or `created` (§2).
 - The manifest holds no secrets and no resolved values beyond what is already in the files.
 
 ## 5. The portability report
 
+*Amended 2026-10-25:* the template slugs and sources are corrected, and a GitHub checkout row
+is added.
+
 `templates()` lists the known templates with the Vercel-only services their code uses, read from
-each template's source at the pinned eve version and kept in a table in the adapter. `compile`
-turns the services into entries for the agent's target:
+each template's source at the pinned eve version and kept in a table in the adapter.
+
+- **Slugs** are eve.dev's gallery slugs, which differ from the titles: GitHub Project Maintainer
+  is `kody-eve-template`, Software Factory `eve-software-factory-template`, Incident
+  Investigation Assistant `eve-sre-agent-template`, Coding Agent on Slack
+  `eve-coding-agent-template`, Slack Assistant `eve-slack-agent`. The gallery lists twenty.
+- **Sources.** eve's repository holds eight templates in `apps/templates/`, each with its own
+  `package.json` and `pnpm-lock.yaml`: six of the gallery's (`eve-chat-template`,
+  `eve-coding-agent-template`, `eve-company-brain-template`, `eve-voice-template`, and
+  `eve-slack-agent` and `eve-discord-agent` under `…-template` directory names, hence
+  `repoPath`) and two the gallery does not list (`eve-llm-council-template`,
+  `personal-agent-template`). The other fourteen gallery templates, `kody-eve-template` among
+  them, live in their own repositories (the gallery links `vercel-labs/kody-eve-template` and
+  `vercel-labs/eve-software-factory-template`, for example). Only the repository's templates are
+  read at the pinned tag and get table rows; every other slug compiles with
+  `portability-unknown` until another source is defined (open question 3).
+
+`compile` turns the services into entries for the agent's target:
 
 | Service | `vercel` | `self-host` / `local` |
 |---|---|---|
 | Vercel Connect (GitHub, Slack credentials) | fine | blocking: "Bring a GitHub App: set GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY and GITHUB_WEBHOOK_SECRET", and the same for Slack |
-| Vercel Sandbox | fine | not blocking: "Runs on Docker; `donn doctor` checks the daemon" |
+| Vercel Sandbox | fine | not blocking: "Runs on Docker; `donn doctor` checks the daemon". Blocking when the template's sandbox uses a domain allow-list or credential transform: Docker accepts only `allow-all` and `deny-all` |
+| GitHub channel sandbox checkout (`github-checkout`, added 2026-10-25) | fine | not blocking, a known limitation: "The GitHub channel checks the repository out into the sandbox only on a firewall-capable backend (Vercel). Here the agent gets the pull request's diff in context but not the repository's files" |
 | AI Gateway (a model string in the template) | fine | not blocking: replaced by `lib/donn/config.ts` |
 | Vercel Drive, Vercel Daemons | fine | blocking: "No self-hosted equivalent in eve; pick another template or target" |
 | Route auth (`vercelOidc()`) | fine | blocking: "Configure Basic, JWT or OIDC auth for the agent's routes" |
 
+- **The PR reviewer without checkout.** Outside Vercel the reviewer reviews the diff (eve sends
+  the changed files' patches and drops bodies of large generated files) against the persona's
+  conventions, and cannot read the rest of the repository or run its tests. eve's docs name only
+  Vercel as firewall-capable and say the local backend skips checkout; that Docker skips it too
+  is inferred (it supports no credential transforms) and checked in `25`'s spike. Comment turns
+  start on eve's invocation token (`@<botName>` in the comment), which an `onComment` handler in
+  the template's `channels/github.ts` replaces; donn does not change the gate.
 - `blank` and path templates list no services; the report then covers only route auth.
 - `donn agent create` and the GUI show the report before anything is written (`25` §2, `26`).
 - A template missing from the table compiles with a `portability-unknown` warning rather than an
@@ -220,17 +366,23 @@ turns the services into entries for the agent's target:
 
 ## 6. Stack and testing
 
+*Amended 2026-10-25:* layer 1's spike checks the slot layout instead of the directory mount;
+golden builds and refusals gain names and collisions.
+
 | Layer | Contents |
 |---|---|
-| 1 `sdk` | `AgentAdapter`, `TemplateInfo`, `PortabilityEntry` in `@getdonn/adapter-sdk`; the agent half of the conformance kit; a spike checking the directory-mount layout, MCP SSE support and the `agent.ts` edit against the pinned eve |
+| 1 `sdk` | `AgentAdapter`, `TemplateInfo`, `PortabilityEntry` in `@getdonn/adapter-sdk`; the agent half of the conformance kit; a spike against the pinned eve confirming: `instructions/donn.md` composes after the template's root file and among its fragments as §2 says; what `eve build` does with a template file and a donn file that resolve to one skill or connection name (so `slot-collision` matches eve's own rule); the name rule for static connection files (the lowercase rule is documented for dynamic connections); the `@ai-sdk/openai-compatible` and `@ai-sdk/anthropic` majors that build with `ai@^7`; an SSE-only MCP server connecting by URL; the `agent.ts` edit and the created `agent.ts` |
 | 2 `compile` | `src/packages/adapters/eve`: field mapping, `lib/donn/config.ts` per gateway type, `sandbox.ts`, connections, skills, knowledge; the report |
 | 3 `templates` | the template table and portability entries; the manifest's shape; capability declarations; `docs/capabilities.md` gains an "agent adapters" section |
 
 - **Golden builds** in `test/golden/eve/`: one per gateway type and the two direct providers; a
   persona with stdio, `gateway://` and URL servers; skills with scripts; knowledge pointers;
-  self-host with and without a template sandbox.
-- **Refusals and reports:** `model-needs-gateway`; a name eve rejects; an unknown template;
-  every report entry.
+  self-host with and without a template sandbox; server names that map (`my_db` → `donn-my-db`),
+  a bearer secret in `auth` and an API-key secret in `headers`.
+- **Refusals and reports:** `model-needs-gateway`; a name eve rejects (`name-unmappable`); two
+  servers mapping to one name (`name-collision`); a template file on a donn path
+  (`slot-collision`); a packaged skill without `description`; an unknown or out-of-repository
+  template (`portability-unknown`); every report entry.
 - **The `agent.ts` edit:** fixtures for each template's real `agent.ts` at the pinned version,
   plus files the edit must refuse.
 - **Real eve (`DONN_E2E=1`):** compile into a scratch copy of a template, `eve build`, start it
@@ -241,10 +393,27 @@ turns the services into entries for the agent's target:
 
 Running, building or deploying (`25`); third-party agent adapters; mapping permissions to eve's
 connection tool allow-lists; compiling persona hooks into eve hooks; publishing the persona as an
-npm extension package.
+npm extension package, or generating one per agent (option B, rejected 2026-10-25).
 
 ## Open questions
 
 1. **Directory-mount layout.** The eve docs show file mounts and packages in detail and mention
    directory mounts; layer 1's spike confirms the exact layout of `extensions/donn/` at the pinned
    version before the compile is written.
+   *Answered 2026-10-25 (eve 0.83.2 docs and discovery code):* there is no such layout. A
+   directory mount is `agent/extensions/<name>/extension.ts`, which must default-export an
+   installed, built extension package, plus same-named overrides of that package's
+   contributions beside it. The contribution layout (`instructions.md`, `skills/`,
+   `connections/`) exists only inside an extension package. Resolved by option A (Decisions).
+2. **Other agent layouts** (added 2026-10-25). eve also accepts a flat layout (agent files at the
+   app root) and workspace members (`agents/<name>/agent/`). Lean: `create` refuses a template
+   in either layout (`agent-layout-unsupported`) until one of the known templates uses it.
+3. **Templates outside eve's repository** (added 2026-10-25). Fourteen of the twenty gallery
+   templates, the GitHub Project Maintainer among them, live in their own repositories with no
+   eve version tag. Should the adapter's table name each one's repository and a pinned commit,
+   read and checked like the repository's templates (`25` §2, open question 1)? Until then they
+   compile with `portability-unknown` and `25` can create them only as path templates.
+4. **Checkout on Docker** (added 2026-10-25). If `25`'s spike confirms Docker skips the GitHub
+   channel's checkout, should the PR reviewer's persona gain a skill or connection that reads
+   repository files through the GitHub API instead, or is a diff-only review the documented
+   self-host behaviour?
