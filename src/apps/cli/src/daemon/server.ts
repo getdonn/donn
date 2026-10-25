@@ -393,9 +393,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   let watchedKey = "";
   let stopping = false;
 
+  /** Followers in process: the UI bridge's `/v1/events` (spec 26 §2). */
+  const followers = new Set<(event: DaemonEvent) => void>();
   const emit = (event: DaemonEvent) => {
     const text = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
     for (const stream of streams) stream.write(text);
+    for (const follower of followers) follower(event);
   };
 
   // The CLI run in-process (POST /run) starts and stops agents here, not over the socket.
@@ -705,9 +708,14 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   const closed = new Promise<void>((resolve) => (markClosed = resolve));
 
   /** Runs a `POST /run` or a bridge's `/v1/run`: logged, and an agent it creates announced. */
-  const runAndAnnounce: typeof runInProcess = async (runIo, argv, cwd) => {
+  const runAndAnnounce: typeof runInProcess = async (
+    runIo,
+    argv,
+    cwd,
+    lines,
+  ) => {
     await log(`run ${JSON.stringify(argv)} in ${JSON.stringify(cwd)}`);
-    const result = await runInProcess(runIo, argv, cwd);
+    const result = await runInProcess(runIo, argv, cwd, lines);
     const created = result.exitCode === 0 && agentCreated(argv, cwd);
     // Unless the pass the index change started has announced it already.
     if (created && !announced?.has(createdKey(created)))
@@ -729,6 +737,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       io,
       runInProcess: runAndAnnounce,
       now,
+      events: (on) => {
+        followers.add(on);
+        return () => followers.delete(on);
+      },
       ...(port !== undefined && { port }),
       ...options.bridge,
       log,

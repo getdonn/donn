@@ -1,6 +1,8 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -8,11 +10,12 @@ import {
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordCreated } from "./agent/registry.js";
-import { openBridge, type Bridge } from "./daemon/bridge.js";
+import { openBridge, type Bridge, type Opener } from "./daemon/bridge.js";
 import { daemonRequest } from "./daemon/client.js";
-import { allowedRun, runInProcess } from "./daemon/run.js";
+import { createJobs, type JobEvent } from "./daemon/jobs.js";
+import { allowedRun, runInProcess, type RunResult } from "./daemon/run.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { uiAllowed } from "./daemon/ui-allow.js";
 import { createSession } from "./session.js";
@@ -25,12 +28,15 @@ import { installedProbe, quietIo, seed, zz, type Seeded } from "./test/seed.js";
 let s: Seeded;
 let daemons: Daemon[];
 let bridges: Bridge[];
+let followed: (() => void)[];
 beforeEach(() => {
   s = seed();
   daemons = [];
   bridges = [];
+  followed = [];
 });
 afterEach(async () => {
+  for (const stop of followed) stop();
   await Promise.all([
     ...bridges.map((b) => b.close()),
     ...daemons.map((d) => d.close()),
@@ -136,9 +142,9 @@ function spy(): Spy {
   const calls: Spy["calls"] = [];
   return {
     calls,
-    run: (io, argv, cwd) => {
+    run: (io, argv, cwd, lines) => {
       calls.push({ argv, cwd });
-      return runInProcess(io, argv, cwd);
+      return runInProcess(io, argv, cwd, lines);
     },
   };
 }
@@ -1097,5 +1103,848 @@ describe("POST /ui/open", { timeout: 20_000 }, () => {
       token: old.token,
     });
     expect(stale.status).toBe(401);
+  });
+});
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** The daemon's io for a bridge, with `env` added (an editor, say). */
+const ioWith = (env: NodeJS.ProcessEnv = {}) => ({
+  ...quietIo({ cwd: s.repo, home: s.home }),
+  env: { DONN_HOME: s.home, HOME: s.home, ...env },
+});
+
+interface Followed {
+  status: Promise<number>;
+  headers: Promise<Record<string, string | string[] | undefined>>;
+  raw: () => string;
+  /** The events received so far, in order. */
+  events: () => { type: string; [key: string]: unknown }[];
+  ended: Promise<void>;
+  stop(): void;
+}
+
+/** Follow the bridge's `GET /v1/events` as the app does: a request with the token header. */
+function follow(port: number, token?: string): Followed {
+  let raw = "";
+  let markEnded!: () => void;
+  const ended = new Promise<void>((r) => (markEnded = r));
+  let answered!: (res: import("node:http").IncomingMessage) => void;
+  const response = new Promise<import("node:http").IncomingMessage>(
+    (r) => (answered = r),
+  );
+  const req = request(
+    {
+      host: "127.0.0.1",
+      port,
+      method: "GET",
+      path: "/v1/events",
+      agent: false,
+      headers: {
+        host: `127.0.0.1:${port}`,
+        ...(token !== undefined && { authorization: `Bearer ${token}` }),
+      },
+    },
+    (res) => {
+      answered(res);
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => (raw += chunk));
+      res.on("close", markEnded);
+    },
+  );
+  req.on("error", () => markEnded());
+  req.end();
+  const stop = () => req.destroy();
+  followed.push(stop);
+  return {
+    status: response.then((r) => r.statusCode ?? 0),
+    headers: response.then((r) => r.headers),
+    raw: () => raw,
+    events: () =>
+      raw
+        .split("\n\n")
+        .slice(0, -1)
+        .flatMap((block) => {
+          const data = block
+            .split("\n")
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6))
+            .join("\n");
+          return data ? [JSON.parse(data) as { type: string }] : [];
+        }),
+    ended,
+    stop,
+  };
+}
+
+/** A stand-in for the in-process CLI: prints `lines` to stderr, answers as told, records calls. */
+function scripted(
+  answer: (
+    argv: string[],
+  ) => Partial<Omit<RunResult, "stderr">> & { lines?: string[] } = () => ({}),
+  gate?: () => Promise<void>,
+) {
+  const calls: { argv: string[]; cwd: string }[] = [];
+  const run: typeof runInProcess = async (_io, argv, cwd, lines) => {
+    calls.push({ argv, cwd });
+    await gate?.();
+    const a = answer(argv);
+    for (const line of a.lines ?? []) lines?.onStderr?.(line);
+    return {
+      exitCode: a.exitCode ?? 0,
+      stdout: a.stdout ?? "{}\n",
+      stderr: (a.lines ?? []).map((line) => `${line}\n`).join(""),
+    };
+  };
+  return { calls, run };
+}
+
+/** A gate that holds every run until opened. */
+function gated() {
+  let open!: () => void;
+  const opened = new Promise<void>((r) => (open = r));
+  return { open, wait: () => opened };
+}
+
+/** A recording opener: the command and arguments it would have spawned. */
+function recorder(fail?: Error) {
+  const calls: { command: string; args: string[] }[] = [];
+  const open: Opener = async (command, args) => {
+    calls.push({ command, args });
+    if (fail) throw fail;
+  };
+  return { calls, open };
+}
+
+const jobOf = async (port: number, token: string, id: string) =>
+  (await call(port, "GET", `/v1/jobs/${id}`, { token })).body as {
+    state: string;
+    [key: string]: unknown;
+  };
+
+describe("runInProcess", () => {
+  it("hands each line to the callbacks as printed, keeping what it captures", async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const listed = await runInProcess(ioWith(), ["list", "--json"], s.repo, {
+      onStdout: (line) => out.push(line),
+      onStderr: (line) => err.push(line),
+    });
+    expect(listed.exitCode).toBe(0);
+    expect(out.length).toBeGreaterThan(0);
+    expect(`${out.join("\n")}\n`).toBe(listed.stdout);
+    const failed = await runInProcess(
+      ioWith(),
+      ["resolve", "no/such"],
+      s.repo,
+      {
+        onStderr: (line) => err.push(line),
+      },
+    );
+    expect(failed.exitCode).not.toBe(0);
+    expect(err.length).toBeGreaterThan(0);
+    expect(err.join("\n")).toBe(failed.stderr.replace(/\n$/, ""));
+  });
+});
+
+describe("jobs", { timeout: 20_000 }, () => {
+  it("streams a job's stderr lines as progress, then done with its JSON result", async () => {
+    const fake = scripted(() => ({
+      lines: ["fetching layers", "wrote 3 files"],
+      stdout: '{"ok":true}\n',
+    }));
+    const { bridge: b } = await bridge({ runInProcess: fake.run });
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    expect(await stream.status).toBe(200);
+    const res = await call(b.port, "POST", "/v1/jobs", {
+      token,
+      body: { argv: ["pull", "--json"] },
+    });
+    expect(res.status).toBe(202);
+    secured(res);
+    const { id } = res.body as { id: string };
+    expect(id).toMatch(UUID);
+    await vi.waitFor(() =>
+      expect(stream.events().map((e) => e.type)).toContain("job.done"),
+    );
+    expect(stream.events()).toEqual([
+      { type: "job.progress", id, line: "fetching layers" },
+      { type: "job.progress", id, line: "wrote 3 files" },
+      { type: "job.done", id, exitCode: 0, stdout: '{"ok":true}\n' },
+    ]);
+    expect(await jobOf(b.port, token, id)).toMatchObject({
+      id,
+      argv: ["pull", "--json"],
+      state: "done",
+      exitCode: 0,
+      stdout: '{"ok":true}\n',
+      stderr: "fetching layers\nwrote 3 files\n",
+    });
+    // A project-independent command, as on /v1/run: in the daemon's home.
+    expect(fake.calls).toEqual([{ argv: ["pull", "--json"], cwd: s.home }]);
+  });
+
+  it("runs the CLI in a known project, as /v1/run does", async () => {
+    pick(s.repo);
+    const { bridge: b, spy: recorded } = await bridge();
+    const token = await session(b);
+    const res = await call(b.port, "POST", "/v1/jobs", {
+      token,
+      body: { argv: ["resolve", "--json"], cwd: s.repo },
+    });
+    const { id } = res.body as { id: string };
+    await vi.waitFor(async () =>
+      expect((await jobOf(b.port, token, id)).state).toBe("done"),
+    );
+    const cli = await zz(["resolve", "--json"], {
+      cwd: s.repo,
+      home: s.home,
+      env: { HOME: s.home },
+    });
+    const job = await jobOf(b.port, token, id);
+    expect(job.exitCode).toBe(cli.code);
+    expect(JSON.parse(job.stdout as string)).toEqual(JSON.parse(cli.stdout));
+    expect(recorded.calls).toEqual([
+      { argv: ["resolve", "--json"], cwd: s.repo },
+    ]);
+  });
+
+  it("runs one job at a time: the next waits queued", async () => {
+    const gate = gated();
+    const fake = scripted(undefined, gate.wait);
+    const { bridge: b } = await bridge({ runInProcess: fake.run });
+    const token = await session(b);
+    const start = async () =>
+      (
+        (
+          await call(b.port, "POST", "/v1/jobs", {
+            token,
+            body: { argv: ["whoami", "--json"] },
+          })
+        ).body as { id: string }
+      ).id;
+    const first = await start();
+    const second = await start();
+    await vi.waitFor(async () =>
+      expect((await jobOf(b.port, token, first)).state).toBe("running"),
+    );
+    expect((await jobOf(b.port, token, second)).state).toBe("queued");
+    expect(fake.calls).toHaveLength(1);
+    gate.open();
+    await vi.waitFor(async () =>
+      expect((await jobOf(b.port, token, second)).state).toBe("done"),
+    );
+    expect((await jobOf(b.port, token, first)).state).toBe("done");
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it("refuses what /v1/run refuses, starting nothing", async () => {
+    const fake = scripted();
+    const { bridge: b } = await bridge({ runInProcess: fake.run });
+    const token = await session(b);
+    const job = (body: unknown) =>
+      call(b.port, "POST", "/v1/jobs", { token, body });
+    const smuggled = await job({ argv: ["daemon", "stop"] });
+    expect(smuggled.status).toBe(403);
+    expect(smuggled.body).toMatchObject({ error: { code: "not-allowed" } });
+    const projectless = await job({ argv: ["agent", "build", "x", "--json"] });
+    expect(projectless.status).toBe(403);
+    expect(projectless.body).toMatchObject({
+      error: { code: "not-allowed", rule: expect.stringMatching(/project/) },
+    });
+    const unknown = await job({ argv: ["resolve", "--json"], cwd: s.repo });
+    expect(unknown.status).toBe(403);
+    expect(unknown.body).toMatchObject({ error: { code: "unknown-project" } });
+    for (const body of ["not json", { argv: "pull" }, { argv: [], cwd: "x" }]) {
+      expect((await job(body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("answers 404 no-such-job for a job it does not have", async () => {
+    const { bridge: b } = await bridge();
+    const token = await session(b);
+    for (const [method, path] of [
+      ["GET", "/v1/jobs/nope"],
+      ["POST", "/v1/jobs/nope/answer"],
+    ] as const) {
+      const res = await call(b.port, method, path, {
+        token,
+        body: method === "POST" ? { key: "k", value: 1 } : undefined,
+      });
+      expect(res.status, path).toBe(404);
+      expect(res.body).toMatchObject({ error: { code: "no-such-job" } });
+    }
+  });
+
+  it("holds the bridge open while a job is queued or running", async () => {
+    let t = 0;
+    const gate = gated();
+    const fake = scripted(undefined, gate.wait);
+    const { bridge: b } = await bridge({
+      runInProcess: fake.run,
+      now: () => t,
+      tickMs: 5,
+    });
+    const token = await session(b);
+    const res = await call(b.port, "POST", "/v1/jobs", {
+      token,
+      body: { argv: ["pull", "--json"] },
+    });
+    expect(res.status).toBe(202);
+    t = 3_600_000;
+    await sleep(40);
+    expect(b.closing).toBe(false);
+    gate.open();
+    await sleep(20);
+    t += 599_999;
+    await sleep(30);
+    expect(b.closing).toBe(false);
+    t += 1;
+    await b.closed;
+  });
+
+  it("turns a needs-answer result into job.question; the answer is checked like a run", async () => {
+    pick(s.repo);
+    const question = {
+      key: "github.app",
+      prompt: "Which GitHub App?",
+      choices: ["donn-bot", "other"],
+      secret: false,
+    };
+    const asked = JSON.stringify({
+      status: "needs-answer",
+      question,
+      continue: ["agent", "create", "bot", "--json"],
+    });
+    const fake = scripted((argv) =>
+      argv.includes("--answer")
+        ? {}
+        : argv.includes("create")
+          ? { exitCode: 2, stdout: asked }
+          : { exitCode: 2, stdout: '{"status":"failed"}' },
+    );
+    const { bridge: b } = await bridge({ runInProcess: fake.run });
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    await stream.status;
+    const { id } = (
+      await call(b.port, "POST", "/v1/jobs", {
+        token,
+        body: { argv: ["agent", "create", "bot", "--json"], cwd: s.repo },
+      })
+    ).body as { id: string };
+    await vi.waitFor(() =>
+      expect(stream.events().map((e) => e.type)).toContain("job.done"),
+    );
+    expect(stream.events()).toEqual([
+      {
+        type: "job.question",
+        id,
+        question,
+        continue: ["agent", "create", "bot", "--json"],
+      },
+      { type: "job.done", id, exitCode: 2, stdout: asked },
+    ]);
+    expect(await jobOf(b.port, token, id)).toMatchObject({
+      state: "done",
+      question: { question, continue: ["agent", "create", "bot", "--json"] },
+    });
+
+    const answer = (body: unknown, job = id) =>
+      call(b.port, "POST", `/v1/jobs/${job}/answer`, { token, body });
+    for (const body of [{ value: 1 }, { key: "", value: 1 }, { key: "k" }, 7]) {
+      expect((await answer(body)).status, JSON.stringify(body)).toBe(400);
+    }
+    // The continuation passes the UI allowlist again: today's has no --answer, so it is refused.
+    const refused = await answer({ key: "github.app", value: "donn-bot" });
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ error: { code: "not-allowed" } });
+    expect(fake.calls).toHaveLength(1);
+
+    // An exit 2 that is not a needs-answer result asks nothing.
+    const { id: plain } = (
+      await call(b.port, "POST", "/v1/jobs", {
+        token,
+        body: { argv: ["pull", "--json"] },
+      })
+    ).body as { id: string };
+    await vi.waitFor(async () =>
+      expect((await jobOf(b.port, token, plain)).state).toBe("done"),
+    );
+    expect(await jobOf(b.port, token, plain)).not.toHaveProperty("question");
+    const none = await answer({ key: "k", value: 1 }, plain);
+    expect(none.status).toBe(409);
+    expect(none.body).toMatchObject({ error: { code: "no-question" } });
+  });
+});
+
+describe("createJobs", () => {
+  const ok: RunResult = { exitCode: 0, stdout: "{}\n", stderr: "" };
+
+  it("continues a question as a new job linked to it, with --answer key=<JSON>", async () => {
+    const events: JobEvent[] = [];
+    const runs: { argv: string[]; cwd: string | undefined }[] = [];
+    const asked = JSON.stringify({
+      status: "needs-answer",
+      question: { key: "github.app" },
+      continue: ["agent", "add", "x", "--json"],
+    });
+    const jobs = createJobs({
+      run: async (argv, cwd) => {
+        runs.push({ argv, cwd });
+        return argv.includes("--answer")
+          ? ok
+          : { exitCode: 2, stdout: asked, stderr: "" };
+      },
+      emit: (event) => events.push(event),
+    });
+    const first = jobs.start(["agent", "add", "x", "--json"], "/p");
+    expect(first).toBeDefined();
+    await vi.waitFor(() => expect(jobs.get(first!.id)?.state).toBe("done"));
+    const next = jobs.continuation(first!.id, "github.app", { id: 7 });
+    expect(next).toEqual({
+      argv: ["agent", "add", "x", "--json", "--answer", 'github.app={"id":7}'],
+      cwd: "/p",
+    });
+    if (typeof next === "string") throw new Error(next);
+    const second = jobs.start(next.argv, next.cwd, first!.id)!;
+    await vi.waitFor(() => expect(jobs.get(second.id)?.state).toBe("done"));
+    expect(jobs.view(second)).toMatchObject({
+      parent: first!.id,
+      exitCode: 0,
+    });
+    expect(jobs.view(jobs.get(first!.id)!)).toMatchObject({
+      answeredBy: second.id,
+    });
+    expect(runs.map((r) => r.cwd)).toEqual(["/p", "/p"]);
+    expect(jobs.continuation(first!.id, "k", 1)).toBe("answered");
+    expect(jobs.continuation(second.id, "k", 1)).toBe("no-question");
+    expect(jobs.continuation("nope", "k", 1)).toBe("no-such-job");
+    expect(events.filter((e) => e.type === "job.question")).toHaveLength(1);
+  });
+
+  it("asks only for an exit 2 whose stdout is a needs-answer result", async () => {
+    const answers: RunResult[] = [
+      {
+        exitCode: 0,
+        stdout: '{"status":"needs-answer","question":{},"continue":["a"]}',
+        stderr: "",
+      },
+      { exitCode: 2, stdout: "not json", stderr: "" },
+      {
+        exitCode: 2,
+        stdout: '{"status":"needs-answer","question":{}}',
+        stderr: "",
+      },
+      {
+        exitCode: 2,
+        stdout: '{"status":"needs-answer","question":{},"continue":[1]}',
+        stderr: "",
+      },
+      {
+        exitCode: 2,
+        stdout: '{"status":"needs-answer","continue":["a"]}',
+        stderr: "",
+      },
+    ];
+    const events: JobEvent[] = [];
+    const jobs = createJobs({
+      run: async () => answers.shift()!,
+      emit: (event) => events.push(event),
+    });
+    const ids = Array.from(
+      { length: 5 },
+      () => jobs.start(["a"], undefined)!.id,
+    );
+    await vi.waitFor(() =>
+      expect(ids.every((id) => jobs.get(id)?.state === "done")).toBe(true),
+    );
+    expect(events.filter((e) => e.type === "job.question")).toEqual([]);
+    expect(events.filter((e) => e.type === "job.done")).toHaveLength(5);
+  });
+
+  it("reports a run that throws as a failed job", async () => {
+    const events: JobEvent[] = [];
+    const jobs = createJobs({
+      run: async () => {
+        throw new Error("boom");
+      },
+      emit: (event) => events.push(event),
+    });
+    const job = jobs.start(["a"], undefined)!;
+    await vi.waitFor(() => expect(jobs.get(job.id)?.state).toBe("done"));
+    expect(jobs.view(jobs.get(job.id)!)).toMatchObject({
+      exitCode: 1,
+      stderr: "boom",
+    });
+    expect(events).toEqual([
+      { type: "job.done", id: job.id, exitCode: 1, stdout: "" },
+    ]);
+  });
+
+  it("keeps a done job an hour, and at most 100 jobs", async () => {
+    let t = 0;
+    const jobs = createJobs({
+      run: async () => ok,
+      emit: () => undefined,
+      now: () => t,
+    });
+    const first = jobs.start(["a"], undefined)!;
+    await vi.waitFor(() => expect(jobs.get(first.id)?.state).toBe("done"));
+    t = 3_600_000 - 1;
+    expect(jobs.get(first.id)).toBeDefined();
+    t = 3_600_000;
+    expect(jobs.get(first.id)).toBeUndefined();
+
+    const ids = Array.from(
+      { length: 100 },
+      () => jobs.start(["a"], undefined)!.id,
+    );
+    await vi.waitFor(() =>
+      expect(ids.every((id) => jobs.get(id)?.state === "done")).toBe(true),
+    );
+    const extra = jobs.start(["a"], undefined);
+    expect(extra).toBeDefined();
+    // The oldest done job makes room.
+    expect(jobs.get(ids[0]!)).toBeUndefined();
+    expect(jobs.get(ids[1]!)).toBeDefined();
+  });
+
+  it("refuses a job when 100 are still queued or running", () => {
+    const jobs = createJobs({
+      run: () => new Promise<RunResult>(() => undefined),
+      emit: () => undefined,
+    });
+    for (let i = 0; i < 100; i++)
+      expect(jobs.start(["a"], undefined)).toBeDefined();
+    expect(jobs.start(["a"], undefined)).toBeUndefined();
+  });
+});
+
+describe("GET /v1/events", { timeout: 20_000 }, () => {
+  it("streams the daemon's events and the jobs', only with the token", async () => {
+    const daemon = await startTestDaemon();
+    const { port, code } = (await uiOpen(daemon)).body as {
+      port: number;
+      code: string;
+    };
+    const { token } = (
+      await call(port, "POST", "/v1/session", { body: { code } })
+    ).body as { token: string };
+    expect(await follow(port).status).toBe(401);
+    expect(await follow(port, "wrong").status).toBe(401);
+    const stream = follow(port, token);
+    expect(await stream.status).toBe(200);
+    const headers = await stream.headers;
+    expect(headers["content-type"]).toBe("text/event-stream");
+    expect(headers["cache-control"]).toBe("no-store");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+
+    // A daemon event: a session it notices.
+    const plugin = join(s.root, "launched-plugin");
+    put(
+      join(plugin, ".claude-plugin/plugin.json"),
+      JSON.stringify({ name: "donn-org--base" }),
+    );
+    const dir = await createSession(
+      s.home,
+      plugin,
+      { persona: "org/base", source: "argument", project: s.repo },
+      process.pid,
+    );
+    await daemonRequest(
+      daemon.socket,
+      daemon.token,
+      "POST",
+      "/refresh",
+      10_000,
+    );
+    await vi.waitFor(
+      () =>
+        expect(stream.events()).toContainEqual(
+          expect.objectContaining({ type: "session.added", session: dir }),
+        ),
+      { timeout: 5_000 },
+    );
+    expect(stream.raw()).toMatch(/^event: session\.added\ndata: \{/m);
+
+    // A job's.
+    const { id } = (
+      await call(port, "POST", "/v1/jobs", {
+        token,
+        body: { argv: ["whoami", "--json"] },
+      })
+    ).body as { id: string };
+    await vi.waitFor(
+      () =>
+        expect(stream.events()).toContainEqual(
+          expect.objectContaining({ type: "job.done", id, exitCode: 0 }),
+        ),
+      { timeout: 5_000 },
+    );
+    expect(stream.raw()).toMatch(/^event: job\.done\ndata: \{/m);
+  });
+
+  it("pings every 15 s and holds the bridge open while connected", async () => {
+    let t = 0;
+    const { bridge: b } = await bridge({ now: () => t, tickMs: 5, pingMs: 20 });
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    expect(await stream.status).toBe(200);
+    await vi.waitFor(() => expect(stream.raw()).toContain("\n: ping\n\n"));
+    t = 3_600_000;
+    await sleep(40);
+    expect(b.closing).toBe(false);
+    stream.stop();
+    await sleep(40);
+    t += 600_000;
+    await b.closed;
+  });
+
+  it("ends its streams when it closes", async () => {
+    const { bridge: b } = await bridge();
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    expect(await stream.status).toBe(200);
+    const started = Date.now();
+    await b.close();
+    await stream.ended;
+    // Ended, not cut after the close grace period.
+    expect(Date.now() - started).toBeLessThan(900);
+  });
+});
+
+describe("POST /v1/open", { timeout: 20_000 }, () => {
+  const OS_OPENER = process.platform === "darwin" ? "open" : "xdg-open";
+
+  it("opens a path in the personas root with $VISUAL, else $EDITOR, else the OS opener", async () => {
+    const file = join(s.personas, "org/instructions/conduct.md");
+    const real = realpathSync(file);
+    for (const [env, command, args] of [
+      [{}, OS_OPENER, [real]],
+      [{ VISUAL: "code --wait", EDITOR: "vim" }, "code", ["--wait", real]],
+      [{ EDITOR: "  nvim   -p " }, "nvim", ["-p", real]],
+      [{ VISUAL: " ", EDITOR: "" }, OS_OPENER, [real]],
+    ] as const) {
+      const opener = recorder();
+      const { bridge: b } = await bridge({
+        io: ioWith(env),
+        opener: opener.open,
+      });
+      const token = await session(b);
+      const res = await call(b.port, "POST", "/v1/open", {
+        token,
+        body: { path: file },
+      });
+      expect(res.status, JSON.stringify(env)).toBe(200);
+      secured(res);
+      expect(res.body).toEqual({ opened: real });
+      expect(opener.calls).toEqual([{ command, args: [...args] }]);
+    }
+  });
+
+  it("opens inside the user's personas, a known project and a created agent's folder", async () => {
+    pick(s.repo);
+    const other = join(s.root, "other");
+    mkdirSync(join(other, ".donn"), { recursive: true });
+    await recordCreated(s.home, {
+      project: other,
+      name: "bot",
+      path: "../bot-home",
+    });
+    const paths = [
+      join(s.home, "personas/user/me.yaml"),
+      join(s.repo, ".donn/persona.yaml"),
+      s.repo,
+      join(s.root, "bot-home/agent.ts"),
+    ];
+    put(paths[0]!, "name: me\n");
+    put(paths[3]!, "export {};\n");
+    const opener = recorder();
+    const { bridge: b } = await bridge({ opener: opener.open });
+    const token = await session(b);
+    for (const path of paths) {
+      const res = await call(b.port, "POST", "/v1/open", {
+        token,
+        body: { path },
+      });
+      expect(res.status, path).toBe(200);
+    }
+    expect(opener.calls.map((c) => c.args)).toEqual(
+      paths.map((p) => [realpathSync(p)]),
+    );
+  });
+
+  it("refuses .. and symlink escapes and paths outside every root, spawning nothing", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "donn-open-"));
+    try {
+      writeFileSync(join(outside, "secret.txt"), "x");
+      symlinkSync(outside, join(s.personas, "escape"));
+      symlinkSync(join(outside, "secret.txt"), join(s.personas, "org/link.md"));
+      const opener = recorder();
+      const { bridge: b } = await bridge({ opener: opener.open });
+      const token = await session(b);
+      const open = (body: unknown) =>
+        call(b.port, "POST", "/v1/open", { token, body });
+      for (const path of [
+        `${s.personas}/../home/config.yaml`,
+        `${s.personas}/org/../../repo/.donn/persona.yaml`,
+        `${s.personas}/..`,
+        join(s.personas, "escape", "secret.txt"),
+        join(s.personas, "escape", "missing.txt"),
+        join(s.personas, "org/link.md"),
+        join(outside, "secret.txt"),
+        "/etc/hosts",
+        s.root,
+      ]) {
+        const res = await open({ path });
+        expect(res.status, path).toBe(403);
+        expect(res.body).toMatchObject({
+          error: { code: "outside-roots", details: { path } },
+        });
+      }
+      // Inside a root but missing.
+      const missing = await open({ path: join(s.personas, "nope.md") });
+      expect(missing.status).toBe(404);
+      expect(missing.body).toMatchObject({ error: { code: "not-found" } });
+      // Only an absolute path: never an option for the editor.
+      for (const body of [
+        { path: "org/instructions/conduct.md" },
+        { path: "-n" },
+        { path: "--version" },
+        { path: "" },
+        { path: 7 },
+        { path: `${s.personas}\0x` },
+        { path: s.personas, args: ["--wait"] },
+        "not json",
+      ]) {
+        const res = await open(body);
+        expect(res.status, JSON.stringify(body)).toBe(400);
+        expect(res.body).toMatchObject({ error: { code: "bad-request" } });
+      }
+      expect(opener.calls).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("answers 500 open-failed when the editor cannot start", async () => {
+    const opener = recorder(new Error("spawn nope ENOENT"));
+    const { bridge: b } = await bridge({
+      io: ioWith({ EDITOR: "nope" }),
+      opener: opener.open,
+    });
+    const token = await session(b);
+    const res = await call(b.port, "POST", "/v1/open", {
+      token,
+      body: { path: s.personas },
+    });
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({
+      error: { code: "open-failed", details: { command: "nope" } },
+    });
+  });
+});
+
+describe("/v1/projects", { timeout: 20_000 }, () => {
+  const uiJson = () =>
+    JSON.parse(readFileSync(join(s.home, "ui.json"), "utf8")) as unknown;
+
+  it("adds a project the user picks, only one with a persona, once", async () => {
+    const { bridge: b } = await bridge();
+    const token = await session(b);
+    const add = (body: unknown) =>
+      call(b.port, "POST", "/v1/projects", { token, body });
+    const empty = join(s.root, "empty");
+    mkdirSync(join(empty, ".donn"), { recursive: true });
+    for (const path of [
+      empty,
+      join(s.root, "missing"),
+      join(s.repo, ".donn"),
+    ]) {
+      const res = await add({ path });
+      expect(res.status, path).toBe(400);
+      expect(res.body).toMatchObject({
+        error: { code: "not-a-project", details: { path } },
+      });
+    }
+    for (const body of [{ path: "repo" }, {}, "x"]) {
+      const res = await add(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(res.body).toMatchObject({ error: { code: "bad-request" } });
+    }
+    expect(() => uiJson()).toThrow();
+    // Not known yet.
+    const before = await call(b.port, "POST", "/v1/run", {
+      token,
+      body: { argv: ["resolve", "--json"], cwd: s.repo },
+    });
+    expect(before.status).toBe(403);
+
+    put(
+      join(s.home, "ui.json"),
+      JSON.stringify({ projects: [], theme: "dark" }),
+    );
+    const repo = realpathSync(s.repo);
+    const res = await add({ path: s.repo });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ path: repo, projects: [repo] });
+    // Twice, and by another spelling: recorded once; other keys kept.
+    expect((await add({ path: `${s.repo}/` })).status).toBe(200);
+    expect(uiJson()).toEqual({ projects: [repo], theme: "dark" });
+    const after = await call(b.port, "POST", "/v1/run", {
+      token,
+      body: { argv: ["resolve", "--json"], cwd: s.repo },
+    });
+    expect(after.status).toBe(200);
+  });
+
+  it("records concurrent picks without losing one", async () => {
+    const { bridge: b } = await bridge();
+    const token = await session(b);
+    const others = ["a", "b", "c"].map((name) => join(s.root, name));
+    for (const dir of others)
+      put(join(dir, ".donn/persona.yaml"), "extends: org/base\n");
+    const results = await Promise.all(
+      [...others, ...others].map((path) =>
+        call(b.port, "POST", "/v1/projects", { token, body: { path } }),
+      ),
+    );
+    expect(results.map((r) => r.status)).toEqual(Array(6).fill(200));
+    expect((uiJson() as { projects: string[] }).projects.toSorted()).toEqual(
+      others.map((dir) => realpathSync(dir)).toSorted(),
+    );
+  });
+
+  it("lists the projects that sessions, created agents and the picker know", async () => {
+    const plugin = join(s.root, "launched-plugin");
+    put(
+      join(plugin, ".claude-plugin/plugin.json"),
+      JSON.stringify({ name: "donn-org--base" }),
+    );
+    await createSession(
+      s.home,
+      plugin,
+      { persona: "org/base", source: "argument", project: s.repo },
+      process.pid,
+    );
+    const other = join(s.root, "other");
+    const picked = join(s.root, "picked");
+    mkdirSync(join(other, ".donn"), { recursive: true });
+    mkdirSync(picked);
+    await recordCreated(s.home, { project: other, name: "bot" });
+    pick(picked, s.repo);
+    const { bridge: b } = await bridge();
+    const token = await session(b);
+    const res = await call(b.port, "GET", "/v1/projects", { token });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      projects: [s.repo, other, picked].map((p) => realpathSync(p)).toSorted(),
+    });
   });
 });

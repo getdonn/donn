@@ -37,7 +37,7 @@ export type Spawn = (
 ) => SpawnHandle;
 
 /** Splits a stream into lines, holding back a partial one until its newline (or the end). */
-function lineSplitter(emit: (line: string) => void) {
+export function lineSplitter(emit: (line: string) => void) {
   let rest = "";
   return {
     push(chunk: string) {
