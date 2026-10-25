@@ -42,6 +42,7 @@ export function expandPath(
 export async function loadConfig(
   home: string,
   env: NodeJS.ProcessEnv,
+  passwd?: () => string | undefined,
 ): Promise<Config> {
   const file = join(home, "config.yaml");
   let text: string;
@@ -78,7 +79,7 @@ export async function loadConfig(
   return {
     ...plugins,
     ...(personas !== undefined && {
-      personas: expandPath(personas, home, env),
+      personas: expandPath(personas, home, env, passwd),
     }),
   };
 }

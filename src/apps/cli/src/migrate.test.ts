@@ -19,6 +19,7 @@ import { isAlive, nodeProbe } from "@getdonn/executor";
 import { findProject } from "@getdonn/store-local";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
+import { homeOf } from "./context.js";
 import { cliVersion } from "./commands/daemon.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { serviceManager } from "./daemon/service.js";
@@ -1946,24 +1947,17 @@ describe("rename leftovers: doctor finds the old home as migrate does", () => {
   it("falls back to the user's home folder when HOME is not in the environment", async () => {
     const m = machine();
     oldInstall(m);
-    const saved = process.env.HOME;
-    process.env.HOME = user();
-    try {
-      const r = await donn(m, ["doctor", "--json"], {
-        env: { HOME: undefined },
-        passwdHome: () => user(),
-      });
-      const checks = json(r).checks as Check[];
-      expect(checks[0]).toEqual({
-        id: "migrate",
-        status: "error",
-        message: `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
-        fix: "donn migrate",
-      });
-    } finally {
-      if (saved === undefined) delete process.env.HOME;
-      else process.env.HOME = saved;
-    }
+    const r = await donn(m, ["doctor", "--json"], {
+      env: { HOME: undefined },
+      passwdHome: () => user(),
+    });
+    const checks = json(r).checks as Check[];
+    expect(checks[0]).toEqual({
+      id: "migrate",
+      status: "error",
+      message: `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+      fix: "donn migrate",
+    });
   });
 });
 
@@ -2484,5 +2478,36 @@ describe("review notes: doctor names the home as donn uses it", () => {
     const first = (json(d).checks as { id: string; fix?: string }[])[0]!;
     expect(first.id).toBe("migrate");
     expect(first.fix).toContain(`remove ${join(root, "rel")},`);
+  });
+});
+
+describe("review notes: the home helper reaches every reader", () => {
+  it("expands ~/ in config.yaml against the injected home when HOME is empty", async () => {
+    const m = machine();
+    put(join(newHome(), "config.yaml"), "personas: ~/nowhere\n");
+    const d = await donn(m, ["doctor", "--json"], {
+      env: { HOME: "" },
+      passwdHome: () => user(),
+    });
+    const personas = (json(d).checks as { id: string; message: string }[]).find(
+      (c) => c.id === "personas",
+    );
+    expect(personas?.message).toContain(join(user(), "nowhere"));
+  });
+
+  it("makes a relative DONN_HOME absolute against the working folder", () => {
+    expect(
+      homeOf({ env: { DONN_HOME: "rel" }, cwd: "/c" } as unknown as CliIo),
+    ).toBe("/c/rel");
+  });
+
+  it("words the refusal for a relative HOME too", async () => {
+    const m = machine();
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { HOME: "rel" },
+    });
+    expect(json(r).error.code).toBe("migrate-home");
+    expect(json(r).error.message).toContain('HOME is "rel"');
+    expect(json(r).error.message).not.toContain("no record");
   });
 });

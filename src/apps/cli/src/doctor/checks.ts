@@ -37,6 +37,7 @@ import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
+import { userHomeDir } from "../userhome.js";
 import { absoluteHome } from "../daemon/service.js";
 import { HARNESSES } from "../harness.js";
 import { LEGACY } from "../migrate/legacy.js";
@@ -324,7 +325,7 @@ export async function runChecks(
   // config
   let config: Config | undefined;
   try {
-    config = await loadConfig(home, io.env);
+    config = await loadConfig(home, io.env, io.passwdHome);
     if (config.personas === undefined) {
       add(
         "config",
@@ -460,7 +461,11 @@ export async function runChecks(
     add("plugins", "ok", "no plugins configured");
   } else {
     try {
-      const where = { home, config };
+      const where = {
+        home,
+        config,
+        ...(io.passwdHome && { passwdHome: io.passwdHome }),
+      };
       const lines = [
         ...(await loadAdapters(where, io.env)).map(
           (p) =>
@@ -579,7 +584,7 @@ export async function runChecks(
             await shellLookup("claude", io),
             claudePath,
             "",
-            io.env.HOME,
+            userHomeDir(io.env, io.passwdHome),
           );
     if (differs) {
       findings.push(differs);

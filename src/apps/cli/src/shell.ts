@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
+import { userHomeDir } from "./userhome.js";
 
 // What the user's own shell runs for a command, to explain a harness that PATH does not find:
 // an alias (which a spawn without a shell ignores) or a PATH change this process predates.
@@ -111,7 +112,11 @@ export function shellHint(
 export async function missingHint(
   binary: string,
   onPath: string | undefined,
-  io: { env: Record<string, string | undefined>; probe: Probe },
+  io: {
+    env: Record<string, string | undefined>;
+    probe: Probe;
+    passwdHome?: () => string | undefined;
+  },
 ): Promise<string | undefined> {
   if (onPath !== undefined)
     return `${onPath} is on PATH but \`${binary} --version\` failed: run it to see why`;
@@ -120,6 +125,6 @@ export async function missingHint(
     await shellLookup(binary, io),
     undefined,
     io.env.SHELL,
-    io.env.HOME,
+    userHomeDir(io.env, io.passwdHome),
   );
 }

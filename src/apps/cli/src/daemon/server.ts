@@ -433,9 +433,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
 
   /** Watch the personas roots, running sessions' projects, the overlay, config and sessions. */
   const rewatch = async (running: SessionInfo[]) => {
-    const config = await loadConfig(options.home, io.env).catch(() => ({
-      personas: undefined,
-    }));
+    const config = await loadConfig(options.home, io.env, io.passwdHome).catch(
+      () => ({
+        personas: undefined,
+      }),
+    );
     // Shutdown may have begun during the read: it closes the watchers, so start none.
     if (stopping) return;
     const projects = [

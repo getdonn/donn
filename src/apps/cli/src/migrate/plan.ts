@@ -137,7 +137,7 @@ function where(io: CliIo) {
   if (!isAbsolute(user)) {
     throw new CliError(
       "migrate-home",
-      `could not find your home folder (HOME is ${io.env.HOME ? `"${io.env.HOME}"` : "empty"} and the system has no record of one); set HOME to an absolute path and run donn migrate again`,
+      `could not find an absolute home folder (${io.env.HOME ? `HOME is "${io.env.HOME}"` : `HOME is empty and the system gave "${user}"`}); set HOME to an absolute path and run donn migrate again`,
     );
   }
   const src = legacyHome(io);
@@ -252,7 +252,9 @@ export async function oldHomePaths(
 /** The registry accounts (normalised URLs) a token may be stored under. */
 async function registryAccounts(io: CliIo, home: string): Promise<string[]> {
   const urls: string[] = [];
-  const config = await loadConfig(home, io.env).catch(() => undefined);
+  const config = await loadConfig(home, io.env, io.passwdHome).catch(
+    () => undefined,
+  );
   if (config?.registry !== undefined) urls.push(config.registry.url);
   const index = await readIndex(home).catch(() => undefined);
   if (index !== undefined) urls.push(index.url);
