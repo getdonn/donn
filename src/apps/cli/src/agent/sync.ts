@@ -11,6 +11,7 @@ import {
 } from "../context.js";
 import { CliError } from "../errors.js";
 import {
+  checkOwned,
   pendingChanges,
   planFiles,
   posixRelative,
@@ -163,6 +164,8 @@ export async function sync(
   const { output, planned } = await recompile(ctx, result, name, dir, manifest);
   if (!options.json) printReport(io, output);
   const { written, removed } = await pendingChanges(dir, planned, manifest);
+  // A dry run stops where the real sync would; with --force it reports the overwrites.
+  const edited = await checkOwned(dir, manifest, options.force === true);
   if (options.dryRun !== true) {
     const files = await writeAgentFiles(dir, output, manifest, {
       force: options.force === true,
@@ -178,6 +181,7 @@ export async function sync(
           ...(options.dryRun === true && { dryRun: true }),
           written,
           removed,
+          ...(options.dryRun === true && { edited }),
           report: output.report,
         },
         null,
@@ -189,6 +193,9 @@ export async function sync(
   const verb = options.dryRun === true ? "would " : "";
   for (const path of written)
     io.stdout.write(`${verb}${verb ? "write" : "wrote"} ${shown}/${path}\n`);
+  if (options.dryRun === true)
+    for (const path of edited)
+      io.stdout.write(`would overwrite ${shown}/${path} (edited by hand)\n`);
   for (const path of removed)
     io.stdout.write(`${verb}${verb ? "remove" : "removed"} ${shown}/${path}\n`);
   if (written.length === 0 && removed.length === 0)

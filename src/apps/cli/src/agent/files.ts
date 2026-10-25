@@ -239,6 +239,32 @@ export async function pendingChanges(
 }
 
 /**
+ * The owned files whose content no longer matches the manifest. They stop a write with
+ * `owned-file-edited` unless `force`; with it they are returned, to be reported.
+ */
+export async function checkOwned(
+  dir: string,
+  previous: Manifest | undefined,
+  force: boolean,
+): Promise<string[]> {
+  const edited: string[] = [];
+  for (const [path, hash] of Object.entries(previous?.files ?? {})) {
+    if (!isContainedPath(path)) throw unsafe(path);
+    // Gone is fine: nothing of the user's to lose. Any other read error stops.
+    const now = await diskHash(dir, path);
+    if (now !== undefined && now !== hash) edited.push(path);
+  }
+  if (edited.length > 0 && !force) {
+    throw new CliError(
+      "owned-file-edited",
+      `donn owns ${edited.join(", ")}, which ${edited.length === 1 ? "was" : "were"} edited since donn wrote ${edited.length === 1 ? "it" : "them"}; move the change into the persona, or pass --force to overwrite`,
+      { files: edited, fix: "move the change into the persona, or --force" },
+    );
+  }
+  return edited;
+}
+
+/**
  * Writes a compile's files into `dir` by the manifest's rules: an owned file whose hash no
  * longer matches `previous` stops with `owned-file-edited` (unless `force`); files the new
  * compile no longer produces are removed; each `copyFrom` directory is copied and recorded as
@@ -252,20 +278,7 @@ export async function writeAgentFiles(
 ): Promise<Record<string, string>> {
   const planned = await planFiles(output, options.store);
   const old = previous?.files ?? {};
-  const edited: string[] = [];
-  for (const [path, hash] of Object.entries(old)) {
-    if (!isContainedPath(path)) throw unsafe(path);
-    // Gone is fine: nothing of the user's to lose. Any other read error stops.
-    const now = await diskHash(dir, path);
-    if (now !== undefined && now !== hash) edited.push(path);
-  }
-  if (edited.length > 0 && !options.force) {
-    throw new CliError(
-      "owned-file-edited",
-      `donn owns ${edited.join(", ")}, which ${edited.length === 1 ? "was" : "were"} edited since donn wrote ${edited.length === 1 ? "it" : "them"}; move the change into the persona, or pass --force to overwrite`,
-      { files: edited, fix: "move the change into the persona, or --force" },
-    );
-  }
+  await checkOwned(dir, previous, options.force);
 
   for (const [path, entry] of Object.entries(output.files)) {
     if (!("content" in entry)) continue;

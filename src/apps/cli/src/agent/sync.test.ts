@@ -208,6 +208,29 @@ describe("donn agent sync", () => {
     expect(readFileSync(owned, "utf8")).not.toBe("// mine\n");
   });
 
+  it("--dry-run stops at an edited owned file too; --force reports it and writes nothing", async () => {
+    await create();
+    addSkill();
+    const owned = join(dir(), "agent/lib/donn/config.ts");
+    writeFileSync(owned, "// mine\n");
+    const stopped = await run(["sync", "kody", "--dry-run", "--json"]);
+    expect(stopped.code).not.toBe(0);
+    expect(stopped.stdout + stopped.stderr).toContain("owned-file-edited");
+    const forced = await run([
+      "sync",
+      "kody",
+      "--dry-run",
+      "--force",
+      "--json",
+    ]);
+    expect(forced.code).toBe(0);
+    expect(JSON.parse(forced.stdout).edited).toEqual([
+      "agent/lib/donn/config.ts",
+    ]);
+    expect(readFileSync(owned, "utf8")).toBe("// mine\n");
+    expect(existsSync(join(dir(), SKILL_FILE))).toBe(false);
+  });
+
   it("refuses recreate-needed without writing, and never touches agent.ts", async () => {
     await create();
     const before = readFileSync(join(dir(), "agent/agent.ts"), "utf8");
