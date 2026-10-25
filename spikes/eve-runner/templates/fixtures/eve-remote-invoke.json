@@ -1,0 +1,17 @@
+{
+  "status": "ready",
+  "outcome": {
+    "status": "completed",
+    "message": "done"
+  },
+  "resume": {
+    "session": {
+      "sessionId": "wrun_01M5T02W4JAY5W5W08HM6CX9NW",
+      "streamIndex": 14
+    },
+    "target": {
+      "kind": "remote",
+      "serverUrl": "http://127.0.0.1:4811/"
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"version":1,"type":"failed","item":"channel/github","completedItems":[],"message":"Dependency installation stopped because pnpm requires build-script decisions. Run `pnpm approve-builds`, then retry the eve add command.","failureCode":"pnpm_build_policy","rolledBack":true}

@@ -1,0 +1,6 @@
+- Checking registry.
+✔ Checking registry.
+- Installing dependencies.
+- Installing dependencies.
+✔ Installing dependencies.
+{"version":1,"type":"blocked","item":"channel/github","installed":true,"completedItems":[],"status":"input_required","question":{"key":"github-events","message":"What should this GitHub App respond to?","required":true,"kind":"multi-select","options":[{"id":"issue_comment","label":"New issue and PR comments","hint":"Reply when a new timeline comment includes `@<bot-name>`."},{"id":"pull_request_review_comment","label":"New inline PR review comments","hint":"Reply when a new inline review comment includes `@<bot-name>`."},{"id":"issues","label":"New issues","hint":"Add comments to new issues."},{"id":"pull_request","label":"New PRs","hint":"Add comments to new pull requests."}],"recommended":["issue_comment","pull_request_review_comment"]},"next":{"command":"eve","args":["add","channel/github","--non-interactive","--skip-install","--answer","github-events=<JSON value>"]}}
