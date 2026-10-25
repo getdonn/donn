@@ -1,6 +1,8 @@
 import type { Probe } from "@getdonn/adapter-sdk";
 import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
+import type { Spawn } from "./agent/spawn.js";
+import { agentListCommand } from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { cliVersion } from "./commands/daemon.js";
@@ -86,6 +88,8 @@ export interface CliIo {
   managed?: Partial<ManagedEnv>;
   /** Injected in tests; the system's record of the user's home folder, used when HOME is empty. */
   passwdHome?: () => string | undefined;
+  /** Injected in tests; runs the agent project's own eve. Defaults to node:child_process. */
+  spawn?: Spawn;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -484,6 +488,18 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { steps, env, doctor } as JSON")
         .action((options) =>
           handle(options.json, () => migrateCommand(io, options)),
+        );
+
+      const agent = program
+        .command("agent")
+        .description("Build, run and deploy agents on a persona (spec 25)");
+      agent
+        .command("list")
+        .description("List the agents donn knows of")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agents } as JSON")
+        .action((options) =>
+          handle(options.json, () => agentListCommand(io, options)),
         );
 
       const daemon = program

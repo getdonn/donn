@@ -128,6 +128,7 @@ export async function zz(
       | "sleep"
       | "signal"
       | "passwdHome"
+      | "spawn"
     >
   >,
 ): Promise<RunResult> {
@@ -158,6 +159,7 @@ export async function zz(
     ...(options.openBrowser && { openBrowser: options.openBrowser }),
     ...(options.sleep && { sleep: options.sleep }),
     ...(options.signal && { signal: options.signal }),
+    ...(options.spawn && { spawn: options.spawn }),
     // No test reaches the real passwd entry unless it opts in.
     passwdHome: options.passwdHome ?? (() => NO_USER_HOME),
   });
