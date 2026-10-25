@@ -90,6 +90,8 @@ export interface CliIo {
   passwdHome?: () => string | undefined;
   /** Injected in tests; runs the agent project's own eve. Defaults to node:child_process. */
   spawn?: Spawn;
+  /** Injected in tests; downloads eve's template tarballs. Defaults to globalThis.fetch. */
+  fetch?: typeof fetch;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
