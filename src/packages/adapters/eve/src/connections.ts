@@ -1,10 +1,19 @@
-import type { FileEntry, ReportEntry } from "@getdonn/adapter-sdk";
+import {
+  AdapterInputError,
+  type FileEntry,
+  type ReportEntry,
+} from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
-import { propertyKey, SecretNames, valueExpression } from "./env.js";
+import {
+  propertyKey,
+  REF_PATTERN,
+  SecretNames,
+  valueExpression,
+} from "./env.js";
 
 // `agent/connections/donn-<name>.ts`. See docs/planning/24-adapter-eve.md, section 3.
 
-const BEARER = /^Bearer (secret:\/\/\S+)$/;
+const BEARER = new RegExp(`^Bearer (${REF_PATTERN})$`);
 const byName = ([a]: [string, unknown], [b]: [string, unknown]) =>
   a < b ? -1 : a > b ? 1 : 0;
 
@@ -37,12 +46,18 @@ function connectionFile(
     `  description: ${JSON.stringify(description)},`,
   ];
   const headers: [string, string][] = [];
+  let auth = false;
   for (const [key, value] of Object.entries(definition.headers ?? {}).sort(
     byName,
   )) {
     const bearer =
       key.toLowerCase() === "authorization" ? BEARER.exec(value) : null;
     if (bearer) {
+      if (auth)
+        throw new AdapterInputError(
+          `MCP server "${server}" has two Authorization headers carrying a bearer secret; keep one`,
+        );
+      auth = true;
       // eve's bearer form; the token is read when a request needs it.
       fields.push(
         `  auth: { getToken: async () => ({ token: process.env.${secrets.name(bearer[1]!)}! }) },`,
@@ -117,7 +132,10 @@ export function connectionFiles(
 }
 
 /** `targets.eve` keys this adapter does not read, as dropped entries. */
-export function unknownTargetEntries(ir: ResolvedPersona): ReportEntry[] {
+export function unknownTargetEntries(
+  ir: ResolvedPersona,
+  names: ReadonlyMap<string, string>,
+): ReportEntry[] {
   const targets = ir.targets.eve ?? {};
   const entries: ReportEntry[] = [];
   for (const key of Object.keys(targets).sort()) {
@@ -142,8 +160,35 @@ export function unknownTargetEntries(ir: ResolvedPersona): ReportEntry[] {
       continue;
     }
     for (const [server, entry] of Object.entries(connections).sort(byName)) {
-      const fields =
-        typeof entry === "object" && entry !== null ? Object.keys(entry) : [];
+      if (!names.has(server)) {
+        entries.push({
+          path: `targets.eve.connections.${server}`,
+          outcome: "dropped",
+          reason:
+            "names no connection: the persona has no URL MCP server of that name that became one",
+        });
+        continue;
+      }
+      if (typeof entry !== "object" || entry === null) {
+        entries.push({
+          path: `targets.eve.connections.${server}`,
+          outcome: "dropped",
+          reason: "must be an object with a description",
+        });
+        continue;
+      }
+      const description = (entry as Record<string, unknown>).description;
+      if (
+        description !== undefined &&
+        (typeof description !== "string" || description.trim() === "")
+      ) {
+        entries.push({
+          path: `targets.eve.connections.${server}.description`,
+          outcome: "dropped",
+          reason: "must be a non-empty string; the default description is used",
+        });
+      }
+      const fields = Object.keys(entry);
       for (const field of fields.filter((f) => f !== "description")) {
         entries.push({
           path: `targets.eve.connections.${server}.${field}`,

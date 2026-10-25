@@ -211,7 +211,10 @@ export function compile(
   const secrets = new SecretNames();
   const agent = ir.agents[input.agent]!;
   const config = configFile(ir, input.agent, secrets);
-  entries.push(...config.entries, ...unknownTargetEntries(ir));
+  entries.push(
+    ...config.entries,
+    ...unknownTargetEntries(ir, connections.names),
+  );
   files[CONFIG_FILE] = { content: config.content };
   const mcp = connectionFiles(ir, input.personaId, connections.names, secrets);
   entries.push(...mcp.entries);

@@ -19,13 +19,6 @@ export const environment = DockerSandbox.environment();
 export default defineSandbox(() => environment.open({ networkPolicy: "allow-all" }));
 `;
 
-/**
- * eve takes a model's context window from the AI Gateway catalog; for a model it lists nothing for
- * (a gateway or local endpoint) eve's docs give no number, only the advice to set one.
- */
-const CONTEXT_FALLBACK =
-  "targets.eve.contextWindow is not set; eve takes the context window from the AI Gateway catalog and falls back to its own default, which eve does not document, for a model the catalog lacks, so compaction may trigger at the wrong size (set contextWindow)";
-
 export interface ConfigResult {
   content: string;
   /** Env names this file's output relies on, for `env.ts`. */
@@ -64,6 +57,16 @@ export function configFile(
   const secretEnv: ConfigResult["secretEnv"] = {};
   const entries: ReportEntry[] = [];
   let model: string;
+  // Anything but a plain string id is a model object, which gets the missing-env guard.
+  let guarded = true;
+  const contextWindow = (ir.targets.eve ?? {}).contextWindow;
+  const validWindow =
+    typeof contextWindow === "number" &&
+    Number.isInteger(contextWindow) &&
+    contextWindow > 0;
+  const modelPath = ir.agents[agent]!.model
+    ? `agents.${agent}.model`
+    : "models.default";
 
   if (gateway === undefined) {
     const [provider, ...rest] = id.split("/");
@@ -76,11 +79,14 @@ export function configFile(
     }
     imports.push(`import { ${provider} } from "eve/models/${provider}";`);
     model = `${provider}(${JSON.stringify(bare)})`;
-    envNames.push(
-      provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY",
-    );
+    // A local run can use the credentials `eve /login` stored.
+    if (target !== "local")
+      envNames.push(
+        provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY",
+      );
   } else if (gateway.type === "vercel-ai-gateway") {
     model = JSON.stringify(id);
+    guarded = false;
     if (gateway.apiKey !== undefined) {
       secretEnv.AI_GATEWAY_API_KEY = gateway.apiKey as `secret://${string}`;
     }
@@ -104,8 +110,25 @@ export function configFile(
     } else {
       imports.push('import { createAnthropic } from "@ai-sdk/anthropic";');
     }
-    options.push(["name", JSON.stringify(GATEWAY_NAME)]);
-    options.push(["baseURL", JSON.stringify(gateway.baseURL)]);
+    // A name keeps eve from taking an OpenAI-compatible endpoint for the OpenAI provider and
+    // adding built-in tools the gateway may reject. The anthropic form is the one the spike built.
+    if (gateway.type === "openai-compatible") {
+      if (!validWindow) {
+        throw new EveCompileError(
+          "context-window-required",
+          "set targets.eve.contextWindow: eve cannot look up a custom gateway's model in the AI Gateway catalog",
+        );
+      }
+      options.push(["name", JSON.stringify(GATEWAY_NAME)]);
+    } else if (!validWindow && contextWindow === undefined) {
+      entries.push({
+        path: modelPath,
+        outcome: "advisory",
+        reason:
+          "eve looks the model up in the AI Gateway catalog at build (it needs the network); if the catalog lacks it, set targets.eve.contextWindow",
+      });
+    }
+    options.push(["baseURL", valueExpression(gateway.baseURL!, secrets)]);
     if (gateway.apiKey !== undefined)
       options.push(["apiKey", valueExpression(gateway.apiKey, secrets)]);
     const headers = Object.entries(gateway.headers ?? {}).sort(([a], [b]) =>
@@ -123,41 +146,24 @@ export function configFile(
         ),
       ]);
     }
-    let bare = id;
-    if (gateway.type === "openai-compatible") {
+    if (gateway.type === "openai-compatible")
       options.push(["includeUsage", "true"]);
-    } else if (id.startsWith("anthropic/")) {
-      // The Anthropic API names models without the provider prefix.
-      bare = id.slice("anthropic/".length);
-    }
     const factory =
       gateway.type === "openai-compatible"
         ? "createOpenAICompatible"
         : "createAnthropic";
     setup.push(`const gateway = ${factory}(${object(options, "")});`);
-    model = `gateway(${JSON.stringify(bare)})`;
+    model = `gateway(${JSON.stringify(id)})`;
   }
 
   const donn: [string, string][] = [["model", "model"]];
-  const contextWindow = (ir.targets.eve ?? {}).contextWindow;
-  if (
-    typeof contextWindow === "number" &&
-    Number.isInteger(contextWindow) &&
-    contextWindow > 0
-  ) {
+  if (validWindow) {
     donn.push(["modelContextWindowTokens", String(contextWindow)]);
-  } else {
-    if (contextWindow !== undefined) {
-      entries.push({
-        path: "targets.eve.contextWindow",
-        outcome: "dropped",
-        reason: `contextWindow must be a positive integer, not ${JSON.stringify(contextWindow)}`,
-      });
-    }
+  } else if (contextWindow !== undefined) {
     entries.push({
       path: "targets.eve.contextWindow",
-      outcome: "approximated",
-      reason: CONTEXT_FALLBACK,
+      outcome: "dropped",
+      reason: `contextWindow must be a positive integer, not ${JSON.stringify(contextWindow)}`,
     });
   }
   if (target === "self-host") {
@@ -170,12 +176,44 @@ export function configFile(
 
   const content = [
     "// Generated by donn; edit the persona, not this file.",
-    // First, so a missing variable stops the agent at load, naming every one.
-    'import "./env";',
+    ...(guarded
+      ? [
+          'import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";',
+        ]
+      : []),
+    // Loading env.ts warns about missing variables; the guard below refuses to call the model.
+    guarded ? 'import { missingEnv } from "./env";' : 'import "./env";',
     ...imports,
     "",
     ...setup,
-    `const model = ${model};`,
+    ...(guarded
+      ? [
+          `const base = ${model};`,
+          "",
+          "// eve builds the agent without the run-time environment, so a missing variable fails",
+          "// here, at the first model call, naming every one.",
+          "const guard: LanguageModelMiddleware = {",
+          "  wrapGenerate: async ({ doGenerate }) => {",
+          "    refuseWhenMissing();",
+          "    return doGenerate();",
+          "  },",
+          "  wrapStream: async ({ doStream }) => {",
+          "    refuseWhenMissing();",
+          "    return doStream();",
+          "  },",
+          "};",
+          "function refuseWhenMissing(): void {",
+          "  const missing = missingEnv();",
+          "  if (missing.length > 0) {",
+          "    throw new Error(",
+          '      `donn: missing environment variables: ${missing.join(", ")}`,',
+          "    );",
+          "  }",
+          "}",
+          // eve's own providers may return a plain model id.
+          'const model =\n  typeof base === "string"\n    ? base\n    : wrapLanguageModel({ model: base, middleware: guard });',
+        ]
+      : [`const model = ${model};`]),
     "",
     "// eve accepts exactly these keys; `agent.ts` spreads this object into defineAgent.",
     `export const donn = {\n${donn

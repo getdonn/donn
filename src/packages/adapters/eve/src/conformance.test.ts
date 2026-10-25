@@ -22,6 +22,7 @@ const cases: AgentConformanceCase[] = corpus.map(
       ir: {
         ...ir,
         agents,
+        targets: { ...ir.targets, eve: { contextWindow: 128000 } },
         models: ir.models.default
           ? ir.models
           : { ...ir.models, default: "anthropic/claude-sonnet-5" },

@@ -55,6 +55,7 @@ describe("lib/donn/config.ts, one row per spec 24 table line", () => {
           },
           default: "gpt-5",
         },
+        targets: { eve: { contextWindow: 128000 } },
       }),
     );
     const text = config(out);
@@ -66,11 +67,15 @@ describe("lib/donn/config.ts, one row per spec 24 table line", () => {
     expect(text).toContain("apiKey: process.env.DONN_SECRET_1!");
     expect(text).toContain('"x-team": "payments"');
     expect(text).toContain("includeUsage: true");
-    expect(text).toContain('const model = gateway("gpt-5");');
+    expect(text).toContain('const base = gateway("gpt-5");');
+    expect(text).toContain(
+      "wrapLanguageModel({ model: base, middleware: guard })",
+    );
+    expect(text).toContain('import { missingEnv } from "./env";');
     expect(out.secretEnv).toEqual({ DONN_SECRET_1: "secret://vault/key" });
   });
 
-  it("anthropic gateway, named so eve does not take it for anthropic", () => {
+  it("anthropic gateway, the id unchanged and no provider name", () => {
     const text = config(
       adapter.compile(
         input({
@@ -84,9 +89,11 @@ describe("lib/donn/config.ts, one row per spec 24 table line", () => {
     expect(text).toContain(
       'import { createAnthropic } from "@ai-sdk/anthropic";',
     );
-    expect(text).toContain('name: "donn-gateway"');
+    expect(text).not.toContain("name:");
     expect(text).toContain('baseURL: "https://a.corp"');
-    expect(text).toContain('const model = gateway("claude-sonnet-5");');
+    expect(text).toContain(
+      'const base = gateway("anthropic/claude-sonnet-5");',
+    );
     expect(text).not.toContain("apiKey");
   });
 
@@ -100,6 +107,8 @@ describe("lib/donn/config.ts, one row per spec 24 table line", () => {
       }),
     );
     expect(config(out)).toContain('const model = "anthropic/claude-sonnet-5";');
+    expect(config(out)).not.toContain("wrapLanguageModel");
+    expect(file(out, "agent/lib/donn/env.ts")).toContain("AI_GATEWAY_API_KEY");
     expect(out.secretEnv).toEqual({ AI_GATEWAY_API_KEY: "secret://vault/v" });
     expect(file(out, "agent/lib/donn/env.ts")).toContain(
       "process.env.AI_GATEWAY_API_KEY",
@@ -128,12 +137,15 @@ describe("lib/donn/config.ts, one row per spec 24 table line", () => {
       adapter.compile(input({ models: { default: "anthropic/claude-x" } })),
     );
     expect(a).toContain('import { anthropic } from "eve/models/anthropic";');
-    expect(a).toContain('const model = anthropic("claude-x");');
-    const out = adapter.compile(input({ models: { default: "openai/gpt-5" } }));
+    expect(a).toContain('const base = anthropic("claude-x");');
+    expect(a).toContain('typeof base === "string"');
+    const out = adapter.compile(
+      input({ models: { default: "openai/gpt-5" } }, { target: "self-host" }),
+    );
     expect(config(out)).toContain(
       'import { openai } from "eve/models/openai";',
     );
-    expect(config(out)).toContain('const model = openai("gpt-5");');
+    expect(config(out)).toContain('const base = openai("gpt-5");');
     expect(file(out, "agent/lib/donn/env.ts")).toContain(
       "process.env.OPENAI_API_KEY",
     );
@@ -185,19 +197,88 @@ describe("targets.eve and the world", () => {
     );
   });
 
-  it("reports the fallback when contextWindow is absent, and unknown keys", () => {
+  it("reports unknown keys and adds no context window entry for direct providers", () => {
     const out = adapter.compile(input({ targets: { eve: { wat: 1 } } }));
     expect(config(out)).not.toContain("modelContextWindowTokens");
-    expect(out.report.entries).toContainEqual({
-      path: "targets.eve.contextWindow",
-      outcome: "approximated",
-      reason: expect.stringContaining("eve"),
-    });
+    expect(out.report.entries.map((e) => e.path)).not.toContain(
+      "targets.eve.contextWindow",
+    );
     expect(out.report.entries).toContainEqual({
       path: "targets.eve.wat",
       outcome: "dropped",
       reason: expect.stringContaining("unknown"),
     });
+  });
+
+  it("requires contextWindow for an openai-compatible gateway", () => {
+    const run =
+      (targets: ResolvedPersona["targets"] = {}) =>
+      () =>
+        adapter.compile(
+          input({
+            targets,
+            models: {
+              gateway: { type: "openai-compatible", baseURL: "https://g/v1" },
+              default: "m",
+            },
+          }),
+        );
+    expect(run()).toThrow(
+      /context-window-required: set targets\.eve\.contextWindow: eve cannot look up a custom gateway's model in the AI Gateway catalog/,
+    );
+    expect(run({ eve: { contextWindow: 0 } })).toThrow(
+      /context-window-required/,
+    );
+  });
+
+  it("advises on contextWindow for an anthropic gateway, once and at the model", () => {
+    const gateway = { type: "anthropic", baseURL: "https://a.corp" } as const;
+    const out = adapter.compile(
+      input({ models: { gateway, default: "anthropic/claude-x" } }),
+    );
+    expect(
+      out.report.entries.filter((e) => e.path.startsWith("models.default")),
+    ).toEqual([
+      {
+        path: "models.default",
+        outcome: "advisory",
+        reason: expect.stringContaining("AI Gateway catalog"),
+      },
+    ]);
+    const agentModel = adapter.compile(
+      input({ models: { gateway } }, { model: "anthropic/claude-y" }),
+    );
+    expect(agentModel.report.entries.map((e) => e.path)).toContain(
+      "agents.reviewer.model",
+    );
+    const set = adapter.compile(
+      input({
+        models: { gateway, default: "anthropic/claude-x" },
+        targets: { eve: { contextWindow: 200000 } },
+      }),
+    );
+    expect(set.report.entries.map((e) => e.path)).not.toContain(
+      "models.default",
+    );
+  });
+
+  it("reports a vercel-ai-gateway with headers as dropped, without a window entry", () => {
+    const out = adapter.compile(
+      input({
+        models: {
+          gateway: { type: "vercel-ai-gateway", headers: { "x-a": "1" } },
+          default: "openai/gpt-5",
+        },
+      }),
+    );
+    expect(out.report.entries).toContainEqual({
+      path: "models.gateway.headers",
+      outcome: "dropped",
+      reason: expect.any(String),
+    });
+    expect(out.report.entries.map((e) => e.path)).not.toContain(
+      "models.default",
+    );
   });
 
   it("rejects a non-positive contextWindow with a report entry", () => {
@@ -210,6 +291,9 @@ describe("targets.eve and the world", () => {
       outcome: "dropped",
       reason: expect.stringContaining("positive integer"),
     });
+    expect(
+      out.report.entries.filter((e) => e.path === "targets.eve.contextWindow"),
+    ).toHaveLength(1);
   });
 
   it("uses the postgres world for self-host only", () => {
@@ -274,18 +358,32 @@ describe("env.ts", () => {
             },
             default: "m",
           },
+          targets: { eve: { contextWindow: 128000 } },
         },
-        { target: "self-host", env: { REGION: "eu" } },
+        { target: "self-host", env: { REGION: "eu", EMPTY: "" } },
       ),
     );
     const text = file(out, "agent/lib/donn/env.ts");
     const read = [...text.matchAll(/process\.env\.(\w+)/g)].map((m) => m[1]);
     expect(read.sort()).toEqual(
-      ["DONN_SECRET_1", "REGION", "WORKFLOW_POSTGRES_URL"].sort(),
+      ["DONN_SECRET_1", "EMPTY", "REGION", "WORKFLOW_POSTGRES_URL"].sort(),
     );
-    expect(out.env).toEqual({ REGION: "eu" });
-    expect(text).toContain("throw new Error");
-    expect(config(out)).toContain('import "./env";');
+    expect(out.env).toEqual({ REGION: "eu", EMPTY: "" });
+    // Loading never throws (eve build evaluates it); only the model call refuses.
+    expect(text).not.toContain("throw");
+    expect(text).toContain("console.warn");
+    expect(text).toContain("export function missingEnv");
+    expect(text).toContain("=== undefined");
+    expect(config(out)).toContain("throw new Error(");
+    expect(config(out)).toContain("donn: missing environment variables");
+  });
+
+  it("does not require the direct provider key for local, but does elsewhere", () => {
+    const names = (target: "local" | "self-host" | "vercel") =>
+      file(adapter.compile(input({}, { target })), "agent/lib/donn/env.ts");
+    expect(names("local")).not.toContain("ANTHROPIC_API_KEY");
+    expect(names("self-host")).toContain("process.env.ANTHROPIC_API_KEY");
+    expect(names("vercel")).toContain("process.env.ANTHROPIC_API_KEY");
   });
 });
 
@@ -361,6 +459,7 @@ describe("connections", () => {
           },
           default: "m",
         },
+        targets: { eve: { contextWindow: 128000 } },
         mcp: {
           servers: {
             z: { url, headers: { "X-K": "secret://g/a" } },
@@ -398,5 +497,97 @@ describe("connections", () => {
       outcome: "dropped",
       reason: expect.stringContaining("gateway"),
     });
+  });
+
+  it("keeps a secret ref out of the gateway baseURL", () => {
+    const out = adapter.compile(
+      input({
+        targets: { eve: { contextWindow: 1000 } },
+        models: {
+          gateway: {
+            type: "openai-compatible",
+            baseURL: "https://g/v1?key=secret://g/q&x=1",
+          },
+          default: "m",
+        },
+      }),
+    );
+    expect(config(out)).toContain(
+      "baseURL: `https://g/v1?key=${process.env.DONN_SECRET_1}&x=1`",
+    );
+    expect(config(out)).not.toContain("secret://");
+    expect(out.secretEnv).toEqual({ DONN_SECRET_1: "secret://g/q" });
+  });
+
+  it("ends a ref at a character a header or URL uses", () => {
+    const out = adapter.compile(
+      withServers({
+        a: { url, headers: { "X-K": "k=secret://g/a;v=1,secret://g/b)" } },
+      }),
+    );
+    expect(out.secretEnv).toEqual({
+      DONN_SECRET_1: "secret://g/a",
+      DONN_SECRET_2: "secret://g/b",
+    });
+    expect(file(out, "agent/connections/donn-a.ts")).toContain(
+      "`k=${process.env.DONN_SECRET_1};v=1,${process.env.DONN_SECRET_2})`",
+    );
+  });
+
+  it("refuses two Authorization headers that both carry a bearer secret", () => {
+    expect(() =>
+      adapter.compile(
+        withServers({
+          a: {
+            url,
+            headers: {
+              Authorization: "Bearer secret://g/a",
+              authorization: "Bearer secret://g/b",
+            },
+          },
+        }),
+      ),
+    ).toThrow(/two Authorization headers/);
+  });
+
+  it("reports malformed or unmatched targets.eve.connections entries", () => {
+    const out = adapter.compile(
+      input({
+        mcp: {
+          servers: { a: { url }, local: { command: "npx" }, b: { url } },
+        },
+        targets: {
+          eve: {
+            connections: {
+              a: { description: "", extra: 1 },
+              b: "text",
+              local: { description: "x" },
+              nope: { description: "x" },
+            },
+          },
+        },
+      }),
+    );
+    const dropped = Object.fromEntries(
+      out.report.entries
+        .filter((e) => e.path.startsWith("targets.eve.connections"))
+        .map((e) => [e.path, e.outcome]),
+    );
+    expect(dropped).toEqual({
+      "targets.eve.connections.a.description": "dropped",
+      "targets.eve.connections.a.extra": "dropped",
+      "targets.eve.connections.b": "dropped",
+      "targets.eve.connections.local": "dropped",
+      "targets.eve.connections.nope": "dropped",
+    });
+    expect(
+      out.report.entries.filter((e) => e.path === "targets.eve.connections"),
+    ).toEqual([]);
+    const bad = adapter.compile(
+      input({ targets: { eve: { connections: "x" } } }),
+    );
+    expect(bad.report.entries.map((e) => e.path)).toContain(
+      "targets.eve.connections",
+    );
   });
 });
