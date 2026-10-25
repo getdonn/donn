@@ -4,3 +4,4 @@ export * from "./managed.js";
 export * from "./report.js";
 export * from "./paths.js";
 export * from "./render.js";
+export * from "./agent.js";

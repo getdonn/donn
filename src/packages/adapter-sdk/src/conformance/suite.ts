@@ -37,3 +37,4 @@ export function conformanceSuite(
     }
   });
 }
+export * from "./agent-suite.js";
