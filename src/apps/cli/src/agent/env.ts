@@ -60,6 +60,19 @@ export async function agentEnvironment(
     resolve: boolean;
     /** Runs on the declared agent before any secret is resolved; it may throw. */
     check?: (target: string) => void;
+    /**
+     * With `resolve`: values for env-provider refs the caller resolved (a terminal `agent run`
+     * sent them to the daemon), used for those refs. Each must be one the agent uses, unless
+     * `unused` is `ignore` (a restart after a sync, whose persona may no longer use one).
+     */
+    provided?: Record<string, string>;
+    unused?: "refuse" | "ignore";
+    /**
+     * With `resolve`, which refs this process resolves: all of them (the default); only the
+     * env-provider ones (a terminal before it asks the daemon); or all but those, each of which
+     * then fails unless provided (a run with no shell environment, from donn ui).
+     */
+    refs?: "all" | "env" | "not-env";
   },
 ): Promise<AgentEnvironment> {
   const { root, result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
@@ -106,36 +119,101 @@ export async function agentEnvironment(
   entries.sort((a, b) => a.name.localeCompare(b.name));
 
   if (options.resolve) {
-    const refs = entries.flatMap((e) => (e.ref === undefined ? [] : [e.ref]));
+    const providers = result.ir.secrets.providers;
+    const isEnv = (ref: string) => providerType(ref, providers).type === "env";
+    const refs = [
+      ...new Set(entries.flatMap((e) => (e.ref === undefined ? [] : [e.ref]))),
+    ];
+    const provided = options.provided ?? {};
+    const given = (ref: string) => Object.hasOwn(provided, ref) && isEnv(ref);
+    // Never a value in the message: only the refs.
+    const unused = Object.keys(provided).filter(
+      (ref) => !refs.includes(ref) || !isEnv(ref),
+    );
+    if (unused.length > 0 && options.unused !== "ignore") {
+      throw new CliError(
+        "env-not-used",
+        `${name} has no env-provider secret ${unused.join(", ")}`,
+        { refs: unused },
+      );
+    }
+    const mode = options.refs ?? "all";
+    const noShell = refs.filter(
+      (ref) => mode === "not-env" && isEnv(ref) && !given(ref),
+    );
+    if (noShell.length > 0) {
+      throw unresolved(
+        noShell.map((ref) => ({ ref, reason: "no shell environment" })),
+        entries,
+        providers,
+      );
+    }
     let values: Record<string, string>;
     try {
       values = await resolveSecrets(
-        [...new Set(refs)] as `secret://${string}`[],
-        result.ir.secrets.providers,
+        refs.filter(
+          (ref) =>
+            !given(ref) && (mode === "all" || (mode === "env") === isEnv(ref)),
+        ) as `secret://${string}`[],
+        providers,
         secretContext(io),
         { loadBackend: backendLoader(ctx, io.env) },
       );
     } catch (error) {
       if (!(error instanceof SecretResolutionError)) throw error;
-      const byRef = new Map(entries.map((e) => [e.ref, e.name]));
-      throw new CliError(
-        "secret-unresolved",
-        `cannot resolve ${error.failures
-          .map((f) => `${byRef.get(f.ref) ?? "?"} (${f.ref}): ${f.reason}`)
-          .join("; ")}`,
-        {
-          failures: error.failures.map((f) => ({
-            name: byRef.get(f.ref) ?? "",
-            ref: f.ref,
-            reason: f.reason,
-            ...providerType(f.ref, result.ir.secrets.providers),
-          })),
-        },
-      );
+      throw unresolved(error.failures, entries, providers);
     }
-    for (const e of entries) if (e.ref !== undefined) e.value = values[e.ref]!;
+    for (const ref of refs) if (given(ref)) values[ref] = provided[ref]!;
+    for (const e of entries) {
+      const value = e.ref === undefined ? undefined : values[e.ref];
+      if (value !== undefined) e.value = value;
+    }
   }
   return { root, dir, entries, result, manifest };
+}
+
+/** `secret-unresolved`, naming each failed ref's variable and its provider type. */
+function unresolved(
+  failures: { ref: string; reason: string }[],
+  entries: EnvEntry[],
+  providers: Record<string, { type: string }>,
+): CliError {
+  const byRef = new Map(entries.map((e) => [e.ref, e.name]));
+  return new CliError(
+    "secret-unresolved",
+    `cannot resolve ${failures
+      .map((f) => `${byRef.get(f.ref) ?? "?"} (${f.ref}): ${f.reason}`)
+      .join("; ")}`,
+    {
+      failures: failures.map((f) => ({
+        name: byRef.get(f.ref) ?? "",
+        ref: f.ref,
+        reason: f.reason,
+        ...providerType(f.ref, providers),
+      })),
+    },
+  );
+}
+
+/**
+ * The values of the agent's env-provider refs, by ref, resolved in this process's environment:
+ * what a terminal `agent run` sends the daemon (spec 26 §2). A ref unset here fails.
+ */
+export async function envSecrets(
+  ctx: Context,
+  io: CliIo,
+  name: string,
+  check?: (target: string) => void,
+): Promise<Record<string, string>> {
+  const { entries } = await agentEnvironment(ctx, io, name, {
+    resolve: true,
+    refs: "env",
+    ...(check && { check }),
+  });
+  const values: Record<string, string> = {};
+  for (const e of entries)
+    if (e.ref !== undefined && e.value !== undefined) values[e.ref] = e.value;
+  return values;
 }
 
 /** The provider type a ref resolves with, when known: `{ type }`, else nothing. */

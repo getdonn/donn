@@ -274,9 +274,10 @@ files: `create`, `sync` and `build` write `secret://` refs and env names only.
 route token generated per run: send it as `Authorization: Bearer <token>` (`run --json` and
 `GET /agents` on the daemon give it). Sessions open eve's Docker sandbox, so Docker must be
 running. Without the daemon, `run` stays in the foreground until Ctrl-C. Through the daemon,
-secrets resolve in the daemon's environment: a daemon installed as a service (`donn daemon
-install`) has none of your shell's exports, so a `secret://env/…` ref set only there does not
-resolve; use the keychain provider for it, or run with the daemon stopped.
+`run` resolves `secret://env/…` refs in your shell and sends them with the request (kept in the
+daemon's memory for that run and its restarts, never logged); other providers resolve in the
+daemon. A run started from `donn ui` has no shell, so it refuses `secret://env/…` refs: use the
+keychain provider. A changed export does not reach a running agent: `donn agent stop`, then `run`.
 
 eve names a sandbox container per session (`eve-sbx-…`). When the server shuts down it stops
 them and keeps them, to start one again when its session resumes, and it removes one when its

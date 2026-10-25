@@ -62,6 +62,23 @@ export interface BridgeOptions {
   platform?: NodeJS.Platform;
 }
 
+/**
+ * The daemon's io with its agents marked as run from donn ui: such a run has no shell
+ * environment, so an env-provider ref fails rather than resolve in the daemon's (spec 26 §2).
+ * Set in process only: nothing a request or a terminal sends can mark or unmark a run.
+ */
+function fromUi(io: BridgeOptions["io"]): BridgeOptions["io"] {
+  const agents = io.agents;
+  if (agents === undefined) return io;
+  return {
+    ...io,
+    agents: {
+      ...agents,
+      run: (project, name) => agents.run(project, name, { origin: "ui" }),
+    },
+  };
+}
+
 export interface Bridge {
   port: number;
   /** A new one-time code, good for 60 s, that `POST /v1/session` exchanges for the UI token. */
@@ -214,6 +231,8 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   const now = options.now ?? Date.now;
   const idleMs = options.idleMs ?? IDLE_MS;
   const uiDir = options.uiDir ?? UI_DIR;
+  /** The io every run gets: agent runs marked as donn ui's. */
+  const runIo = fromUi(options.io);
   const token = randomBytes(32).toString("base64url");
   /** Outstanding one-time codes, with when each expires. */
   const codes = new Map<string, number>();
@@ -376,7 +395,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
     return send(
       res,
       200,
-      await options.runInProcess(options.io, request.argv, admitted.cwd),
+      await options.runInProcess(runIo, request.argv, admitted.cwd),
     );
   };
 
@@ -398,7 +417,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   const jobs = createJobs({
     // Checked as it was admitted; run where admit said (a global command: the home).
     run: (argv, cwd, lines) =>
-      options.runInProcess(options.io, argv, cwd ?? options.home, lines),
+      options.runInProcess(runIo, argv, cwd ?? options.home, lines),
     emit: (event: JobEvent) => broadcast(event),
     now,
     hold,

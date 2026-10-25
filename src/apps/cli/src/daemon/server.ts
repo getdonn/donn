@@ -303,25 +303,51 @@ interface Tracked {
   pid: number;
 }
 
-/** `{ project, name }` from `POST /agents/run|stop`'s body, or the reason it is not one. */
+/** At most this many env refs in a run request, and this many bytes of them in all. */
+const MAX_ENV_REFS = 100;
+const MAX_ENV_BYTES = 64 * 1024;
+
+/**
+ * `{ project, name, env? }` from `POST /agents/run|stop`'s body, or the reason it is not one.
+ * `env` (run only) maps `secret://` refs to values; a reason never quotes a value.
+ */
 function agentRequest(
   text: string,
-): { project: string; name: string } | string {
+): { project: string; name: string; env?: Record<string, string> } | string {
   let body: unknown;
   try {
     body = JSON.parse(text);
   } catch {
     return "the body is not JSON";
   }
-  const { project, name } = (body ?? {}) as {
+  const { project, name, env } = (body ?? {}) as {
     project?: unknown;
     name?: unknown;
+    env?: unknown;
   };
   if (typeof project !== "string" || !isAbsolute(project))
     return "project must be an absolute path";
   if (typeof name !== "string" || name === "")
     return "name must be an agent's name";
-  return { project, name };
+  if (env === undefined) return { project, name };
+  if (typeof env !== "object" || env === null || Array.isArray(env))
+    return "env must map secret:// refs to values";
+  const pairs = Object.entries(env);
+  if (
+    pairs.some(
+      ([ref, v]) => !ref.startsWith("secret://") || typeof v !== "string",
+    )
+  )
+    return "env must map secret:// refs to values";
+  if (pairs.length > MAX_ENV_REFS)
+    return `env has more than ${MAX_ENV_REFS} refs`;
+  const bytes = pairs.reduce(
+    (n, [ref, v]) =>
+      n + Buffer.byteLength(ref) + Buffer.byteLength(v as string),
+    0,
+  );
+  if (bytes > MAX_ENV_BYTES) return "env is over 64 KiB";
+  return { project, name, env: env as Record<string, string> };
 }
 
 /** `{ port? }` from `POST /ui/open`'s body (empty is `{}`), or the reason it is not one. */
@@ -862,7 +888,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             res,
             200,
             route === "POST /agents/run"
-              ? await agents.run(target.project, target.name)
+              ? await agents.run(
+                  target.project,
+                  target.name,
+                  target.env && { env: target.env },
+                )
               : {
                   agent: target.name,
                   ...(await agents.stop(target.project, target.name)),

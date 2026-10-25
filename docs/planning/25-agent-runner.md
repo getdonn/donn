@@ -278,6 +278,12 @@ Workflow world's database variable for `self-host`).
   installed as a service (spec 16) has none of the user's shell exports, so an unresolved
   `secret://env/…` ref's `fix` names that cause (use the keychain provider, or run with the
   daemon stopped). A note in `14` records the change to its "never resolves secrets" row.
+  *Amended 2026-10-25 (`26` §2, "Env secrets"):* a terminal `donn agent run` resolves the
+  agent's env-provider refs in its own shell and sends them in `POST /agents/run`'s `env`; the
+  daemon uses them for that run and its restarts after a sync, in memory only, and resolves every
+  other ref itself. A run started from `donn ui` sends none, so an env-provider ref fails with a
+  fix naming the keychain provider. A changed export does not restart a running agent: `donn
+  agent stop`, then `run`.
 - **`self-host`:** two supported paths, both shown in `env.json`:
   - the container resolves at start: the image's entrypoint is `donn agent exec <name> -- <start
     command>`, which works when a secret provider the persona names (for example Vault) is

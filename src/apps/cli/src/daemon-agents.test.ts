@@ -85,10 +85,16 @@ const call = (daemon: Daemon, method: string, path: string, body?: unknown) =>
 
 const startCall = () => spawn.calls.find((c) => c.args.includes("start"));
 
-const cli = (argv: string[], cliSpawn: FakeEve = fakeEve()) =>
+/** `donn agent <argv>` in a terminal whose shell exports `env` (the persona's secrets). */
+const cli = (
+  argv: string[],
+  cliSpawn: FakeEve = fakeEve(),
+  env: NodeJS.ProcessEnv = SECRETS,
+) =>
   zz(["agent", ...argv, "--project", s.repo], {
     cwd: s.root,
     home: s.home,
+    env,
     probe: agentProbe(),
     spawn: cliSpawn,
   });
@@ -225,7 +231,7 @@ describe("the daemon's agents", () => {
     );
     expect(details.fix).toContain("keychain provider");
     expect(details.fix).toContain(
-      "`donn agent run kody` with the daemon stopped",
+      "`donn agent run kody` in a terminal, which passes its env-provider secrets to the daemon",
     );
     expect(startCall()).toBeUndefined();
     await vi.waitFor(() =>
@@ -836,6 +842,196 @@ describe("donn agent run|stop|list and status through the daemon", () => {
       leftovers: 1,
       exited: 1,
     });
+  });
+});
+
+describe("env-provider secrets of a run (spec 26 §2)", () => {
+  /** Values only this test's terminal exports: the daemon's env has none of them. */
+  const SHELL = { GATEWAY_KEY: "sk-gw-SHELLONLY", API_TOKEN: "tok-SHELLONLY" };
+  const persona = () => join(s.repo, ".donn/persona.yaml");
+  const starts = () => spawn.calls.filter((c) => c.args.includes("start"));
+  const daemonLog = () =>
+    readFileSync(join(s.home, "daemon/daemon.log"), "utf8");
+  /** Everything the daemon shows or keeps about its runs, as text. */
+  const shown = async (daemon: Daemon) =>
+    [
+      JSON.stringify((await call(daemon, "GET", "/agents")).body),
+      JSON.stringify((await call(daemon, "GET", "/status")).body),
+      JSON.stringify(events),
+      daemonLog(),
+      readFileSync(agentLogPath(s.home, s.repo, "kody"), "utf8"),
+      (await zz(["status", "--json"], { cwd: s.root, home: s.home })).stdout,
+    ].join("\n");
+
+  it(
+    "a terminal run sends its env-provider values; the daemon never shows them",
+    { timeout: 15_000 },
+    async () => {
+      printed = ["using tok-SHELLONLY", ...START_LINES()];
+      spawn = fakeEve({
+        replies: [
+          { eve: ["build"], lines: ["built"] },
+          { eve: ["start"], lines: printed, hold: true },
+        ],
+      });
+      const daemon = await start({});
+      const ran = await cli(["run", "kody", "--json"], fakeEve(), SHELL);
+      expect(ran.stderr).toBe("");
+      expect(ran.code).toBe(0);
+      expect(startCall()!.env.API_TOKEN).toBe("tok-SHELLONLY");
+      expect(Object.values(startCall()!.env)).toContain("sk-gw-SHELLONLY");
+      const text = await shown(daemon);
+      expect(text).toContain("using ***");
+      expect(text).not.toContain("SHELLONLY");
+
+      // Values that changed in the shell do not restart a running agent.
+      const again = await cli(["run", "kody", "--json"], fakeEve(), {
+        ...SHELL,
+        API_TOKEN: "tok-CHANGED",
+      });
+      expect(JSON.parse(again.stdout)).toMatchObject({ already: true });
+      expect(starts()).toHaveLength(1);
+    },
+  );
+
+  it(
+    "a restart after a sync keeps the values the run started with",
+    { timeout: 15_000 },
+    async () => {
+      const daemon = await start({});
+      expect(
+        (await cli(["run", "kody", "--json"], fakeEve(), SHELL)).code,
+      ).toBe(0);
+      const text = readFileSync(persona(), "utf8");
+      writeFileSync(
+        persona(),
+        text.replace("GREETING: hello", "GREETING: hello-again"),
+      );
+      await vi.waitFor(() => expect(starts()).toHaveLength(2), {
+        timeout: 5_000,
+      });
+      expect(starts()[1]!.env.GREETING).toBe("hello-again");
+      expect(starts()[1]!.env.API_TOKEN).toBe("tok-SHELLONLY");
+      await vi.waitFor(() =>
+        expect(events.map((e) => e.type)).toContain("agent.started"),
+      );
+      expect(await shown(daemon)).not.toContain("SHELLONLY");
+    },
+  );
+
+  it(
+    "a restart drops a sent value whose ref the persona no longer uses",
+    { timeout: 15_000 },
+    async () => {
+      await start({ OTHER_TOKEN: "tok-DAEMON" });
+      expect(
+        (await cli(["run", "kody", "--json"], fakeEve(), SHELL)).code,
+      ).toBe(0);
+      const text = readFileSync(persona(), "utf8");
+      writeFileSync(
+        persona(),
+        text.replace(
+          "API_TOKEN: secret://env/API_TOKEN",
+          "API_TOKEN: secret://env/OTHER_TOKEN",
+        ),
+      );
+      await vi.waitFor(() => expect(starts()).toHaveLength(2), {
+        timeout: 5_000,
+      });
+      expect(starts()[1]!.env.API_TOKEN).toBe("tok-DAEMON");
+      expect(Object.values(starts()[1]!.env)).toContain("sk-gw-SHELLONLY");
+    },
+  );
+
+  it("a terminal whose shell lacks a value fails before asking the daemon", async () => {
+    await start();
+    const ran = await cli(["run", "kody", "--json"], fakeEve(), {
+      GATEWAY_KEY: "sk-gw-SECRET",
+    });
+    expect(ran.code).not.toBe(0);
+    expect(JSON.parse(ran.stdout)).toMatchObject({
+      error: { code: "secret-unresolved" },
+    });
+    expect(ran.stdout).toContain("secret://env/API_TOKEN");
+    expect(startCall()).toBeUndefined();
+  });
+
+  it("a run donn ui starts has no shell: env-provider refs fail with the fix", async () => {
+    // Even with the values in the daemon's own env: the UI is no shell.
+    const daemon = await start();
+    const opened = await call(daemon, "POST", "/ui/open", {});
+    const { port, code } = opened.body as { port: number; code: string };
+    const bridge = (path: string, body: unknown, token?: string) =>
+      fetch(`http://127.0.0.1:${port}${path}`, {
+        method: path.startsWith("/v1/jobs/") ? "GET" : "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(token !== undefined && { authorization: `Bearer ${token}` }),
+        },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      }).then(async (res) => (await res.json()) as Record<string, unknown>);
+    const { token } = (await bridge("/v1/session", { code })) as {
+      token: string;
+    };
+    const fix =
+      "a run started from donn ui has no shell environment: use the keychain provider for secret://env/API_TOKEN and secret://env/GATEWAY_KEY, or run donn agent run kody in a terminal";
+    const argv = ["agent", "run", "kody", "--json"];
+    const ran = await bridge("/v1/run", { argv, cwd: s.repo }, token);
+    expect(ran.exitCode).toBe(1);
+    expect(JSON.parse(ran.stdout as string)).toMatchObject({
+      error: { code: "secret-unresolved", fix },
+    });
+    const { id } = (await bridge("/v1/jobs", { argv, cwd: s.repo }, token)) as {
+      id: string;
+    };
+    await vi.waitFor(async () =>
+      expect(await bridge(`/v1/jobs/${id}`, undefined, token)).toMatchObject({
+        state: "done",
+      }),
+    );
+    const job = await bridge(`/v1/jobs/${id}`, undefined, token);
+    expect(job.exitCode).toBe(1);
+    expect(JSON.parse(job.stdout as string)).toMatchObject({
+      error: { code: "secret-unresolved", fix },
+    });
+    expect(startCall()).toBeUndefined();
+  });
+
+  it("refuses an env that is not refs to strings, too big, or not the agent's", async () => {
+    const daemon = await start({});
+    for (const env of [
+      "x",
+      ["tok"],
+      { "secret://env/API_TOKEN": 1 },
+      { API_TOKEN: "tok" },
+      Object.fromEntries(
+        Array.from({ length: 101 }, (_, i) => [`secret://env/K${i}`, "v"]),
+      ),
+      { "secret://env/API_TOKEN": "x".repeat(65 * 1024) },
+    ]) {
+      const ran = await call(daemon, "POST", "/agents/run", {
+        project: s.repo,
+        name: "kody",
+        env,
+      });
+      expect(ran.status, JSON.stringify(env).slice(0, 80)).toBe(400);
+      expect(ran.body).toMatchObject({ error: { code: "bad-request" } });
+    }
+    const unused = await call(daemon, "POST", "/agents/run", {
+      project: s.repo,
+      name: "kody",
+      env: { ...SHELL_REFS(), "secret://env/OTHER": "tok-NOTUSED" },
+    });
+    expect(unused.status).toBe(400);
+    expect(unused.body).toMatchObject({ error: { code: "env-not-used" } });
+    expect(JSON.stringify(unused.body)).not.toContain("tok-NOTUSED");
+    expect(daemonLog()).not.toContain("tok-NOTUSED");
+    expect(startCall()).toBeUndefined();
+  });
+
+  const SHELL_REFS = () => ({
+    "secret://env/GATEWAY_KEY": SHELL.GATEWAY_KEY,
+    "secret://env/API_TOKEN": SHELL.API_TOKEN,
   });
 });
 
