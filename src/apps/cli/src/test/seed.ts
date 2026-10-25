@@ -127,6 +127,7 @@ export async function zz(
       | "openBrowser"
       | "sleep"
       | "signal"
+      | "passwdHome"
     >
   >,
 ): Promise<RunResult> {
@@ -157,6 +158,7 @@ export async function zz(
     ...(options.openBrowser && { openBrowser: options.openBrowser }),
     ...(options.sleep && { sleep: options.sleep }),
     ...(options.signal && { signal: options.signal }),
+    ...(options.passwdHome && { passwdHome: options.passwdHome }),
   });
   const code = await cli.run(argv);
   return { code, stdout, stderr };

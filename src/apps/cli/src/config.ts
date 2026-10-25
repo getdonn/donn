@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
 import { CliError } from "./errors.js";
+import { userHomeDir } from "./userhome.js";
 
 // <home>/config.yaml. See docs/planning/06-cli-core-loop.md, section 1.
 
@@ -30,10 +30,11 @@ export function expandPath(
   path: string,
   base: string,
   env: NodeJS.ProcessEnv,
+  passwd?: () => string | undefined,
 ): string {
   // resolve() drops a trailing slash, so "~/p/" and "~/p" name the same folder.
   if (path === "~" || path.startsWith("~/")) {
-    return resolve(env.HOME ?? homedir(), path.slice(2));
+    return resolve(userHomeDir(env, passwd), path.slice(2));
   }
   return resolve(base, path);
 }

@@ -37,6 +37,7 @@ import { secretContext } from "../secret-context.js";
 import { loadConfig, type Config } from "../config.js";
 import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
+import { absoluteHome } from "../daemon/service.js";
 import { HARNESSES } from "../harness.js";
 import { LEGACY } from "../migrate/legacy.js";
 import {
@@ -259,7 +260,8 @@ export async function runChecks(
   const add = (id: string, status: Status, message: string, fix?: string) =>
     checks.push({ id, status, message, ...(fix !== undefined && { fix }) });
   const skip = (id: string, because: string) => add(id, "skipped", because);
-  const home = homeOf(io);
+  // As donn uses it: a relative DONN_HOME is relative to the working folder.
+  const home = absoluteHome(io, homeOf(io));
 
   // migrate: a home from before the rename, not migrated yet (spec 22 §3). First, because running
   // other fixes (init, mod install) first would make the new home and stand in migrate's way.
@@ -815,7 +817,7 @@ export async function runChecks(
         "build",
         "warn",
         summary,
-        `donn doctor --fix (it removes only what no running session uses; deleting ${shellWord(buildRoot)} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
+        `donn doctor --fix (it removes only what no running session uses; deleting ${shellWord(absoluteHome(io, buildRoot))} entirely is also safe, builds are recreated on launch, but leave session folders of running sessions alone)`,
       );
     }
   }

@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { resolve, ResolveError } from "@getdonn/resolver";
 import type { ResolveResult } from "@getdonn/spec";
@@ -10,6 +9,7 @@ import {
 } from "@getdonn/store-local";
 import { normaliseUrl, readIndex, withRegistry } from "@getdonn/store-remote";
 import type { CliIo } from "./cli.js";
+import { userHomeDir } from "./userhome.js";
 import { loadConfig, type Config } from "./config.js";
 import { CliError } from "./errors.js";
 import type { Selection } from "./select.js";
@@ -29,7 +29,7 @@ export interface Context {
 
 /** DONN_HOME, or ~/.donn. An empty DONN_HOME counts as unset. */
 export function homeOf(io: CliIo): string {
-  return io.env.DONN_HOME || join(io.env.HOME || homedir(), ".donn");
+  return io.env.DONN_HOME || join(userHomeDir(io.env, io.passwdHome), ".donn");
 }
 
 export async function createContext(

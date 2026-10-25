@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep, isAbsolute } from "node:path";
 import {
   deleteKeychainItem,
   getKeychainItem,
@@ -134,6 +134,12 @@ export interface PlanOptions {
 /** The user's home folder, the old donn home in it, and where the new one goes. */
 function where(io: CliIo) {
   const user = userHome(io);
+  if (!isAbsolute(user)) {
+    throw new CliError(
+      "migrate-home",
+      `could not find your home folder (HOME is ${io.env.HOME ? `"${io.env.HOME}"` : "empty"} and the system has no record of one); set HOME to an absolute path and run donn migrate again`,
+    );
+  }
   const src = legacyHome(io);
   const target = absoluteHome(io, homeOf(io));
   /**
@@ -200,7 +206,7 @@ async function personasFolder(
     personas = undefined; // a broken config.yaml: doctor says so afterwards
   }
   return typeof personas === "string" && personas !== ""
-    ? expandPath(personas, home, io.env)
+    ? expandPath(personas, home, io.env, io.passwdHome)
     : undefined;
 }
 
@@ -295,7 +301,7 @@ export async function pendingProjects(
   const state = await readState(w.live()).catch(() => undefined);
   const dirs = new Set<string>();
   for (const key of Object.keys(state?.projects ?? {})) {
-    const dir = await unmigratedRepo(key);
+    const dir = await unmigratedRepo(key).catch(() => undefined);
     if (dir !== undefined) dirs.add(dir);
   }
   return [...dirs]

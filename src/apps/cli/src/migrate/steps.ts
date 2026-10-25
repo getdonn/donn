@@ -14,7 +14,6 @@ import {
   stat,
   symlink,
 } from "node:fs/promises";
-import { homedir } from "node:os";
 import {
   basename,
   dirname,
@@ -32,6 +31,7 @@ import { MARKETPLACE } from "../commands/mod.js";
 import { CliError } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { isDaemonProcess } from "../daemon/process.js";
+import { userHomeDir } from "../userhome.js";
 import { LEGACY } from "./legacy.js";
 
 // The pieces `donn migrate` is made of. Each one can run again: it looks at what is on disk and
@@ -45,18 +45,19 @@ const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes(errno(error) ?? "");
 
 /** The user's home folder as the environment gives it, else the system's (an empty HOME is unset). */
-export const userHome = (io: Pick<CliIo, "env">) => io.env.HOME || homedir();
+export const userHome = (io: Pick<CliIo, "env" | "passwdHome">) =>
+  userHomeDir(io.env, io.passwdHome);
 
 /** The old home (`~/.zzpersona`): where doctor and migrate both look for one. */
-export const legacyHome = (io: Pick<CliIo, "env">) =>
+export const legacyHome = (io: Pick<CliIo, "env" | "passwdHome">) =>
   join(userHome(io), LEGACY.home);
 
 /**
- * A POSIX-shell word: as is when plainly safe (a leading `~/` stays, so the shell expands it),
- * otherwise single-quoted with embedded quotes written as '\''.
+ * A POSIX-shell word: as is when plainly safe, otherwise single-quoted with embedded quotes
+ * written as '\''. A leading `~` is quoted: donn never expands it in a path of its own.
  */
 export const shellWord = (value: string) =>
-  /^(?:~\/)?[A-Za-z0-9_@%+=:,./-]+$/.test(value)
+  /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) && !value.startsWith("~")
     ? value
     : `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -155,18 +156,22 @@ export async function initOrLoginAdvice(
     parseYaml,
   )?.value as
     { personas?: string; registry?: { url?: string } } | null | undefined;
-  const sets = [
+  // What the home holds that remove would discard, as the commands that set it again.
+  const again = [
     ...(config?.personas === undefined
       ? []
-      : [`personas: ${shellWord(config.personas)}`]),
-    ...(config?.registry?.url === undefined
-      ? []
-      : [`registry: ${config.registry.url}`]),
+      : [`donn init --personas ${shellWord(config.personas)}`]),
+    ...(files.some((file) => file.includes("registry"))
+      ? [
+          `donn login${config?.registry?.url === undefined ? "" : ` ${shellWord(config.registry.url)}`}`,
+        ]
+      : []),
   ];
-  const login = files.some((file) => file.includes("registry"))
-    ? `, then run \`donn login${config?.registry?.url === undefined ? "" : ` ${shellWord(config.registry.url)}`}\` again`
-    : "";
-  return `${daemon}${mod}remove ${shellWord(target)}${sets.length > 0 ? ` (it sets ${sets.join(", ")})` : ""}, run \`donn migrate\`${login}`;
+  const rerun =
+    again.length > 0
+      ? `, then run ${again.map((c) => `\`${c}\``).join(" and ")} again`
+      : "";
+  return `${daemon}${mod}remove ${shellWord(target)}, run \`donn migrate\`${rerun}`;
 }
 
 /** The refusal when the target holds only what `donn init` and `donn login` wrote. */
@@ -426,10 +431,10 @@ export async function moveHome(
     (await realpath(dirname(src)).catch(() => dirname(src))) !==
       (await realpathLoose(dirname(target)));
   const reach = relink ? await realpath(src).catch(() => undefined) : undefined;
-  const notReproduced = () =>
+  const notReproduced = (changed = false) =>
     new CliError(
       "migrate-copy",
-      `${src} is a link that could not be reproduced at ${target}; nothing was moved: point ${src} at its folder by an absolute path, then run donn migrate again`,
+      `${src} is a link that could not be reproduced at ${target}; ${changed ? "the old link was not touched" : "nothing was moved"}: point ${src} at its folder by an absolute path, then run donn migrate again`,
       { src, target },
     );
   if (relink && reach === undefined) throw notReproduced();
@@ -440,8 +445,9 @@ export async function moveHome(
   if (relink && reach !== undefined) {
     await symlink(reach, staging);
     if ((await realpath(staging).catch(() => "")) !== reach) {
+      // Practically unreachable (reach is a realpath); the folders made above may remain.
       await rm(staging, { recursive: true, force: true });
-      throw notReproduced();
+      throw notReproduced(true);
     }
     await move(src, aside);
     await move(staging, target);

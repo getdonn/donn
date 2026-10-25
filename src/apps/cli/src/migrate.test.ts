@@ -1951,6 +1951,7 @@ describe("rename leftovers: doctor finds the old home as migrate does", () => {
     try {
       const r = await donn(m, ["doctor", "--json"], {
         env: { HOME: undefined },
+        passwdHome: () => user(),
       });
       const checks = json(r).checks as Check[];
       expect(checks[0]).toEqual({
@@ -2044,9 +2045,14 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
 
   const REGISTRY_CONFIG = `registry:\n  url: ${REGISTRY}\n`;
   const MOD = "run `donn mod uninstall` if the donn mod is installed, ";
-  /** `sets` is what the home holds that remove would discard: the personas folder, the url. */
-  const advice = (sets: string, login: boolean, mod = true) =>
-    `${mod ? MOD : ""}remove ${newHome()} (it sets ${sets}), run \`donn migrate\`${login ? `, then run \`donn login ${REGISTRY}\` again` : ""}`;
+  /** `personas` and `login` are what the home holds that remove would discard, as commands to run again. */
+  const advice = (personas: string, login: boolean, mod = true) => {
+    const again = [
+      ...(personas ? [`\`donn init --personas ${personas}\``] : []),
+      ...(login ? [`\`donn login ${REGISTRY}\``] : []),
+    ];
+    return `${mod ? MOD : ""}remove ${newHome()}, run \`donn migrate\`${again.length ? `, then run ${again.join(" and ")} again` : ""}`;
+  };
   const what = (files: string) =>
     `${newHome()} holds only what donn init or donn login wrote (${files}); donn migrate moves the old home's settings`;
 
@@ -2055,7 +2061,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
       "init only",
       [["config.yaml", "personas: /p\n"]],
       "config.yaml (personas)",
-      "personas: /p",
+      "/p",
       false,
     ],
     [
@@ -2065,14 +2071,14 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         ["registry-token", "t\n"],
       ],
       "config.yaml (registry), registry-token",
-      `registry: ${REGISTRY}`,
+      "",
       true,
     ],
     [
       "login through the keychain",
       [["config.yaml", REGISTRY_CONFIG]],
       "config.yaml (registry)",
-      `registry: ${REGISTRY}`,
+      "",
       true,
     ],
     [
@@ -2082,7 +2088,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
         ["registry-token", "t\n"],
       ],
       "config.yaml (personas, registry), registry-token",
-      `personas: /p, registry: ${REGISTRY}`,
+      "/p",
       true,
     ],
   ];
@@ -2120,7 +2126,7 @@ describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
     put(join(newHome(), "config.yaml"), "personas: /p\n");
     const r = await donn(m, ["migrate", "--yes", "--json"]);
     expect(json(r).error.message).toBe(
-      `${what("config.yaml (personas)")}; ${advice("personas: /p", false, false)}`,
+      `${what("config.yaml (personas)")}; ${advice("/p", false, false)}`,
     );
   });
 
@@ -2322,10 +2328,9 @@ describe("review notes: advice is pasteable", () => {
 
   it("quotes only what a shell would split or expand", () => {
     expect(shellWord("/a/b-c_d.e,f@g+h=i:j%k")).toBe("/a/b-c_d.e,f@g+h=i:j%k");
-    expect(shellWord("~/personas")).toBe("~/personas");
+    expect(shellWord("~/personas")).toBe("'~/personas'");
     expect(shellWord("/my repo")).toBe("'/my repo'");
     expect(shellWord("it's")).toBe("'it'\\''s'");
-    expect(shellWord("~/my repo")).toBe("'~/my repo'");
     expect(shellWord("$HOME")).toBe("'$HOME'");
   });
 
@@ -2364,9 +2369,9 @@ describe("review notes: advice is pasteable", () => {
       "config.yaml (personas, registry)",
       "registry-token",
     ]);
-    expect(advice).toContain(`remove ${q(target)} (`);
-    expect(advice).toContain(`personas: ${q("/my p/it's")}`);
-    expect(advice).toContain(`donn login ${q("http://h/?a=1&b=2")}\` again`);
+    expect(advice).toContain(`remove ${q(target)},`);
+    expect(advice).toContain(`\`donn init --personas ${q("/my p/it's")}\``);
+    expect(advice).toContain(`\`donn login ${q("http://h/?a=1&b=2")}\``);
   });
 });
 
@@ -2429,27 +2434,55 @@ describe("review notes: a relative link moved to another folder", () => {
 });
 
 describe("review notes: an empty HOME counts as unset", () => {
-  it("finds the old home under the system's home folder", async () => {
+  it("uses the system's home folder for it, and does not read process.env", async () => {
     const m = machine();
     oldInstall(m);
-    const saved = process.env.HOME;
-    process.env.HOME = user();
-    try {
-      const d = await donn(m, ["doctor", "--json"], { env: { HOME: "" } });
-      const first = (json(d).checks as { id: string; message: string }[])[0]!;
-      expect(first.id).toBe("migrate");
-      expect(first.message).toBe(
-        `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
-      );
-      const r = await donn(m, ["migrate", "--yes", "--json"], {
-        env: { HOME: "" },
-      });
-      expect(r.code, r.stdout + r.stderr).toBe(0);
-      expect(existsSync(newHome())).toBe(true);
-      expect(existsSync(oldHome())).toBe(false);
-    } finally {
-      if (saved === undefined) delete process.env.HOME;
-      else process.env.HOME = saved;
-    }
+    const passwdHome = () => user();
+    const d = await donn(m, ["doctor", "--json"], {
+      env: { HOME: "" },
+      passwdHome,
+    });
+    const first = (json(d).checks as { id: string; message: string }[])[0]!;
+    expect(first.id).toBe("migrate");
+    expect(first.message).toBe(
+      `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { HOME: "" },
+      passwdHome,
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(existsSync(newHome())).toBe(true);
+    expect(existsSync(oldHome())).toBe(false);
+  });
+
+  it("refuses when no absolute home folder can be found, changing nothing", async () => {
+    const m = machine();
+    oldInstall(m);
+    mkdirSync(join(root, "repo/.zzpersona"), { recursive: true });
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      cwd: join(root, "repo"),
+      env: { HOME: "" },
+      passwdHome: () => "relative/home",
+    });
+    expect(r.code).toBe(1);
+    expect(json(r).error.code).toBe("migrate-home");
+    expect(existsSync(oldHome())).toBe(true);
+    expect(existsSync(join(root, "repo/.donn"))).toBe(false);
+    expect(changes(m)).toEqual([]);
+  });
+});
+
+describe("review notes: doctor names the home as donn uses it", () => {
+  it("shows an absolute path to remove when DONN_HOME is relative", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(join(root, "rel/config.yaml"), "personas: /p\n");
+    const d = await donn(m, ["doctor", "--json"], {
+      env: { DONN_HOME: "rel" },
+    });
+    const first = (json(d).checks as { id: string; fix?: string }[])[0]!;
+    expect(first.id).toBe("migrate");
+    expect(first.fix).toContain(`remove ${join(root, "rel")},`);
   });
 });
