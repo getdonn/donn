@@ -83,7 +83,9 @@ binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardenin
 install); the first npm publish is done: spec 27 shipped release 0.14.0 on 2026-10-24, with the 13
 runtime packages on npm (trusted publishing, provenance) and `getdonn/donn` public. Next: the agents
 and GUI track, specs 23–26 (designed 2026-10-24): spec 23 is built (`models` and `agents` in the
-spec, the resolver and the capability matrix); specs 24–26 are designed, not built.
+spec, the resolver and the capability matrix) and spec 24 is built (`AgentAdapter`,
+`@getdonn/adapter-eve`, the agent half of the capability matrix; the adapter becomes the 14th public
+package with the next release); specs 25–26 are designed, not built.
 
 ## Conventions (once code exists)
 

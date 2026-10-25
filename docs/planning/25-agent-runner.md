@@ -7,6 +7,27 @@
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
 > *Amended 2026-10-25:* eve 0.83.2 facts in §2 (template sources, `eve init`), §4 (sandbox,
 > checkout) and §6 (`--answer`, `--yes`); see `24`'s "Re-check 2026-10-25".
+> *Amended 2026-10-25 (build of `24`):* obligations the adapter leaves to the CLI, found while
+> building it and running real eve 0.83.2 (details in `24`'s build notes and
+> `spikes/eve-slots/FINDINGS.md`):
+> - **Skill texts.** `create` and `sync` supply `texts` for every file of each local skill
+>   directory (keys `<source>/<file>`); a skill without `<source>/SKILL.md` makes the compile
+>   throw `AdapterInputError`.
+> - **The manifest.** `manifestFiles(files, hash)` takes the compile's whole `files` map and
+>   leaves `COPY_PENDING` for each `copyFrom` entry; the CLI copies the directory, then replaces
+>   the entry with one hash per copied file. `isKnownTemplate` is not exported: callers learn of
+>   an unknown template from the compile's `portability-unknown` entry.
+> - **Dependencies.** Besides eve, `create` adds `ai@^7.0.152` and the gateway's AI SDK package
+>   (`@ai-sdk/openai-compatible@^3` or `@ai-sdk/anthropic@^4`) to the agent's `package.json`
+>   (plus `@workflow/world-postgres` for `self-host`).
+> - **`pnpm add` and `install`** can exit non-zero with `ERR_PNPM_IGNORED_BUILDS` (`cbor-extract`)
+>   after the install completed; treat that code as success when the dependencies are in place.
+> - **Docker.** A pinned Docker `sandbox.ts` (self-host) makes `eve build` fail on a host without
+>   a Docker daemon; `eve build --skip-sandbox-prewarm` avoids it.
+> - **tsconfig.** A template's `tsconfig.json` may need `skipLibCheck: true` for the agent to
+>   type-check with the AI SDK packages; `create` checks and says so rather than editing it.
+> - **Running.** Session routes answer 401 under `eve start`; the e2e drives `eve dev --no-ui`
+>   with `NODE_ENV=development`.
 
 ## Intent
 
