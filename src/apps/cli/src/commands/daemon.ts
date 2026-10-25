@@ -33,6 +33,11 @@ export interface DaemonCommandOptions {
 }
 
 const WAIT_MS = 5_000;
+/**
+ * How long a stop waits for a daemon that runs agents: each gets SIGTERM, SIGKILL after 10 s
+ * (in parallel), then `docker ps`. See docs/planning/25-agent-runner.md §4.
+ */
+export const AGENTS_STOP_WAIT_MS = 20_000;
 const POLL_MS = 25;
 
 /** This CLI's version, from its package.json (src/ and dist/ sit side by side). */
@@ -91,8 +96,11 @@ export async function startDaemonProcess(
 }
 
 /** Poll until `done` holds or the wait runs out. */
-async function waitUntil(done: () => Promise<boolean>): Promise<boolean> {
-  const deadline = Date.now() + WAIT_MS;
+async function waitUntil(
+  done: () => Promise<boolean>,
+  waitMs = WAIT_MS,
+): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
   while (Date.now() < deadline) {
     if (await done()) return true;
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -212,6 +220,9 @@ async function stopDaemon(home: string): Promise<boolean> {
   const other = pid > 0 && pid !== process.pid;
   let stopped = false;
   let gone: () => boolean;
+  // A daemon stops its agents before it lets go: give it their kill window.
+  const waitMs =
+    (client?.probed.agents ?? []).length > 0 ? AGENTS_STOP_WAIT_MS : WAIT_MS;
   if (client) {
     await client.shutdown();
     stopped = true;
@@ -226,7 +237,7 @@ async function stopDaemon(home: string): Promise<boolean> {
     }
     gone = () => !isAlive(pid);
   }
-  if (stopped && !(await waitUntil(async () => gone()))) {
+  if (stopped && !(await waitUntil(async () => gone(), waitMs))) {
     throw new CliError(
       "daemon-stop",
       `the daemon (pid ${pid}) did not stop; kill ${pid}`,

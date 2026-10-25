@@ -145,6 +145,99 @@ describe("startAgent", () => {
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
+  /** A probe whose `docker ps` records whether the group still ran when it was asked. */
+  const watching = (spawn: FakeEve) => {
+    const probe = agentProbe(["c1"]);
+    const alive: boolean[] = [];
+    const run = probe.run;
+    probe.run = async (command, args) => {
+      if (command === "docker") alive.push(startCall(spawn)!.alive());
+      return run(command, args);
+    };
+    return { probe, alive };
+  };
+
+  it("stop waits for a server that outlives pnpm exec, then counts", async () => {
+    const spawn = fakeEve({
+      replies: [
+        { eve: ["build"] },
+        { eve: ["start"], lines: START_LINES(), hold: true, linger: 150 },
+      ],
+    });
+    const { probe, alive } = watching(spawn);
+    const agent = await startAgent(
+      io(spawn, probe),
+      dir,
+      {},
+      {
+        ...options,
+        killAfterMs: 5_000,
+      },
+    );
+    expect(await agent.stop()).toEqual({ leftovers: 1 });
+    expect(startCall(spawn)!.kills).toEqual(["SIGTERM"]);
+    expect(alive).toEqual([false]);
+  });
+
+  it("stop kills a server that hangs after pnpm exec exits", async () => {
+    const spawn = fakeEve({
+      replies: [
+        { eve: ["build"] },
+        {
+          eve: ["start"],
+          lines: START_LINES(),
+          hold: true,
+          linger: "until-kill",
+        },
+      ],
+    });
+    const { probe, alive } = watching(spawn);
+    const agent = await startAgent(
+      io(spawn, probe),
+      dir,
+      {},
+      {
+        ...options,
+        killAfterMs: 50,
+      },
+    );
+    expect(await agent.stop()).toEqual({ leftovers: 1 });
+    expect(startCall(spawn)!.kills).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(alive).toEqual([false]);
+  });
+
+  it("stop after pnpm exec ended on its own still ends the server's group", async () => {
+    let exit!: (code: number) => void;
+    const spawn = fakeEve({
+      replies: [
+        { eve: ["build"] },
+        {
+          eve: ["start"],
+          lines: START_LINES(),
+          hold: true,
+          until: new Promise<number>((resolve) => (exit = resolve)),
+          linger: "until-kill",
+        },
+      ],
+    });
+    const { probe, alive } = watching(spawn);
+    const agent = await startAgent(
+      io(spawn, probe),
+      dir,
+      {},
+      {
+        ...options,
+        killAfterMs: 50,
+      },
+    );
+    exit(1);
+    expect(await agent.exited).toBe(1);
+    expect(startCall(spawn)!.alive()).toBe(true);
+    expect(await agent.stop()).toEqual({ leftovers: 1 });
+    expect(startCall(spawn)!.kills).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(alive).toEqual([false]);
+  });
+
   it("counts no leftovers when docker does not answer", async () => {
     const probe = agentProbe();
     probe.run = async () => ({ exitCode: 1, stdout: "", stderr: "no docker" });
@@ -351,5 +444,50 @@ describe("donn agent run|stop|logs without a daemon", () => {
     const r = await pending;
     expect(r.code).toBe(0);
     expect(r.stdout).toBe("first\nsecond\n");
+  });
+});
+
+describe("donn agent run of a vercel agent", () => {
+  let s: Seeded;
+  beforeEach(async () => {
+    s = seed();
+    agentProject(s, "vercel");
+    await createAgent(s);
+  });
+  afterEach(() => s.cleanup());
+
+  it("is refused before a secret resolves: eve start cannot serve it", async () => {
+    const spawn = serving();
+    const r = await zz(
+      ["agent", "run", "kody", "--json", "--project", s.repo],
+      {
+        cwd: s.root,
+        home: s.home,
+        env: {},
+        probe: agentProbe(),
+        spawn,
+      },
+    );
+    expect(r.code).not.toBe(0);
+    const error = JSON.parse(r.stdout || r.stderr).error;
+    expect(error).toMatchObject({
+      code: "target-not-runnable",
+      target: "vercel",
+      fix: "donn agent run kody --dev",
+    });
+    expect(spawn.calls).toHaveLength(0);
+  });
+
+  it("--dev still runs it", async () => {
+    const spawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await zz(["agent", "run", "kody", "--dev", "--project", s.repo], {
+      cwd: s.root,
+      home: s.home,
+      env: SECRETS,
+      probe: agentProbe(),
+      spawn,
+    });
+    expect(r.code).toBe(0);
+    expect(spawn.calls.map((c) => c.args)).toEqual([["exec", "eve", "dev"]]);
   });
 });

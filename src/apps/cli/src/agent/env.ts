@@ -45,10 +45,15 @@ export async function agentEnvironment(
   ctx: Context,
   io: CliIo,
   name: string,
-  options: { resolve: boolean },
+  options: {
+    resolve: boolean;
+    /** Runs on the declared agent before any secret is resolved; it may throw. */
+    check?: (target: string) => void;
+  },
 ): Promise<AgentEnvironment> {
   const { root, result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
   const agent = result.ir.agents[name]!;
+  options.check?.(agent.target);
   const output = compile(
     await compileInputs(ctx, result.ir, name, dir, manifest.frameworkVersion),
   );

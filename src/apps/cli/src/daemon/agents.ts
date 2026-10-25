@@ -63,7 +63,9 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
 
   const launch = async (project: string, name: string) => {
     const ctx = await projectContext(io, project);
-    const { root, dir, values, secrets } = await runEnvironment(ctx, io, name);
+    const { root, dir, values, secrets } = await runEnvironment(ctx, io, name, {
+      start: true,
+    });
     const path = agentLogPath(options.home, root, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const agentLog = createLog(path, options.now);

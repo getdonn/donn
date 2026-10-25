@@ -23,6 +23,11 @@ export interface SpawnHandle {
   exited: Promise<number>;
   /** Signals the process, or its whole group when it was spawned `detached`. */
   kill(signal?: NodeJS.Signals): void;
+  /**
+   * Whether the process runs, or for a `detached` one whether anything in its group does: a
+   * server can outlive the `pnpm exec` that started it.
+   */
+  alive(): boolean;
 }
 
 export type Spawn = (
@@ -83,6 +88,18 @@ export const nodeSpawn: Spawn = (command, args, options) => {
   return {
     pid: child.pid,
     exited,
+    alive() {
+      if (options.detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, 0);
+          return true;
+        } catch (error) {
+          // EPERM: a member runs as someone else, so the group is not gone.
+          return (error as NodeJS.ErrnoException).code === "EPERM";
+        }
+      }
+      return child.exitCode === null && child.signalCode === null;
+    },
     kill(signal = "SIGTERM") {
       try {
         if (options.detached && child.pid !== undefined) {

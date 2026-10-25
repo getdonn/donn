@@ -14,6 +14,8 @@ export interface FakeEveCall {
   inherit?: boolean;
   /** The signals sent through the handle's `kill`, in order. */
   kills: NodeJS.Signals[];
+  /** The handle's `alive()`: whether the process, or its lingering group, still runs. */
+  alive: () => boolean;
 }
 
 export interface FakeEveReply {
@@ -30,6 +32,11 @@ export interface FakeEveReply {
   ignore?: NodeJS.Signals[];
   /** With `hold`: also exits on its own, with this code, once it settles. */
   until?: Promise<number>;
+  /**
+   * After the process exits, its group (the server under `pnpm exec`) runs on for this many
+   * ms, or until a SIGKILL; `alive()` reports it.
+   */
+  linger?: number | "until-kill";
   /** Side effects, e.g. writing `.output/` or the files `eve init` creates into `call.cwd`. */
   effect?: (call: FakeEveCall) => void | Promise<void>;
 }
@@ -65,12 +72,14 @@ export function fakeEve(script: FakeEveScript = { replies: [] }): FakeEve {
       ...(options.detached && { detached: true }),
       ...(options.inherit && { inherit: true }),
       kills: [],
+      alive: () => !groupGone,
     };
     calls.push(call);
     const reply =
       script.replies.find((r) => matches(r, call)) ?? script.fallback ?? {};
     let killed: number | undefined;
     let finish: ((code: number) => void) | undefined;
+    let groupGone = false;
     const exited = (async () => {
       await reply.effect?.(call);
       for (const entry of reply.lines ?? []) {
@@ -80,12 +89,19 @@ export function fakeEve(script: FakeEveScript = { replies: [] }): FakeEve {
       if (!reply.hold) return reply.exitCode ?? 0;
       void reply.until?.then((code) => finish?.((killed ??= code)));
       return killed ?? new Promise<number>((resolve) => (finish = resolve));
-    })();
+    })().then((code) => {
+      if (reply.linger === undefined) groupGone = true;
+      else if (typeof reply.linger === "number")
+        setTimeout(() => (groupGone = true), reply.linger);
+      return code;
+    });
     return {
       pid: reply.hold ? ++pids : undefined,
       exited,
+      alive: () => call.alive(),
       kill: (signal: NodeJS.Signals = "SIGTERM") => {
         call.kills.push(signal);
+        if (signal === "SIGKILL") groupGone = true;
         if (!reply.hold || reply.ignore?.includes(signal)) return;
         killed ??= 128 + (constants.signals[signal] ?? 1);
         finish?.(killed);

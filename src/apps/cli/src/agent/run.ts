@@ -24,6 +24,9 @@ export type { AgentInfo };
 const START_LINE = /^\[START\] server listening at (\S+)/;
 const START_TIMEOUT_MS = 60_000;
 const KILL_AFTER_MS = 10_000;
+/** After a SIGKILL, how long the group may take to be reaped. */
+const KILL_WAIT_MS = 2_000;
+const STOP_POLL_MS = 50;
 const TAIL_LINES = 20;
 const FOLLOW_MS = 250;
 const SIGNALS: NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGHUP"];
@@ -136,32 +139,29 @@ export async function startAgent(
       if (match) listening(match[1]!);
     },
   });
-  let ended = false;
-  const exited = child.exited.then((code) => {
-    ended = true;
-    return code;
-  });
+  const exited = child.exited;
   const killAfterMs = options.killAfterMs ?? KILL_AFTER_MS;
+  /** Whether the group is gone within `ms`, checked every STOP_POLL_MS. */
+  const goneWithin = async (ms: number) => {
+    const deadline = Date.now() + ms;
+    while (child.alive()) {
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, STOP_POLL_MS));
+    }
+    return true;
+  };
   let stopping: Promise<{ leftovers: number }> | undefined;
   const stop = () =>
     (stopping ??= (async () => {
-      // The group, even when `pnpm exec` has gone: the server may outlive it.
+      // The group, even when `pnpm exec` has gone: the server may outlive it, and its own
+      // shutdown is what removes its sandbox containers.
       child.kill("SIGTERM");
-      if (!ended) {
-        let timer: NodeJS.Timeout | undefined;
-        const gone = await Promise.race([
-          exited.then(() => true),
-          new Promise<boolean>(
-            (resolve) =>
-              (timer = setTimeout(() => resolve(false), killAfterMs)),
-          ),
-        ]);
-        clearTimeout(timer);
-        if (!gone) {
-          child.kill("SIGKILL");
-          await exited;
-        }
+      if (!(await goneWithin(killAfterMs))) {
+        child.kill("SIGKILL");
+        await goneWithin(KILL_WAIT_MS);
       }
+      await exited;
+      // Counted once nothing of the group runs: a server mid-shutdown still holds some.
       return { leftovers: await leftoverContainers(io) };
     })());
 
@@ -235,11 +235,25 @@ export function rootOf(dir: string): string {
   return found === undefined ? dir : dirname(found);
 }
 
+/**
+ * A `vercel` agent keeps eve's default channel (Vercel OIDC), so under `eve start` every route
+ * fails closed: only `eve dev` (`--dev`) can serve it here. `local` and `self-host` run.
+ */
+export function assertRunnable(name: string, target: string): void {
+  if (target !== "vercel") return;
+  throw new CliError(
+    "target-not-runnable",
+    `${name} targets vercel: its routes take Vercel's OIDC, so they refuse every call under eve start`,
+    { target, fix: `donn agent run ${name} --dev` },
+  );
+}
+
 /** The agent's folder and env, secrets resolved; `secrets` lists their values to hide. */
 export async function runEnvironment(
   ctx: Context,
   io: CliIo,
   name: string,
+  options: { start: boolean },
 ): Promise<{
   root: string;
   dir: string;
@@ -248,6 +262,10 @@ export async function runEnvironment(
 }> {
   const { root, dir, entries } = await agentEnvironment(ctx, io, name, {
     resolve: true,
+    // `eve start` cannot serve every target: refused before a secret is resolved.
+    ...(options.start && {
+      check: (target: string) => assertRunnable(name, target),
+    }),
   });
   const values: Record<string, string> = {};
   const secrets: string[] = [];
@@ -363,7 +381,9 @@ async function foreground(
   name: string,
   options: RunOptions,
 ): Promise<number> {
-  const { root, dir, values, secrets } = await runEnvironment(ctx, io, name);
+  const { root, dir, values, secrets } = await runEnvironment(ctx, io, name, {
+    start: true,
+  });
   const abort = new AbortController();
   let agent: RunningAgent | undefined;
   return withSignals(
@@ -396,7 +416,9 @@ async function foreground(
 
 /** `--dev`: `eve dev` with eve's terminal UI, in the foreground, never through the daemon. */
 async function dev(ctx: Context, io: CliIo, name: string): Promise<number> {
-  const { dir, values } = await runEnvironment(ctx, io, name);
+  const { dir, values } = await runEnvironment(ctx, io, name, {
+    start: false,
+  });
   const pm = await packageManager(dir);
   // The model route is proved under eve dev with development, not production (spec 24 §2).
   const env = { ...eveEnv(io.env, values), NODE_ENV: "development" };

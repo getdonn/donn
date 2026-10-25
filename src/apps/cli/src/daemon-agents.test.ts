@@ -259,6 +259,57 @@ describe("the daemon's agents", () => {
     expect((await call(daemon, "GET", "/agents")).body).toEqual({ agents: [] });
   });
 
+  it("refuses a vercel agent: eve start cannot serve its routes", async () => {
+    s.cleanup();
+    s = seed();
+    agentProject(s, "vercel");
+    await createAgent(s);
+    const daemon = await start();
+    const ran = await call(daemon, "POST", "/agents/run", {
+      project: s.repo,
+      name: "kody",
+    });
+    expect(ran.status).toBe(400);
+    expect(ran.body).toMatchObject({
+      error: {
+        code: "target-not-runnable",
+        details: { target: "vercel", fix: "donn agent run kody --dev" },
+      },
+    });
+    expect(startCall()).toBeUndefined();
+  });
+
+  it(
+    "donn daemon stop waits for an agent whose server is slow to stop",
+    { timeout: 30_000 },
+    async () => {
+      spawn = fakeEve({
+        replies: [
+          { eve: ["build"] },
+          // pnpm exec goes at once; the server takes 6 s, past the old 5 s stop wait.
+          { eve: ["start"], lines: START_LINES(), hold: true, linger: 6_000 },
+        ],
+      });
+      const daemon = await start();
+      await call(daemon, "POST", "/agents/run", {
+        project: s.repo,
+        name: "kody",
+      });
+      const stopped = await zz(["daemon", "stop", "--json"], {
+        cwd: s.root,
+        home: s.home,
+      });
+      expect(stopped.stderr).toBe("");
+      expect(stopped.code).toBe(0);
+      expect(JSON.parse(stopped.stdout)).toEqual({
+        running: false,
+        stopped: true,
+      });
+      await daemon.closed;
+      expect(startCall()!.kills).toEqual(["SIGTERM"]);
+    },
+  );
+
   it("stops every running agent when the daemon closes", async () => {
     const daemon = await start();
     await call(daemon, "POST", "/agents/run", {

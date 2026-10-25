@@ -41,7 +41,7 @@ targets:
 `;
 
 /**
- * Answers `npm view eve versions` and `docker ps` (the ids in `containers`); anything else
+ * Answers `npm view eve versions`, `npm view vercel version` and `docker ps` (the ids in `containers`); anything else
  * fails. `docker` records each call in `dockerCalls`.
  */
 export function agentProbe(containers: string[] = []): Probe & {
@@ -56,6 +56,8 @@ export function agentProbe(containers: string[] = []): Probe & {
     run: async (command, args) => {
       if (command === "npm" && args[1] === "eve")
         return { exitCode: 0, stdout: '["0.83.2"]', stderr: "" };
+      if (command === "npm" && args[1] === "vercel")
+        return { exitCode: 0, stdout: "50.1.0\n", stderr: "" };
       if (command === "docker") {
         dockerCalls.push(args);
         return {
