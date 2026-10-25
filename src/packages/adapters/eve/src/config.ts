@@ -169,7 +169,7 @@ export function configFile(
       reason: `contextWindow must be a positive integer, not ${JSON.stringify(contextWindow)}`,
     });
   }
-  if (target === "self-host") {
+  if (ir.agents[agent]!.world === "postgres") {
     donn.push([
       "experimental",
       '{ workflow: { world: "@workflow/world-postgres" } }',

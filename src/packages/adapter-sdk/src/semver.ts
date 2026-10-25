@@ -19,7 +19,7 @@ function upper([major, minor, patch]: Version, tilde: boolean): Version {
   return [0, 0, patch + 1];
 }
 
-export function satisfies(version: string, range: string): boolean {
+export function satisfiesRange(version: string, range: string): boolean {
   if (!/^\d+\.\d+\.\d+$/.test(version)) return false;
   const v = parse(version);
   return range

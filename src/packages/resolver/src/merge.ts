@@ -380,6 +380,7 @@ export class Merge {
         target: agent.target,
         path: normalizeRelative(agent.path ?? `agents/${name}`),
         ...(agent.model !== undefined && { model: agent.model }),
+        ...(agent.world !== undefined && { world: agent.world }),
         env: { ...agent.env },
       };
       const current = this.agents.get(name);

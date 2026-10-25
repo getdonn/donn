@@ -5,3 +5,4 @@ export * from "./report.js";
 export * from "./paths.js";
 export * from "./render.js";
 export * from "./agent.js";
+export * from "./semver.js";

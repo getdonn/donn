@@ -442,6 +442,12 @@ each template's source at the pinned eve version and kept in a table in the adap
   `DONN_ROUTE_TOKEN`; put Basic, JWT or OIDC in front before exposing them"). A template with its
   own `channels/eve.ts` keeps the blocking entry, with the two lines to add by hand. `vercel`
   is unchanged (eve's default channel, with `vercelOidc()`).
+  *Amended 2026-10-25 (review):* the token check lives in its own donn-owned module,
+  `agent/lib/donn/route-auth.ts` (exports `donnToken`), written for `local` and `self-host` whether
+  or not the template has a channel; the generated `agent/channels/eve.ts` imports it. A template
+  with its own channel therefore needs two lines by hand: `import { donnToken } from
+  "../lib/donn/route-auth";` and `donnToken, localDev()` in its `auth: [...]` list (with `localDev`
+  imported from `eve/channels/auth`). `vercel` writes neither file.
 - `donn agent create` and the GUI show the report before anything is written (`25` §2, `26`).
 - A template missing from the table compiles with a `portability-unknown` warning rather than an
   error: eve adds templates faster than donn will release.
