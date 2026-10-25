@@ -27,6 +27,20 @@ describe("eveEnv", () => {
     );
     expect(env).toEqual({ PATH: "/bin", NODE_ENV: "production", A: "b" });
   });
+
+  it("does not let extra bring the switches or a NODE_ENV back", () => {
+    const env = eveEnv(
+      { PATH: "/bin" },
+      {
+        NODE_ENV: "test",
+        VITEST: "1",
+        EVE_DEV: "1",
+        EVE_MOCK_AUTHORED_MODELS: "1",
+        A: "b",
+      },
+    );
+    expect(env).toEqual({ PATH: "/bin", NODE_ENV: "production", A: "b" });
+  });
 });
 
 describe("packageManager", () => {

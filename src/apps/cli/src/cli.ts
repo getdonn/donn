@@ -4,6 +4,8 @@ import { Command, CommanderError, Option } from "commander";
 import type { Spawn } from "./agent/spawn.js";
 import {
   agentCreateCommand,
+  agentEnvCommand,
+  agentExecCommand,
   agentListCommand,
   agentSyncCommand,
 } from "./commands/agent.js";
@@ -107,7 +109,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
       const ours = split === -1 ? argv : argv.slice(0, split);
       const passthrough = split === -1 ? [] : argv.slice(split + 1);
       const wantsJson = ours.includes("--json");
-      /** Run a command; only `claude` and `codex` take passthrough arguments after `--`. */
+      /** Run a command; only `claude`, `codex` and `agent exec` take passthrough arguments after `--`. */
       const handle = async (
         json: boolean | undefined,
         command: () => Promise<number>,
@@ -117,7 +119,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           if (passthrough.length > 0 && !options.passthrough) {
             throw new CliError(
               "unexpected-passthrough",
-              "arguments after `--` are only passed through by donn claude and donn codex",
+              "arguments after `--` are only passed through by donn claude, donn codex and donn agent exec",
               { args: passthrough },
             );
           }
@@ -556,6 +558,39 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { written, removed, report } as JSON")
         .action((name: string, options) =>
           handle(options.json, () => agentSyncCommand(io, name, options)),
+        );
+
+      agent
+        .command("env")
+        .description("Print the environment an agent needs (names and refs)")
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--resolve", "resolve secrets and print their values")
+        .addOption(
+          new Option("--format <format>", "output format").choices([
+            "dotenv",
+            "json",
+          ]),
+        )
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { env } as JSON (values only with --resolve)")
+        .action((name: string, options) =>
+          handle(options.json, () => agentEnvCommand(io, name, options)),
+        );
+
+      agent
+        .command("exec")
+        .description(
+          "Run a command (after --) in the agent's folder with its env resolved",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print errors as JSON")
+        .action((name: string, options) =>
+          handle(
+            options.json,
+            () => agentExecCommand(io, name, passthrough, options),
+            { passthrough: true },
+          ),
         );
 
       const daemon = program

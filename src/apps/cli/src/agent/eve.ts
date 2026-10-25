@@ -21,19 +21,19 @@ export async function packageManager(dir: string): Promise<"pnpm" | "npm"> {
 }
 
 /**
- * The environment for an eve child: production, with the dev and test switches removed
- * (EVE_DEV, EVE_MOCK_AUTHORED_MODELS, VITEST), then `extra` on top.
+ * The environment for an eve child: `extra` over `base`, then production with the dev and test
+ * switches removed (EVE_DEV, EVE_MOCK_AUTHORED_MODELS, VITEST), so `extra` cannot bring them back.
  */
 export function eveEnv(
   base: NodeJS.ProcessEnv,
   extra: Record<string, string>,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base };
+  const env: NodeJS.ProcessEnv = { ...base, ...extra };
   for (const name of ["EVE_DEV", "EVE_MOCK_AUTHORED_MODELS", "VITEST"]) {
     delete env[name];
   }
   env.NODE_ENV = "production";
-  return { ...env, ...extra };
+  return env;
 }
 
 /** Runs `command args` in `dir`, keeping the last lines; a non-zero exit is returned, not thrown. */
