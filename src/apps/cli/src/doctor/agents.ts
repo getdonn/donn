@@ -1,11 +1,13 @@
 import { lstat, readFile } from "node:fs/promises";
 import { dirname, join, resolve as resolvePath } from "node:path";
+import { setTimeout as sleepFor } from "node:timers/promises";
 import adapter, { patchAgentTs } from "@getdonn/adapter-eve";
 import { satisfiesRange } from "@getdonn/adapter-sdk";
 import type { ResolveResult } from "@getdonn/spec";
 import type { CliIo } from "../cli.js";
 import { CliError, errorText } from "../errors.js";
-import { packageManager, runTool } from "../agent/eve.js";
+import { packageManager } from "../agent/eve.js";
+import { nodeSpawn } from "../agent/spawn.js";
 import { posixRelative, type Manifest } from "../agent/files.js";
 import { locateAgent, projectContext, resolveProject } from "../agent/load.js";
 import { listCreated, type CreatedAgent } from "../agent/registry.js";
@@ -21,6 +23,7 @@ type Status = "ok" | "warn" | "error" | "skipped";
 type Add = (id: string, status: Status, message: string, fix?: string) => void;
 
 const GATEWAY_TIMEOUT_MS = 3000;
+const TOOL_TIMEOUT_MS = 10_000;
 const SPREAD_FIX =
   'add `import { donn } from "./lib/donn/config";` to agent/agent.ts and put `...donn` as the last property of its defineAgent({...}) call, removing any `model` property';
 
@@ -35,9 +38,19 @@ export async function agentChecks(
   try {
     created = await listCreated(home);
   } catch (error) {
-    if (!(error instanceof CliError)) throw error;
-    const fix = error.details.fix;
-    add("agents", "error", error.message, ...(fix ? [String(fix)] : []));
+    const index = join(home, "agents", "index.json");
+    const fix =
+      error instanceof CliError && error.details.fix !== undefined
+        ? String(error.details.fix)
+        : `fix the permissions on ${index}, or remove it; donn agent create records each agent again`;
+    add(
+      "agents",
+      "error",
+      error instanceof CliError
+        ? error.message
+        : `${index}: ${errorText(error)}`,
+      fix,
+    );
     return;
   }
   if (created.length === 0) return;
@@ -84,13 +97,22 @@ export async function agentChecks(
       );
       continue;
     }
-    const ctx = found.ctx;
-    const { dir, manifest } = await locateAgent(
-      ctx,
-      entry.project,
-      name,
-      agent,
-    );
+    // A manifest that does not parse, or a folder that cannot be read, is this agent's files
+    // line; the other agents and checks go on.
+    let located: Awaited<ReturnType<typeof locateAgent>>;
+    try {
+      located = await locateAgent(found.ctx, entry.project, name, agent);
+    } catch (error) {
+      const at = shellWord(resolvePath(entry.project, agent.path));
+      add(
+        id("files"),
+        "error",
+        errorText(error),
+        `repair ${at}/.donn/agent.json (donn agent create ${name} --force replaces only an incomplete create), or move ${at} aside and run donn agent create ${name}${where}`,
+      );
+      continue;
+    }
+    const { dir, manifest } = located;
     const shown = posixRelative(entry.project, dir);
     const complete = manifest?.state === "complete" ? manifest : undefined;
     const notCreated = manifest
@@ -252,15 +274,20 @@ export async function agentChecks(
           `${pm} add -D vercel@<version> in ${shown}`,
         );
       else {
-        const result = await runTool(
-          quiet,
-          dir,
-          pm,
-          ["exec", "vercel", "--version"],
-          { env: io.env },
-        );
+        const result = await bounded(io, dir, pm, [
+          "exec",
+          "vercel",
+          "--version",
+        ]);
         const last = result.tail.at(-1)?.trim();
-        if (result.exitCode === 0)
+        if (result.exitCode === "timeout")
+          add(
+            id("vercel"),
+            "warn",
+            `${pm} exec vercel --version did not finish in ${TOOL_TIMEOUT_MS / 1000}s in ${shown}`,
+            `${pm} install in ${shown}, then run ${pm} exec vercel --version there`,
+          );
+        else if (result.exitCode === 0)
           add(id("vercel"), "ok", `vercel ${last ?? ""}`.trim());
         else
           add(
@@ -317,6 +344,40 @@ async function missing(
     if ((await lstat(join(dir, path)).catch(() => undefined)) === undefined)
       gone.push(path);
   return gone;
+}
+
+/** `command args` in `dir`, killed after TOOL_TIMEOUT_MS; its exit code, or `timeout`. */
+async function bounded(
+  io: CliIo,
+  dir: string,
+  command: string,
+  args: string[],
+): Promise<{ exitCode: number | "timeout"; tail: string[] }> {
+  const tail: string[] = [];
+  const child = (io.spawn ?? nodeSpawn)(command, args, {
+    cwd: dir,
+    env: io.env,
+    onLine: (line) => {
+      tail.push(line);
+      if (tail.length > 20) tail.shift();
+    },
+  });
+  // The timer is cancelled once the child exits, so it never holds the process open.
+  const cancel = new AbortController();
+  const timer = io.sleep
+    ? io.sleep(TOOL_TIMEOUT_MS)
+    : sleepFor(TOOL_TIMEOUT_MS, undefined, { signal: cancel.signal });
+  try {
+    const exitCode = await Promise.race([
+      child.exited,
+      timer.then(() => "timeout" as const),
+    ]);
+    if (exitCode === "timeout") child.kill("SIGKILL");
+    return { exitCode, tail };
+  } finally {
+    cancel.abort();
+    timer.catch(() => undefined);
+  }
 }
 
 /** Undefined when `url` answered an HTTP request; otherwise why not. */

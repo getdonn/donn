@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -63,6 +63,7 @@ async function doctor(
     docker?: { exitCode: number; stderr?: string };
     fetch?: Fetch;
     spawn?: FakeEve;
+    sleep?: (ms: number) => Promise<void>;
   } = {},
 ) {
   const probe = doctorProbe(options.docker ?? { exitCode: 0 });
@@ -73,6 +74,7 @@ async function doctor(
     probe,
     fetch: options.fetch ?? answering(),
     spawn: options.spawn ?? fakeEve(),
+    ...(options.sleep && { sleep: options.sleep }),
   });
   const checks = (JSON.parse(r.stdout) as { checks: Check[] }).checks;
   const agents = checks.filter((c) => c.id.startsWith("agent"));
@@ -254,6 +256,23 @@ describe("donn doctor: created agents", () => {
     expect(byId["agent:kody:vercel"]!.fix).toContain("pnpm install");
   });
 
+  it("warns when the Vercel CLI does not answer in time, and stops it", async () => {
+    agentProject(s, "vercel");
+    await createAgent(s);
+    const spawn = fakeEve({
+      replies: [{ when: (c) => c.args.includes("vercel"), hold: true }],
+    });
+    const waits: number[] = [];
+    const { byId } = await doctor({
+      spawn,
+      sleep: async (ms) => void waits.push(ms),
+    });
+    expect(byId["agent:kody:vercel"]).toMatchObject({ status: "warn" });
+    expect(byId["agent:kody:vercel"]!.message).toContain("10s");
+    expect(waits).toContain(10_000);
+    expect(spawn.calls.at(-1)?.kills).toContain("SIGKILL");
+  });
+
   it("errors when a vercel agent's package.json lost its vercel dev dependency", async () => {
     agentProject(s, "vercel");
     await createAgent(s);
@@ -263,6 +282,29 @@ describe("donn doctor: created agents", () => {
     const { byId } = await doctor();
     expect(byId["agent:kody:vercel"]).toMatchObject({ status: "error" });
     expect(byId["agent:kody:vercel"]!.fix).toContain("vercel@");
+  });
+
+  it("reports a manifest that does not parse on the agent's files line, and goes on", async () => {
+    agentProject(s);
+    await createAgent(s);
+    writeFileSync(join(agentDir(), ".donn/agent.json"), "{ nope");
+    const { agents, checks } = await doctor();
+    expect(agents).toMatchObject([{ id: "agent:kody:files", status: "error" }]);
+    expect(agents[0]!.message).toContain("agent.json");
+    expect(agents[0]!.fix).toContain("donn agent create kody");
+    expect(checks.map((c) => c.id)).toContain("managed");
+  });
+
+  it("errors on an agents index that cannot be read", async () => {
+    agentProject(s);
+    await createAgent(s);
+    const index = join(s.home, "agents/index.json");
+    rmSync(index);
+    mkdirSync(index);
+    const { agents, checks } = await doctor();
+    expect(agents).toMatchObject([{ id: "agents", status: "error" }]);
+    expect(agents[0]!.message).toContain("index.json");
+    expect(checks.map((c) => c.id)).toContain("managed");
   });
 
   it("errors on an unreadable agents index", async () => {
