@@ -140,8 +140,10 @@ files (14)
     ## Knowledge sources
     - wiki: mcp://confluence?space=ENG
     
-report (6)
+report (8)
   advisory  knowledge[wiki]  rendered as text in the system prompt
+  dropped  models.gateway  Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec  locked: models by org/base
+  dropped  models.default  Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec  locked: models by org/base
   dropped  skills[remote-skill]  skill registries are not supported in v0
   dropped  mcp.servers.db  managed-mcp.json makes --mcp-config exit  locked: mcp.servers by org/base
   dropped  mcp.servers.jira  managed-mcp.json makes --mcp-config exit  locked: mcp.servers by org/base

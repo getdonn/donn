@@ -29,7 +29,7 @@ files (2)
       "approval": "on-request"
     }
     
-report (20)
+report (22)
   dropped  mcp.servers.db  a secret in args cannot be forwarded by name; put it in env  locked: mcp.servers by org/base
   dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet  locked: mcp.servers by org/base
   dropped  mcp.servers.remote  secret headers on URL servers are not passed to Codex yet  locked: mcp.servers by org/base
@@ -48,6 +48,8 @@ report (20)
   dropped  hooks.subagent-stop[subagent-stop-hook]  untrusted hooks do not run, and donn never bypasses Codex's hook trust
   dropped  hooks.pre-compact[pre-compact-hook]  untrusted hooks do not run, and donn never bypasses Codex's hook trust
   dropped  hooks.notification[notification-hook]  untrusted hooks do not run, and donn never bypasses Codex's hook trust  locked: hooks.notification by org/base
+  dropped  models.gateway  Not yet: Codex takes a model_provider; a later spec  locked: models by org/base
+  dropped  models.default  Not yet: Codex takes a model_provider; a later spec  locked: models by org/base
   dropped  mcp.gateway  gateway resolution is not available yet
   dropped  targets.codex.approvalPolicy  not a Codex setting donn knows (sandbox, approval, model)
 plan (1)

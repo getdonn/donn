@@ -26,8 +26,10 @@ files (2)
     ## Knowledge sources
     - wiki: mcp://confluence?space=ENG
     
-report (16)
+report (18)
   advisory  knowledge[wiki]  rendered as text in the system prompt
+  dropped  models.gateway  Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec  locked: models by org/base
+  dropped  models.default  Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec  locked: models by org/base
   dropped  skills[local-skill]  disableSideloadFlags blocks --plugin-dir and --mcp-config
   dropped  skills[remote-skill]  disableSideloadFlags blocks --plugin-dir and --mcp-config
   dropped  hooks.session-start[session-start-hook]  disableSideloadFlags blocks --plugin-dir and --mcp-config

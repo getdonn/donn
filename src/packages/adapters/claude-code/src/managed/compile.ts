@@ -691,12 +691,17 @@ export function compileManaged(input: ManagedInput): ManagedResult {
   for (const lock of locks.untouched()) {
     const keys = lock.parsed?.keys ?? [];
     if (MANAGED.every((key, i) => keys[i] === key)) continue;
-    const harnessOrLabels = keys[0] === "targets" || keys[0] === "metadata";
+    // Managed settings cannot carry these; donn enforces their locks at publish and resolve.
+    const lockOnly =
+      keys[0] === "targets" ||
+      keys[0] === "metadata" ||
+      keys[0] === "models" ||
+      keys[0] === "agents";
     add(
       lock.path,
       lock.layer,
       "advisory",
-      harnessOrLabels ? REASON.lockOnly : REASON.coversNothing,
+      lockOnly ? REASON.lockOnly : REASON.coversNothing,
     );
   }
 

@@ -21,7 +21,7 @@ files (1)
     Allowed:
     - Read(./**)
     
-report (24)
+report (26)
   dropped  skills[local-skill]  AGENTS.md is plain text; use a harness adapter for skills
   dropped  skills[remote-skill]  AGENTS.md is plain text; use a harness adapter for skills
   dropped  mcp.servers.db  AGENTS.md is plain text; use a harness adapter for MCP servers  locked: mcp.servers by org/base
@@ -45,6 +45,8 @@ report (24)
   dropped  hooks.subagent-stop[subagent-stop-hook]  AGENTS.md is plain text; use a harness adapter for hooks
   dropped  hooks.pre-compact[pre-compact-hook]  AGENTS.md is plain text; use a harness adapter for hooks
   dropped  hooks.notification[notification-hook]  AGENTS.md is plain text; use a harness adapter for hooks  locked: hooks.notification by org/base
+  dropped  models.gateway  AGENTS.md is text; model routing is the harness's  locked: models by org/base
+  dropped  models.default  AGENTS.md is text; model routing is the harness's  locked: models by org/base
   dropped  mcp.gateway  AGENTS.md is plain text; use a harness adapter for MCP servers
 plan (1)
   overlay AGENTS.md block donn (20278 chars)
