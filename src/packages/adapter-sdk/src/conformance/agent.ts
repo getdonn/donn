@@ -79,8 +79,8 @@ const contentFiles = (output: AgentCompileOutput) =>
     "content" in file ? [{ path, content: file.content }] : [],
   );
 
-/** A path inside the agent directory; a leading `agent/` is accepted and ignored. */
-const slotPath = (path: string) => path.replace(/^agent\//, "");
+/** Every output path starts with this, below the eve project root. */
+const AGENT_DIR = "agent/";
 
 const structuredCopy = <T>(value: T): T => structuredClone(value);
 
@@ -90,6 +90,8 @@ function pathsInside(output: AgentCompileOutput): string[] {
     const normalized = path.split("/").filter((s) => s !== "." && s !== "");
     if (!isContainedPath(path) || normalized.join("/") !== path)
       problems.push(`path is not relative and normalized: ${path}`);
+    else if (!path.startsWith(AGENT_DIR))
+      problems.push(`path is not under ${AGENT_DIR}: ${path}`);
     // Copied directories are checked by where they land, like any other output.
     if ("copyFrom" in file && !isContainedPath(file.copyFrom))
       problems.push(`copyFrom escapes the personas root: ${file.copyFrom}`);
@@ -101,22 +103,30 @@ function noSecrets(
   input: AgentCompileInput,
   output: AgentCompileOutput,
 ): string[] {
-  const refs = new Set([
-    ...secretRefsIn(input.ir, "ir").map((r) => r.ref),
-    ...Object.values(output.secretEnv),
-  ]);
+  const SCHEME = "secret://";
+  const refs = new Set(
+    [
+      ...secretRefsIn(input.ir, "ir").map((r) => r.ref),
+      ...Object.values(output.secretEnv),
+    ].flatMap((ref) => {
+      // The ref itself contains the scheme, so the target text is what can leak on its own.
+      const target = ref.slice(SCHEME.length);
+      return target.length >= 4 ? [ref, target] : [ref];
+    }),
+  );
   const problems: string[] = [];
   for (const { path, content } of contentFiles(output)) {
     if (content.includes("secret://")) problems.push(`secret ref in ${path}`);
     for (const ref of refs) {
-      if (content.includes(ref)) problems.push(`secret ref ${ref} in ${path}`);
+      if (content.includes(ref))
+        problems.push(`secret ref text ${ref} in ${path}`);
     }
   }
   return problems;
 }
 
-const ENV_READ =
-  /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["'`]([^"'`]+)["'`]\s*\])/g;
+const ENV_NAMED =
+  /^\.([A-Za-z_][A-Za-z0-9_]*)|^\[\s*(?:"([^"]+)"|'([^']+)')\s*\]/;
 
 function envDeclared(
   adapter: AgentAdapter,
@@ -129,8 +139,14 @@ function envDeclared(
   ]);
   const problems: string[] = [];
   for (const { path, content } of contentFiles(output)) {
-    for (const match of content.matchAll(ENV_READ)) {
-      const name = (match[1] ?? match[2])!;
+    for (const match of content.matchAll(/process\.env(?![A-Za-z0-9_$])/g)) {
+      const rest = content.slice(match.index + match[0].length);
+      const named = ENV_NAMED.exec(rest);
+      if (!named) {
+        problems.push(`${path} has an unanalysable env read`);
+        continue;
+      }
+      const name = (named[1] ?? named[2] ?? named[3])!;
       if (!allowed.has(name))
         problems.push(`${path} reads undeclared process.env.${name}`);
     }
@@ -148,28 +164,40 @@ function donnNames(output: AgentCompileOutput): string[] {
   ): void => {
     if (!name.startsWith(DONN_SLOT_PREFIX))
       problems.push(`${kind} ${path} is not named ${DONN_SLOT_PREFIX}…`);
-    else if (!rule.test(name) || name.length > SLOT_NAME_MAX_LENGTH)
+    else if (
+      name.length === DONN_SLOT_PREFIX.length ||
+      !rule.test(name) ||
+      name.length > SLOT_NAME_MAX_LENGTH
+    )
       problems.push(`${kind} name "${name}" breaks the framework's name rule`);
   };
   for (const path of Object.keys(output.files)) {
-    const rel = slotPath(path);
-    const connection = /^connections\/([^/]+)\.ts$/.exec(rel);
+    const connection = /^agent\/connections\/([^/]+)\.ts$/.exec(path);
     if (connection)
       check(path, "connection", connection[1]!, CONNECTION_NAME_RULE);
-    else if (rel.startsWith("connections/"))
+    else if (path.startsWith("agent/connections/"))
       problems.push(`connection ${path} is not connections/<name>.ts`);
-    if (rel.startsWith("skills/")) {
-      const [, entry = ""] = rel.split("/");
+    if (path.startsWith("agent/skills/")) {
+      const entry = path.split("/")[2] ?? "";
       check(path, "skill", entry.replace(/\.md$/, ""), SKILL_NAME_RULE);
     }
   }
   return problems;
 }
 
+/** A connection needs a description eve can route on: present and not an empty literal. */
+const hasDescription = (content: string) => {
+  const literal = /\bdescription\s*:\s*(["'`])((?:(?!\1)[^\\]|\\.)*)\1/.exec(
+    content,
+  );
+  if (literal) return literal[2]!.trim() !== "";
+  return /\bdescription\s*:\s*\S/.test(content);
+};
+
 function connectionDescription(output: AgentCompileOutput): string[] {
   return contentFiles(output)
-    .filter(({ path }) => slotPath(path).startsWith("connections/"))
-    .filter(({ content }) => !/\bdescription\s*:\s*\S/.test(content))
+    .filter(({ path }) => path.startsWith("agent/connections/"))
+    .filter(({ content }) => !hasDescription(content))
     .map(({ path }) => `connection ${path} has no description`);
 }
 
@@ -197,8 +225,9 @@ export function runAgentConformance(
   );
   for (const { name, input } of cases) {
     let output: AgentCompileOutput;
+    const snapshot = structuredCopy(input);
     try {
-      output = adapter.compile(structuredCopy(input));
+      output = adapter.compile(input);
     } catch (error) {
       for (const check of AGENT_PER_CASE_CHECKS) {
         results.push(
@@ -210,10 +239,18 @@ export function runAgentConformance(
     results.push(
       outcome(
         "deterministic",
-        () =>
-          isDeepStrictEqual(output, adapter.compile(structuredCopy(input)))
-            ? []
-            : ["compile output differs between runs"],
+        () => {
+          const problems: string[] = [];
+          if (!isDeepStrictEqual(input, snapshot))
+            problems.push("compile mutated its input");
+          // Key order counts: the same bytes means the same JSON text.
+          if (
+            JSON.stringify(output) !==
+            JSON.stringify(adapter.compile(structuredCopy(snapshot)))
+          )
+            problems.push("compile output differs between runs");
+          return problems;
+        },
         name,
       ),
       outcome("no-secrets", () => noSecrets(input, output), name),

@@ -1,5 +1,5 @@
 import type { Ref, ResolvedPersona } from "@getdonn/spec";
-import { AdapterDeclarationError } from "./define.js";
+import { AdapterDeclarationError, isCapabilityField } from "./define.js";
 import { capabilityFields } from "./report.js";
 import type {
   CapabilityMatrix,
@@ -100,11 +100,13 @@ export const CONNECTION_NAME_RULE = /^[a-z][a-z0-9-]*$/;
 export const SKILL_NAME_RULE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const COMPARATOR = /^(>=|<=|>|<|=|\^|~)?\d+\.\d+\.\d+$/;
+const NUM = "(?:0|[1-9]\\d*)";
+const COMPARATOR = new RegExp(`^(>=|<=|>|<|=|\\^|~)?${NUM}\\.${NUM}\\.${NUM}$`);
 
 /**
  * Whether `range` is a semver range this SDK understands: space-separated comparators, each
- * `>=a.b.c`, `<a.b.c`, `^a.b.c`, `~a.b.c` or an exact `a.b.c` (also `>`, `<=`, `=`).
+ * `>=a.b.c`, `<a.b.c`, `^a.b.c`, `~a.b.c` or an exact `a.b.c` (also `>`, `<=`, `=`), numbers
+ * without leading zeros. Intentionally narrow: no `||`, `x`-ranges, hyphen ranges or prerelease tags.
  */
 export function isSemverRange(range: string): boolean {
   const parts = range.trim().split(/\s+/);
@@ -139,6 +141,9 @@ export function defineAgentAdapter(
     fail(
       `frameworkRange "${declaration.frameworkRange}" is not a semver range`,
     );
+  for (const field of Object.keys(declaration.capabilities().fields)) {
+    if (!isCapabilityField(field)) fail(`unknown capability field "${field}"`);
+  }
   const problems = matrixProblems(declaration.id, declaration.capabilities());
   if (problems.length > 0) fail(problems.join("; "));
   // Built from named fields, so the methods of a class-based adapter survive.

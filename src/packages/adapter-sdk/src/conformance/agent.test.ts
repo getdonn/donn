@@ -95,47 +95,110 @@ const broken: [AgentCheckName, AgentAdapter][] = [
       },
     },
   ],
-  ["no-secrets", withFile("lib/donn/config.ts", "// secret://vault/k\n")],
-  ["no-secrets", withFile("lib/donn/config.ts", "// secret://vault/other\n")],
-  ["paths-inside", withFile("../escape.ts", "x")],
+  ["no-secrets", withFile("agent/lib/donn/config.ts", "// secret://vault/k\n")],
+  [
+    "no-secrets",
+    withFile("agent/lib/donn/config.ts", "// secret://vault/other\n"),
+  ],
+  ["paths-inside", withFile("agent/../escape.ts", "x")],
   ["paths-inside", withFile("/abs/file.ts", "x")],
-  ["paths-inside", withFile("lib/./donn/config.ts", "x")],
+  ["paths-inside", withFile("agent/lib/./donn/config.ts", "x")],
   [
     "paths-inside",
     outputting((o) => ({
-      files: { ...o.files, "skills/donn-x": { copyFrom: "../x" } },
+      files: { ...o.files, "agent/skills/donn-x": { copyFrom: "../x" } },
     })),
   ],
   [
     "env-declared",
     withFile(
-      "lib/donn/config.ts",
+      "agent/lib/donn/config.ts",
       "export const k = process.env.NOT_DECLARED;\n",
     ),
   ],
   [
     "env-declared",
-    withFile("lib/donn/config.ts", 'export const k = process.env["NOPE"];\n'),
+    withFile(
+      "agent/lib/donn/config.ts",
+      'export const k = process.env["NOPE"];\n',
+    ),
   ],
-  ["donn-names", withFile("connections/db.ts", "description: 'x'")],
-  ["donn-names", withFile("connections/donn-DB.ts", "description: 'x'")],
+  ["donn-names", withFile("agent/connections/db.ts", "description: 'x'")],
+  ["donn-names", withFile("agent/connections/donn-DB.ts", "description: 'x'")],
   [
     "donn-names",
-    withFile(`connections/donn-${"a".repeat(60)}.ts`, "description: 'x'"),
+    withFile(`agent/connections/donn-${"a".repeat(60)}.ts`, "description: 'x'"),
   ],
   [
     "donn-names",
     outputting((o) => ({
-      files: { ...o.files, "skills/notes/SKILL.md": { content: "x" } },
+      files: { ...o.files, "agent/skills/notes/SKILL.md": { content: "x" } },
     })),
   ],
   [
     "donn-names",
     outputting((o) => ({
-      files: { ...o.files, "skills/donn-bad name.md": { content: "x" } },
+      files: { ...o.files, "agent/skills/donn-bad name.md": { content: "x" } },
     })),
   ],
-  ["connection-description", withFile("connections/donn-x.ts", "export {};")],
+  ["paths-inside", withFile("lib/donn/config.ts", "x")],
+  ["no-secrets", withFile("agent/lib/donn/config.ts", "// vault/k\n")],
+  ["no-secrets", withFile("agent/lib/donn/config.ts", "// vault/other\n")],
+  [
+    "deterministic",
+    {
+      ...goodAgent,
+      compile: (input) => {
+        const output = goodAgent.compile(input);
+        const [first, ...rest] = Object.entries(output.files);
+        return {
+          ...output,
+          files: Object.fromEntries(
+            calls++ % 2 ? [...rest, first!] : [first!, ...rest],
+          ),
+        };
+      },
+    },
+  ],
+  [
+    "deterministic",
+    {
+      ...goodAgent,
+      compile: (input) => {
+        input.texts["leak"] = "x";
+        return goodAgent.compile(input);
+      },
+    },
+  ],
+  ["donn-names", withFile("agent/connections/donn-.ts", "description: 'x'")],
+  ["donn-names", withFile("agent/skills/donn-.md", "x")],
+  [
+    "connection-description",
+    withFile(
+      "agent/connections/donn-x.ts",
+      'export default { description: "" };',
+    ),
+  ],
+  [
+    "connection-description",
+    withFile(
+      "agent/connections/donn-x.ts",
+      "export default { description: '  ' };",
+    ),
+  ],
+  ...[
+    "const { X } = process.env;",
+    "process.env?.X",
+    "process.env[name]",
+    "const e = process.env;",
+  ].map((code): [AgentCheckName, AgentAdapter] => [
+    "env-declared",
+    withFile("agent/lib/donn/config.ts", code),
+  ]),
+  [
+    "connection-description",
+    withFile("agent/connections/donn-x.ts", "export {};"),
+  ],
 ];
 
 describe("agent conformance kit", () => {
@@ -154,15 +217,6 @@ describe("agent conformance kit", () => {
         "connection-description",
       ]),
     );
-  });
-
-  it("accepts paths written with an agent/ prefix", () => {
-    const adapter = outputting((o) => ({
-      files: Object.fromEntries(
-        Object.entries(o.files).map(([p, f]) => [`agent/${p}`, f]),
-      ),
-    }));
-    expect(failedChecks(adapter)).toEqual([]);
   });
 
   it("reports a throwing compile on each per-case check", () => {

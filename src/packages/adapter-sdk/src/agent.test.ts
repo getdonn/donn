@@ -49,6 +49,19 @@ describe("defineAgentAdapter", () => {
     );
   });
 
+  it("rejects an unknown capability field", () => {
+    expect(() =>
+      define({
+        capabilities: () => ({
+          fields: {
+            ...goodAgent.capabilities().fields,
+            bogus: { support: "native" },
+          } as never,
+        }),
+      }),
+    ).toThrow(/unknown capability field "bogus"/);
+  });
+
   it("rejects a non-native field without a note", () => {
     expect(() =>
       define({
@@ -62,12 +75,19 @@ describe("defineAgentAdapter", () => {
     ).toThrow(/skills is none without a note/);
   });
 
-  it.each(["", "latest", ">=0.83", "1.x", ">=0.83.2 <", "^a.b.c"])(
-    "rejects the range %j",
-    (frameworkRange) => {
-      expect(() => define({ frameworkRange })).toThrow(/semver range/);
-    },
-  );
+  it.each([
+    "",
+    "latest",
+    ">=0.83",
+    "1.x",
+    ">=0.83.2 <",
+    "^a.b.c",
+    "01.2.3",
+    "1.2.3 || 2.0.0",
+    "1.02.3",
+  ])("rejects the range %j", (frameworkRange) => {
+    expect(() => define({ frameworkRange })).toThrow(/semver range/);
+  });
 });
 
 describe("isSemverRange", () => {

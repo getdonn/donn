@@ -1,3 +1,4 @@
+export * from "./agent-suite.js";
 import { describe, expect, it } from "vitest";
 import type { HarnessAdapter } from "../types.js";
 import {
@@ -37,4 +38,3 @@ export function conformanceSuite(
     }
   });
 }
-export * from "./agent-suite.js";

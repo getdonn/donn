@@ -31,9 +31,9 @@ export const goodAgent: AgentAdapter = {
   compile(input: AgentCompileInput): AgentCompileOutput {
     return {
       files: {
-        "instructions/donn.md": { content: "Be concise." },
-        "skills/donn-notes": { copyFrom: "skills/notes" },
-        "connections/donn-db.ts": {
+        "agent/instructions/donn.md": { content: "Be concise." },
+        "agent/skills/donn-notes": { copyFrom: "skills/notes" },
+        "agent/connections/donn-db.ts": {
           content: `export default { description: "db", token: process.env.DONN_SECRET_0, key: process.env.TOY_API_KEY, mode: process.env["TOY_MODE"] };\n`,
         },
       },
