@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   AgentName,
   AgentTarget,
+  AgentWorld,
   EnvName,
   Hook,
   HookEvent,
@@ -30,6 +31,8 @@ export const ResolvedAgent = z.strictObject({
   /** Normalized, project-relative; always set (default `agents/<name>`). */
   path: z.string().min(1),
   model: z.string().min(1).optional(),
+  /** Carried only when the persona sets it. */
+  world: AgentWorld.optional(),
   env: z.record(EnvName, z.string()),
 });
 export type ResolvedAgent = z.infer<typeof ResolvedAgent>;

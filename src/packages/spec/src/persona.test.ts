@@ -248,6 +248,19 @@ describe("agents", () => {
       agents: { define: { [name]: { ...agent, ...over } } },
     });
 
+  it("world applies only to self-host", () => {
+    expect(define("a", { world: "postgres" }).success).toBe(true);
+    expect(define("a", { world: "local" }).success).toBe(true);
+    expect(define("a", { world: "redis" }).success).toBe(false);
+    for (const target of ["local", "vercel"]) {
+      const r = define("a", { target, world: "postgres" });
+      expect(r.success).toBe(false);
+      const issue = r.error?.issues.find((i) => i.path.at(-1) === "world");
+      expect(issue?.message).toBe("world applies only to target self-host");
+    }
+    expect(define("a", { target: "vercel" }).success).toBe(true);
+  });
+
   it("accepts the spec 23 §2 example", () => {
     const agents = {
       define: { "pr-reviewer": agent },

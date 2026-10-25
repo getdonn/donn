@@ -166,6 +166,10 @@ export type AgentName = z.infer<typeof AgentName>;
 export const AgentTarget = z.enum(["local", "self-host", "vercel"]);
 export type AgentTarget = z.infer<typeof AgentTarget>;
 
+/** The Workflow world of a self-host agent (spec 23 §2): eve's local one, or Postgres. */
+export const AgentWorld = z.enum(["local", "postgres"]);
+export type AgentWorld = z.infer<typeof AgentWorld>;
+
 /**
  * Lexical path normalization with no Node import (this package also runs in browsers): drops
  * "" and "." segments and resolves ".." against what was kept. A ".." with nothing to pop stays
