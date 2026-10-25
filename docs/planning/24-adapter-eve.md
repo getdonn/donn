@@ -7,6 +7,10 @@
 > layers.
 > *Amended 2026-10-25:* re-checked against eve 0.83.2. The persona is no longer an extension: donn
 > writes `donn`-named files straight into the agent's own slots (see "Re-check 2026-10-25").
+> *Built 2026-10-25* (`feature/eve-*` stack, six layers): `AgentAdapter` and its conformance kit in
+> `@getdonn/adapter-sdk`, `@getdonn/adapter-eve` (public from this release), the capability
+> matrix's "Agent adapters" section and an opt-in real-eve e2e (`DONN_E2E=1`). What the build
+> learned is in the `*Amended 2026-10-25 (build)*` notes in §1, §2 and §5.
 
 ## Re-check 2026-10-25
 
@@ -65,6 +69,17 @@ rejected slot option is now the decision (option A); row 3 follows it.
 a collision, §3); `TemplateInfo` takes eve's real gallery slugs and gains `repoPath`; the
 `VercelService` list gains `github-checkout` (§5).
 
+*Amended 2026-10-25 (build):* `PortabilityEntry.service` is `PortabilityService`, which is
+`VercelService | "route-auth"`: route auth is not a Vercel service but the entry shape is the
+same. `AgentAdapter` gains `providerEnv?: readonly string[]`, the env names generated files may
+read although the agent does not set them (the provider keys, `AI_GATEWAY_API_KEY`, a world's
+connection variable); the `env-declared` check allows exactly those besides `env` and
+`secretEnv`. The conformance list also gains `connection-description` (every connection file has a
+non-empty description). `texts` must carry **every** file of a local skill directory (keys
+`<source>/<file>`), and a local skill with no `<source>/SKILL.md` text is an input error, as an
+instruction file is in every harness adapter; the compile reads them to validate the skill and the
+CLI supplies them (`25`).
+
 ```ts
 interface AgentAdapter {
   apiVersion: 1;
@@ -120,7 +135,7 @@ interface TemplateInfo {
 
 interface PortabilityEntry {
   target: "local" | "self-host" | "vercel";
-  service: VercelService;
+  service: PortabilityService;
   /** What to do instead at this target, written to be read as an instruction. */
   instead: string;                    // "Bring a GitHub App: set GITHUB_APP_PRIVATE_KEY …"
   /** Env names the replacement needs, if any. */
@@ -145,6 +160,40 @@ interface PortabilityEntry {
 *Amended 2026-10-25:* the `extensions/donn/` folder is gone; donn's files sit in the agent's own
 slots under `donn` names. `agent.ts` without a template file, the AI SDK majors, the
 `sandbox.ts` form and the pinned version are updated for eve 0.83.2.
+
+*Amended 2026-10-25 (build):* what the build and its checks settled, against eve 0.83.2.
+
+- **The env check.** `lib/donn/env.ts` never throws at import: eve builds the agent without the
+  run-time environment, so a missing variable logs a warning naming every one at load. The hard
+  failure is at the first model call, where `lib/donn/config.ts` wraps the model with
+  `wrapLanguageModel` (from `ai`) and a middleware that throws "donn: missing environment
+  variables: …" before any request. A `vercel-ai-gateway` model is a plain string and cannot be
+  wrapped, so it is warn-only. Agent `env` values may carry secret refs, which become
+  `secretEnv`.
+- **Context window.** eve 0.83.2 has no context-window fallback, so the "approximated entry
+  naming eve's default" above does not exist. `openai-compatible` without
+  `targets.eve.contextWindow` is the compile error `context-window-required` (eve's catalog never
+  knows a custom gateway's ids). An `anthropic` gateway gets an advisory entry: eve looks the
+  model up in the AI Gateway catalog at build (network), so set `targets.eve.contextWindow` if it
+  is not there. The direct and `vercel-ai-gateway` rows get none. Model ids reach every gateway
+  unchanged (`23`'s `default`).
+- **Anthropic gateway provider.** `createAnthropic({ baseURL, apiKey, headers })` has no `name`:
+  the form the spike built, and it keeps eve's catalog lookup. Only the openai-compatible form
+  uses the `donn-gateway` name.
+- **Direct provider keys** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are optional for `local`, where
+  eve accepts `/login` credentials; they are required for `self-host` and `vercel`.
+- **The config module.** `lib/donn/config.ts` exports exactly one name, `donn`, an object with
+  only `model`, `modelContextWindowTokens?` and `experimental?` (eve rejects any other key), and
+  `agent.ts` uses `import { donn } from "./lib/donn/config"` and `...donn`, not the namespace
+  form shown above.
+- **Dependencies.** The generated config imports `ai` (for the guard) and the provider package,
+  so `25` adds `ai@^7.0.152` and `@ai-sdk/openai-compatible@^3` or `@ai-sdk/anthropic@^4` to the
+  agent's `package.json`.
+- **Real eve.** The opt-in e2e (`src/packages/adapters/eve/src/e2e.test.ts`) ran the form
+  against `eve dev --no-ui` with `NODE_ENV=development` and a stub gateway: the call arrived with
+  the configured bearer key and header. That is the only path verified. Under vitest's
+  `NODE_ENV=test` eve's session never reached the gateway, and the production path (`eve build`
+  and a production run) is unverified; `25`'s spike must check it.
 
 ```
 agents/pr-reviewer/                    (the eve project; `25` creates it from the template)
@@ -323,6 +372,21 @@ template uses its gallery slug, and `agentTs` can be `created`.
 *Amended 2026-10-25:* the template slugs and sources are corrected, and a GitHub checkout row
 is added.
 
+*Amended 2026-10-25 (build):* three additions to the table's facts.
+
+- **Per-user OAuth** (`personal-agent-template`'s `tools/github.ts`, `getToken()` with
+  `UserAuthorizationRequiredError`) is a `connect` row, blocking off Vercel: replace the tool with
+  your own OAuth or token flow. The template's MCP connections that use `auth: connect(...)` get a
+  row of their own.
+- **Subagent model strings.** A template whose subagents name AI Gateway models in their own
+  `agent/subagents/*/agent.ts` (`eve-llm-council-template`) keeps them: only the top agent's
+  `agent.ts` is patched. Off Vercel that is a blocking `ai-gateway` entry asking for
+  `AI_GATEWAY_API_KEY` or a model of your own in each subagent.
+- **The personal-agent advisory.** `personal-agent-template`'s `agent.ts` carries
+  `modelOptions.providerOptions.anthropic` (thinking), which applies only to Anthropic models and
+  stays in the file when donn replaces `model`; with a non-Anthropic gateway or model the compile
+  report carries an advisory saying it is ignored.
+
 `templates()` lists the known templates with the Vercel-only services their code uses, read from
 each template's source at the pinned eve version and kept in a table in the adapter.
 
@@ -388,6 +452,7 @@ golden builds and refusals gain names and collisions.
 - **Real eve (`DONN_E2E=1`):** compile into a scratch copy of a template, `eve build`, start it
   with a stub OpenAI-compatible gateway that records requests; the agent answers one HTTP-channel
   turn and the gateway saw the call with the configured key and headers.
+  *(2026-10-25, build:)* as built it drives `eve dev --no-ui`, not `eve build`; see §2's build note.
 
 ## Non-goals
 

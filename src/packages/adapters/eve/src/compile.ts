@@ -9,14 +9,22 @@ import {
   type AgentCompileOutput,
   type FileEntry,
   type ReportEntry,
+  type SecretRef,
 } from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
 import { capabilities } from "./capabilities.js";
 import { assertNoSlotCollisions } from "./collisions.js";
 import { configFile, CONFIG_FILE, SANDBOX_FILE, SANDBOX_TS } from "./config.js";
 import { connectionFiles, unknownTargetEntries } from "./connections.js";
-import { ENV_FILE, envFile, SecretNames } from "./env.js";
+import { ENV_FILE, envFile, isWholeRef, SecretNames } from "./env.js";
 import { EveCompileError } from "./errors.js";
+import { satisfies } from "./semver.js";
+import {
+  isKnownTemplate,
+  portability,
+  templateModelEntries,
+  unknownTemplateEntry,
+} from "./portability.js";
 import { connectionName, skillName } from "./names.js";
 
 // A persona as the files of an eve agent's own slots. See docs/planning/24-adapter-eve.md,
@@ -182,7 +190,7 @@ function skillFiles(
         path,
         outcome: "advisory",
         reason:
-          "the skill's scripts/ run only where the agent has a sandbox; this local agent has none",
+          "the skill's scripts/ run only in a sandbox; locally that needs Docker running when eve builds",
       });
     }
   }
@@ -196,6 +204,12 @@ export function compile(
   const { ir } = input;
   if (!self.irVersions.includes(ir.irVersion)) {
     throw new UnsupportedIrVersionError(self.id, ir.irVersion);
+  }
+  if (!satisfies(input.frameworkVersion, self.frameworkRange)) {
+    throw new EveCompileError(
+      "framework-version",
+      `${self.id} ${input.frameworkVersion} is outside the range this adapter compiles for (${self.frameworkRange})`,
+    );
   }
   if (ir.agents[input.agent] === undefined) {
     throw new AdapterInputError(
@@ -219,16 +233,47 @@ export function compile(
   const mcp = connectionFiles(ir, input.personaId, connections.names, secrets);
   entries.push(...mcp.entries);
   Object.assign(files, mcp.files);
-  const secretEnv = { ...secrets.toSecretEnv(), ...config.secretEnv };
-  files[ENV_FILE] = {
-    content: envFile([
-      ...config.envNames,
-      ...Object.keys(secrets.toSecretEnv()),
-      ...Object.keys(agent.env),
-    ]),
+  const secretEnv: Record<string, SecretRef> = {
+    ...secrets.toSecretEnv(),
+    ...config.secretEnv,
   };
-  if (agent.target === "self-host" && !input.project.hasSandbox)
-    files[SANDBOX_FILE] = { content: SANDBOX_TS };
+  // A value that is exactly a secret ref is a secret under its own name; `env` holds plain values.
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(agent.env)) {
+    const other = secretEnv[name];
+    if (isWholeRef(value)) {
+      if (other !== undefined && other !== value) {
+        throw new EveCompileError(
+          "env-collision",
+          `agents.${input.agent}.env.${name} is ${value}, but ${name} is also set from ${other}`,
+        );
+      }
+      secretEnv[name] = value as SecretRef;
+    } else if (other !== undefined) {
+      throw new EveCompileError(
+        "env-collision",
+        `agents.${input.agent}.env.${name} is a plain value, but ${name} is also set from ${other}`,
+      );
+    } else env[name] = value;
+  }
+  files[ENV_FILE] = {
+    content: envFile(
+      [
+        ...config.envNames,
+        ...Object.keys(secrets.toSecretEnv()),
+        ...Object.keys(agent.env),
+      ],
+      config.envAnyOf,
+    ),
+  };
+  const writesSandbox =
+    agent.target === "self-host" && !input.project.hasSandbox;
+  if (writesSandbox) files[SANDBOX_FILE] = { content: SANDBOX_TS };
+
+  const template = agent.template;
+  if (!isKnownTemplate(template))
+    entries.push(unknownTemplateEntry(input.agent, template));
+  entries.push(...templateModelEntries(input.agent, template, ir));
 
   const text = instructionsText(input, connections.names, entries);
   if (text !== undefined) files[INSTRUCTIONS_FILE] = { content: text };
@@ -238,17 +283,17 @@ export function compile(
     skills,
     connections: [...connections.names.values()],
     instructions: text !== undefined,
+    sandbox: writesSandbox,
   });
 
   return {
     files,
     secretEnv,
-    env: { ...agent.env },
+    env,
     report: annotateLocks(
       { adapter: self.id, irVersion: ir.irVersion, entries },
       ir,
     ),
-    // Until the portability table exists (the compile that follows).
-    portability: [],
+    portability: portability(template, agent.target),
   };
 }

@@ -263,4 +263,11 @@ describe("docs/capabilities.md", () => {
       "docs/capabilities.md is stale; run pnpm docs:capabilities",
     ).toBe(capabilitiesDoc(firstPartyColumns()));
   });
+
+  it("lists the agent adapters, eve among them", () => {
+    const file = join(import.meta.dirname, "../../../../docs/capabilities.md");
+    const committed = readFileSync(file, "utf8");
+    expect(committed).toContain("## Agent adapters");
+    expect(committed).toMatch(/\| Field \| eve \|/);
+  });
 });

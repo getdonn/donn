@@ -46,7 +46,7 @@ overrides them.
 21. `docs/planning/21-managed-settings.md` — Claude Code enforcement (open-source half of E): org/area/team locks compiled to a managed policy bundle, `policy` block, `donn managed build|install|uninstall|check`, `/v1/managed/bundle`
 22. `docs/planning/22-rename-donn.md` — the rename to donn: the full name mapping, the one-off rename script, `donn migrate` for existing installs, the move to the `getdonn` GitHub org, release 0.13.0
 23. `docs/planning/23-models-and-agents.md` — the agents and GUI track starts: `models` (model routing through an org's gateway, lockable) and `agents` (project agents built on a persona) in the spec, merge rules, the capability-matrix row
-24. `docs/planning/24-adapter-eve.md` — `AgentAdapter` and `adapters/eve`: a persona compiled into an eve extension inside a template's project, the ownership manifest, the portability report
+24. `docs/planning/24-adapter-eve.md` — `AgentAdapter` and `adapters/eve`: a persona compiled into the files of an eve agent's own slots (Option A) inside a template's project, the ownership manifest, the portability report
 25. `docs/planning/25-agent-runner.md` — `donn agent create|sync|run|build|deploy|env|exec`; local, self-host and Vercel targets; secrets; driving the project-local eve CLI; a GitHub Actions spike
 26. `docs/planning/26-gui.md` — the GUI: one React app served by the daemon (`donn ui`) and a Tauri desktop shell, the loopback bridge, the screens, the agent builder
 27. `docs/planning/27-first-publish.md` — the first npm publish: 13 runtime packages public under Apache-2.0, `getdonn/donn` public, trusted publishing with provenance from a tag-triggered `release.yml`, a Verdaccio rehearsal, release 0.14.0
@@ -83,7 +83,9 @@ binary against real `claude`). Spec 07 (`switch`, `init`, `doctor`, CLI hardenin
 install); the first npm publish is done: spec 27 shipped release 0.14.0 on 2026-10-24, with the 13
 runtime packages on npm (trusted publishing, provenance) and `getdonn/donn` public. Next: the agents
 and GUI track, specs 23–26 (designed 2026-10-24): spec 23 is built (`models` and `agents` in the
-spec, the resolver and the capability matrix); specs 24–26 are designed, not built.
+spec, the resolver and the capability matrix) and spec 24 is built (`AgentAdapter`,
+`@getdonn/adapter-eve`, the agent half of the capability matrix; the adapter becomes the 14th public
+package with the next release); specs 25–26 are designed, not built.
 
 ## Conventions (once code exists)
 
@@ -91,7 +93,7 @@ spec, the resolver and the capability matrix); specs 24–26 are designed, not b
 - Node: develop on 26 (pnpm downloads it via `devEngines.runtime`; system Node is irrelevant);
   `engines` floor is >=24, and `@types/node` tracks the floor, not the dev version.
 - Workspaces live under `src/apps/*` and `src/packages/*` (adapters in `src/packages/adapters/*`),
-  never at the repo root. The 13 runtime packages are public (published from `release.yml`, spec 27); tooling (`eslint-config`, `typescript-config`, `release`) and the root stay `"private": true`.
+  never at the repo root. The runtime packages are public (13 at 0.14.0; `@getdonn/adapter-eve` is the 14th from the release that carries spec 24; published from `release.yml`, spec 27); tooling (`eslint-config`, `typescript-config`, `release`) and the root stay `"private": true`.
 - Every CLI command supports `--json`.
 - Formatting: Prettier at width 80 (`.prettierrc.json`). `pnpm format` before committing;
   `pnpm format:check` must pass. `.prettierignore` excludes generated files, test fixtures and

@@ -23,6 +23,8 @@ export interface ConfigResult {
   content: string;
   /** Env names this file's output relies on, for `env.ts`. */
   envNames: string[];
+  /** Env groups of which any one variable satisfies the need (a world's connection string). */
+  envAnyOf: string[][];
   /** The direct secret map this file adds (`AI_GATEWAY_API_KEY`), beside the numbered ones. */
   secretEnv: Record<string, `secret://${string}`>;
   entries: ReportEntry[];
@@ -54,6 +56,7 @@ export function configFile(
   const imports: string[] = [];
   const setup: string[] = [];
   const envNames: string[] = [];
+  const envAnyOf: string[][] = [];
   const secretEnv: ConfigResult["secretEnv"] = {};
   const entries: ReportEntry[] = [];
   let model: string;
@@ -171,7 +174,8 @@ export function configFile(
       "experimental",
       '{ workflow: { world: "@workflow/world-postgres" } }',
     ]);
-    envNames.push("WORKFLOW_POSTGRES_URL");
+    // The world reads WORKFLOW_POSTGRES_URL and falls back to DATABASE_URL.
+    envAnyOf.push(["WORKFLOW_POSTGRES_URL", "DATABASE_URL"]);
   }
 
   const content = [
@@ -221,5 +225,5 @@ export function configFile(
       .join("\n")}\n};`,
     "",
   ].join("\n");
-  return { content, envNames, secretEnv, entries };
+  return { content, envNames, envAnyOf, secretEnv, entries };
 }

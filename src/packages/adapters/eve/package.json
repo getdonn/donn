@@ -36,6 +36,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/parser": "^8.0.8",
     "@getdonn/adapter-sdk": "workspace:*",
     "@getdonn/spec": "workspace:*"
   },
@@ -50,5 +51,7 @@
   "engines": {
     "node": ">=24"
   },
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  }
 }

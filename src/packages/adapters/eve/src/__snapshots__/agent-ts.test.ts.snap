@@ -1,0 +1,99 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-chat-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-coding-agent-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  reasoning: "medium",
+  // Coding sessions run long; compact before the context gets crowded.
+  compaction: { thresholdPercent: 0.7 },
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-company-brain-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  build: { externalDependencies: ["@duckdb/node-api"] },
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-discord-agent-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-llm-council-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  limits: {
+    sessionUsage: ({ window }) => window.outputTokens >= 4_000,
+  },
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-slack-agent-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > eve-voice-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+// Every voice request waits on this model, so prefer a fast one.
+export default defineAgent({
+  ...donn,
+});
+"
+`;
+
+exports[`patchAgentTs on the templates' real agent.ts (eve@0.83.2) > personal-agent-template.ts: golden output 1`] = `
+"import { defineAgent } from "eve";
+import { donn } from "./lib/donn/config";
+
+export default defineAgent({
+  modelOptions: {
+    providerOptions: {
+      anthropic: {
+        thinking: {
+          type: "enabled",
+          budgetTokens: 2048,
+        },
+      },
+    },
+  },
+  ...donn,
+});
+"
+`;

@@ -68,7 +68,7 @@ describe("instructions and knowledge", () => {
       "agent/lib/donn/config.ts",
       "agent/lib/donn/env.ts",
     ]);
-    expect(out.portability).toEqual([]);
+    expect(out.portability.map((e) => e.service)).toEqual(["route-auth"]);
   });
 
   it("reports knowledge as advisory and permissions, hooks, policy as dropped", () => {
@@ -371,5 +371,96 @@ describe("names and collisions", () => {
       }),
     );
     expect(out.files["agent/skills/donn-x"]).toBeDefined();
+  });
+});
+
+describe("portability in the compile", () => {
+  const withTemplate = (
+    template: string,
+    target: "local" | "self-host" | "vercel" = "self-host",
+  ) =>
+    input(
+      {
+        agents: {
+          reviewer: { template, target, path: "agents/reviewer", env: {} },
+        },
+        models: { default: "anthropic/claude-sonnet-5" },
+      },
+      {},
+    );
+
+  it("fills the entries for the agent's template and target", () => {
+    const out = adapter.compile(withTemplate("eve:eve-discord-agent"));
+    expect(out.portability.map((e) => e.service)).toEqual([
+      "connect",
+      "ai-gateway",
+      "daemons",
+      "route-auth",
+    ]);
+    expect(
+      out.report.entries.some((e) => e.reason.includes("portability-unknown")),
+    ).toBe(false);
+  });
+
+  it("an unknown template compiles with a portability-unknown advisory", () => {
+    const out = adapter.compile(withTemplate("eve:kody-eve-template"));
+    expect(out.portability.map((e) => e.service)).toEqual(["route-auth"]);
+    const entry = out.report.entries.find((e) =>
+      e.reason.startsWith("portability-unknown"),
+    );
+    expect(entry).toMatchObject({
+      path: "agents.reviewer.template",
+      outcome: "advisory",
+    });
+  });
+
+  it("vercel has nothing to report", () => {
+    expect(
+      adapter.compile(withTemplate("eve:eve-coding-agent-template", "vercel"))
+        .portability,
+    ).toEqual([]);
+  });
+
+  it("personal-agent's Anthropic-only modelOptions are advised unless the model is Anthropic", () => {
+    const advice = (models: ResolvedPersona["models"]) =>
+      adapter
+        .compile({
+          ...withTemplate("eve:personal-agent-template"),
+          ir: {
+            ...withTemplate("eve:personal-agent-template").ir,
+            models,
+            targets: { eve: { contextWindow: 128000 } },
+          },
+        })
+        .report.entries.filter((e) =>
+          e.reason.includes("providerOptions.anthropic"),
+        );
+    expect(advice({ default: "anthropic/claude-sonnet-5" })).toEqual([]);
+    expect(
+      advice({
+        gateway: {
+          type: "anthropic",
+          baseURL: "https://g/v1",
+          apiKey: "secret://v/k",
+        },
+        default: "claude-sonnet-5",
+      }),
+    ).toEqual([]);
+    expect(advice({ default: "openai/gpt-5" })).toEqual([
+      expect.objectContaining({
+        outcome: "advisory",
+        path: "agents.reviewer.template",
+      }),
+    ]);
+    expect(
+      advice({
+        gateway: {
+          type: "openai-compatible",
+          baseURL: "https://g/v1",
+          apiKey: "secret://v/k",
+        },
+        default: "gpt-5",
+      }),
+    ).toHaveLength(1);
   });
 });

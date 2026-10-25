@@ -1,11 +1,19 @@
 import { defineAgentAdapter } from "@getdonn/adapter-sdk";
 import { capabilities } from "./capabilities.js";
 import { compile } from "./compile.js";
+import { templates } from "./templates.js";
 
 // The eve adapter: a persona as the files of an eve agent's own slots.
 // See docs/planning/24-adapter-eve.md.
 
 export { connectionName, skillName } from "./names.js";
+export {
+  createdAgentTs,
+  patchAgentTs,
+  type AgentTsResult,
+} from "./agent-ts.js";
+export { COPY_PENDING, manifestFiles } from "./manifest.js";
+export { portability } from "./portability.js";
 export { EveCompileError, type EveErrorCode } from "./errors.js";
 
 const adapter = defineAgentAdapter({
@@ -22,8 +30,7 @@ const adapter = defineAgentAdapter({
     "DATABASE_URL",
   ],
   capabilities,
-  // The template table comes with the portability report (the compile that follows).
-  templates: () => [],
+  templates,
   compile: (input) => compile(input, adapter),
 });
 
