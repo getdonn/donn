@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { existsSync, type Stats } from "node:fs";
 import {
   chmod,
@@ -29,12 +29,14 @@ import { CliError, errorEnvelope } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { listSessions, removeSession, type SessionInfo } from "../session.js";
 import { agentRunner } from "./agents.js";
+import { openBridge, type Bridge } from "./bridge.js";
 import type {
   DaemonEvent,
   DaemonStatus,
   SessionState,
   SessionStatus,
 } from "./client.js";
+import { failure, readBody, runRequest, sameToken } from "./http.js";
 import { createLog } from "./log.js";
 import { daemonPaths, privateSocketDir } from "./paths.js";
 import { isDaemonProcess } from "./process.js";
@@ -280,58 +282,9 @@ const answers = (sock: string) =>
     socket.once("error", () => done(false));
   });
 
-const sameToken = (header: string | undefined, token: string) => {
-  const expected = Buffer.from(`Bearer ${token}`);
-  const given = Buffer.from(header ?? "");
-  return given.length === expected.length && timingSafeEqual(given, expected);
-};
-
 function send(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(`${JSON.stringify(body)}\n`);
-}
-
-/** The largest request body read, `POST /run`'s; larger is `413 too-large`. */
-const BODY_LIMIT = 1024 * 1024;
-
-/** The request's body as text, or undefined once it passes `BODY_LIMIT` (the rest is drained). */
-function readBody(req: IncomingMessage): Promise<string | undefined> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size <= BODY_LIMIT) chunks.push(chunk);
-    });
-    req.on("end", () =>
-      resolve(
-        size > BODY_LIMIT ? undefined : Buffer.concat(chunks).toString("utf8"),
-      ),
-    );
-    req.on("error", reject);
-  });
-}
-
-/** `{ argv, cwd }` from `POST /run`'s body, or the reason it is not one. */
-async function runRequest(
-  text: string,
-): Promise<{ argv: string[]; cwd: string } | string> {
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return "the body is not JSON";
-  }
-  if (typeof body !== "object" || body === null || Array.isArray(body))
-    return "the body must be { argv, cwd }";
-  const { argv, cwd } = body as { argv?: unknown; cwd?: unknown };
-  if (!Array.isArray(argv) || !argv.every((a) => typeof a === "string"))
-    return "argv must be an array of strings";
-  if (typeof cwd !== "string" || !isAbsolute(cwd))
-    return "cwd must be an absolute path";
-  const dir = await stat(cwd).catch(() => undefined);
-  if (!dir?.isDirectory()) return "cwd must be an existing directory";
-  return { argv: argv as string[], cwd };
 }
 
 const DEBOUNCE_MS = 300;
@@ -347,19 +300,6 @@ interface Tracked {
   error?: string;
   pid: number;
 }
-
-const failure = (
-  code: string,
-  message: string,
-  details?: Record<string, unknown>,
-) => ({
-  error: {
-    code,
-    message,
-    ...(details !== undefined &&
-      Object.keys(details).length > 0 && { details }),
-  },
-});
 
 /** `{ project, name }` from `POST /agents/run|stop`'s body, or the reason it is not one. */
 function agentRequest(
@@ -380,6 +320,27 @@ function agentRequest(
   if (typeof name !== "string" || name === "")
     return "name must be an agent's name";
   return { project, name };
+}
+
+/** `{ port? }` from `POST /ui/open`'s body (empty is `{}`), or the reason it is not one. */
+function uiOpenRequest(text: string): { port?: number } | string {
+  let body: unknown;
+  try {
+    body = text.trim() === "" ? {} : JSON.parse(text);
+  } catch {
+    return "the body is not JSON";
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body))
+    return "the body must be { port? }";
+  const { port } = body as { port?: unknown };
+  if (port === undefined) return {};
+  if (
+    !Number.isInteger(port) ||
+    (port as number) < 1 ||
+    (port as number) > 65535
+  )
+    return "port must be a whole number from 1 to 65535";
+  return { port: port as number };
 }
 
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
@@ -741,6 +702,42 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   let markClosed!: () => void;
   const closed = new Promise<void>((resolve) => (markClosed = resolve));
 
+  /** Runs a `POST /run` or a bridge's `/v1/run`: logged, and an agent it creates announced. */
+  const runAndAnnounce: typeof runInProcess = async (runIo, argv, cwd) => {
+    await log(`run ${JSON.stringify(argv)} in ${JSON.stringify(cwd)}`);
+    const result = await runInProcess(runIo, argv, cwd);
+    const created = result.exitCode === 0 && agentCreated(argv, cwd);
+    // Unless the pass the index change started has announced it already.
+    if (created && !announced?.has(createdKey(created)))
+      await announce(created);
+    return result;
+  };
+
+  /** The loopback bridge for the UI (spec 26 §2), while one is open. */
+  let bridge: Bridge | undefined;
+  let opening: Promise<Bridge> | undefined;
+  const openUi = (port: number | undefined): Promise<Bridge> => {
+    if (bridge) return Promise.resolve(bridge);
+    opening ??= openBridge({
+      home: options.home,
+      io,
+      runInProcess: runAndAnnounce,
+      now,
+      ...(port !== undefined && { port }),
+      log,
+    })
+      .then(async (opened) => {
+        bridge = opened;
+        await log(`ui open on 127.0.0.1:${opened.port}`);
+        void opened.closed.then(() => {
+          if (bridge === opened) bridge = undefined;
+        });
+        return opened;
+      })
+      .finally(() => (opening = undefined));
+    return opening;
+  };
+
   const server = createServer((req: IncomingMessage, res) => {
     void (async () => {
       if (!sameToken(req.headers.authorization, token)) {
@@ -786,16 +783,43 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             ),
           );
         }
-        await log(
-          `run ${JSON.stringify(run.argv)} in ${JSON.stringify(run.cwd)}`,
-        );
-        const result = await runInProcess(io, run.argv, run.cwd);
-        const created =
-          result.exitCode === 0 && agentCreated(run.argv, run.cwd);
-        // Unless the pass the index change started has announced it already.
-        if (created && !announced?.has(createdKey(created)))
-          await announce(created);
-        return send(res, 200, result);
+        return send(res, 200, await runAndAnnounce(io, run.argv, run.cwd));
+      }
+      if (route === "POST /ui/open") {
+        const text = await readBody(req);
+        if (text === undefined) {
+          return send(res, 413, failure("too-large", "the body is over 1 MiB"));
+        }
+        const open = uiOpenRequest(text);
+        if (typeof open === "string") {
+          return send(res, 400, failure("bad-request", open));
+        }
+        if (stopping) {
+          return send(res, 503, failure("stopping", "the daemon is stopping"));
+        }
+        try {
+          const config = await loadConfig(options.home, io.env, io.passwdHome);
+          if (config.daemon?.ui === false) {
+            return send(
+              res,
+              403,
+              failure("ui-disabled", "the UI is turned off in config.yaml", {
+                file: join(options.home, "config.yaml"),
+                fix: "remove daemon.ui: false from config.yaml",
+              }),
+            );
+          }
+          const opened = await openUi(open.port);
+          return send(res, 200, { port: opened.port, code: opened.code() });
+        } catch (error) {
+          const known = errorEnvelope(error);
+          if (known === undefined) throw error;
+          return send(
+            res,
+            400,
+            failure(known.code, known.message, known.details),
+          );
+        }
       }
       if (route === "GET /agents") {
         return send(res, 200, { agents: await agents.list() });
@@ -849,6 +873,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       stopping = true;
       await log("stopping");
       clearInterval(poll);
+      // The UI's listener first: no new runs start from it.
+      await opening?.catch(() => undefined);
+      await bridge?.close();
       watcher?.close();
       // Finish the swap in flight: a session is never left half-swapped.
       while (inFlight || queued) await (queued ?? inFlight);
