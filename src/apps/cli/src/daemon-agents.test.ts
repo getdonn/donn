@@ -8,7 +8,7 @@ import {
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentLogPath } from "./agent/run.js";
-import { agentRunner } from "./daemon/agents.js";
+import { agentRunner, serial } from "./daemon/agents.js";
 import { cliVersion } from "./commands/daemon.js";
 import {
   connectDaemon,
@@ -470,6 +470,56 @@ describe("the daemon keeps created agents current", () => {
   );
 
   it(
+    "restarts a running agent when only its env changed",
+    { timeout: 15_000 },
+    async () => {
+      const daemon = await start();
+      await call(daemon, "POST", "/agents/run", {
+        project: s.repo,
+        name: "kody",
+      });
+      expect(starts()[0]!.env.GREETING).toBe("hello");
+      const before = files();
+      editPersona("GREETING: hello", "GREETING: hello-again");
+      await vi.waitFor(() => expect(starts()).toHaveLength(2), {
+        timeout: 5_000,
+      });
+      expect(starts()[1]!.env.GREETING).toBe("hello-again");
+      // No file donn owns changed: a restart for the env alone.
+      expect(files()).toEqual(before);
+      await vi.waitFor(() =>
+        expect(events.map((e) => e.type)).toEqual([
+          "agent.started",
+          "agent.stopped",
+          "agent.started",
+        ]),
+      );
+      const text = JSON.stringify(events);
+      expect(text).not.toContain("hello-again");
+      expect(text).not.toContain("tok-SECRET");
+    },
+  );
+
+  it(
+    "leaves a running agent alone when nothing it runs with changed",
+    { timeout: 15_000 },
+    async () => {
+      const daemon = await start();
+      await call(daemon, "POST", "/agents/run", {
+        project: s.repo,
+        name: "kody",
+      });
+      // A comment: a sync that changes nothing, and the same env.
+      editPersona("agents:\n", "agents:\n  # kody\n");
+      await call(daemon, "POST", "/refresh");
+      await vi.waitFor(() =>
+        expect(daemonLog()).toMatch(/kody .*env unchanged/),
+      );
+      expect(starts()).toHaveLength(1);
+    },
+  );
+
+  it(
     "syncs an agent that is not running without starting it",
     { timeout: 15_000 },
     async () => {
@@ -596,6 +646,22 @@ describe("the daemon keeps created agents current", () => {
     expect(watching).toContain(join(s.repo, ".donn"));
     expect(watching).toContain(join(s.home, "agents", "index.json"));
     expect(watching).not.toContain(join(other, ".donn"));
+  });
+
+  it("serial goes on after work that fails, and settles", async () => {
+    const one = serial();
+    let calls = 0;
+    const fail = async () => {
+      calls++;
+      throw new Error("boom");
+    };
+    const runs = [1, 2, 3].map(() => one.next("k", fail));
+    for (const r of runs) await expect(r).rejects.toThrow("boom");
+    expect(calls).toBe(2);
+    await one.settled();
+    // Not stuck: the key runs again.
+    await expect(one.next("k", fail)).rejects.toThrow("boom");
+    expect(calls).toBe(3);
   });
 
   it("serialises the syncs of one agent: a burst runs one, then one more", async () => {

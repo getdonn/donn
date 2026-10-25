@@ -9,7 +9,9 @@ import { dirname, join } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeEve } from "../test/fake-eve.js";
-import { seed, zz, type Seeded } from "../test/seed.js";
+import { quietIo, seed, zz, type Seeded } from "../test/seed.js";
+import { projectContext } from "./load.js";
+import { syncAgent } from "./sync.js";
 
 // `donn agent list` and `donn agent sync` against a temp project and a path template.
 // See docs/planning/25-agent-runner.md, sections 1 and 3.
@@ -189,6 +191,44 @@ describe("donn agent sync", () => {
     const dry = await run(["sync", "kody", "--dry-run", "--json"]);
     expect(JSON.parse(dry.stdout).written).toContain(SKILL_FILE);
     expect(existsSync(join(dir(), SKILL_FILE))).toBe(false);
+  });
+
+  it("a sync waits for another one's lock: neither sees the other's files as edited", async () => {
+    await create();
+    // Changes a file donn already wrote, so a write the first did not see reads as an edit.
+    writeFileSync(
+      persona(),
+      readFileSync(persona(), "utf8").replace(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      ),
+    );
+    const io = {
+      ...quietIo({
+        cwd: s.root,
+        home: s.home,
+        env: { GATEWAY_KEY: "sk-test-SECRET" },
+      }),
+      probe,
+    };
+    const ctx = async () => projectContext(io, s.repo);
+    // The first stops between its compile and its writes until the second is done, or for
+    // 300 ms if the second has to wait for it.
+    let second!: Promise<unknown>;
+    const first = syncAgent(await ctx(), io, "kody", {
+      onCompiled: () =>
+        Promise.race([
+          second.catch(() => undefined),
+          new Promise((r) => setTimeout(r, 300)),
+        ]).then(() => undefined),
+    });
+    second = (async () => syncAgent(await ctx(), io, "kody"))();
+    const results = await Promise.allSettled([first, second]);
+    expect(results).toEqual([
+      expect.objectContaining({ status: "fulfilled" }),
+      expect.objectContaining({ status: "fulfilled" }),
+    ]);
+    expect((await rows())[0]).toMatchObject({ current: true });
   });
 
   it("stops at an edited owned file, naming it; --force overwrites", async () => {

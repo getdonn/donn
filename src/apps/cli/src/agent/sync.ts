@@ -14,7 +14,9 @@ import {
   type PlannedFiles,
 } from "./files.js";
 import { compile, compileInputs } from "./inputs.js";
-import { loadCreatedAgent, projectContext } from "./load.js";
+import { withFileLock } from "../fs.js";
+import { loadCreatedAgent, projectContext, projectRoot } from "./load.js";
+import { agentLockPath } from "./registry.js";
 
 // `donn agent sync <name>`: recompile and rewrite donn's files in a created agent by the
 // manifest's rules (docs/planning/24-adapter-eve.md, section 4). It never touches agent.ts or
@@ -56,7 +58,9 @@ export interface SyncedAgent {
 /**
  * The sync itself, for the command and the daemon: recompile `name` and, unless `dryRun`, write
  * donn's files and the manifest. An owned file edited by hand stops it (`owned-file-edited`)
- * unless `force`. `onCompiled` sees the compile before any stop.
+ * unless `force`. `onCompiled` sees the compile before any stop. It holds the agent's lock from
+ * reading the manifest to writing it, so a sync in another process (the daemon's, a terminal's)
+ * waits rather than reading this one's files as edited.
  */
 export async function syncAgent(
   ctx: Context,
@@ -65,12 +69,23 @@ export async function syncAgent(
   options: {
     force?: boolean;
     dryRun?: boolean;
-    onCompiled?: (output: AgentCompileOutput) => void;
+    onCompiled?: (output: AgentCompileOutput) => void | Promise<void>;
   } = {},
+): Promise<SyncedAgent> {
+  return withFileLock(agentLockPath(ctx.home, projectRoot(ctx), name), () =>
+    syncLocked(ctx, io, name, options),
+  );
+}
+
+async function syncLocked(
+  ctx: Context,
+  io: CliIo,
+  name: string,
+  options: Parameters<typeof syncAgent>[3] & {},
 ): Promise<SyncedAgent> {
   const { root, result, dir, manifest } = await loadCreatedAgent(ctx, io, name);
   const { output, planned } = await recompile(ctx, result, name, dir, manifest);
-  options.onCompiled?.(output);
+  await options.onCompiled?.(output);
   const { written, removed } = await pendingChanges(dir, planned, manifest);
   // A dry run stops where the real sync would; with --force it reports the overwrites.
   const edited = await checkOwned(dir, manifest, options.force === true);

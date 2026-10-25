@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { resolveSecrets, SecretResolutionError } from "@getdonn/secrets";
 import type { CliIo } from "../cli.js";
 import type { Context } from "../context.js";
@@ -124,6 +125,21 @@ export async function agentEnvironment(
     for (const e of entries) if (e.ref !== undefined) e.value = values[e.ref]!;
   }
   return { root, dir, entries };
+}
+
+/**
+ * A digest of what an agent's env is made from: each entry's name, source and ref, and a plain
+ * entry's value. Never a secret's value nor a run-time one (the route token), resolved or not,
+ * so it changes only when the persona's inputs do.
+ */
+export function envInputs(entries: EnvEntry[]): string {
+  const inputs = entries.map((e) => [
+    e.name,
+    e.source,
+    e.ref ?? null,
+    e.source === "plain" ? (e.value ?? "") : null,
+  ]);
+  return createHash("sha256").update(JSON.stringify(inputs)).digest("hex");
 }
 
 /** The entries of `agentEnvironment`, for callers that only want the list. */

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -8,9 +8,10 @@ import { cliVersion } from "../commands/daemon.js";
 import type { Context } from "../context.js";
 import { connectDaemon, type AgentInfo } from "../daemon/client.js";
 import { CliError } from "../errors.js";
-import { agentEnvironment } from "./env.js";
+import { agentEnvironment, envInputs } from "./env.js";
 import { eveEnv, packageManager, runEve } from "./eve.js";
 import { projectContext, projectRoot } from "./load.js";
+import { agentStatePath } from "./registry.js";
 import { nodeSpawn } from "./spawn.js";
 
 // `donn agent run|stop|logs`: a created agent built and started with its env resolved, by the
@@ -220,14 +221,8 @@ export async function startAgent(
 }
 
 /** `<home>/agents/<first 16 hex of sha256(project)>/<name>.log`. */
-export function agentLogPath(
-  home: string,
-  project: string,
-  name: string,
-): string {
-  const hash = createHash("sha256").update(project).digest("hex").slice(0, 16);
-  return join(home, "agents", hash, `${name}.log`);
-}
+export const agentLogPath = (home: string, project: string, name: string) =>
+  agentStatePath(home, project, `${name}.log`);
 
 /** The project root holding `dir`, or `dir` itself outside a project. */
 export function rootOf(dir: string): string {
@@ -259,6 +254,8 @@ export async function runEnvironment(
   dir: string;
   values: Record<string, string>;
   secrets: string[];
+  /** What the env was made from, without a secret's value: see envInputs. */
+  inputs: string;
 }> {
   const { root, dir, entries } = await agentEnvironment(ctx, io, name, {
     resolve: true,
@@ -274,7 +271,7 @@ export async function runEnvironment(
     values[e.name] = e.value;
     if (e.source === "secret") secrets.push(e.value);
   }
-  return { root, dir, values, secrets };
+  return { root, dir, values, secrets, inputs: envInputs(entries) };
 }
 
 /** The daemon's agents: in-process inside the daemon, else over its socket, else none. */

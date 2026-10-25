@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { agentEnvironment, envInputs } from "../agent/env.js";
 import { projectContext } from "../agent/load.js";
 import {
   agentLogPath,
@@ -54,10 +55,46 @@ interface Entry {
   agent: RunningAgent;
   /** Settles once the lines written so far are in the agent's log. */
   flushed: () => Promise<void>;
+  /** What its env was made from at start (envInputs): a change restarts it. */
+  inputs: string;
   stopping: boolean;
 }
 
 const key = (project: string, name: string) => `${project}\0${name}`;
+
+/**
+ * One piece of work at a time per key. A call while one runs waits for it, and every such call
+ * shares the one run queued after it; work that fails does not stop the queue.
+ */
+export function serial() {
+  const inFlight = new Map<string, Promise<void>>();
+  const queued = new Map<string, Promise<void>>();
+  const next = (k: string, work: () => Promise<void>): Promise<void> => {
+    const current = inFlight.get(k);
+    if (current === undefined) {
+      const done = work().finally(() => inFlight.delete(k));
+      inFlight.set(k, done);
+      return done;
+    }
+    let after = queued.get(k);
+    if (after === undefined) {
+      after = current
+        .catch(() => undefined)
+        .then(() => {
+          queued.delete(k);
+          return next(k, work);
+        });
+      queued.set(k, after);
+    }
+    return after;
+  };
+  /** Settles once nothing runs or waits; each await is on work, never a spin. */
+  const settled = async () => {
+    while (inFlight.size > 0 || queued.size > 0)
+      await Promise.allSettled([...queued.values(), ...inFlight.values()]);
+  };
+  return { next, settled };
+}
 
 const info = (a: RunningAgent): AgentInfo => ({
   name: a.name,
@@ -73,15 +110,22 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
   const running = new Map<string, Entry>();
   const starting = new Map<
     string,
-    Promise<{ agent: RunningAgent; flushed: () => Promise<void> }>
+    Promise<{
+      agent: RunningAgent;
+      flushed: () => Promise<void>;
+      inputs: string;
+    }>
   >();
   let closing = false;
 
   const launch = async (project: string, name: string) => {
     const ctx = await projectContext(io, project);
-    const { root, dir, values, secrets } = await runEnvironment(ctx, io, name, {
-      start: true,
-    });
+    const { root, dir, values, secrets, inputs } = await runEnvironment(
+      ctx,
+      io,
+      name,
+      { start: true },
+    );
     const path = agentLogPath(options.home, root, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const agentLog = createLog(path, options.now);
@@ -92,7 +136,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       redact: secrets,
       onLine: (line) => void (last = agentLog(line)),
     });
-    return { agent, flushed: () => last };
+    return { agent, flushed: () => last, inputs };
   };
 
   const watch = (k: string, entry: Entry) => {
@@ -129,8 +173,8 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     const started = launch(root, name);
     starting.set(k, started);
     try {
-      const { agent, flushed } = await started;
-      const entry: Entry = { agent, flushed, stopping: false };
+      const { agent, flushed, inputs } = await started;
+      const entry: Entry = { agent, flushed, inputs, stopping: false };
       running.set(k, entry);
       watch(k, entry);
       await log(`agent ${name} in ${root} running at ${agent.url}`);
@@ -182,41 +226,44 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     (async (project: string, name: string) =>
       syncAgent(await projectContext(io, project), io, name));
   const failures = new Map<string, AgentSyncFailure>();
-
-  /** One at a time per key; calls during one share the single run queued after it. */
-  const serial = () => {
-    const inFlight = new Map<string, Promise<void>>();
-    const queued = new Map<string, Promise<void>>();
-    const next = (k: string, work: () => Promise<void>): Promise<void> => {
-      const current = inFlight.get(k);
-      if (current === undefined) {
-        const done = work().finally(() => inFlight.delete(k));
-        inFlight.set(k, done);
-        return done;
-      }
-      let after = queued.get(k);
-      if (after === undefined) {
-        after = current.then(() => {
-          queued.delete(k);
-          return next(k, work);
-        });
-        queued.set(k, after);
-      }
-      return after;
-    };
-    const settled = async () => {
-      while (inFlight.size > 0 || queued.size > 0)
-        await Promise.allSettled([...queued.values(), ...inFlight.values()]);
-    };
-    return { next, settled };
-  };
   const syncs = serial();
   const restarts = serial();
+  /** Agents a sync wrote files for since their last restart. */
+  const filesChanged = new Set<string>();
 
-  /** Stop, then start as a fresh run would; a start that fails is `agent.failed` (run's). */
+  /** The env inputs the persona gives the agent now; undefined when they cannot be read. */
+  const currentInputs = async (project: string, name: string) => {
+    try {
+      const ctx = await projectContext(io, project);
+      const env = await agentEnvironment(ctx, io, name, { resolve: false });
+      return envInputs(env.entries);
+    } catch (error) {
+      const code = error instanceof CliError ? error.code : "internal";
+      await log(`agent ${name} in ${project} env not read: ${code}`);
+      return undefined;
+    }
+  };
+
+  /**
+   * After a sync: a running agent is stopped and started as a fresh run would be when the sync
+   * wrote its files or its env inputs differ from those it started with. A start that fails is
+   * `agent.failed` (run's).
+   */
   const restart = (project: string, name: string) =>
     restarts.next(key(project, name), async () => {
-      if (closing) return;
+      const k = key(project, name);
+      // One still starting may have started from the files before this sync.
+      await starting.get(k)?.catch(() => undefined);
+      const entry = running.get(k);
+      const wrote = filesChanged.delete(k);
+      if (closing || entry === undefined) return;
+      if (!wrote) {
+        const inputs = await currentInputs(project, name);
+        if (inputs === undefined || inputs === entry.inputs) {
+          await log(`agent ${name} in ${project} kept running: env unchanged`);
+          return;
+        }
+      }
       const { stopped } = await stop(project, name);
       if (!stopped || closing) return;
       await log(`agent ${name} in ${project} restarting after a sync`);
@@ -246,13 +293,17 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     }
     failures.delete(k);
     const { written, removed } = changed;
-    if (written.length === 0 && removed.length === 0) return;
-    await log(
-      `agent ${name} in ${project} synced: ${written.length} written, ${removed.length} removed`,
-    );
-    emit({ type: "agent.synced", name, project, written, removed });
+    const wrote = written.length > 0 || removed.length > 0;
+    if (wrote) {
+      await log(
+        `agent ${name} in ${project} synced: ${written.length} written, ${removed.length} removed`,
+      );
+      emit({ type: "agent.synced", name, project, written, removed });
+    }
+    if (!running.has(k) && !starting.has(k)) return;
+    if (wrote) filesChanged.add(k);
     // Not awaited: a build and start must not hold up the next sync.
-    if (running.has(k) || starting.has(k)) void restart(project, name);
+    void restart(project, name);
   };
 
   return {
