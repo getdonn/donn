@@ -196,6 +196,9 @@ importers:
       '@getdonn/adapter-codex':
         specifier: workspace:*
         version: link:../../packages/adapters/codex
+      '@getdonn/adapter-eve':
+        specifier: workspace:*
+        version: link:../../packages/adapters/eve
       '@getdonn/adapter-sdk':
         specifier: workspace:*
         version: link:../../packages/adapter-sdk
