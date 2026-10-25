@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { RunLines, RunResult } from "./run.js";
 
 // The bridge's jobs (`POST /v1/jobs`): a long CLI run (`agent create`, `build`, `deploy`,
-// `pull`) the app starts and follows by events instead of holding a request open. One runs at a
-// time, in the order started; each stderr line is a `job.progress`, the end a `job.done` with
-// the JSON result. A run that stops for an answer (exit 2 with a `needs-answer` result) is a
+// `pull`) the app starts and follows by events instead of holding a request open. Up to four run
+// at once, the rest queued in the order started (the per-agent lock already serialises an
+// agent's writes); each stderr line is a `job.progress`, the end a `job.done` with the JSON
+// result. A run that stops for an answer (exit 2 with a `needs-answer` result) is a
 // `job.question`; its answer runs the `continue` argv as a new job. See docs/planning/26-gui.md
 // §2 and docs/planning/25-agent-runner.md §6.
 
@@ -28,7 +29,12 @@ export interface Job {
   answeredBy?: string;
   createdAt: number;
   finishedAt?: number;
+  /** Its output, each stream cut to its last `maxOutput` bytes. */
   result?: RunResult;
+  /** Whether the output kept is the end of a longer one. */
+  truncated?: boolean;
+  /** Queued when the bridge closed: never run. */
+  cancelled?: boolean;
   question?: JobQuestion;
 }
 
@@ -53,18 +59,23 @@ export interface JobsOptions {
   limit?: number;
   /** How long a done job is kept; an hour. */
   keepMs?: number;
+  /** How many run at once; 4. */
+  concurrency?: number;
+  /** How much of each of a job's stdout and stderr is kept, from the end; 256 KiB. */
+  maxOutput?: number;
 }
 
 export interface Jobs {
-  /** Queues a job; undefined when `limit` jobs are still queued or running. */
+  /** Queues a job: `full` when `limit` jobs are still queued or running, `closed` after close. */
   start(
     argv: string[],
     cwd: string | undefined,
     parent?: string,
-  ): Job | undefined;
+  ): Job | "full" | "closed";
   get(id: string): Job | undefined;
   /**
-   * The argv and cwd that answer a job's question: its `continue` with `--answer key=<JSON>`.
+   * The argv and cwd that answer a job's question: its `continue` with `--answer=<key>=<JSON>`,
+   * one token, so no parser reads the value as a flag.
    * Nothing is started: the caller checks the argv as any run's, then starts it with the
    * question's job as `parent`.
    */
@@ -79,10 +90,24 @@ export interface Jobs {
     | "answered";
   /** A job as `GET /v1/jobs/<id>` answers it. */
   view(job: Job): Record<string, unknown>;
+  /** Cancels the queued jobs (each a `job.done` with `cancelled`) and starts none again. */
+  close(): void;
 }
 
 const LIMIT = 100;
 const KEEP_MS = 60 * 60_000;
+const CONCURRENCY = 4;
+const MAX_OUTPUT = 256 * 1024;
+
+/** The last `max` bytes of `text`, and whether that cut it. */
+function tail(text: string, max: number): { text: string; cut: boolean } {
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.length <= max) return { text, cut: false };
+  return {
+    text: bytes.subarray(bytes.length - max).toString("utf8"),
+    cut: true,
+  };
+}
 
 /** The question of an exit-2 run whose stdout is a `needs-answer` result; else undefined. */
 function askedBy(result: RunResult): JobQuestion | undefined {
@@ -110,10 +135,13 @@ export function createJobs(options: JobsOptions): Jobs {
   const now = options.now ?? Date.now;
   const limit = options.limit ?? LIMIT;
   const keepMs = options.keepMs ?? KEEP_MS;
+  const concurrency = options.concurrency ?? CONCURRENCY;
+  const maxOutput = options.maxOutput ?? MAX_OUTPUT;
   /** Every job kept, oldest first. */
   const jobs = new Map<string, Job>();
   const queue: Job[] = [];
-  let running = false;
+  let running = 0;
+  let closed = false;
 
   const expire = () => {
     for (const [id, job] of jobs) {
@@ -137,8 +165,16 @@ export function createJobs(options: JobsOptions): Jobs {
         stderr: error instanceof Error ? error.message : String(error),
       };
     }
-    job.result = result;
+    // Asked of the whole stdout, before it is cut.
     const question = askedBy(result);
+    const stdout = tail(result.stdout, maxOutput);
+    const stderr = tail(result.stderr, maxOutput);
+    job.result = {
+      exitCode: result.exitCode,
+      stdout: stdout.text,
+      stderr: stderr.text,
+    };
+    if (stdout.cut || stderr.cut) job.truncated = true;
     if (question) {
       job.question = question;
       options.emit({ type: "job.question", id: job.id, ...question });
@@ -149,21 +185,23 @@ export function createJobs(options: JobsOptions): Jobs {
       type: "job.done",
       id: job.id,
       exitCode: result.exitCode,
-      stdout: result.stdout,
+      stdout: stdout.text,
+      ...(stdout.cut && { truncated: true }),
     });
   };
 
   const pump = () => {
-    if (running) return;
-    const next = queue.shift();
-    if (next === undefined) return;
-    running = true;
-    const release = options.hold?.();
-    void execute(next).finally(() => {
-      running = false;
-      release?.();
-      pump();
-    });
+    while (!closed && running < concurrency) {
+      const next = queue.shift();
+      if (next === undefined) return;
+      running++;
+      const release = options.hold?.();
+      void execute(next).finally(() => {
+        running--;
+        release?.();
+        pump();
+      });
+    }
   };
 
   const get = (id: string) => {
@@ -173,13 +211,14 @@ export function createJobs(options: JobsOptions): Jobs {
 
   return {
     start(argv, cwd, parent) {
+      if (closed) return "closed";
       expire();
       // Room for one more: the oldest done jobs go first; a full list of live ones refuses.
       for (const [id, job] of jobs) {
         if (jobs.size < limit) break;
         if (job.state === "done") jobs.delete(id);
       }
-      if (jobs.size >= limit) return undefined;
+      if (jobs.size >= limit) return "full";
       const job: Job = {
         id: randomUUID(),
         argv,
@@ -204,8 +243,7 @@ export function createJobs(options: JobsOptions): Jobs {
       return {
         argv: [
           ...job.question.continue,
-          "--answer",
-          `${key}=${JSON.stringify(value)}`,
+          `--answer=${key}=${JSON.stringify(value)}`,
         ],
         cwd: job.cwd,
       };
@@ -227,8 +265,25 @@ export function createJobs(options: JobsOptions): Jobs {
           stdout: job.result.stdout,
           stderr: job.result.stderr,
         }),
+        ...(job.truncated && { truncated: true }),
+        ...(job.cancelled && { cancelled: true, exitCode: null }),
         ...(job.question && { question: job.question }),
       };
+    },
+    close() {
+      closed = true;
+      for (const job of queue.splice(0)) {
+        job.state = "done";
+        job.cancelled = true;
+        job.finishedAt = now();
+        options.emit({
+          type: "job.done",
+          id: job.id,
+          exitCode: null,
+          stdout: "",
+          cancelled: true,
+        });
+      }
     },
   };
 }

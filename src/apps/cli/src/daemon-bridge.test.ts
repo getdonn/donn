@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,7 +13,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordCreated } from "./agent/registry.js";
-import { openBridge, type Bridge, type Opener } from "./daemon/bridge.js";
+import type { Opener } from "./daemon/bridge-open.js";
+import { openBridge, type Bridge } from "./daemon/bridge.js";
 import { daemonRequest } from "./daemon/client.js";
 import { createJobs, type JobEvent } from "./daemon/jobs.js";
 import { allowedRun, runInProcess, type RunResult } from "./daemon/run.js";
@@ -1313,7 +1315,7 @@ describe("jobs", { timeout: 20_000 }, () => {
     ]);
   });
 
-  it("runs one job at a time: the next waits queued", async () => {
+  it("runs up to four jobs at once: the rest wait queued", async () => {
     const gate = gated();
     const fake = scripted(undefined, gate.wait);
     const { bridge: b } = await bridge({ runInProcess: fake.run });
@@ -1327,19 +1329,59 @@ describe("jobs", { timeout: 20_000 }, () => {
           })
         ).body as { id: string }
       ).id;
-    const first = await start();
-    const second = await start();
-    await vi.waitFor(async () =>
-      expect((await jobOf(b.port, token, first)).state).toBe("running"),
-    );
-    expect((await jobOf(b.port, token, second)).state).toBe("queued");
-    expect(fake.calls).toHaveLength(1);
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(await start());
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(4));
+    const states = async () =>
+      Promise.all(
+        ids.map(async (id) => (await jobOf(b.port, token, id)).state),
+      );
+    expect(await states()).toEqual([
+      "running",
+      "running",
+      "running",
+      "running",
+      "queued",
+      "queued",
+    ]);
     gate.open();
     await vi.waitFor(async () =>
-      expect((await jobOf(b.port, token, second)).state).toBe("done"),
+      expect(await states()).toEqual(Array(6).fill("done")),
     );
-    expect((await jobOf(b.port, token, first)).state).toBe("done");
-    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls).toHaveLength(6);
+  });
+
+  it("cancels its queued jobs when it closes, telling the streams", async () => {
+    const gate = gated();
+    const fake = scripted(undefined, gate.wait);
+    const { bridge: b } = await bridge({ runInProcess: fake.run });
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    await stream.status;
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const res = await call(b.port, "POST", "/v1/jobs", {
+        token,
+        body: { argv: ["whoami", "--json"] },
+      });
+      ids.push((res.body as { id: string }).id);
+    }
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(4));
+    await b.close();
+    await stream.ended;
+    expect(stream.events()).toEqual([
+      {
+        type: "job.done",
+        id: ids[4],
+        exitCode: null,
+        stdout: "",
+        cancelled: true,
+      },
+    ]);
+    gate.open();
+    await sleep(20);
+    // The cancelled job never ran.
+    expect(fake.calls).toHaveLength(4);
   });
 
   it("refuses what /v1/run refuses, starting nothing", async () => {
@@ -1422,7 +1464,7 @@ describe("jobs", { timeout: 20_000 }, () => {
       continue: ["agent", "create", "bot", "--json"],
     });
     const fake = scripted((argv) =>
-      argv.includes("--answer")
+      argv.some((a) => a.startsWith("--answer="))
         ? {}
         : argv.includes("create")
           ? { exitCode: 2, stdout: asked }
@@ -1457,7 +1499,18 @@ describe("jobs", { timeout: 20_000 }, () => {
 
     const answer = (body: unknown, job = id) =>
       call(b.port, "POST", `/v1/jobs/${job}/answer`, { token, body });
-    for (const body of [{ value: 1 }, { key: "", value: 1 }, { key: "k" }, 7]) {
+    for (const body of [
+      { value: 1 },
+      { key: "", value: 1 },
+      { key: "k" },
+      { key: "-k", value: 1 },
+      { key: "--yes", value: 1 },
+      { key: "a=b", value: 1 },
+      { key: "a b", value: 1 },
+      { key: "a..b", value: 1 },
+      { key: "1a", value: 1 },
+      7,
+    ]) {
       expect((await answer(body)).status, JSON.stringify(body)).toBe(400);
     }
     // The continuation passes the UI allowlist again: today's has no --answer, so it is refused.
@@ -1486,7 +1539,19 @@ describe("jobs", { timeout: 20_000 }, () => {
 describe("createJobs", () => {
   const ok: RunResult = { exitCode: 0, stdout: "{}\n", stderr: "" };
 
-  it("continues a question as a new job linked to it, with --answer key=<JSON>", async () => {
+  /** A started job, failing the test when it was refused. */
+  const queued = (
+    jobs: ReturnType<typeof createJobs>,
+    argv: string[] = ["a"],
+    cwd?: string,
+    parent?: string,
+  ) => {
+    const job = jobs.start(argv, cwd, parent);
+    if (typeof job === "string") throw new Error(`refused: ${job}`);
+    return job;
+  };
+
+  it("continues a question as a new job linked to it, with --answer=<key>=<JSON>", async () => {
     const events: JobEvent[] = [];
     const runs: { argv: string[]; cwd: string | undefined }[] = [];
     const asked = JSON.stringify({
@@ -1497,32 +1562,31 @@ describe("createJobs", () => {
     const jobs = createJobs({
       run: async (argv, cwd) => {
         runs.push({ argv, cwd });
-        return argv.includes("--answer")
+        return argv.some((a) => a.startsWith("--answer="))
           ? ok
           : { exitCode: 2, stdout: asked, stderr: "" };
       },
       emit: (event) => events.push(event),
     });
-    const first = jobs.start(["agent", "add", "x", "--json"], "/p");
-    expect(first).toBeDefined();
-    await vi.waitFor(() => expect(jobs.get(first!.id)?.state).toBe("done"));
-    const next = jobs.continuation(first!.id, "github.app", { id: 7 });
+    const first = queued(jobs, ["agent", "add", "x", "--json"], "/p");
+    await vi.waitFor(() => expect(jobs.get(first.id)?.state).toBe("done"));
+    const next = jobs.continuation(first.id, "github.app", { id: 7 });
     expect(next).toEqual({
-      argv: ["agent", "add", "x", "--json", "--answer", 'github.app={"id":7}'],
+      argv: ["agent", "add", "x", "--json", '--answer=github.app={"id":7}'],
       cwd: "/p",
     });
     if (typeof next === "string") throw new Error(next);
-    const second = jobs.start(next.argv, next.cwd, first!.id)!;
+    const second = queued(jobs, next.argv, next.cwd, first.id);
     await vi.waitFor(() => expect(jobs.get(second.id)?.state).toBe("done"));
     expect(jobs.view(second)).toMatchObject({
-      parent: first!.id,
+      parent: first.id,
       exitCode: 0,
     });
-    expect(jobs.view(jobs.get(first!.id)!)).toMatchObject({
+    expect(jobs.view(jobs.get(first.id)!)).toMatchObject({
       answeredBy: second.id,
     });
     expect(runs.map((r) => r.cwd)).toEqual(["/p", "/p"]);
-    expect(jobs.continuation(first!.id, "k", 1)).toBe("answered");
+    expect(jobs.continuation(first.id, "k", 1)).toBe("answered");
     expect(jobs.continuation(second.id, "k", 1)).toBe("no-question");
     expect(jobs.continuation("nope", "k", 1)).toBe("no-such-job");
     expect(events.filter((e) => e.type === "job.question")).toHaveLength(1);
@@ -1557,10 +1621,7 @@ describe("createJobs", () => {
       run: async () => answers.shift()!,
       emit: (event) => events.push(event),
     });
-    const ids = Array.from(
-      { length: 5 },
-      () => jobs.start(["a"], undefined)!.id,
-    );
+    const ids = Array.from({ length: 5 }, () => queued(jobs).id);
     await vi.waitFor(() =>
       expect(ids.every((id) => jobs.get(id)?.state === "done")).toBe(true),
     );
@@ -1576,7 +1637,7 @@ describe("createJobs", () => {
       },
       emit: (event) => events.push(event),
     });
-    const job = jobs.start(["a"], undefined)!;
+    const job = queued(jobs);
     await vi.waitFor(() => expect(jobs.get(job.id)?.state).toBe("done"));
     expect(jobs.view(jobs.get(job.id)!)).toMatchObject({
       exitCode: 1,
@@ -1594,22 +1655,18 @@ describe("createJobs", () => {
       emit: () => undefined,
       now: () => t,
     });
-    const first = jobs.start(["a"], undefined)!;
+    const first = queued(jobs);
     await vi.waitFor(() => expect(jobs.get(first.id)?.state).toBe("done"));
     t = 3_600_000 - 1;
     expect(jobs.get(first.id)).toBeDefined();
     t = 3_600_000;
     expect(jobs.get(first.id)).toBeUndefined();
 
-    const ids = Array.from(
-      { length: 100 },
-      () => jobs.start(["a"], undefined)!.id,
-    );
+    const ids = Array.from({ length: 100 }, () => queued(jobs).id);
     await vi.waitFor(() =>
       expect(ids.every((id) => jobs.get(id)?.state === "done")).toBe(true),
     );
-    const extra = jobs.start(["a"], undefined);
-    expect(extra).toBeDefined();
+    queued(jobs);
     // The oldest done job makes room.
     expect(jobs.get(ids[0]!)).toBeUndefined();
     expect(jobs.get(ids[1]!)).toBeDefined();
@@ -1620,9 +1677,97 @@ describe("createJobs", () => {
       run: () => new Promise<RunResult>(() => undefined),
       emit: () => undefined,
     });
-    for (let i = 0; i < 100; i++)
-      expect(jobs.start(["a"], undefined)).toBeDefined();
-    expect(jobs.start(["a"], undefined)).toBeUndefined();
+    for (let i = 0; i < 100; i++) queued(jobs);
+    expect(jobs.start(["a"], undefined)).toBe("full");
+  });
+
+  it("keeps the last 256 KiB of each output, saying it was cut", async () => {
+    const events: JobEvent[] = [];
+    const long = `${"x".repeat(300 * 1024)}END`;
+    const asked = `${JSON.stringify({
+      status: "needs-answer",
+      question: { key: "k" },
+      continue: ["a"],
+    })}${" ".repeat(300 * 1024)}`;
+    const answers: RunResult[] = [
+      { exitCode: 0, stdout: long, stderr: long },
+      { exitCode: 2, stdout: asked, stderr: "" },
+      ok,
+    ];
+    const jobs = createJobs({
+      run: async () => answers.shift()!,
+      emit: (event) => events.push(event),
+    });
+    const [cut, question, whole] = [queued(jobs), queued(jobs), queued(jobs)];
+    await vi.waitFor(() => expect(jobs.get(whole.id)?.state).toBe("done"));
+    const view = jobs.view(jobs.get(cut.id)!) as {
+      stdout: string;
+      stderr: string;
+      truncated?: boolean;
+    };
+    expect(view.truncated).toBe(true);
+    expect(view.stdout).toHaveLength(256 * 1024);
+    expect(view.stdout.endsWith("xEND")).toBe(true);
+    expect(view.stderr).toHaveLength(256 * 1024);
+    expect(events).toContainEqual({
+      type: "job.done",
+      id: cut.id,
+      exitCode: 0,
+      stdout: view.stdout,
+      truncated: true,
+    });
+    // The question is read from the whole stdout, before it is cut.
+    expect(jobs.view(jobs.get(question.id)!)).toMatchObject({
+      truncated: true,
+      question: { question: { key: "k" }, continue: ["a"] },
+    });
+    expect(jobs.view(jobs.get(whole.id)!)).not.toHaveProperty("truncated");
+  });
+
+  it("cancels the queued jobs on close, and starts none after", async () => {
+    const gate = gated();
+    const events: JobEvent[] = [];
+    let runs = 0;
+    const jobs = createJobs({
+      run: async () => {
+        runs++;
+        await gate.wait();
+        return ok;
+      },
+      emit: (event) => events.push(event),
+      concurrency: 1,
+    });
+    const [first, second, third] = [queued(jobs), queued(jobs), queued(jobs)];
+    jobs.close();
+    expect(jobs.start(["a"], undefined)).toBe("closed");
+    for (const job of [second, third]) {
+      expect(jobs.view(jobs.get(job.id)!)).toMatchObject({
+        state: "done",
+        cancelled: true,
+        exitCode: null,
+      });
+    }
+    expect(events).toEqual([
+      {
+        type: "job.done",
+        id: second.id,
+        exitCode: null,
+        stdout: "",
+        cancelled: true,
+      },
+      {
+        type: "job.done",
+        id: third.id,
+        exitCode: null,
+        stdout: "",
+        cancelled: true,
+      },
+    ]);
+    // The running one finishes; nothing starts after it.
+    gate.open();
+    await vi.waitFor(() => expect(jobs.get(first.id)?.state).toBe("done"));
+    expect(jobs.view(jobs.get(first.id)!)).toMatchObject({ exitCode: 0 });
+    expect(runs).toBe(1);
   });
 });
 
@@ -1706,6 +1851,58 @@ describe("GET /v1/events", { timeout: 20_000 }, () => {
     await b.closed;
   });
 
+  it("drops a stream whose reader falls 1 MiB behind", async () => {
+    let t = 0;
+    let emit!: (event: { type: string; [key: string]: unknown }) => void;
+    const logged: string[] = [];
+    const { bridge: b } = await bridge({
+      now: () => t,
+      tickMs: 5,
+      events: (on) => {
+        emit = on;
+        return () => undefined;
+      },
+      log: (line) => logged.push(line),
+    });
+    const token = await session(b);
+    // A reader that stops reading after the first bytes.
+    const stalled = await new Promise<import("node:http").IncomingMessage>(
+      (resolve) => {
+        const req = request(
+          {
+            host: "127.0.0.1",
+            port: b.port,
+            method: "GET",
+            path: "/v1/events",
+            agent: false,
+            headers: {
+              host: `127.0.0.1:${b.port}`,
+              authorization: `Bearer ${token}`,
+            },
+          },
+          (res) => {
+            res.once("data", () => res.pause());
+            resolve(res);
+          },
+        );
+        req.on("error", () => undefined);
+        req.end();
+        followed.push(() => req.destroy());
+      },
+    );
+    expect(stalled.statusCode).toBe(200);
+    const big = "y".repeat(64 * 1024);
+    for (let i = 0; i < 400 && logged.length === 0; i++) {
+      emit({ type: "session.refreshed", big });
+      await sleep(1);
+    }
+    expect(logged).toContain("ui dropped an event stream that fell behind");
+    // Dropped, it no longer holds the bridge open.
+    await sleep(20);
+    t = 600_000;
+    await b.closed;
+  });
+
   it("ends its streams when it closes", async () => {
     const { bridge: b } = await bridge();
     const token = await session(b);
@@ -1720,32 +1917,99 @@ describe("GET /v1/events", { timeout: 20_000 }, () => {
 });
 
 describe("POST /v1/open", { timeout: 20_000 }, () => {
-  const OS_OPENER = process.platform === "darwin" ? "open" : "xdg-open";
+  /** `POST /v1/open` of each path on a bridge for `platform` with `env`; the answers. */
+  async function openAll(
+    paths: string[],
+    options: { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform } = {},
+  ) {
+    const opener = recorder();
+    const { bridge: b } = await bridge({
+      io: ioWith(options.env),
+      opener: opener.open,
+      ...(options.platform && { platform: options.platform }),
+    });
+    const token = await session(b);
+    const answers: Answer[] = [];
+    for (const path of paths) {
+      answers.push(
+        await call(b.port, "POST", "/v1/open", { token, body: { path } }),
+      );
+    }
+    return { answers, calls: opener.calls };
+  }
 
-  it("opens a path in the personas root with $VISUAL, else $EDITOR, else the OS opener", async () => {
+  it("opens with $VISUAL as given, never $EDITOR, else the OS opener", async () => {
     const file = join(s.personas, "org/instructions/conduct.md");
     const real = realpathSync(file);
     for (const [env, command, args] of [
-      [{}, OS_OPENER, [real]],
       [{ VISUAL: "code --wait", EDITOR: "vim" }, "code", ["--wait", real]],
-      [{ EDITOR: "  nvim   -p " }, "nvim", ["-p", real]],
-      [{ VISUAL: " ", EDITOR: "" }, OS_OPENER, [real]],
+      [{ VISUAL: "  zed   -n " }, "zed", ["-n", real]],
+      [{ EDITOR: "vim" }, "open", ["-t", real]],
+      [{ VISUAL: " ", EDITOR: "nano" }, "open", ["-t", real]],
     ] as const) {
-      const opener = recorder();
-      const { bridge: b } = await bridge({
-        io: ioWith(env),
-        opener: opener.open,
+      const { answers, calls } = await openAll([file], {
+        env,
+        platform: "darwin",
       });
-      const token = await session(b);
-      const res = await call(b.port, "POST", "/v1/open", {
-        token,
-        body: { path: file },
-      });
-      expect(res.status, JSON.stringify(env)).toBe(200);
-      secured(res);
-      expect(res.body).toEqual({ opened: real });
-      expect(opener.calls).toEqual([{ command, args: [...args] }]);
+      expect(answers[0]!.status, JSON.stringify(env)).toBe(200);
+      secured(answers[0]!);
+      expect(answers[0]!.body).toEqual({ opened: real });
+      expect(calls).toEqual([{ command, args: [...args] }]);
     }
+  });
+
+  it("on macOS opens a file as text and reveals a folder, so nothing launches", async () => {
+    const app = join(s.personas, "org/Foo.app");
+    const script = join(s.personas, "org/run.command");
+    const link = join(s.personas, "org/site.webloc");
+    put(join(app, "Contents/MacOS/Foo"), "#!/bin/sh\n");
+    put(script, "#!/bin/sh\necho hi\n");
+    put(link, "<plist/>\n");
+    chmodSync(script, 0o755);
+    const folder = join(s.personas, "org");
+    const { answers, calls } = await openAll([app, script, link, folder], {
+      platform: "darwin",
+    });
+    expect(answers.map((a) => a.status)).toEqual([200, 200, 200, 200]);
+    expect(calls).toEqual([
+      { command: "open", args: ["-R", realpathSync(app)] },
+      { command: "open", args: ["-t", realpathSync(script)] },
+      { command: "open", args: ["-t", realpathSync(link)] },
+      { command: "open", args: ["-R", realpathSync(folder)] },
+    ]);
+    // Never a bare `open <path>`, which would launch the app, run the script, follow the link.
+    expect(calls.every((c) => c.args.length === 2)).toBe(true);
+  });
+
+  it("on Linux refuses an executable or a .desktop file to xdg-open", async () => {
+    const script = join(s.personas, "org/run.sh");
+    const entry = join(s.personas, "org/app.desktop");
+    const file = join(s.personas, "org/instructions/conduct.md");
+    const folder = join(s.personas, "org");
+    put(script, "#!/bin/sh\n");
+    chmodSync(script, 0o755);
+    put(entry, "[Desktop Entry]\nExec=sh\n");
+    const { answers, calls } = await openAll([script, entry, file, folder], {
+      platform: "linux",
+    });
+    expect(answers.map((a) => a.status)).toEqual([403, 403, 200, 200]);
+    for (const answer of answers.slice(0, 2)) {
+      expect(answer.body).toMatchObject({
+        error: { code: "not-openable", details: { fix: expect.any(String) } },
+      });
+    }
+    expect(calls).toEqual([
+      { command: "xdg-open", args: [realpathSync(file)] },
+      { command: "xdg-open", args: [realpathSync(folder)] },
+    ]);
+    // $VISUAL is the user's choice: it gets the script as is.
+    const chosen = await openAll([script], {
+      platform: "linux",
+      env: { VISUAL: "gedit" },
+    });
+    expect(chosen.calls).toEqual([
+      { command: "gedit", args: [realpathSync(script)] },
+    ]);
   });
 
   it("opens inside the user's personas, a known project and a created agent's folder", async () => {
@@ -1765,17 +2029,11 @@ describe("POST /v1/open", { timeout: 20_000 }, () => {
     ];
     put(paths[0]!, "name: me\n");
     put(paths[3]!, "export {};\n");
-    const opener = recorder();
-    const { bridge: b } = await bridge({ opener: opener.open });
-    const token = await session(b);
-    for (const path of paths) {
-      const res = await call(b.port, "POST", "/v1/open", {
-        token,
-        body: { path },
-      });
-      expect(res.status, path).toBe(200);
-    }
-    expect(opener.calls.map((c) => c.args)).toEqual(
+    const { answers, calls } = await openAll(paths, {
+      env: { VISUAL: "ed" },
+    });
+    expect(answers.map((a) => a.status)).toEqual(paths.map(() => 200));
+    expect(calls.map((c) => c.args)).toEqual(
       paths.map((p) => [realpathSync(p)]),
     );
   });
@@ -1836,7 +2094,7 @@ describe("POST /v1/open", { timeout: 20_000 }, () => {
   it("answers 500 open-failed when the editor cannot start", async () => {
     const opener = recorder(new Error("spawn nope ENOENT"));
     const { bridge: b } = await bridge({
-      io: ioWith({ EDITOR: "nope" }),
+      io: ioWith({ VISUAL: "nope" }),
       opener: opener.open,
     });
     const token = await session(b);
@@ -1902,6 +2160,35 @@ describe("/v1/projects", { timeout: 20_000 }, () => {
       body: { argv: ["resolve", "--json"], cwd: s.repo },
     });
     expect(after.status).toBe(200);
+  });
+
+  it("refuses /, the user's home and the donn home as too broad", async () => {
+    const user = join(s.root, "user-home");
+    put(join(user, ".donn/persona.yaml"), "extends: org/base\n");
+    put(join(s.home, ".donn/persona.yaml"), "extends: org/base\n");
+    symlinkSync(s.home, join(s.root, "home-link"));
+    const { bridge: b } = await bridge({ io: ioWith({ HOME: user }) });
+    const token = await session(b);
+    for (const path of [
+      "/",
+      user,
+      s.home,
+      `${s.home}/`,
+      join(s.root, "home-link"),
+    ]) {
+      const res = await call(b.port, "POST", "/v1/projects", {
+        token,
+        body: { path },
+      });
+      expect(res.status, path).toBe(400);
+      expect(res.body).toMatchObject({
+        error: {
+          code: "too-broad",
+          details: { path, fix: "pick the repository folder" },
+        },
+      });
+    }
+    expect(() => uiJson()).toThrow();
   });
 
   it("records concurrent picks without losing one", async () => {

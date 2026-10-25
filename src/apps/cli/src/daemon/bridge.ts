@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import {
@@ -8,22 +7,17 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  basename,
-  dirname,
-  extname,
-  isAbsolute,
-  join,
-  resolve,
-  sep,
-} from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
-import { listCreated } from "../agent/registry.js";
-import { loadConfig } from "../config.js";
 import { CliError } from "../errors.js";
-import { writeFileAtomic } from "../fs.js";
-import { listSessions } from "../session.js";
+import {
+  knownProjects,
+  openRoutes,
+  real,
+  under,
+  type Answer,
+  type Opener,
+} from "./bridge-open.js";
 import { failure, readBody, runRequest, sameToken } from "./http.js";
 import { createJobs, type JobEvent } from "./jobs.js";
 import type { runInProcess } from "./run.js";
@@ -41,31 +35,6 @@ export interface BridgeEvent {
   type: string;
   [key: string]: unknown;
 }
-
-/**
- * Starts `command` with `args` detached, never through a shell; settles once it has started,
- * or rejects when it cannot start.
- */
-export type Opener = (
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-) => Promise<void>;
-
-/** The default Opener: node:child_process, stdio ignored, not waited for. */
-export const nodeOpener: Opener = (command, args, env) =>
-  new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      detached: true,
-      stdio: "ignore",
-      env,
-    });
-    child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
 
 export interface BridgeOptions {
   home: string;
@@ -89,6 +58,8 @@ export interface BridgeOptions {
   pingMs?: number;
   /** Opens a path in the user's editor (`/v1/open`); defaults to node:child_process. */
   opener?: Opener;
+  /** Test seam: the OS whose opener `/v1/open` uses without `$VISUAL`. */
+  platform?: NodeJS.Platform;
 }
 
 export interface Bridge {
@@ -109,6 +80,8 @@ const IDLE_MS = 10 * 60_000;
 const TICK_MS = 15_000;
 const CODE_MS = 60_000;
 const PING_MS = 15_000;
+/** How far an event stream's reader may fall behind before it is dropped. */
+const STREAM_BUFFER = 1024 * 1024;
 /** How long close lets a request still being answered finish before cutting it. */
 const CLOSE_GRACE_MS = 1_000;
 
@@ -135,9 +108,6 @@ const TYPES: Readonly<Record<string, string>> = {
   ".ico": "image/x-icon",
 };
 
-/** `~/.donn/ui.json`: the projects the user picked in the app. */
-const UiFile = z.object({ projects: z.array(z.string()) });
-
 function send(
   res: ServerResponse,
   status: number,
@@ -153,50 +123,11 @@ function send(
   res.end(`${JSON.stringify(body)}\n`);
 }
 
-/** A path with symlinks resolved, through its nearest existing ancestor when it does not exist. */
-async function real(path: string): Promise<string> {
-  const absolute = resolve(path);
-  const rest: string[] = [];
-  for (let dir = absolute; ; dir = dirname(dir)) {
-    const found = await realpath(dir).catch(() => undefined);
-    if (found !== undefined) return join(found, ...rest.reverse());
-    if (dirname(dir) === dir) return absolute;
-    rest.push(basename(dir));
-  }
-}
-
-const under = (path: string, dir: string) =>
-  path === dir || path.startsWith(dir.endsWith(sep) ? dir : `${dir}${sep}`);
-
-/** `$VISUAL`, else `$EDITOR`, split on whitespace; else the OS's opener. */
-function editor(env: NodeJS.ProcessEnv): { command: string; args: string[] } {
-  for (const name of ["VISUAL", "EDITOR"]) {
-    const [command, ...args] = (env[name] ?? "").split(/\s+/).filter(Boolean);
-    if (command !== undefined) return { command, args };
-  }
-  return {
-    command: process.platform === "darwin" ? "open" : "xdg-open",
-    args: [],
-  };
-}
-
-/** `{ path }` (`/v1/open`, `/v1/projects`): an absolute path and nothing else, or why not. */
-function pathRequest(text: string): string | { path: string } {
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return "the body is not JSON";
-  }
-  if (typeof body !== "object" || body === null || Array.isArray(body))
-    return "the body must be { path }";
-  const { path, ...rest } = body as { path?: unknown };
-  if (Object.keys(rest).length > 0) return "the body must be only { path }";
-  // Absolute, so it can never read as an option to the editor.
-  if (typeof path !== "string" || !isAbsolute(path) || path.includes("\0"))
-    return "path must be an absolute path";
-  return { path };
-}
+/**
+ * A question's key: `[a-z][a-z0-9-]*` parts, any case, joined by `.` (spec 25 §6's example key
+ * is `github.app`). Nothing a flag parser or eve could read as more than a key.
+ */
+const ANSWER_KEY = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/i;
 
 /** `{ key, value }` (`/v1/jobs/<id>/answer`), or why not. */
 function answerRequest(text: string): string | { key: string; value: unknown } {
@@ -209,63 +140,10 @@ function answerRequest(text: string): string | { key: string; value: unknown } {
   if (typeof body !== "object" || body === null || Array.isArray(body))
     return "the body must be { key, value }";
   const { key } = body as { key?: unknown };
-  if (typeof key !== "string" || key === "") return "key must be a string";
+  if (typeof key !== "string" || !ANSWER_KEY.test(key))
+    return "key must be a question's key: letters, digits and -, in .-separated parts";
   if (!("value" in body)) return "value is missing";
   return { key, value: (body as { value: unknown }).value };
-}
-
-/** Projects the daemon knows (running sessions', created agents') and the UI picked. */
-async function knownProjects(home: string): Promise<Set<string>> {
-  const sessions = (await listSessions(home))
-    .filter((s) => s.running)
-    .flatMap((s) =>
-      s.launched.project === undefined ? [] : [s.launched.project],
-    );
-  const created = (await listCreated(home).catch(() => [])).map(
-    (c) => c.project,
-  );
-  const picked = await readFile(join(home, "ui.json"), "utf8")
-    .then((text) => UiFile.parse(JSON.parse(text)).projects)
-    .catch(() => [] as string[]);
-  const all = [...sessions, ...created, ...picked].filter((p) => isAbsolute(p));
-  return new Set(await Promise.all(all.map(real)));
-}
-
-/** The folders `/v1/open` opens inside: personas roots, known projects, created agents'. */
-async function openRoots(
-  home: string,
-  io: BridgeOptions["io"],
-): Promise<string[]> {
-  // A config that cannot be read names no personas root: fewer roots, never more.
-  const config = await loadConfig(home, io.env, io.passwdHome).catch(
-    () => ({}) as { personas?: string },
-  );
-  const agents = (await listCreated(home).catch(() => [])).flatMap((c) =>
-    c.path === undefined ? [] : [resolve(c.project, c.path)],
-  );
-  const roots = [
-    ...(config.personas === undefined ? [] : [config.personas]),
-    join(home, "personas"),
-    ...agents,
-  ];
-  return [
-    ...(await Promise.all(roots.map(real))),
-    ...(await knownProjects(home)),
-  ];
-}
-
-/** `ui.json` as written, for an update that keeps what it does not know. */
-async function readUiFile(home: string): Promise<Record<string, unknown>> {
-  try {
-    const raw = JSON.parse(
-      await readFile(join(home, "ui.json"), "utf8"),
-    ) as unknown;
-    if (typeof raw === "object" && raw !== null && !Array.isArray(raw))
-      return raw as Record<string, unknown>;
-  } catch {
-    // Missing or not JSON: started afresh, as knownProjects reads it.
-  }
-  return {};
 }
 
 /**
@@ -295,10 +173,7 @@ async function uiRunRequest(
 }
 
 /** Why a refused request is refused: the status and body to answer with. */
-interface Refusal {
-  status: number;
-  body: unknown;
-}
+type Refusal = Answer;
 
 type Found = { file: string } | "not-found" | "not-built";
 
@@ -507,9 +382,17 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
 
   /** The open event streams, each answered with `text/event-stream`. */
   const streams = new Set<ServerResponse>();
+  /** Writes to an event stream; one whose reader has fallen 1 MiB behind is dropped. */
+  const deliver = (stream: ServerResponse, text: string) => {
+    stream.write(text);
+    if (stream.writableLength <= STREAM_BUFFER) return;
+    streams.delete(stream);
+    stream.destroy();
+    void options.log?.("ui dropped an event stream that fell behind");
+  };
   const broadcast = (event: BridgeEvent) => {
     const text = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-    for (const stream of streams) stream.write(text);
+    for (const stream of streams) deliver(stream, text);
   };
 
   const jobs = createJobs({
@@ -522,8 +405,11 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   });
 
   /** A job's id once queued; refused when every kept job is still queued or running. */
-  const started = (res: ServerResponse, job: { id: string } | undefined) =>
-    job === undefined
+  const started = (
+    res: ServerResponse,
+    job: { id: string } | "full" | "closed",
+  ) =>
+    job === "full"
       ? send(
           res,
           429,
@@ -531,15 +417,20 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
             fix: "wait for one to finish",
           }),
         )
-      : send(res, 202, { id: job.id });
+      : job === "closed"
+        ? send(
+            res,
+            503,
+            failure("closing", "the bridge is closing", { fix: "donn ui" }),
+          )
+        : send(res, 202, { id: job.id });
 
   const startJob = async (req: IncomingMessage, res: ServerResponse) => {
     const request = await runBody(req);
     if ("status" in request) return send(res, request.status, request.body);
     const admitted = await admit(request.argv, request.cwd);
     if ("status" in admitted) return send(res, admitted.status, admitted.body);
-    const job = jobs.start(request.argv, request.cwd);
-    return started(res, job);
+    return started(res, jobs.start(request.argv, request.cwd));
   };
 
   const noSuchJob = (res: ServerResponse, id: string) =>
@@ -602,106 +493,26 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
     });
   };
 
-  const open = async (req: IncomingMessage, res: ServerResponse) => {
+  const files = openRoutes({
+    home: options.home,
+    io: options.io,
+    ...(options.opener && { opener: options.opener }),
+    ...(options.platform && { platform: options.platform }),
+    ...(options.log && { log: options.log }),
+  });
+
+  /** A body read for `handle`, or 413 when it is over the limit. */
+  const withBody = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    handle: (text: string) => Promise<Answer>,
+  ) => {
     const text = await readBody(req, { stopAtLimit: true });
     if (text === undefined) {
       return send(res, 413, failure("too-large", "the body is over 1 MiB"));
     }
-    const body = pathRequest(text);
-    if (typeof body === "string") {
-      return send(res, 400, failure("bad-request", body));
-    }
-    // Contained first, by where its symlinks lead: whether a path outside exists stays unsaid.
-    const target = await real(body.path);
-    const roots = await openRoots(options.home, options.io);
-    if (!roots.some((root) => under(target, root))) {
-      return send(
-        res,
-        403,
-        failure(
-          "outside-roots",
-          `not inside a personas root or a project: ${body.path}`,
-          {
-            path: body.path,
-            fix: "open a file of a persona, a project or an agent",
-          },
-        ),
-      );
-    }
-    if ((await stat(target).catch(() => undefined)) === undefined) {
-      return send(
-        res,
-        404,
-        failure("not-found", `no such file: ${body.path}`, {
-          path: body.path,
-        }),
-      );
-    }
-    const { command, args } = editor(options.io.env);
-    try {
-      await (options.opener ?? nodeOpener)(
-        command,
-        [...args, target],
-        options.io.env,
-      );
-    } catch (error) {
-      return send(
-        res,
-        500,
-        failure("open-failed", `could not start ${command}: ${String(error)}`, {
-          command,
-          fix: "set $VISUAL or $EDITOR to an editor on PATH",
-        }),
-      );
-    }
-    void options.log?.(`ui opened ${target} with ${command}`);
-    return send(res, 200, { opened: target });
-  };
-
-  const listProjects = async () =>
-    [...(await knownProjects(options.home))].sort();
-
-  /** One `ui.json` update at a time: concurrent picks must not lose one. */
-  let picking: Promise<unknown> = Promise.resolve();
-  const addProject = async (req: IncomingMessage, res: ServerResponse) => {
-    const text = await readBody(req, { stopAtLimit: true });
-    if (text === undefined) {
-      return send(res, 413, failure("too-large", "the body is over 1 MiB"));
-    }
-    const body = pathRequest(text);
-    if (typeof body === "string") {
-      return send(res, 400, failure("bad-request", body));
-    }
-    const dir = await realpath(body.path).catch(() => undefined);
-    const persona =
-      dir === undefined
-        ? undefined
-        : await stat(join(dir, ".donn", "persona.yaml")).catch(() => undefined);
-    if (dir === undefined || !persona?.isFile()) {
-      return send(
-        res,
-        400,
-        failure(
-          "not-a-project",
-          `not a donn project (no .donn/persona.yaml): ${body.path}`,
-          { path: body.path, fix: "donn init --extends <persona>" },
-        ),
-      );
-    }
-    const update = picking.then(async () => {
-      const file = await readUiFile(options.home);
-      const projects = Array.isArray(file.projects)
-        ? file.projects.filter((p): p is string => typeof p === "string")
-        : [];
-      if (projects.includes(dir)) return;
-      await writeFileAtomic(
-        join(options.home, "ui.json"),
-        `${JSON.stringify({ ...file, projects: [...projects, dir] }, null, 2)}\n`,
-      );
-    });
-    picking = update.catch(() => undefined);
-    await update;
-    return send(res, 200, { path: dir, projects: await listProjects() });
+    const answer = await handle(text);
+    return send(res, answer.status, answer.body);
   };
 
   const serveStatic = async (res: ServerResponse, path: string) => {
@@ -775,11 +586,11 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
           if (req.method === "GET" && path === "/v1/events")
             return follow(req, res);
           if (req.method === "POST" && path === "/v1/open")
-            return await open(req, res);
+            return await withBody(req, res, files.open);
           if (req.method === "GET" && path === "/v1/projects")
-            return send(res, 200, { projects: await listProjects() });
+            return send(res, 200, { projects: await files.listProjects() });
           if (req.method === "POST" && path === "/v1/projects")
-            return await addProject(req, res);
+            return await withBody(req, res, files.addProject);
           return send(
             res,
             404,
@@ -828,6 +639,8 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
       clearInterval(tick);
       clearInterval(ping);
       unfollow?.();
+      // The queued jobs end as cancelled, told to the streams before they end.
+      jobs.close();
       codes.clear();
       // An open stream never ends by itself: end it, rather than cut it after the grace.
       for (const stream of streams) stream.end();
@@ -853,7 +666,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   }, options.tickMs ?? TICK_MS);
   tick.unref();
   const ping = setInterval(() => {
-    for (const stream of streams) stream.write(": ping\n\n");
+    for (const stream of streams) deliver(stream, ": ping\n\n");
   }, options.pingMs ?? PING_MS);
   ping.unref();
   const unfollow = options.events?.(broadcast);
