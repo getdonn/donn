@@ -1,6 +1,11 @@
-import type { AgentCompileInput } from "@getdonn/adapter-sdk";
+import adapter, { EveCompileError } from "@getdonn/adapter-eve";
+import type {
+  AgentCompileInput,
+  AgentCompileOutput,
+} from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
 import type { Context } from "../context.js";
+import { CliError } from "../errors.js";
 import { listFiles, readManifest } from "./files.js";
 
 // What an agent compile needs besides the IR: the text of every file the IR references, and the
@@ -74,4 +79,15 @@ export async function inputsFor(
       existing,
     },
   };
+}
+
+/** The eve adapter's compile; its errors become CLI errors. */
+export function compile(input: AgentCompileInput): AgentCompileOutput {
+  try {
+    return adapter.compile(input);
+  } catch (error) {
+    if (error instanceof EveCompileError)
+      throw new CliError(error.code, error.message);
+    throw error;
+  }
 }

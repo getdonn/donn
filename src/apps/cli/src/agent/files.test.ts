@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -150,5 +151,24 @@ describe("the manifest", () => {
     await expect(readManifest(dir)).rejects.toMatchObject({
       code: "invalid-manifest",
     });
+  });
+});
+
+describe("writeAgentFiles read errors", () => {
+  it("fails with a filesystem error when an owned file cannot be read, and deletes nothing", async () => {
+    const file = join(dir, "agent/x.md");
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, "mine", { mode: 0o000 });
+    try {
+      await expect(
+        writeAgentFiles(dir, output({}), base({ "agent/x.md": sha("old") }), {
+          force: false,
+          store,
+        }),
+      ).rejects.toMatchObject({ code: "filesystem" });
+      expect(existsSync(file)).toBe(true);
+    } finally {
+      chmodSync(file, 0o644);
+    }
   });
 });

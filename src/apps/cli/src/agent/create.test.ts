@@ -317,7 +317,7 @@ describe("donn agent create", () => {
 
     // Known to this home.
     expect(JSON.parse(read(join(s.home, "agents/index.json"))).agents).toEqual([
-      { project: s.repo, name: "voice" },
+      { project: s.repo, name: "voice", path: "agents/voice" },
     ]);
 
     // --json and the reports.

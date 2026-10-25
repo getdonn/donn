@@ -12,10 +12,18 @@ export interface CreatedAgent {
   /** The project's root folder (the one holding `.donn/`). */
   project: string;
   name: string;
+  /** The agent's folder, project-relative, as created (the persona can move it later). */
+  path?: string;
 }
 
 const Index = z.object({
-  agents: z.array(z.object({ project: z.string(), name: z.string() })),
+  agents: z.array(
+    z.object({
+      project: z.string(),
+      name: z.string(),
+      path: z.string().optional(),
+    }),
+  ),
 });
 
 const indexFile = (home: string) => join(home, "agents", "index.json");
@@ -63,9 +71,7 @@ export async function recordCreated(
   entry: CreatedAgent,
 ): Promise<void> {
   await update(home, (agents) =>
-    agents.some((a) => same(a, entry))
-      ? agents
-      : [...agents, { project: entry.project, name: entry.name }],
+    agents.some((a) => same(a, entry)) ? agents : [...agents, entry],
   );
 }
 

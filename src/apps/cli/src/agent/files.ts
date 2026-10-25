@@ -166,6 +166,78 @@ async function pruneEmpty(dir: string, path: string): Promise<void> {
   }
 }
 
+/** A file's `sha256:<hex>` hash, or undefined when it is not there; any other read error stops. */
+async function diskHash(
+  dir: string,
+  path: string,
+): Promise<string | undefined> {
+  const target = join(dir, path);
+  const data = await fsStep(target, () =>
+    readFile(target).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    }),
+  );
+  return data === undefined ? undefined : `sha256:${sha256(data)}`;
+}
+
+export interface PlannedFiles {
+  /** The manifest's `files` after a write: one hash per file, a copied directory expanded. */
+  files: Record<string, string>;
+  /** The files of each copied directory, with their content. */
+  copies: { path: string; data: Buffer; mode: number }[];
+}
+
+/** What a compile's files come to on disk, without writing: see `writeAgentFiles`. */
+export async function planFiles(
+  output: AgentCompileOutput,
+  store: Pick<LocalStore, "locate">,
+): Promise<PlannedFiles> {
+  for (const path of Object.keys(output.files))
+    if (!isContainedPath(path)) throw unsafe(path);
+  const files = manifestFiles(output.files, sha256);
+  const copies: PlannedFiles["copies"] = [];
+  for (const [path, entry] of Object.entries(output.files)) {
+    if ("content" in entry) continue;
+    // A copied directory: one manifest entry per file.
+    const source = await copySource(store, entry.copyFrom);
+    delete files[path];
+    for (const file of source.files) {
+      const from = join(source.path, file);
+      const data = await readFile(from);
+      const mode = entry.mode ?? (await stat(from)).mode & 0o777;
+      copies.push({ path: `${path}/${file}`, data, mode });
+      files[`${path}/${file}`] = `sha256:${sha256(data)}`;
+    }
+  }
+  return {
+    files: Object.fromEntries(
+      Object.entries(files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    ),
+    copies,
+  };
+}
+
+/**
+ * What writing `planned` over `dir` would change: the files whose content differs or is
+ * missing, and the previously owned files it would remove.
+ */
+export async function pendingChanges(
+  dir: string,
+  planned: PlannedFiles,
+  previous: Manifest | undefined,
+): Promise<{ written: string[]; removed: string[] }> {
+  const written: string[] = [];
+  for (const [path, hash] of Object.entries(planned.files))
+    if ((await diskHash(dir, path)) !== hash) written.push(path);
+  const removed: string[] = [];
+  for (const path of Object.keys(previous?.files ?? {})) {
+    if (path in planned.files || !isContainedPath(path)) continue;
+    if (await lstat(join(dir, path)).catch(() => undefined)) removed.push(path);
+  }
+  return { written, removed };
+}
+
 /**
  * Writes a compile's files into `dir` by the manifest's rules: an owned file whose hash no
  * longer matches `previous` stops with `owned-file-edited` (unless `force`); files the new
@@ -178,20 +250,14 @@ export async function writeAgentFiles(
   previous: Manifest | undefined,
   options: { force: boolean; store: Pick<LocalStore, "locate"> },
 ): Promise<Record<string, string>> {
-  for (const path of Object.keys(output.files))
-    if (!isContainedPath(path)) throw unsafe(path);
-
+  const planned = await planFiles(output, options.store);
   const old = previous?.files ?? {};
   const edited: string[] = [];
   for (const [path, hash] of Object.entries(old)) {
     if (!isContainedPath(path)) throw unsafe(path);
-    let data: Buffer;
-    try {
-      data = await readFile(join(dir, path));
-    } catch {
-      continue; // Gone: nothing of the user's to lose.
-    }
-    if (`sha256:${sha256(data)}` !== hash) edited.push(path);
+    // Gone is fine: nothing of the user's to lose. Any other read error stops.
+    const now = await diskHash(dir, path);
+    if (now !== undefined && now !== hash) edited.push(path);
   }
   if (edited.length > 0 && !options.force) {
     throw new CliError(
@@ -201,37 +267,25 @@ export async function writeAgentFiles(
     );
   }
 
-  const files = manifestFiles(output.files, sha256);
   for (const [path, entry] of Object.entries(output.files)) {
+    if (!("content" in entry)) continue;
     const target = join(dir, path);
-    if ("content" in entry) {
-      await fsStep(target, () =>
-        writeFileAtomic(target, entry.content, entry.mode ?? 0o644),
-      );
-      continue;
-    }
-    // A copied directory: one manifest entry per file; files it no longer has go below.
-    const source = await copySource(options.store, entry.copyFrom);
-    delete files[path];
-    for (const file of source.files) {
-      const from = join(source.path, file);
-      const data = await readFile(from);
-      const mode = entry.mode ?? (await stat(from)).mode & 0o777;
-      const to = join(target, file);
-      await fsStep(to, () => writeFileAtomic(to, data, mode));
-      files[`${path}/${file}`] = `sha256:${sha256(data)}`;
-    }
+    await fsStep(target, () =>
+      writeFileAtomic(target, entry.content, entry.mode ?? 0o644),
+    );
+  }
+  for (const copy of planned.copies) {
+    const to = join(dir, copy.path);
+    await fsStep(to, () => writeFileAtomic(to, copy.data, copy.mode));
   }
   for (const path of Object.keys(old)) {
-    if (path in files) continue;
+    if (path in planned.files) continue;
     const target = join(dir, path);
     if (!(await lstat(target).catch(() => undefined))) continue;
     await fsStep(target, () => rm(target, { force: true }));
     await pruneEmpty(dir, target);
   }
-  return Object.fromEntries(
-    Object.entries(files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-  );
+  return planned.files;
 }
 
 /** A path relative to `dir`, POSIX-style. */

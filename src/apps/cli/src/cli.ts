@@ -2,7 +2,11 @@ import type { Probe } from "@getdonn/adapter-sdk";
 import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
 import type { Spawn } from "./agent/spawn.js";
-import { agentCreateCommand, agentListCommand } from "./commands/agent.js";
+import {
+  agentCreateCommand,
+  agentListCommand,
+  agentSyncCommand,
+} from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { cliVersion } from "./commands/daemon.js";
@@ -538,6 +542,20 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .action((name: string, options) =>
           handle(options.json, () => agentCreateCommand(io, name, options)),
+        );
+
+      agent
+        .command("sync")
+        .description(
+          "Recompile the persona into a created agent's donn-owned files",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--dry-run", "list what would change; write nothing")
+        .option("--force", "overwrite donn-owned files edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { written, removed, report } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentSyncCommand(io, name, options)),
         );
 
       const daemon = program

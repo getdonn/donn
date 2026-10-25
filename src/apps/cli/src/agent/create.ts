@@ -4,7 +4,6 @@ import { dirname, join, posix, resolve as resolvePath } from "node:path";
 import adapter, {
   CHANNEL_FILE,
   createdAgentTs,
-  EveCompileError,
   manifestFiles,
   patchAgentTs,
 } from "@getdonn/adapter-eve";
@@ -38,7 +37,7 @@ import {
   writeManifest,
   type Manifest,
 } from "./files.js";
-import { compileInputs, inputsFor } from "./inputs.js";
+import { compile, compileInputs, inputsFor } from "./inputs.js";
 import {
   dependenciesFor,
   ignoreGenerated,
@@ -129,16 +128,6 @@ async function isEmptyDir(dir: string): Promise<boolean> {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return true;
     if (code === "ENOTDIR") return false;
-    throw error;
-  }
-}
-
-function compile(input: AgentCompileInput): AgentCompileOutput {
-  try {
-    return adapter.compile(input);
-  } catch (error) {
-    if (error instanceof EveCompileError)
-      throw new CliError(error.code, error.message);
     throw error;
   }
 }
@@ -471,7 +460,7 @@ export async function create(
   } catch (error) {
     throw leftForInspection(error, name, dir, shown);
   }
-  await recordCreated(ctx.home, { project: root, name });
+  await recordCreated(ctx.home, { project: root, name, path: agent.path });
 
   if (options.json) {
     io.stdout.write(
