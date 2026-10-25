@@ -81,6 +81,29 @@ function describe(error: unknown): {
   throw error;
 }
 
+/**
+ * The --json envelope's parts of an error the user can act on, for an answer that is not this
+ * process's exit (the daemon's events and replies); undefined for an unknown error (a bug).
+ */
+export function errorEnvelope(
+  error: unknown,
+):
+  | { code: string; message: string; details: Record<string, unknown> }
+  | undefined {
+  let described: ReturnType<typeof describe>;
+  try {
+    described = describe(error);
+  } catch {
+    return undefined;
+  }
+  const { code, message, ...details } = described.json;
+  return {
+    code: String(code),
+    message: typeof message === "string" ? message : described.text,
+    details,
+  };
+}
+
 /** One line of text for any error: the user-facing message, or the raw message for a bug. */
 export function errorText(error: unknown): string {
   try {

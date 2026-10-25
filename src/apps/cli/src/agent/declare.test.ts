@@ -47,6 +47,23 @@ describe("declareAgent", () => {
     );
   });
 
+  it("adds the entry after the last item, not after comments that lead the next section", async () => {
+    const text = `${PERSONA.replace(" # keep me", "")}    # retired: old-bot\n\n# Models every agent uses.\nmodels:\n  default: gpt-5\n`;
+    writeFileSync(file, text);
+    const { after } = await declareAgent(
+      file,
+      "x",
+      { template: "eve:blank", target: "local" },
+      { dryRun: false },
+    );
+    expect(after).toBe(
+      text.replace(
+        "target: local }\n",
+        "target: local }\n    x:\n      template: eve:blank\n      target: local\n",
+      ),
+    );
+  });
+
   it("creates the agents block when there is none", async () => {
     writeFileSync(file, "# top\napiVersion: donn/v0 # v\nkind: Persona\n");
     const { after } = await declareAgent(

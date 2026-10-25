@@ -35,6 +35,16 @@ export const Manifest = z.object({
   world: AgentWorld.optional(),
   /** donn-owned files: agent-directory path → `sha256:<hex>`. */
   files: z.record(z.string(), z.string()),
+  /**
+   * Files `donn agent build` wrote (`deploy/donn/…`): path → `sha256:<hex>`. Apart from `files`
+   * so a sync, which removes what the compile no longer produces, never touches them.
+   */
+  deploy: z.record(z.string(), z.string()).optional(),
+  /**
+   * Env names `donn agent deploy` set in Vercel production: names only, never values. A name
+   * whose value changed later is not detected.
+   */
+  pushedEnv: z.array(z.string()).optional(),
   /** `patched`: the template's agent.ts, edited once; `created`: donn wrote it. */
   agentTs: z.enum(["patched", "created"]).optional(),
   /** Files outside `files` that donn created or edited once (template- or user-owned after). */
@@ -78,8 +88,32 @@ export async function writeManifest(dir: string, m: Manifest): Promise<void> {
   );
 }
 
-const sha256 = (data: string | Uint8Array) =>
+export const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
+
+/**
+ * What is never a template's file, so neither copied from a path template nor counted as one of
+ * an agent's own paths: a repository and installs at any depth; build output, a Vercel link and
+ * donn's state at the top; and env files (`.env`, `.env.*`) at any depth, but `.env.example`.
+ */
+export const NOT_TEMPLATE = {
+  anywhere: new Set([".git", "node_modules"]),
+  top: new Set([".output", ".eve", ".donn", ".vercel"]),
+  keptEnv: ".env.example",
+} as const;
+
+/** Whether the POSIX `path`, relative to a template or agent folder, is NOT_TEMPLATE. */
+export function notTemplate(path: string): boolean {
+  if (path === "") return false;
+  const segments = path.split("/");
+  const name = segments.at(-1)!;
+  return (
+    segments.some((s) => NOT_TEMPLATE.anywhere.has(s)) ||
+    NOT_TEMPLATE.top.has(segments[0]!) ||
+    ((name === ".env" || name.startsWith(".env.")) &&
+      name !== NOT_TEMPLATE.keptEnv)
+  );
+}
 
 /**
  * Every file below `dir` (regular, or a link to one), as sorted POSIX paths relative to it. A
@@ -167,7 +201,7 @@ async function pruneEmpty(dir: string, path: string): Promise<void> {
 }
 
 /** A file's `sha256:<hex>` hash, or undefined when it is not there; any other read error stops. */
-async function diskHash(
+export async function diskHash(
   dir: string,
   path: string,
 ): Promise<string | undefined> {
@@ -259,6 +293,31 @@ export async function checkOwned(
       "owned-file-edited",
       `donn owns ${edited.join(", ")}, which ${edited.length === 1 ? "was" : "were"} edited since donn wrote ${edited.length === 1 ? "it" : "them"}; move the change into the persona, or pass --force to overwrite`,
       { files: edited, fix: "move the change into the persona, or --force" },
+    );
+  }
+  return edited;
+}
+
+/**
+ * The deploy files `build` wrote whose content no longer matches the manifest; they stop a
+ * rewrite with `owned-file-edited` unless `force`.
+ */
+export async function checkDeploy(
+  dir: string,
+  previous: Manifest | undefined,
+  force: boolean,
+): Promise<string[]> {
+  const edited: string[] = [];
+  for (const [path, hash] of Object.entries(previous?.deploy ?? {})) {
+    if (!isContainedPath(path)) throw unsafe(path);
+    const now = await diskHash(dir, path);
+    if (now !== undefined && now !== hash) edited.push(path);
+  }
+  if (edited.length > 0 && !force) {
+    throw new CliError(
+      "owned-file-edited",
+      `donn owns ${edited.join(", ")}, which ${edited.length === 1 ? "was" : "were"} edited since donn wrote ${edited.length === 1 ? "it" : "them"}; pass --force to overwrite`,
+      { files: edited, fix: "--force" },
     );
   }
   return edited;

@@ -27,7 +27,7 @@ import {
   resolvePersona,
   type Context,
 } from "../context.js";
-import { CliError } from "../errors.js";
+import { CliError, errorEnvelope } from "../errors.js";
 import { fsStep, writeFileAtomic } from "../fs.js";
 import { addedLines, declareAgent, resolveEdited } from "./declare.js";
 import {
@@ -190,21 +190,25 @@ async function editAgentTs(dir: string): Promise<"patched" | "created"> {
   return "patched";
 }
 
-/** A failure after materialising: the folder stays, and `--force` starts again. */
-function leftForInspection(
+/**
+ * A failure after materialising: the folder stays, and `--force` starts again. Any error the
+ * user can act on says so; an unknown one (a bug) is returned as it is.
+ */
+export function leftForInspection(
   error: unknown,
   name: string,
   dir: string,
   shown: string,
 ): unknown {
-  if (!(error instanceof CliError)) return error;
+  const known = errorEnvelope(error);
+  if (known === undefined) return error;
   const again = `donn agent create ${name} --force`;
-  const fix = error.details["fix"];
+  const fix = known.details["fix"];
   return new CliError(
-    error.code,
-    `${error.message}\n${shown} is left for inspection; \`${again}\` removes it and starts again`,
+    known.code,
+    `${known.message}\n${shown} is left for inspection; \`${again}\` removes it and starts again`,
     {
-      ...error.details,
+      ...known.details,
       dir,
       fix: typeof fix === "string" ? `${fix}; then ${again}` : again,
     },

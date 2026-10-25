@@ -4,7 +4,9 @@ import { Command, CommanderError, Option } from "commander";
 import type { AgentControl } from "./agent/run.js";
 import type { Spawn } from "./agent/spawn.js";
 import {
+  agentBuildCommand,
   agentCreateCommand,
+  agentDeployCommand,
   agentEnvCommand,
   agentExecCommand,
   agentListCommand,
@@ -83,6 +85,7 @@ export interface CliIo {
     command: string,
     args: string[],
     input?: string,
+    options?: { cwd?: string },
   ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   /** All of stdin, for `login --token-stdin`; defaults to process.stdin. */
   stdin?: () => Promise<string>;
@@ -567,6 +570,35 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         );
 
       agent
+        .command("build")
+        .description(
+          "Build a self-host agent: eve build on this host, then deploy/donn/Dockerfile and env.json",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--force", "overwrite deploy files edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, dir, dockerfile, envFile, sandboxImages, report } as JSON",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentBuildCommand(io, name, options)),
+        );
+
+      agent
+        .command("deploy")
+        .description(
+          "Deploy a vercel agent: link it, set its env in Vercel production after confirming, eve deploy",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--yes", "set the environment variables without asking")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agent, dir, pushed, url? } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentDeployCommand(io, name, options)),
+        );
+
+      agent
         .command("env")
         .description("Print the environment an agent needs (names and refs)")
         .argument("<name>", "the agent, as in agents.define")
@@ -620,7 +652,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .description("Stop an agent the daemon runs")
         .argument("<name>", "the agent, as in agents.define")
         .option("--project <dir>", "the project folder (default: here)")
-        .option("--json", "print { agent, stopped, leftovers } as JSON")
+        .option("--json", "print { agent, stopped, leftovers, exited } as JSON")
         .action((name: string, options) =>
           handle(options.json, () => agentStopCommand(io, name, options)),
         );

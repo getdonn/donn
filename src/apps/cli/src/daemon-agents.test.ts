@@ -53,7 +53,7 @@ beforeEach(async () => {
       { eve: ["start"], lines: printed, hold: true },
     ],
   });
-  probe = agentProbe(["sbx1"]);
+  probe = agentProbe(["running", "exited"]);
 });
 afterEach(async () => {
   unfollow?.();
@@ -145,10 +145,11 @@ describe("the daemon's agents", () => {
       agent: "kody",
       stopped: true,
       leftovers: 1,
+      exited: 1,
     });
     expect(child.kills).toEqual(["SIGTERM"]);
     expect(probe.dockerCalls).toEqual([
-      ["ps", "-q", "--filter", "name=eve-sbx-"],
+      ["ps", "-a", "--filter", "name=eve-sbx-", "--format", "{{.State}}"],
     ]);
     expect((await call(daemon, "GET", "/agents")).body).toEqual({ agents: [] });
     const again = await call(daemon, "POST", "/agents/stop", {
@@ -179,7 +180,7 @@ describe("the daemon's agents", () => {
       project: s.repo,
       url: "http://127.0.0.1:61131/",
     });
-    expect(events[1]).toMatchObject({ name: "kody", leftovers: 1 });
+    expect(events[1]).toMatchObject({ name: "kody", leftovers: 1, exited: 1 });
     const text = JSON.stringify(events);
     expect(text).not.toContain(startCall()!.env.DONN_ROUTE_TOKEN);
     expect(text).not.toContain("tok-SECRET");
@@ -216,6 +217,16 @@ describe("the daemon's agents", () => {
     });
     expect(ran.status).toBe(400);
     expect(ran.body).toMatchObject({ error: { code: "secret-unresolved" } });
+    // The daemon's environment is not the user's shell: the fix says so.
+    const { details } = (ran.body as { error: { details: { fix: string } } })
+      .error;
+    expect(details.fix).toContain(
+      "the daemon resolves secrets in its own environment, which has no shell exports",
+    );
+    expect(details.fix).toContain("keychain provider");
+    expect(details.fix).toContain(
+      "`donn agent run kody` with the daemon stopped",
+    );
     expect(startCall()).toBeUndefined();
     await vi.waitFor(() =>
       expect(events).toContainEqual(
@@ -226,6 +237,38 @@ describe("the daemon's agents", () => {
         }),
       ),
     );
+  });
+
+  it("answers a run on an invalid persona with its code, not internal", async () => {
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(
+        "targets:\n",
+        "permisions: {}\ntargets:\n",
+      ),
+    );
+    const daemon = await start();
+    const ran = await call(daemon, "POST", "/agents/run", {
+      project: s.repo,
+      name: "kody",
+    });
+    expect(ran.status).toBe(400);
+    expect(ran.body).toMatchObject({ error: { code: "invalid-persona" } });
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "agent.failed",
+          name: "kody",
+          code: "invalid-persona",
+        }),
+      ),
+    );
+    const viaCli = await cli(["run", "kody", "--json"]);
+    expect(viaCli.code).toBe(1);
+    expect(JSON.parse(viaCli.stdout).error).toMatchObject({
+      code: "invalid-persona",
+    });
   });
 
   it("refuses a malformed run request", async () => {
@@ -608,6 +651,25 @@ describe("the daemon keeps created agents current", () => {
   );
 
   it(
+    "an invalid persona stops the sync with its code: agent.sync-failed",
+    { timeout: 15_000 },
+    async () => {
+      await start();
+      editPersona("targets:\n", "permisions: {}\ntargets:\n");
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual({
+            type: "agent.sync-failed",
+            name: "kody",
+            project: s.repo,
+            code: "invalid-persona",
+          }),
+        { timeout: 5_000 },
+      );
+    },
+  );
+
+  it(
     "a changed target is not synced: status says recreate needed",
     { timeout: 15_000 },
     async () => {
@@ -736,7 +798,12 @@ describe("donn agent run|stop|list and status through the daemon", () => {
     const stopped = await cli(["stop", "kody"]);
     expect(stopped.code).toBe(0);
     expect(stopped.stdout).toContain("stopped kody");
-    expect(stopped.stdout).toContain("1 eve-sbx- sandbox container");
+    expect(stopped.stdout).toContain(
+      "1 eve-sbx- sandbox container still running",
+    );
+    expect(stopped.stdout).toContain(
+      "1 stopped eve-sbx- sandbox container kept",
+    );
     expect(startCall()!.kills).toEqual(["SIGTERM"]);
   });
 
@@ -767,6 +834,7 @@ describe("donn agent run|stop|list and status through the daemon", () => {
       agent: "kody",
       stopped: true,
       leftovers: 1,
+      exited: 1,
     });
   });
 });

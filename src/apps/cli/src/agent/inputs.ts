@@ -6,7 +6,7 @@ import type {
 import type { ResolvedPersona } from "@getdonn/spec";
 import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
-import { listFiles, readManifest } from "./files.js";
+import { listFiles, notTemplate, readManifest } from "./files.js";
 
 // What an agent compile needs besides the IR: the text of every file the IR references, and the
 // facts of the agent directory (the template's own paths, its sandbox and route auth). Shared by
@@ -14,8 +14,6 @@ import { listFiles, readManifest } from "./files.js";
 // See docs/planning/24-adapter-eve.md, section 1.
 
 const PROJECT_PERSONA = "project/persona";
-/** Top-level folders that are build output, installs or donn's own, never template files. */
-const NOT_TEMPLATE = new Set([".output", ".eve", ".donn", ".vercel"]);
 const MODULE = "(?:ts|mts|js|mjs|cjs)";
 const SANDBOX = new RegExp(`^agent/(?:sandbox\\.${MODULE}$|sandbox/)`);
 const ROUTE_AUTH = new RegExp(`^agent/channels/(?:eve\\.${MODULE}$|eve/)`);
@@ -23,15 +21,8 @@ const ROUTE_AUTH = new RegExp(`^agent/channels/(?:eve\\.${MODULE}$|eve/)`);
 /** Paths under `dir` a compile must not collide with: everything not donn's, not built, not installed. */
 async function existingPaths(dir: string): Promise<string[]> {
   const owned = new Set(Object.keys((await readManifest(dir))?.files ?? {}));
-  const files = await listFiles(dir, (path) => {
-    const name = path.slice(path.lastIndexOf("/") + 1);
-    return (
-      name === "node_modules" ||
-      name === ".git" ||
-      (!path.includes("/") && NOT_TEMPLATE.has(path))
-    );
-  });
-  return files.filter((path) => !owned.has(path));
+  const files = await listFiles(dir, notTemplate);
+  return files.filter((path) => !owned.has(path) && !notTemplate(path));
 }
 
 export async function compileInputs(

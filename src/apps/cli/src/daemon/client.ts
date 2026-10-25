@@ -99,7 +99,7 @@ export interface DaemonClient {
   stopAgent(
     project: string,
     name: string,
-  ): Promise<{ stopped: boolean; leftovers?: number }>;
+  ): Promise<{ stopped: boolean; leftovers?: number; exited?: number }>;
   /** Follow `GET /events`; returns a function that stops following. */
   events(on: (e: DaemonEvent) => void): () => void;
 }
@@ -294,7 +294,7 @@ export async function connectDaemon(
       (await call("POST", "/agents/stop", AGENT_STOP_TIMEOUT_MS, {
         project,
         name,
-      })) as { stopped: boolean; leftovers?: number },
+      })) as { stopped: boolean; leftovers?: number; exited?: number },
     events: (on) => {
       const req = request(
         {

@@ -85,7 +85,10 @@ runtime packages on npm (trusted publishing, provenance) and `getdonn/donn` publ
 and GUI track, specs 23–26 (designed 2026-10-24): spec 23 is built (`models` and `agents` in the
 spec, the resolver and the capability matrix) and spec 24 is built (`AgentAdapter`,
 `@getdonn/adapter-eve`, the agent half of the capability matrix; the adapter becomes the 14th public
-package with the next release); specs 25–26 are designed, not built.
+package with the next release); _(2026-10-25)_ spec 25 is built (`donn agent
+create|list|sync|env|exec|run|stop|logs|build|deploy`, the daemon keeping created agents current,
+the agent lines in `doctor` and `status`, a real-eve e2e under `DONN_E2E=1`; spike findings in
+`spikes/eve-runner/`); next is spec 26 (the GUI), designed, not built.
 
 ## Conventions (once code exists)
 

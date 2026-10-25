@@ -25,7 +25,7 @@ import type { Spawn } from "../agent/spawn.js";
 import { isAlive, nodeProbe } from "@getdonn/executor";
 import type { CliIo } from "../cli.js";
 import { loadConfig } from "../config.js";
-import { CliError } from "../errors.js";
+import { CliError, errorEnvelope } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
 import { listSessions, removeSession, type SessionInfo } from "../session.js";
 import { agentRunner } from "./agents.js";
@@ -821,11 +821,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 },
           );
         } catch (error) {
-          if (!(error instanceof CliError)) throw error;
+          const known = errorEnvelope(error);
+          if (known === undefined) throw error;
           return send(
             res,
             400,
-            failure(error.code, error.message, error.details),
+            failure(known.code, known.message, known.details),
           );
         }
       }

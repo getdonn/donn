@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -105,18 +111,18 @@ describe("startAgent", () => {
     await Promise.all([a.stop(), b.stop()]);
   });
 
-  it("stop signals the group, then counts eve-sbx- containers left", async () => {
+  it("stop signals the group, then counts eve-sbx- containers running and exited", async () => {
     const spawn = serving();
-    const probe = agentProbe(["c1", "c2"]);
+    const probe = agentProbe(["running", "exited", "exited"]);
     const agent = await startAgent(io(spawn, probe), dir, {}, options);
-    expect(await agent.stop()).toEqual({ leftovers: 2 });
+    expect(await agent.stop()).toEqual({ leftovers: 1, exited: 2 });
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM"]);
     expect(probe.dockerCalls).toEqual([
-      ["ps", "-q", "--filter", "name=eve-sbx-"],
+      ["ps", "-a", "--filter", "name=eve-sbx-", "--format", "{{.State}}"],
     ]);
     expect(await agent.exited).toBe(143);
     // Twice is once.
-    expect(await agent.stop()).toEqual({ leftovers: 2 });
+    expect(await agent.stop()).toEqual({ leftovers: 1, exited: 2 });
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM"]);
   });
 
@@ -141,13 +147,13 @@ describe("startAgent", () => {
         killAfterMs: 20,
       },
     );
-    expect(await agent.stop()).toEqual({ leftovers: 0 });
+    expect(await agent.stop()).toEqual({ leftovers: 0, exited: 0 });
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
   /** A probe whose `docker ps` records whether the group still ran when it was asked. */
   const watching = (spawn: FakeEve) => {
-    const probe = agentProbe(["c1"]);
+    const probe = agentProbe(["running"]);
     const alive: boolean[] = [];
     const run = probe.run;
     probe.run = async (command, args) => {
@@ -174,7 +180,7 @@ describe("startAgent", () => {
         killAfterMs: 5_000,
       },
     );
-    expect(await agent.stop()).toEqual({ leftovers: 1 });
+    expect(await agent.stop()).toEqual({ leftovers: 1, exited: 0 });
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM"]);
     expect(alive).toEqual([false]);
   });
@@ -201,7 +207,7 @@ describe("startAgent", () => {
         killAfterMs: 50,
       },
     );
-    expect(await agent.stop()).toEqual({ leftovers: 1 });
+    expect(await agent.stop()).toEqual({ leftovers: 1, exited: 0 });
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM", "SIGKILL"]);
     expect(alive).toEqual([false]);
   });
@@ -233,7 +239,7 @@ describe("startAgent", () => {
     exit(1);
     expect(await agent.exited).toBe(1);
     expect(startCall(spawn)!.alive()).toBe(true);
-    expect(await agent.stop()).toEqual({ leftovers: 1 });
+    expect(await agent.stop()).toEqual({ leftovers: 1, exited: 0 });
     expect(startCall(spawn)!.kills).toEqual(["SIGTERM", "SIGKILL"]);
     expect(alive).toEqual([false]);
   });
@@ -242,7 +248,7 @@ describe("startAgent", () => {
     const probe = agentProbe();
     probe.run = async () => ({ exitCode: 1, stdout: "", stderr: "no docker" });
     const agent = await startAgent(io(serving(), probe), dir, {}, options);
-    expect(await agent.stop()).toEqual({ leftovers: 0 });
+    expect(await agent.stop()).toEqual({ leftovers: 0, exited: 0 });
   });
 
   it("a failed build is eve-failed and nothing starts", async () => {
@@ -378,7 +384,32 @@ describe("donn agent run|stop|logs without a daemon", () => {
     });
     expect(r.code).not.toBe(0);
     expect(r.stdout + r.stderr).toContain("secret-unresolved");
+    // Only the daemon's environment lacks the shell's exports.
+    expect(r.stdout).not.toContain("the daemon resolves");
     expect(spawn.calls).toHaveLength(0);
+  });
+
+  it("warns, and still runs, when the agent is stale", async () => {
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(
+        "inline: Checkout overview.",
+        "inline: Checkout overview v2.",
+      ),
+    );
+    const spawn = serving();
+    const before = process.listenerCount("SIGINT");
+    const pending = run(["run", "kody"], spawn);
+    await vi.waitFor(() => expect(startCall(spawn)).toBeDefined());
+    await vi.waitFor(() =>
+      expect(process.listenerCount("SIGINT")).toBe(before + 1),
+    );
+    process.emit("SIGINT");
+    const r = await pending;
+    expect(r.stderr).toContain(
+      "warning: kody's donn files are older than its persona; `donn agent sync kody` brings them up to date",
+    );
   });
 
   it("--dev runs eve dev in the foreground with the resolved env", async () => {

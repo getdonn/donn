@@ -1,3 +1,5 @@
+import { build, type BuildOptions } from "../agent/build.js";
+import { deploy, type DeployOptions } from "../agent/deploy.js";
 import { create, type CreateOptions } from "../agent/create.js";
 import { agentEnv, exec, formatDotenv } from "../agent/env.js";
 import { projectContext } from "../agent/load.js";
@@ -105,4 +107,22 @@ export async function agentLogsCommand(
   options: AgentOptions & { follow?: boolean },
 ): Promise<number> {
   return logs(io, name, options);
+}
+
+/** `donn agent build <name>`: see agent/build.ts. */
+export async function agentBuildCommand(
+  io: CliIo,
+  name: string,
+  options: BuildOptions,
+): Promise<number> {
+  return build(io, name, options);
+}
+
+/** `donn agent deploy <name>`: see agent/deploy.ts. */
+export async function agentDeployCommand(
+  io: CliIo,
+  name: string,
+  options: DeployOptions,
+): Promise<number> {
+  return deploy(io, name, options);
 }

@@ -48,6 +48,43 @@ describe("stageTemplate", () => {
     }
   });
 
+  it("copies no build output, link, donn state or env file but .env.example", async () => {
+    put("tpl/package.json", "{}");
+    put("tpl/.vercel/project.json", "{}");
+    put("tpl/.donn/agent.json", "{}");
+    put("tpl/.output/x", "x");
+    put("tpl/.eve/state.json", "{}");
+    put("tpl/.env", "SECRET=1");
+    put("tpl/.env.local", "SECRET=2");
+    put("tpl/agent/.env.production", "SECRET=3");
+    put("tpl/.env.example", "SECRET=");
+    const io = quietIo({ cwd: root, home: root });
+    const staging = await stageTemplate(
+      io,
+      { kind: "path", dir: join(root, "tpl") },
+      "0.83.2",
+      { stagingBase: join(root, "stage") },
+    );
+    try {
+      for (const gone of [
+        ".vercel",
+        ".donn",
+        ".output",
+        ".eve",
+        ".env",
+        ".env.local",
+        "agent/.env.production",
+      ])
+        expect(existsSync(join(staging, gone)), gone).toBe(false);
+      expect(readFileSync(join(staging, ".env.example"), "utf8")).toBe(
+        "SECRET=",
+      );
+      expect(existsSync(join(staging, "package.json"))).toBe(true);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  });
+
   it("refuses eve:blank when a workspace or package sits above the staging folder", async () => {
     put("outer/package.json", "{}");
     mkdirSync(join(root, "outer/stage"), { recursive: true });
