@@ -113,6 +113,7 @@ export async function daemonRun(
       version: cliVersion(),
       probe: io.probe,
       ...(io.now && { now: io.now }),
+      ...(io.passwdHome && { passwdHome: io.passwdHome }),
     });
   } catch (error) {
     // Under the service "already running" is success, or the manager would restart it in a loop.

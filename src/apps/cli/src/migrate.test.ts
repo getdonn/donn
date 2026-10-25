@@ -2510,4 +2510,17 @@ describe("review notes: the home helper reaches every reader", () => {
     expect(json(r).error.message).toContain('HOME is "rel"');
     expect(json(r).error.message).not.toContain("no record");
   });
+
+  it("words the refusal for an unset and an empty HOME apart", async () => {
+    const unset = await donn(machine(), ["migrate", "--yes", "--json"], {
+      env: { HOME: undefined },
+      passwdHome: () => "relative/home",
+    });
+    expect(json(unset).error.message).toContain("HOME is not set");
+    const empty = await donn(machine(), ["migrate", "--yes", "--json"], {
+      env: { HOME: "" },
+      passwdHome: () => "relative/home",
+    });
+    expect(json(empty).error.message).toContain("HOME is empty");
+  });
 });

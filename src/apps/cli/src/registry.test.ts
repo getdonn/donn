@@ -15,7 +15,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ActivationPlan, Probe } from "@getdonn/adapter-sdk";
 import { startMockRegistry } from "@getdonn/registry-api/mock";
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import type { CliIo } from "./cli.js";
+import { freshen } from "./registry.js";
 import { installedProbe, zz, type RunResult } from "./test/seed.js";
 
 const EXAMPLES = join(import.meta.dirname, "../../../../examples/personas");
@@ -118,6 +128,24 @@ const index = (m: Machine) =>
     pulledAt: string;
     layers: Record<string, { version: number }>;
   };
+
+describe("freshen", () => {
+  it("expands ~/ in config.yaml with the io's home lookup", async () => {
+    const home = mkdtempSync(join(tmpdir(), "donn-freshen-"));
+    writeFileSync(join(home, "config.yaml"), "personas: ~/nowhere\n");
+    const passwdHome = vi.fn(() => home);
+    await freshen(
+      {
+        env: { HOME: "", DONN_HOME: home },
+        cwd: home,
+        passwdHome,
+      } as unknown as CliIo,
+      { budgetMs: 0 },
+    );
+    expect(passwdHome).toHaveBeenCalled();
+    rmSync(home, { recursive: true, force: true });
+  });
+});
 
 describe("login, logout, whoami", () => {
   it("login checks the token and saves the URL", async () => {

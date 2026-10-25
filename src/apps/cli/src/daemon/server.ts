@@ -53,6 +53,8 @@ export interface DaemonOptions {
   /** Runs harness detection while compiling; defaults to the executor's node probe. */
   probe?: Probe;
   now?: () => number;
+  /** Test seam: the system's record of the user's home folder (see userhome.ts). */
+  passwdHome?: () => string | undefined;
 }
 
 export interface Daemon {
@@ -379,6 +381,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     stderr: toLog,
     probe: options.probe ?? nodeProbe(),
     now,
+    ...(options.passwdHome && { passwdHome: options.passwdHome }),
   };
 
   /** What the daemon last found for each running session, by folder. */
