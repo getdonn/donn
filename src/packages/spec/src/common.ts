@@ -58,7 +58,17 @@ export const McpServer = z.union([
   z.strictObject({
     url: z.url(),
     transport: z.enum(["http", "sse"]).optional(),
-    headers: z.record(z.string(), z.string()).optional(),
+    headers: z
+      .record(
+        z
+          .string()
+          .regex(
+            /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/,
+            "must be an HTTP header name",
+          ),
+        z.string(),
+      )
+      .optional(),
   }),
 ]);
 export type McpServer = z.infer<typeof McpServer>;
@@ -108,12 +118,22 @@ export const Labels = z.record(z.string(), z.string());
 export const ModelGateway = z
   .strictObject({
     type: z.enum(["openai-compatible", "anthropic", "vercel-ai-gateway"]),
-    baseURL: z.url().optional(),
+    baseURL: z.url({ protocol: /^https?$/ }).optional(),
     apiKey: z
       .string()
       .regex(/^secret:\/\/.+/, "must be a secret:// ref")
       .optional(),
-    headers: z.record(z.string(), z.string()).optional(),
+    headers: z
+      .record(
+        z
+          .string()
+          .regex(
+            /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/,
+            "must be an HTTP header name",
+          ),
+        z.string(),
+      )
+      .optional(),
   })
   .superRefine((gateway, ctx) => {
     const named = gateway.type === "vercel-ai-gateway";
@@ -164,25 +184,32 @@ export function normalizeRelative(path: string): string {
   return absolute ? `/${joined}` : joined === "" ? "." : joined;
 }
 
-/** A project-relative directory: stays inside the project and outside `.donn/`. */
+/** A backslash or a drive prefix means a Windows path; neither is a portable relative path. */
+const WINDOWS_PATH = /\\|^[A-Za-z]:/;
+
+/** A project-relative directory: stays inside the project and outside `.donn/` and `.git/`. */
 export const AgentPath = z.string().refine((value) => {
+  if (WINDOWS_PATH.test(value)) return false;
   const path = normalizeRelative(value);
+  const first = path.split("/")[0]!.toLowerCase();
   return (
     !path.startsWith("/") &&
     path !== "." &&
     path !== ".." &&
     !path.startsWith("../") &&
-    path !== ".donn" &&
-    !path.startsWith(".donn/")
+    first !== ".donn" &&
+    first !== ".git"
   );
-}, "must stay inside the project and outside .donn/");
+}, "must stay inside the project and outside .donn/ and .git/");
 export type AgentPath = z.infer<typeof AgentPath>;
 
 /** An environment variable name for an agent; `DONN_` is donn's own. */
 export const EnvName = z
   .string()
-  .regex(/^[A-Z][A-Z0-9_]*$/, "must be UPPER_SNAKE_CASE")
-  .refine((name) => !name.startsWith("DONN_"), "the DONN_ prefix is reserved");
+  .regex(
+    /^(?!DONN_)[A-Z][A-Z0-9_]*$/,
+    "must be UPPER_SNAKE_CASE and not start with the reserved DONN_",
+  );
 export type EnvName = z.infer<typeof EnvName>;
 
 const EVE_TEMPLATE = /^eve:[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -190,7 +217,8 @@ const EVE_TEMPLATE = /^eve:[a-z0-9]+(-[a-z0-9]+)*$/;
 /** `eve:<slug>`, or a path relative to the persona file. */
 export const AgentTemplate = z.string().refine((value) => {
   if (value.startsWith("eve:")) return EVE_TEMPLATE.test(value);
-  if (value === "") return false;
+  if (value === "" || WINDOWS_PATH.test(value)) return false;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(value)) return false;
   const path = normalizeRelative(value);
   return (
     !path.startsWith("/") &&

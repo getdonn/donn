@@ -173,8 +173,10 @@ secretEnv (3)
   DONN_SECRET_1 = secret://vault/db/token
   DONN_SECRET_2 = secret://vault/db/url
   DONN_SECRET_3 = secret://vault/remote/key
-report (4)
+report (6)
   advisory  knowledge[wiki]  rendered as text in the system prompt
+  dropped  models.gateway  Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec  locked: models by org/base
+  dropped  models.default  Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec  locked: models by org/base
   dropped  skills[remote-skill]  skill registries are not supported in v0
   dropped  mcp.servers.jira  gateway:// refs need gateway resolution, which is not available yet  locked: mcp.servers by org/base
   dropped  targets.claude-code.env.API_KEY  secret refs in targets are not resolved; pass secrets through an MCP server's env

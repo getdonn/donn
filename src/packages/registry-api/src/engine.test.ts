@@ -140,6 +140,19 @@ describe("publishLayer", () => {
         "missing-file",
       ],
       [
+        "an agent template folder that is not in the bundle",
+        "org/base",
+        request(
+          layer(
+            "base",
+            "agents:\n  define:\n    rev:\n      template: ./tpl\n      target: local\n      path: agents/rev\n",
+          ),
+        ),
+        async () => {},
+        422,
+        "missing-file",
+      ],
+      [
         "a path out of the layer",
         "org/base",
         { ...request(layer("base")), files: [file("../x.md", "x")] },

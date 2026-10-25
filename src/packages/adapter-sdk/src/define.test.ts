@@ -105,6 +105,9 @@ describe("defineAdapter", () => {
       ),
     ).not.toThrow();
     expect(() =>
+      defineAdapter(declaration({ capabilities: matrix("models") })),
+    ).not.toThrow();
+    expect(() =>
       defineAdapter(declaration({ capabilities: matrix("targets.anything") })),
     ).not.toThrow();
   });

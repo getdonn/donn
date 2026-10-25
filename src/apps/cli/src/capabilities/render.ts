@@ -81,6 +81,7 @@ function rows(columns: Column[]): Row[] {
       columns,
     ),
     single("policy"),
+    single("models"),
     { label: "targets", field: (column) => `targets.${column.id}` },
   ];
 }

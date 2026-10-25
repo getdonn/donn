@@ -24,7 +24,8 @@ Harnesses without an adapter yet: Copilot CLI, Cursor, Gemini CLI, Antigravity.
 | permissions.ask | ● | ◐ 12 | ◐ 13 |
 | hooks | ● | ✕ 15 | ✕ 16 |
 | policy | ● 17 | ✕ 18 | ✕ 18 |
-| targets | ●\* 19 | ✕ 20 | ●\* 21 |
+| models | ✕ 19 | ✕ 20 | ✕ 21 |
+| targets | ●\* 22 | ✕ 23 | ●\* 24 |
 
 Notes:
 
@@ -46,6 +47,9 @@ Notes:
 16. untrusted hooks do not run, and donn never bypasses Codex's hook trust
 17. managed policy bundle
 18. not rendered; enforced only by managed bundles for Claude Code
-19. secret refs and permission lists in targets are dropped
-20. AGENTS.md is plain text; use a harness adapter for harness settings
-21. only sandbox, approval and model are read
+19. Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec
+20. AGENTS.md is text; model routing is the harness's
+21. Not yet: Codex takes a model_provider; a later spec
+22. secret refs and permission lists in targets are dropped
+23. AGENTS.md is plain text; use a harness adapter for harness settings
+24. only sandbox, approval and model are read

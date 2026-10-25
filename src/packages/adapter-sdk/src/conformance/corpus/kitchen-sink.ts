@@ -70,6 +70,7 @@ export const kitchenSink: CorpusEntry = {
       { path: "permissions.deny", layer: "org/base" },
       { path: "mcp.servers", layer: "org/base" },
       { path: "hooks.notification", layer: "org/base" },
+      { path: "models", layer: "org/base" },
     ],
     targets: {
       "claude-code": {
@@ -80,7 +81,14 @@ export const kitchenSink: CorpusEntry = {
       codex: { approvalPolicy: "on-request" },
     },
     policy: {},
-    models: {},
+    models: {
+      gateway: {
+        type: "openai-compatible",
+        baseURL: "https://llm.corp/v1",
+        apiKey: "secret://vault/llm/gateway-key",
+      },
+      default: "anthropic/claude-sonnet-5-5",
+    },
     agents: {},
   },
 };

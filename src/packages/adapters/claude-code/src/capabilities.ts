@@ -56,6 +56,10 @@ export function capabilities(detection?: Detection): CapabilityMatrix {
       ),
       // Enforced by the managed policy bundle, which a launch's mode does not change.
       policy: { ...native, note: "managed policy bundle" },
+      models: {
+        support: "none",
+        note: "Not yet: Claude Code reads a gateway from ANTHROPIC_BASE_URL; a later spec",
+      },
     },
   };
 }

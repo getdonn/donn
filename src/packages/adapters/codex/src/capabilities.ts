@@ -45,6 +45,10 @@ export function capabilities(): CapabilityMatrix {
         caveat: "only sandbox, approval and model are read",
       },
       policy: POLICY,
+      models: {
+        support: "none",
+        note: "Not yet: Codex takes a model_provider; a later spec",
+      },
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [`hooks.${event}`, hooks]),
       ),

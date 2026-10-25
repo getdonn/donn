@@ -58,9 +58,31 @@ describe("donn capabilities", () => {
       "permissions.ask",
       "hooks",
       "policy",
+      "models",
       "targets",
     ]);
     expect(r.stdout).toContain("Codex has no per-launch skill root");
+  });
+
+  it("renders a row for every capability field of every built-in adapter", () => {
+    const labels = renderGrid(firstPartyColumns())
+      .split("\n\n")[0]!
+      .split("\n")
+      .slice(1)
+      .map((line) => line.split(/\s+/)[0]!);
+    for (const column of firstPartyColumns()) {
+      for (const field of capabilityFields(column.id)) {
+        const label = field.startsWith("hooks.")
+          ? "hooks"
+          : field.startsWith("targets.")
+            ? "targets"
+            : field;
+        const shown =
+          labels.includes(label) ||
+          (field.startsWith("permissions.") && labels.includes("permissions"));
+        expect(shown, `${column.id}: ${field}`).toBe(true);
+      }
+    }
   });
 
   it("declares a policy row for every built-in adapter", () => {

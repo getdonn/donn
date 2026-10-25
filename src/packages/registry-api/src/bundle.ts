@@ -37,7 +37,8 @@ export function bundleDigest(source: string, files: BundleFile[]): string {
 
 /**
  * The files and folders a layer points at, relative to the layer's folder: instruction files,
- * local skill folders and hook scripts (every `run` is a path, as in the resolver). Skills containing `://` are
+ * local skill folders, hook scripts (every `run` is a path, as in the resolver) and path
+ * agent templates (folders). Skills containing `://` are
  * skipped. Paths are normalised but not checked; callers refuse the ones that escape.
  */
 export function referencedPaths(doc: Persona): {
@@ -56,6 +57,10 @@ export function referencedPaths(doc: Persona): {
     if (event === "remove") continue;
     for (const hook of hooks as Hook[])
       files.push(normalizeBundlePath(hook.run));
+  }
+  for (const agent of Object.values(doc.agents?.define ?? {})) {
+    if (!agent.template.startsWith("eve:"))
+      dirs.push(normalizeBundlePath(agent.template));
   }
   return { files, dirs };
 }

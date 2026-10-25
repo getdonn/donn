@@ -35,6 +35,17 @@ describe("compile (relaunch)", () => {
   const full = adapter.compile(input("full"));
   const kitchen = adapter.compile(input("kitchen-sink"));
 
+  it("reports models as dropped with the matrix note, locks included", () => {
+    const dropped = kitchen.report.entries.filter((e) =>
+      e.path.startsWith("models."),
+    );
+    expect(dropped.map((e) => [e.path, e.outcome])).toEqual([
+      ["models.gateway", "dropped"],
+      ["models.default", "dropped"],
+    ]);
+    expect(dropped[0]!.reason).toMatch(/ANTHROPIC_BASE_URL/);
+  });
+
   it("reports relaunch mode", () => {
     expect(full.report.mode).toBe("relaunch");
   });

@@ -1,3 +1,4 @@
+import { builtinModules } from "node:module";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { normalizeRelative } from "./common.js";
@@ -27,6 +28,11 @@ describe("@getdonn/spec", () => {
     for (const name of sources) {
       const text = readFileSync(new URL(name, dir), "utf8");
       expect(text, name).not.toMatch(/from\s+["']node:/);
+      for (const mod of builtinModules) {
+        expect(text, `${name} imports ${mod}`).not.toMatch(
+          new RegExp(`from\\s+["']${mod}["']`),
+        );
+      }
     }
   });
 });

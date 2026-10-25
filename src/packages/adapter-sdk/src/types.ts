@@ -134,6 +134,7 @@ export const FIXED_CAPABILITY_FIELDS = [
   "permissions.deny",
   "permissions.ask",
   "policy",
+  "models",
 ] as const;
 
 export type CapabilityField =
