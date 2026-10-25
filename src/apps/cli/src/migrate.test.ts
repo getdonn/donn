@@ -11,7 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { cp, rename } from "node:fs/promises";
+import { cp, lstat, readlink, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Platform, Probe } from "@getdonn/adapter-sdk";
@@ -521,7 +521,7 @@ describe("donn migrate", () => {
     for (const yes of [true, false]) {
       const m = machine();
       oldInstall(m);
-      put(join(newHome(), "config.yaml"), "personas: /elsewhere\n");
+      put(join(newHome(), "notes.txt"), "mine\n");
       let asked = false;
       const r = await donn(
         m,
@@ -544,7 +544,7 @@ describe("donn migrate", () => {
       expect(changes(m)).toEqual([]);
       expect(read(join(oldHome(), "layers/org/acme.yaml"))).toBe(ACME);
       expect(existsSync(oldPlist())).toBe(true);
-      expect(readdirSync(newHome())).toEqual(["config.yaml"]);
+      expect(readdirSync(newHome())).toEqual(["notes.txt"]);
       rmSync(user(), { recursive: true, force: true });
     }
     const m = machine();
@@ -892,7 +892,8 @@ describe("donn migrate: resuming and safety", () => {
     oldInstall(m);
     m.keychainError = "User interaction is not allowed.";
     const r = await donn(m, ["migrate", "--yes", "--json"]);
-    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(r.code, r.stdout + r.stderr).toBe(1);
+    expect(json(r).pending).toEqual(["keychain"]);
     expect(stepOf(r, "keychain")).toEqual({
       id: "keychain",
       status: "pending",
@@ -1086,10 +1087,10 @@ describe("donn migrate: a target donn made before the migration", () => {
         "state.json",
         `${JSON.stringify({ version: 1, projects: { "/p/.donn": "user/me" } })}\n`,
       ],
-      ["config.yaml", "personas: ~/personas\n"],
+      ["config.yaml", "personas: ~/personas\ndaemon:\n  autoStart: false\n"],
       ["personas/me.yaml", ME],
       ["overrides.yaml", OVERRIDES],
-      ["registry-token", "t\n"],
+      ["registry-token/x", "t\n"],
       ["cache/registry/index.json", "{}\n"],
       [
         "mod/.claude-plugin/marketplace.json",
@@ -1929,5 +1930,338 @@ describe("donn migrate --managed", () => {
     expect(r.code).toBe(1);
     expect(json(r).error.code).toBe("managed-bad-installed");
     expect(existsSync(join(r0, "managed-settings.json"))).toBe(true);
+  });
+});
+
+describe("rename leftovers: doctor finds the old home as migrate does", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+
+  it("falls back to the user's home folder when HOME is not in the environment", async () => {
+    const m = machine();
+    oldInstall(m);
+    const saved = process.env.HOME;
+    process.env.HOME = user();
+    try {
+      const r = await donn(m, ["doctor", "--json"], {
+        env: { HOME: undefined },
+      });
+      const checks = json(r).checks as Check[];
+      expect(checks[0]).toEqual({
+        id: "migrate",
+        status: "error",
+        message: `${oldHome()} is from before the rename, and ${newHome()} does not exist yet`,
+        fix: "donn migrate",
+      });
+    } finally {
+      if (saved === undefined) delete process.env.HOME;
+      else process.env.HOME = saved;
+    }
+  });
+});
+
+describe("rename leftovers: projects not migrated yet", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+
+  /** A migrated home whose switches name repos that still have the old project folder. */
+  function waitingRepos(names: string[]) {
+    const repos = names.map((name) => {
+      const repo = join(root, name);
+      put(join(repo, ".zzpersona/persona.yaml"), "kind: Persona\n");
+      return realpathSync(repo);
+    });
+    const projects = Object.fromEntries(
+      repos.map((repo) => [join(repo, ".donn"), "user/me"]),
+    );
+    put(
+      join(newHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects }, null, 2)}\n`,
+    );
+    return repos;
+  }
+  const check = (r: { stdout: string }, id: string) =>
+    (json(r).checks as Check[]).find((c) => c.id === id);
+
+  it("reports them in their own warning with the migrate command, not as missing persona.yaml", async () => {
+    const m = machine();
+    const [repo] = waitingRepos(["waiting"]);
+    const r = await donn(m, ["doctor", "--json"]);
+    expect(check(r, "projects")).toEqual({
+      id: "projects",
+      status: "warn",
+      message: `1 project(s) not migrated yet: ${repo}`,
+      fix: `donn migrate --project ${repo}`,
+    });
+    expect(check(r, "state")?.status).toBe("ok");
+    expect(check(r, "state")?.message).not.toContain("without a persona.yaml");
+  });
+
+  it("gives one command per repo when there are several", async () => {
+    const m = machine();
+    const [a, b] = waitingRepos(["a", "b"]);
+    const r = await donn(m, ["doctor", "--json"]);
+    expect(check(r, "projects")).toMatchObject({
+      message: `2 project(s) not migrated yet: ${a}, ${b}`,
+      fix: `donn migrate --project ${a}; donn migrate --project ${b}`,
+    });
+  });
+
+  it("keeps their switches under --fix", async () => {
+    const m = machine();
+    const repos = waitingRepos(["a", "b"]);
+    const before = read(join(newHome(), "state.json"));
+    const r = await donn(m, ["doctor", "--fix", "--json"]);
+    expect(check(r, "projects")?.status).toBe("warn");
+    expect(
+      Object.keys(JSON.parse(read(join(newHome(), "state.json"))).projects),
+    ).toEqual(repos.map((repo) => join(repo, ".donn")));
+    expect(read(join(newHome(), "state.json"))).toBe(before);
+  });
+});
+
+describe("rename leftovers: what doctor and migrate say about ~/.donn", () => {
+  type Check = { id: string; status: string; message: string; fix?: string };
+
+  it("treats an empty target like a missing one in doctor, and migrate still accepts it", async () => {
+    const m = machine();
+    oldInstall(m);
+    mkdirSync(newHome(), { recursive: true });
+    const d = await donn(m, ["doctor", "--json"]);
+    const first = (json(d).checks as Check[])[0]!;
+    expect(first.id).toBe("migrate");
+    expect(first.message).not.toContain("made by running donn");
+    expect(first.fix).toBe("donn migrate");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expectMigrated(m);
+  });
+
+  const REGISTRY_CONFIG = `registry:\n  url: ${REGISTRY}\n`;
+  const MOD = "run `donn mod uninstall` if the donn mod is installed, ";
+  /** `sets` is what the home holds that remove would discard: the personas folder, the url. */
+  const advice = (sets: string, login: boolean, mod = true) =>
+    `${mod ? MOD : ""}remove ${newHome()} (it sets ${sets}), run \`donn migrate\`${login ? `, then run \`donn login ${REGISTRY}\` again` : ""}`;
+  const what = (files: string) =>
+    `${newHome()} holds only what donn init or donn login wrote (${files}); donn migrate moves the old home's settings`;
+
+  const cases: [string, [string, string][], string, string, boolean][] = [
+    [
+      "init only",
+      [["config.yaml", "personas: /p\n"]],
+      "config.yaml (personas)",
+      "personas: /p",
+      false,
+    ],
+    [
+      "login only",
+      [
+        ["config.yaml", REGISTRY_CONFIG],
+        ["registry-token", "t\n"],
+      ],
+      "config.yaml (registry), registry-token",
+      `registry: ${REGISTRY}`,
+      true,
+    ],
+    [
+      "login through the keychain",
+      [["config.yaml", REGISTRY_CONFIG]],
+      "config.yaml (registry)",
+      `registry: ${REGISTRY}`,
+      true,
+    ],
+    [
+      "init and login",
+      [
+        ["config.yaml", `personas: /p\n${REGISTRY_CONFIG}`],
+        ["registry-token", "t\n"],
+      ],
+      "config.yaml (personas, registry), registry-token",
+      `personas: /p, registry: ${REGISTRY}`,
+      true,
+    ],
+  ];
+
+  it.each(cases)(
+    "names what %s wrote, in migrate and in doctor",
+    async (_name, files, listed, sets, login) => {
+      const m = machine();
+      oldInstall(m);
+      madeByDonn();
+      rmSync(join(newHome(), "config.yaml"), { force: true });
+      for (const [path, content] of files) put(join(newHome(), path), content);
+      const before = readdirSync(newHome()).sort();
+      const r = await donn(m, ["migrate", "--yes", "--json"]);
+      expect(r.code).toBe(1);
+      expect(json(r).error).toMatchObject({
+        code: "migrate-target-exists",
+        message: `${what(listed)}; ${advice(sets, login)}`,
+      });
+      expect(changes(m)).toEqual([]);
+      expect(readdirSync(newHome()).sort()).toEqual(before);
+      const d = await donn(m, ["doctor", "--json"]);
+      expect((json(d).checks as Check[])[0]).toEqual({
+        id: "migrate",
+        status: "error",
+        message: `${oldHome()} is from before the rename, and ${what(listed)}`,
+        fix: advice(sets, login),
+      });
+    },
+  );
+
+  it("leaves out the mod clause when the target has no mod folder", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(join(newHome(), "config.yaml"), "personas: /p\n");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(json(r).error.message).toBe(
+      `${what("config.yaml (personas)")}; ${advice("personas: /p", false, false)}`,
+    );
+  });
+
+  it("keeps the generic refusal with one unrelated file beside them", async () => {
+    const m = machine();
+    oldInstall(m);
+    put(join(newHome(), "config.yaml"), "personas: /p\n");
+    put(join(newHome(), "notes.txt"), "mine\n");
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code).toBe(1);
+    expect(json(r).error.message).toBe(
+      `${newHome()} already exists and is not empty; move it aside or set DONN_HOME`,
+    );
+    const d = await donn(m, ["doctor", "--json"]);
+    expect(
+      (json(d).checks as Check[]).find((c) => c.id === "migrate"),
+    ).toBeUndefined();
+  });
+});
+
+describe("rename leftovers: a linked old home", () => {
+  it("moves a home that is a relative symbolic link as an absolute link", async () => {
+    const target = join(root, "other/donn");
+    const m = machine("darwin", () => target);
+    oldInstall(m);
+    const real = join(user(), "real-home");
+    await rename(oldHome(), real);
+    symlinkSync("real-home", oldHome());
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { DONN_HOME: target },
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(existsSync(oldHome())).toBe(false);
+    expect((await lstat(target)).isSymbolicLink()).toBe(true);
+    expect(await readlink(target)).toBe(realpathSync(real));
+    expect(read(join(target, "layers/org/acme.yaml"))).toBe(migrated(ACME));
+    expect(read(join(real, "layers/org/acme.yaml"))).toBe(migrated(ACME));
+  });
+
+  it("moves a home that is an absolute symbolic link as the link itself", async () => {
+    const target = join(root, "other/donn");
+    const m = machine("darwin", () => target);
+    oldInstall(m);
+    const real = join(user(), "real-home");
+    await rename(oldHome(), real);
+    symlinkSync(real, oldHome());
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { DONN_HOME: target },
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(await readlink(target)).toBe(real);
+    expect(existsSync(oldHome())).toBe(false);
+  });
+});
+
+describe("rename leftovers: a relative link seen through a linked user folder", () => {
+  it("builds the new link from where the old one physically lives", async () => {
+    // <tmp>/home/u -> ../data/u; ~/.zzpersona -> ../shared/zz is <tmp>/data/shared/zz.
+    const data = join(root, "data");
+    mkdirSync(join(data, "u"), { recursive: true });
+    put(join(data, "shared/zz/config.yaml"), "x: 1\n");
+    mkdirSync(join(root, "home"), { recursive: true });
+    symlinkSync("../data/u", join(root, "home/u"));
+    symlinkSync("../shared/zz", join(data, "u/.zzpersona"));
+    const src = join(root, "home/u/.zzpersona");
+    const target = join(root, "other/donn");
+    await moveHome(src, target);
+    expect(await readlink(target)).toBe(realpathSync(join(data, "shared/zz")));
+    expect(read(join(target, "config.yaml"))).toBe("x: 1\n");
+    expect(existsSync(src)).toBe(false);
+    expect(existsSync(join(data, "shared/zz/config.yaml"))).toBe(true);
+  });
+
+  it("keeps the plain rename when the link and its new place share a folder", async () => {
+    mkdirSync(join(root, "u/real-home"), { recursive: true });
+    put(join(root, "u/real-home/config.yaml"), "x: 1\n");
+    symlinkSync("real-home", join(root, "u/.zzpersona"));
+    await moveHome(join(root, "u/.zzpersona"), join(root, "u/.donn"));
+    expect(await readlink(join(root, "u/.donn"))).toBe("real-home");
+    expect(existsSync(join(root, "u/.zzpersona"))).toBe(false);
+  });
+
+  it("refuses, touching nothing, when the new link would not reach the same folder", async () => {
+    mkdirSync(join(root, "u"), { recursive: true });
+    symlinkSync("missing", join(root, "u/.zzpersona"));
+    await expect(
+      moveHome(join(root, "u/.zzpersona"), join(root, "other/donn")),
+    ).rejects.toMatchObject({ code: "migrate-copy" });
+    expect(await readlink(join(root, "u/.zzpersona"))).toBe("missing");
+    expect(existsSync(join(root, "other/donn"))).toBe(false);
+  });
+});
+
+describe("rename leftovers: projects the migrate command would refuse", () => {
+  it("names only projects whose switch carries over and whose old folder can move", async () => {
+    const m = machine();
+    oldInstall(m);
+    const dir = (name: string) => {
+      mkdirSync(join(root, name), { recursive: true });
+      return realpathSync(join(root, name));
+    };
+    const both = dir("both");
+    const bare = dir("bare");
+    const ok = dir("ok");
+    put(join(both, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    put(join(both, ".donn/persona.yaml"), "kind: Persona\n");
+    put(join(bare, ".zzpersona/notes.md"), "no persona here\n");
+    put(join(ok, ".zzpersona/persona.yaml"), "kind: Persona\n");
+    put(
+      join(oldHome(), "state.json"),
+      `${JSON.stringify({ version: 1, projects: { [join(both, ".zzpersona")]: "a/b", [join(bare, ".zzpersona")]: "a/b", [join(ok, ".zzpersona")]: "a/b" } })}\n`,
+    );
+    const r = await donn(m, ["migrate", "--yes", "--json"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(json(r).projects).toEqual([
+      { dir: ok, next: `donn migrate --project ${ok}` },
+    ]);
+  });
+});
+
+describe("rename leftovers: exit codes and paths", () => {
+  it("exits 1 and names the pending steps when one is left pending", async () => {
+    const m = machine();
+    oldInstall(m);
+    m.keychainError = "User interaction is not allowed.";
+    const text = await donn(m, ["migrate", "--yes"]);
+    expect(text.code).toBe(1);
+    expect(text.stdout).toContain("not finished: keychain");
+  });
+
+  it("counts ZZPERSONA_HOME=~/.zzpersona as the default old home", async () => {
+    const m = machine();
+    oldInstall(m);
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { ZZPERSONA_HOME: "~/.zzpersona" },
+    });
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expectMigrated(m);
+  });
+
+  it("still refuses a tilde path that points elsewhere", async () => {
+    const m = machine();
+    oldInstall(m);
+    const r = await donn(m, ["migrate", "--yes", "--json"], {
+      env: { ZZPERSONA_HOME: "~/elsewhere" },
+    });
+    expect(r.code).toBe(1);
+    expect(json(r).error.code).toBe("migrate-old-home");
+    expect(existsSync(newHome())).toBe(false);
   });
 });

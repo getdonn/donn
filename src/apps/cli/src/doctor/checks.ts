@@ -39,7 +39,17 @@ import { createContext, homeOf, type Context } from "../context.js";
 import { CliError, errorText } from "../errors.js";
 import { HARNESSES } from "../harness.js";
 import { LEGACY } from "../migrate/legacy.js";
-import { madeByDonn, madeByDonnAdvice } from "../migrate/steps.js";
+import {
+  initOrLoginAdvice,
+  initOrLoginWhat,
+  legacyHome,
+  madeByDonn,
+  madeByDonnAdvice,
+  madeByInitOrLogin,
+  occupied,
+  shellWord,
+  unmigratedRepo,
+} from "../migrate/steps.js";
 import {
   backendLoader,
   loadAdapters,
@@ -253,23 +263,40 @@ export async function runChecks(
 
   // migrate: a home from before the rename, not migrated yet (spec 22 §3). First, because running
   // other fixes (init, mod install) first would make the new home and stand in migrate's way.
-  // Only under $HOME as the environment gives it.
-  const legacyHome = io.env.HOME && join(io.env.HOME, LEGACY.home);
-  if (legacyHome && existsSync(legacyHome)) {
+  // Under the user's home as migrate finds it.
+  const oldHome = legacyHome(io);
+  if (existsSync(oldHome)) {
     if (!existsSync(home)) {
       add(
         "migrate",
         "error",
-        `${legacyHome} is from before the rename, and ${home} does not exist yet`,
+        `${oldHome} is from before the rename, and ${home} does not exist yet`,
+        "donn migrate",
+      );
+    } else if (!(await occupied(home))) {
+      add(
+        "migrate",
+        "error",
+        `${oldHome} is from before the rename, and ${home} is empty`,
         "donn migrate",
       );
     } else if (await madeByDonn(home)) {
       add(
         "migrate",
         "error",
-        `${legacyHome} is from before the rename, and ${home} was made by running donn before migrating`,
+        `${oldHome} is from before the rename, and ${home} was made by running donn before migrating`,
         await madeByDonnAdvice(home),
       );
+    } else {
+      const files = await madeByInitOrLogin(home);
+      if (files !== undefined) {
+        add(
+          "migrate",
+          "error",
+          `${oldHome} is from before the rename, and ${initOrLoginWhat(home, files)}`,
+          await initOrLoginAdvice(home, files),
+        );
+      }
     }
   }
 
@@ -352,14 +379,21 @@ export async function runChecks(
 
   // state
   let state: State | undefined;
+  let waiting: string[] = [];
   try {
     state = await readState(home);
     // Missing persona.yaml is a warning. Forget an entry only when its repo folder is gone but
     // the folder that held it is still there: another branch or an unmounted volume (whose
     // whole path disappears) may bring the project back.
-    const orphans = Object.keys(state.projects).filter(
+    // A project whose repo still has the old folder is not migrated yet: its own warning below,
+    // and its switch is never forgotten.
+    const missing = Object.keys(state.projects).filter(
       (key) => !existsSync(join(key, "persona.yaml")),
     );
+    waiting = [
+      ...new Set(missing.flatMap((key) => unmigratedRepo(key) ?? [])),
+    ].sort();
+    const orphans = missing.filter((key) => unmigratedRepo(key) === undefined);
     const removable = orphans.filter(
       (key) => !existsSync(dirname(key)) && existsSync(dirname(dirname(key))),
     );
@@ -405,6 +439,17 @@ export async function runChecks(
       "error",
       errorText(error),
       `fix or delete ${join(home, "state.json")}`,
+    );
+  }
+
+  if (waiting.length > 0) {
+    add(
+      "projects",
+      "warn",
+      `${waiting.length} project(s) not migrated yet: ${waiting.join(", ")}`,
+      waiting
+        .map((repo) => `donn migrate --project ${shellWord(repo)}`)
+        .join("; "),
     );
   }
 

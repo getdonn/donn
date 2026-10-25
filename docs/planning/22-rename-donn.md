@@ -6,6 +6,7 @@
 > repo is renamed separately. Built as a `gh stack`: layer 0 is this spec and its plan, written
 > before the rename and therefore still using the old names.
 > *Amended 2026-10-24:* personal and private control-plane details removed before the repository went public (spec 27).
+> *Amended 2026-10-24:* the deferred minors are fixed: `doctor` finds the old home the way `migrate` does and warns about projects not migrated yet (keeping their switches under `--fix`), an empty target is no longer called "made by running donn", a target holding only what `donn init` and `donn login` wrote is named with advice, a relative-symlink old home moves as an absolute link, `migrate` exits 1 while a step is pending, and an unexpanded `ZZPERSONA_HOME=~/.zzpersona` counts as the default home.
 
 ## Intent
 
