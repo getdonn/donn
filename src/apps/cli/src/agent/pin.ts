@@ -1,17 +1,9 @@
 import { satisfiesRange } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
+import { newestFirst } from "./versions.js";
 
 const STABLE = /^\d+\.\d+\.\d+$/;
-
-const newestFirst = (a: string, b: string): number => {
-  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
-  for (let i = 0; i < 3; i++) {
-    const d = (y?.[i] ?? 0) - (x?.[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-};
 
 /**
  * The eve version to pin: the newest published release inside the adapter's range, or

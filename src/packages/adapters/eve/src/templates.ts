@@ -41,6 +41,9 @@ interface Row {
   facts: TemplateFacts;
 }
 
+/** The eve tag the table's digests were computed at. Moving it means recomputing them. */
+export const TEMPLATES_AT = "0.83.2";
+
 const REPO_ROOT = "apps/templates";
 const none = (): Omit<TemplateFacts, "services"> => ({
   connect: [],

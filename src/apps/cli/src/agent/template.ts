@@ -1,24 +1,16 @@
-import adapter from "@getdonn/adapter-eve";
+import adapter, { TEMPLATES_AT } from "@getdonn/adapter-eve";
 import type { TemplateInfo } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { templateDigest } from "./digest.js";
-import { extractDir, type TarFile } from "./tar.js";
+import { archiveCommit, extractDir, type TarFile } from "./tar.js";
+import { newestFirst } from "./versions.js";
 
 // `eve:<slug>` templates: the tag's tarball from codeload, one directory of it, verified
 // against the adapter's table before anything is written. See docs/planning/25-agent-runner.md.
 
 const REPO = "https://github.com/vercel/eve";
 const NEAREST_TAGS = 5;
-
-const byVersionDesc = (a: string, b: string): number => {
-  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
-  for (let i = 0; i < 3; i++) {
-    const d = (y?.[i] ?? 0) - (x?.[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-};
 
 /** The tagged versions with the same major.minor, newest first. */
 async function nearestTags(io: CliIo, version: string): Promise<string[]> {
@@ -34,7 +26,39 @@ async function nearestTags(io: CliIo, version: string): Promise<string[]> {
     .split("\n")
     .map((line) => /refs\/tags\/eve@(\d+\.\d+\.\d+)$/.exec(line)?.[1])
     .filter((tag): tag is string => tag !== undefined);
-  return tags.sort(byVersionDesc).slice(0, NEAREST_TAGS);
+  return tags.sort(newestFirst).slice(0, NEAREST_TAGS);
+}
+
+/** The commit a tag points at (the peeled line when the tag is annotated). */
+async function tagCommit(io: CliIo, version: string): Promise<string> {
+  const tag = `eve@${version}`;
+  const result = await io.probe.run("git", [
+    "ls-remote",
+    "--tags",
+    REPO,
+    `refs/tags/${tag}`,
+  ]);
+  if (result.exitCode !== 0) {
+    throw new CliError(
+      "template-fetch-failed",
+      `could not read the commit of tag ${tag}: ${result.stderr.trim().split("\n").slice(-3).join("\n") || `git exited ${result.exitCode}`}`,
+      { tag },
+    );
+  }
+  let sha: string | undefined;
+  for (const line of result.stdout.split("\n")) {
+    const [first, ref] = line.split("\t");
+    if (ref === `refs/tags/${tag}^{}`) return first ?? "";
+    if (ref === `refs/tags/${tag}`) sha = first;
+  }
+  if (!sha) {
+    throw new CliError(
+      "template-fetch-failed",
+      `git ls-remote did not list tag ${tag}`,
+      { tag },
+    );
+  }
+  return sha;
 }
 
 const notInRepo = (slug: string) =>
@@ -50,7 +74,7 @@ const notInRepo = (slug: string) =>
 export async function fetchTemplate(
   io: CliIo,
   slug: string,
-  version: string,
+  version: string = TEMPLATES_AT,
   table: TemplateInfo[] = adapter.templates(),
 ): Promise<Map<string, TarFile>> {
   const row = table.find((template) => template.slug === slug);
@@ -89,10 +113,17 @@ export async function fetchTemplate(
       { url, status: response.status },
     );
   }
-  const files = extractDir(
-    new Uint8Array(await response.arrayBuffer()),
-    `${row.repoPath}/`,
-  );
+  const gz = new Uint8Array(await response.arrayBuffer());
+  const expected = await tagCommit(io, version);
+  const actual = archiveCommit(gz);
+  if (actual !== expected) {
+    throw new CliError(
+      "template-commit-mismatch",
+      `the archive for eve@${version} was not made from the tag's commit`,
+      { tag: `eve@${version}`, expected, actual },
+    );
+  }
+  const files = extractDir(gz, `${row.repoPath}/`);
   if (files.size === 0) {
     throw new CliError(
       "template-not-at-version",
@@ -100,15 +131,20 @@ export async function fetchTemplate(
       { version, repoPath: row.repoPath, tags: await nearestTags(io, version) },
     );
   }
-  if (row.digest !== undefined) {
-    const actual = templateDigest(files);
-    if (actual !== row.digest) {
-      throw new CliError(
-        "template-digest-mismatch",
-        `template ${slug} at eve@${version} does not match the digest this donn release knows`,
-        { expected: row.digest, actual },
-      );
-    }
+  if (row.digest === undefined) {
+    throw new CliError(
+      "template-digest-missing",
+      `the templates table has no digest for ${slug}, so it cannot be verified`,
+      { slug },
+    );
+  }
+  const digest = templateDigest(files);
+  if (digest !== row.digest) {
+    throw new CliError(
+      "template-digest-mismatch",
+      `template ${slug} at eve@${version} does not match the digest this donn release knows`,
+      { expected: row.digest, actual: digest },
+    );
   }
   return files;
 }

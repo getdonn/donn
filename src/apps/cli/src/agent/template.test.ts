@@ -134,7 +134,12 @@ const row = (
   },
 ];
 
-function ioWith(response: () => Response, probeOut = "") {
+function ioWith(
+  response: () => Response,
+  probeOut = "",
+  tagOut = `${COMMIT}\trefs/tags/eve@0.83.2\n`,
+  tagExit = 0,
+) {
   const urls: string[] = [];
   const calls: string[][] = [];
   const io = {
@@ -142,7 +147,12 @@ function ioWith(response: () => Response, probeOut = "") {
     probe: {
       run: async (command: string, args: string[]) => {
         calls.push([command, ...args]);
-        return { exitCode: 0, stdout: probeOut, stderr: "" };
+        const exact = args.at(-1) === "refs/tags/eve@0.83.2";
+        return {
+          exitCode: exact ? tagExit : 0,
+          stdout: exact ? tagOut : probeOut,
+          stderr: exact && tagExit ? "fatal: unable to access" : "",
+        };
       },
     },
     fetch: (async (url: string | URL | Request) => {
@@ -165,6 +175,68 @@ describe("fetchTemplate", () => {
       "package.json",
       "scripts/setup.sh",
     ]);
+  });
+
+  it("defaults to the version the digests were computed at", async () => {
+    const { io, urls } = ioWith(() => new Response(fixture()));
+    await fetchTemplate(io, "tpl", undefined, row(expectedDigest));
+    expect(urls[0]).toMatch(/eve@0\.83\.2$/);
+  });
+
+  it("prefers a peeled tag line", async () => {
+    const { io } = ioWith(
+      () => new Response(fixture()),
+      "",
+      `deadbeef\trefs/tags/eve@0.83.2\n${COMMIT}\trefs/tags/eve@0.83.2^{}\n`,
+    );
+    await fetchTemplate(io, "tpl", "0.83.2", row(expectedDigest));
+  });
+
+  it("refuses an archive whose commit is not the tag's", async () => {
+    const { io } = ioWith(
+      () => new Response(fixture()),
+      "",
+      "abc123\trefs/tags/eve@0.83.2\n",
+    );
+    const error = await code(() =>
+      fetchTemplate(io, "tpl", "0.83.2", row(expectedDigest)),
+    );
+    expect(error.code).toBe("template-commit-mismatch");
+    expect(error.details).toEqual({
+      tag: "eve@0.83.2",
+      expected: "abc123",
+      actual: COMMIT,
+    });
+  });
+
+  it("refuses an archive with no pax commit", async () => {
+    const gz = tarball({
+      top: "t",
+      entries: [{ name: "apps/templates/tpl/a", data: "a" }],
+    });
+    const { io } = ioWith(() => new Response(gz));
+    const error = await code(() =>
+      fetchTemplate(io, "tpl", "0.83.2", row(expectedDigest)),
+    );
+    expect(error.code).toBe("template-commit-mismatch");
+  });
+
+  it("fails when the tag's commit cannot be read", async () => {
+    const { io } = ioWith(() => new Response(fixture()), "", "", 128);
+    const error = await code(() =>
+      fetchTemplate(io, "tpl", "0.83.2", row(expectedDigest)),
+    );
+    expect(error.code).toBe("template-fetch-failed");
+  });
+
+  it("refuses a row with no digest", async () => {
+    const { io } = ioWith(() => new Response(fixture()));
+    const [r] = row(expectedDigest);
+    const { digest: _digest, ...noDigest } = r!;
+    const error = await code(() =>
+      fetchTemplate(io, "tpl", "0.83.2", [noDigest]),
+    );
+    expect(error.code).toBe("template-digest-missing");
   });
 
   it("refuses a digest that differs from the table", async () => {
