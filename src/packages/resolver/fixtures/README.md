@@ -93,8 +93,9 @@ Warnings: `allow-shadowed-by-deny`, `ask-shadowed-by-deny`, `allow-shadowed-by-a
 
 Errors: `missing-ref`, `cycle`, `linearization-conflict`, `replace-target-missing`,
 `lock-violation`, `invalid-lock-path`, `user-layer-lock`, `agents-in-overlay`, `invalid-persona`
-(a file that fails the `@getdonn/spec` schema; `107` and `108`, whose files cannot validate, so the
-fixture suite skips its own schema check for them).
+(a file that fails the `@getdonn/spec` schema; `108`, whose file cannot validate, so the fixture
+suite skips its own schema check for it; `107`'s code is `agents-in-overlay`, and its overlay file
+is skipped by the same check).
 
 `@getdonn/spec` is the source of truth for the IR shape, path grammar and codes above;
 `src/fixtures.test.ts` validates every fixture against it, so this README and the spec cannot

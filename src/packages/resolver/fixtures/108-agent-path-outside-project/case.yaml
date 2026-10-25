@@ -5,4 +5,4 @@ expect:
     code: invalid-persona
     layer: team/t
     issues:
-      - "agents.define.x.path: must stay inside the project and outside .donn/"
+      - "agents.define.x.path: must stay inside the project and outside .donn/ and .git/"

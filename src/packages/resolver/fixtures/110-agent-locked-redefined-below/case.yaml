@@ -1,0 +1,8 @@
+description: Redefining a locked agent differently fails resolution, naming the lock's layer and the redefining layer.
+resolve: team/t
+expect:
+  error:
+    code: lock-violation
+    path: agents.define.pr-reviewer
+    lockedBy: org/base
+    layer: team/t
