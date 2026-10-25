@@ -1,5 +1,13 @@
 # @getdonn/store-local
 
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [c4fd06d]
+  - @getdonn/spec@0.5.0
+  - @getdonn/resolver@0.7.0
+
 ## 0.2.2
 
 ### Patch Changes

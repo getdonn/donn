@@ -1,5 +1,14 @@
 # @getdonn/adapter-agents-md
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [c4fd06d]
+- Updated dependencies [c4fd06d]
+  - @getdonn/adapter-sdk@0.6.0
+  - @getdonn/spec@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
