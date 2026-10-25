@@ -178,6 +178,34 @@ describe("models", () => {
     );
   });
 
+  it("baseURL is http or https only", () => {
+    for (const baseURL of [
+      "ftp://a.io",
+      "file:///etc/passwd",
+      "javascript:x",
+    ]) {
+      expect(
+        parse({ gateway: { type: "anthropic", baseURL } }).success,
+        baseURL,
+      ).toBe(false);
+    }
+    expect(
+      parse({ gateway: { type: "anthropic", baseURL: "http://a.io" } }).success,
+    ).toBe(true);
+  });
+
+  it("header names are HTTP tokens", () => {
+    expect(
+      parse({ gateway: { ...gw, headers: { "bad name": "x" } } }).success,
+    ).toBe(false);
+    expect(parse({ gateway: { ...gw, headers: { "a:b": "x" } } }).success).toBe(
+      false,
+    );
+    expect(
+      parse({ gateway: { ...gw, headers: { "X-Api_1": "x" } } }).success,
+    ).toBe(true);
+  });
+
   it("apiKey must be a secret ref", () => {
     expect(parse({ gateway: { ...gw, apiKey: "sk-live-123" } }).success).toBe(
       false,
@@ -249,6 +277,12 @@ describe("agents", () => {
       ".donn/x",
       ".donn",
       "agents/../.donn/x",
+      ".DONN/x",
+      ".Donn",
+      ".git/hooks",
+      ".GIT",
+      "a\\..\\..\\x",
+      "C:/x",
       "..",
       "../x",
       ".",
@@ -267,6 +301,7 @@ describe("agents", () => {
     expect(define("a", { env: { "1A": "x" } }).success).toBe(false);
     expect(define("a", { env: { DONN_HOME: "x" } }).success).toBe(false);
     expect(define("a", { env: { A_1: "x" } }).success).toBe(true);
+    expect(define("a", { env: { "A\n": "x" } }).success).toBe(false);
   });
 
   it("template is eve:<slug> or a relative path", () => {
@@ -282,6 +317,11 @@ describe("agents", () => {
       "a/..",
       "eve:",
       "eve:a/b",
+      "Eve:blank",
+      "https://x.io/t",
+      "langgraph:x",
+      "a\\..\\..\\x",
+      "C:/x",
     ]) {
       expect(define("a", { template }).success, template).toBe(false);
     }

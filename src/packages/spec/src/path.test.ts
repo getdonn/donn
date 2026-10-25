@@ -86,6 +86,7 @@ describe("isValidLockPath", () => {
     "agents.remove",
     "agents.define.x.env",
     "agents.define[x]",
+    "agents.define.Bad_Name",
   ])("rejects %s", (path) => {
     expect(isValidLockPath(path)).toBe(false);
   });
