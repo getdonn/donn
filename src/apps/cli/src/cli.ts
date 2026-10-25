@@ -6,6 +6,7 @@ import type { Spawn } from "./agent/spawn.js";
 import {
   agentBuildCommand,
   agentCreateCommand,
+  agentDeployCommand,
   agentEnvCommand,
   agentExecCommand,
   agentListCommand,
@@ -84,6 +85,7 @@ export interface CliIo {
     command: string,
     args: string[],
     input?: string,
+    options?: { cwd?: string },
   ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   /** All of stdin, for `login --token-stdin`; defaults to process.stdin. */
   stdin?: () => Promise<string>;
@@ -581,6 +583,19 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .action((name: string, options) =>
           handle(options.json, () => agentBuildCommand(io, name, options)),
+        );
+
+      agent
+        .command("deploy")
+        .description(
+          "Deploy a vercel agent: link it, set its env in Vercel production after confirming, eve deploy",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--yes", "set the environment variables without asking")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { agent, dir, pushed, url? } as JSON")
+        .action((name: string, options) =>
+          handle(options.json, () => agentDeployCommand(io, name, options)),
         );
 
       agent

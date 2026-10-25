@@ -40,6 +40,11 @@ export const Manifest = z.object({
    * so a sync, which removes what the compile no longer produces, never touches them.
    */
   deploy: z.record(z.string(), z.string()).optional(),
+  /**
+   * Env names `donn agent deploy` set in Vercel production: names only, never values. A name
+   * whose value changed later is not detected.
+   */
+  pushedEnv: z.array(z.string()).optional(),
   /** `patched`: the template's agent.ts, edited once; `created`: donn wrote it. */
   agentTs: z.enum(["patched", "created"]).optional(),
   /** Files outside `files` that donn created or edited once (template- or user-owned after). */

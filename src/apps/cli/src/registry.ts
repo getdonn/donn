@@ -37,9 +37,11 @@ export function spawnWithInput(
   command: string,
   args: string[],
   input?: string,
+  options: { cwd?: string } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
+      ...(options.cwd !== undefined && { cwd: options.cwd }),
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
     });
