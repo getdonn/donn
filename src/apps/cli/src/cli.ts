@@ -4,6 +4,7 @@ import { Command, CommanderError, Option } from "commander";
 import type { AgentControl } from "./agent/run.js";
 import type { Spawn } from "./agent/spawn.js";
 import {
+  agentBuildCommand,
   agentCreateCommand,
   agentEnvCommand,
   agentExecCommand,
@@ -564,6 +565,22 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { written, removed, report } as JSON")
         .action((name: string, options) =>
           handle(options.json, () => agentSyncCommand(io, name, options)),
+        );
+
+      agent
+        .command("build")
+        .description(
+          "Build a self-host agent: eve build on this host, then deploy/donn/Dockerfile and env.json",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .option("--force", "overwrite deploy files edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { agent, dir, dockerfile, envFile, sandboxImages, report } as JSON",
+        )
+        .action((name: string, options) =>
+          handle(options.json, () => agentBuildCommand(io, name, options)),
         );
 
       agent

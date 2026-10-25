@@ -61,7 +61,7 @@ export async function agentStates(
       row.state = existsSync(join(dir, ".vercel/project.json"))
         ? "deployed"
         : existsSync(join(dir, ".output")) &&
-            "deploy/donn/Dockerfile" in manifest.files
+            "deploy/donn/Dockerfile" in (manifest.deploy ?? {})
           ? "built"
           : "created";
       const on = live.find((a) => a.project === root && a.name === name);

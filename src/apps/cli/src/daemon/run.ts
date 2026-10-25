@@ -75,7 +75,7 @@ const AGENT: Record<
   },
   run: { switches: [], values: ["--project"], named: true },
   stop: { switches: [], values: ["--project"], named: true },
-  build: { switches: [], values: ["--project"], named: true },
+  build: { switches: ["--force"], values: ["--project"], named: true },
   env: { switches: [], values: ["--project", "--format"], named: true },
   create: {
     switches: ["--dry-run", "--force", "--accept-portability"],
