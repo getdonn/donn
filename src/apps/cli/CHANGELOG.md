@@ -1,5 +1,31 @@
 # @getdonn/cli
 
+## 0.11.4
+
+### Patch Changes
+
+- 0a8ed7a: `@getdonn/adapter-sdk` gains the `AgentAdapter` contract, its conformance kit and `PortabilityService`. `@getdonn/adapter-eve` is new: it compiles a persona into the files of an eve agent (instructions, skills, MCP connections and model routing through a gateway), with an ownership manifest and a portability report per template.
+  
+  `docs/capabilities.md` and `donn capabilities --markdown` list the agent adapters beside the harnesses.
+- 30c7d52: The registry refresh and the daemon use the same home-folder lookup as the rest of the CLI, and `donn migrate` tells an unset `HOME` apart from an empty one when it cannot find a home folder.
+- 4e51f5d: Personas can declare `models` (gateway routing, lockable) and `agents`; every harness adapter reports `models` (not yet supported). See docs/planning/23-models-and-agents.md.
+  
+  A layer that uses a path agent template now publishes that template folder with it (missing or escaping folders are refused). Header names in `models.gateway.headers` and in MCP url-server `headers` must be valid HTTP header names.
+- Updated dependencies [0a8ed7a]
+- Updated dependencies [4e51f5d]
+  - @getdonn/adapter-sdk@0.5.0
+  - @getdonn/adapter-eve@0.1.0
+  - @getdonn/spec@0.4.0
+  - @getdonn/resolver@0.6.0
+  - @getdonn/adapter-claude-code@0.4.0
+  - @getdonn/adapter-codex@0.4.0
+  - @getdonn/adapter-agents-md@0.4.0
+  - @getdonn/registry-api@0.7.0
+  - @getdonn/executor@0.3.3
+  - @getdonn/secrets@0.3.2
+  - @getdonn/store-local@0.2.2
+  - @getdonn/store-remote@0.5.2
+
 ## 0.11.3
 
 ### Patch Changes
