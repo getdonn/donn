@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import { z } from "zod";
 
 export const API_VERSION = "donn/v0";
@@ -100,3 +101,79 @@ export const Policy = z.strictObject({
 export type Policy = z.infer<typeof Policy>;
 
 export const Labels = z.record(z.string(), z.string());
+
+/**
+ * Where model calls go, when not straight to the provider. `baseURL` belongs to the endpoint
+ * types; the Vercel AI Gateway is addressed by name. See docs/planning/23-models-and-agents.md.
+ */
+export const ModelGateway = z
+  .strictObject({
+    type: z.enum(["openai-compatible", "anthropic", "vercel-ai-gateway"]),
+    baseURL: z.url().optional(),
+    apiKey: z
+      .string()
+      .regex(/^secret:\/\//, "must be a secret:// ref")
+      .optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+  })
+  .superRefine((gateway, ctx) => {
+    const named = gateway.type === "vercel-ai-gateway";
+    if (named && gateway.baseURL !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["baseURL"],
+        message: "not allowed for vercel-ai-gateway",
+      });
+    } else if (!named && gateway.baseURL === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["baseURL"],
+        message: `required for ${gateway.type}`,
+      });
+    }
+  });
+export type ModelGateway = z.infer<typeof ModelGateway>;
+
+export const Models = z.strictObject({
+  gateway: ModelGateway.optional(),
+  default: z.string().min(1).optional(),
+});
+export type Models = z.infer<typeof Models>;
+
+/** An agent's name: an Id, within eve's own name limit. */
+export const AgentName = Id.max(64);
+export type AgentName = z.infer<typeof AgentName>;
+
+export const AgentTarget = z.enum(["local", "self-host", "vercel"]);
+export type AgentTarget = z.infer<typeof AgentTarget>;
+
+/** A project-relative directory: stays inside the project and outside `.donn/`. */
+export const AgentPath = z.string().refine((value) => {
+  const path = posix.normalize(value);
+  return (
+    !posix.isAbsolute(path) &&
+    path !== ".." &&
+    !path.startsWith("../") &&
+    path !== ".donn" &&
+    !path.startsWith(".donn/")
+  );
+}, "must stay inside the project and outside .donn/");
+export type AgentPath = z.infer<typeof AgentPath>;
+
+/** An environment variable name for an agent; `DONN_` is donn's own. */
+export const EnvName = z
+  .string()
+  .regex(/^[A-Z][A-Z0-9_]*$/, "must be UPPER_SNAKE_CASE")
+  .refine((name) => !name.startsWith("DONN_"), "the DONN_ prefix is reserved");
+export type EnvName = z.infer<typeof EnvName>;
+
+const EVE_TEMPLATE = /^eve:[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** `eve:<slug>`, or a path relative to the persona file. */
+export const AgentTemplate = z.string().refine((value) => {
+  if (value.startsWith("eve:")) return EVE_TEMPLATE.test(value);
+  if (value === "") return false;
+  const path = posix.normalize(value);
+  return !posix.isAbsolute(path) && path !== ".." && !path.startsWith("../");
+}, "must be eve:<slug> or a relative path inside the personas root");
+export type AgentTemplate = z.infer<typeof AgentTemplate>;

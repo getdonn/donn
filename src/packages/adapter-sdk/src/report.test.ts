@@ -26,6 +26,8 @@ const emptyIr = (): ResolvedPersona => ({
   locks: [],
   targets: {},
   policy: {},
+  models: {},
+  agents: {},
 });
 
 const ir: ResolvedPersona = {

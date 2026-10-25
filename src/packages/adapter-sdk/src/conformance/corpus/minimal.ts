@@ -23,5 +23,7 @@ export const minimal: CorpusEntry = {
     locks: [],
     targets: {},
     policy: {},
+    models: {},
+    agents: {},
   },
 };

@@ -39,6 +39,8 @@ const ir = (
     locks: [],
     targets: {},
     policy: {},
+    models: {},
+    agents: {},
     ...fields,
   });
 
