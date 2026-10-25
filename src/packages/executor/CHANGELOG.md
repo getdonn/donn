@@ -1,5 +1,11 @@
 # @getdonn/executor
 
+## 0.3.2
+
+### Patch Changes
+
+- 70b04a0: A rebuild keeps the version it replaces (behind `<buildDir>.prev`) until the next rebuild, so a reader that resolved the build just before the swap does not lose it mid-read; `donn doctor --fix` leaves that version alone.
+
 ## 0.3.1
 
 ### Patch Changes

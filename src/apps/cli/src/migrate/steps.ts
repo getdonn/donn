@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import {
   cp,
   lstat,
@@ -11,11 +12,22 @@ import {
   rm,
   rmdir,
   stat,
+  symlink,
 } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { homedir } from "node:os";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { isAlive } from "@getdonn/executor";
 import { API_VERSION } from "@getdonn/spec";
 import { parse as parseYaml } from "yaml";
+import type { CliIo } from "../cli.js";
 import { MARKETPLACE } from "../commands/mod.js";
 import { CliError } from "../errors.js";
 import { writeFileAtomic } from "../fs.js";
@@ -31,6 +43,35 @@ const BLOCK = "donn";
 const errno = (error: unknown) => (error as NodeJS.ErrnoException).code;
 const isMissing = (error: unknown) =>
   ["ENOENT", "ENOTDIR"].includes(errno(error) ?? "");
+
+/** The user's home folder as the environment gives it, else the system's. */
+export const userHome = (io: Pick<CliIo, "env">) => io.env.HOME ?? homedir();
+
+/** The old home (`~/.zzpersona`): where doctor and migrate both look for one. */
+export const legacyHome = (io: Pick<CliIo, "env">) =>
+  join(userHome(io), LEGACY.home);
+
+/** A POSIX-shell word: as is when plainly safe, otherwise single-quoted. */
+export const shellWord = (value: string) =>
+  /^[\w./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+
+/**
+ * The repo a state.json key (a project's `.donn` folder, or its old name) belongs to, when that
+ * repo still has the old project folder: a project not migrated yet.
+ */
+export function unmigratedRepo(key: string): string | undefined {
+  if (![LEGACY.home, ".donn"].includes(basename(key))) return undefined;
+  const repo = dirname(key);
+  // `migrate --project` needs the old folder's persona.yaml, and refuses when the project has a
+  // .donn/persona.yaml of its own already (a switch keyed by that folder is not waiting).
+  if (!existsSync(join(repo, LEGACY.home, "persona.yaml"))) return undefined;
+  if (
+    basename(key) === ".donn" &&
+    existsSync(join(repo, ".donn", "persona.yaml"))
+  )
+    return undefined;
+  return repo;
+}
 
 /** Whether anything is at `path`, a dangling symbolic link included. */
 export async function present(path: string): Promise<boolean> {
@@ -89,6 +130,54 @@ export async function targetMadeByDonn(target: string): Promise<CliError> {
   );
 }
 
+/** What a target holding only what `donn init` and `donn login` wrote is (see madeByInitOrLogin). */
+export const initOrLoginWhat = (target: string, files: string[]) =>
+  `${target} holds only what donn init or donn login wrote (${files.join(", ")}); donn migrate moves the old home's settings`;
+
+/**
+ * What to do about it: remove the home, with the values that go with it (the personas folder,
+ * the registry url) so they can be set again. Never done for the user: the home could be in use.
+ */
+export async function initOrLoginAdvice(
+  target: string,
+  files: string[],
+): Promise<string> {
+  const daemon =
+    (await legacyDaemonPid(target)) === undefined
+      ? ""
+      : "stop its daemon (`donn daemon stop`), ";
+  const mod = (await present(join(target, "mod")))
+    ? "run `donn mod uninstall` if the donn mod is installed, "
+    : "";
+  const config = parsed(
+    await readFile(join(target, "config.yaml"), "utf8").catch(() => ""),
+    parseYaml,
+  )?.value as
+    { personas?: string; registry?: { url?: string } } | null | undefined;
+  const sets = [
+    ...(config?.personas === undefined ? [] : [`personas: ${config.personas}`]),
+    ...(config?.registry?.url === undefined
+      ? []
+      : [`registry: ${config.registry.url}`]),
+  ];
+  const login = files.some((file) => file.includes("registry"))
+    ? `, then run \`donn login${config?.registry?.url === undefined ? "" : ` ${config.registry.url}`}\` again`
+    : "";
+  return `${daemon}${mod}remove ${target}${sets.length > 0 ? ` (it sets ${sets.join(", ")})` : ""}, run \`donn migrate\`${login}`;
+}
+
+/** The refusal when the target holds only what `donn init` and `donn login` wrote. */
+export async function targetMadeByInitOrLogin(
+  target: string,
+  files: string[],
+): Promise<CliError> {
+  return new CliError(
+    "migrate-target-exists",
+    `${initOrLoginWhat(target, files)}; ${await initOrLoginAdvice(target, files)}`,
+    { target, files },
+  );
+}
+
 const isDir = async (path: string) => (await lstat(path)).isDirectory();
 const isFile = async (path: string) => (await lstat(path)).isFile();
 
@@ -119,6 +208,59 @@ export async function madeByDonn(dir: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * What `donn init --personas` and `donn login` write into a home: config.yaml with a `personas`
+ * folder and/or a `registry` url, and the `registry-token` file (a login without a keychain).
+ * Returns those files, described, when the home holds nothing else but what donn makes on its
+ * own (see madeByDonn); undefined when it holds anything else, or none of them.
+ */
+export async function madeByInitOrLogin(
+  dir: string,
+): Promise<string[] | undefined> {
+  try {
+    if (!(await isDir(dir))) return undefined;
+    const files: string[] = [];
+    for (const name of (await readdir(dir)).sort()) {
+      const path = join(dir, name);
+      const written = await writtenEntry(name, path);
+      if (written !== undefined) files.push(written);
+      else if (!(await madeEntry(name, path))) return undefined;
+    }
+    return files.length > 0 ? files : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writtenEntry(
+  name: string,
+  path: string,
+): Promise<string | undefined> {
+  if (name === "registry-token") return (await isFile(path)) ? name : undefined;
+  if (name !== "config.yaml" || !(await isFile(path))) return undefined;
+  const config = parsed(await readFile(path, "utf8"), parseYaml)?.value as
+    Record<string, unknown> | null | undefined;
+  if (config === null || typeof config !== "object" || Array.isArray(config))
+    return undefined;
+  const keys = Object.keys(config);
+  if (
+    keys.length === 0 ||
+    !keys.every((k) => ["personas", "registry"].includes(k))
+  )
+    return undefined;
+  const registry = config.registry as Record<string, unknown> | undefined;
+  if (
+    ("personas" in config && typeof config.personas !== "string") ||
+    ("registry" in config &&
+      (registry === null ||
+        typeof registry !== "object" ||
+        Object.keys(registry).join() !== "url" ||
+        typeof registry.url !== "string"))
+  )
+    return undefined;
+  return `${name} (${keys.sort().join(", ")})`;
 }
 
 async function madeEntry(name: string, path: string): Promise<boolean> {
@@ -263,6 +405,34 @@ export async function moveHome(
   await rm(staging, { recursive: true, force: true });
   await mkdir(dirname(target), { recursive: true });
   await clearEmpty(target);
+  // A link with a relative target points somewhere else from another folder. In the same folder
+  // the plain rename is right; otherwise the new link is absolute, built from where the old
+  // one physically lives (the kernel reads a relative link from there, not from the path it was
+  // reached by), made next to the target and put in place the way a copy is.
+  if (
+    (await lstat(src)).isSymbolicLink() &&
+    !isAbsolute(await readlink(src)) &&
+    (await realpath(dirname(src)).catch(() => dirname(src))) !==
+      (await realpath(dirname(target)))
+  ) {
+    const reach = await realpath(src).catch(() => undefined);
+    if (reach !== undefined) await symlink(reach, staging);
+    if (
+      reach === undefined ||
+      (await realpath(staging).catch(() => "")) !== reach
+    ) {
+      await rm(staging, { recursive: true, force: true });
+      throw new CliError(
+        "migrate-copy",
+        `${src} is a link that could not be reproduced at ${target}; nothing was moved: point ${src} at its folder by an absolute path, then run donn migrate again`,
+        { src, target },
+      );
+    }
+    await move(src, aside);
+    await move(staging, target);
+    await rm(aside, { recursive: true, force: true });
+    return;
+  }
   try {
     await move(src, target);
     return;

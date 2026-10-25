@@ -22,7 +22,10 @@ import { isAlive } from "./process.js";
 // Writes a compile output as a new version directory, then atomically repoints the build
 // directory (a symlink) at it, so the build directory is never missing or half-written, even
 // with several builds of the same persona at once. A lock serializes the swap across
-// processes. copyFrom sources, and everything inside a copied directory, must resolve (symlinks
+// processes. The version it replaces is kept (`<buildDir>.prev` points at it) until the next
+// swap, so a reader that resolved the link just before a swap does not lose it mid-read. On
+// macOS a lookup racing the rename can still briefly fail (APFS; Linux never does), so readers
+// there should tolerate a transient ENOENT during a rebuild. copyFrom sources, and everything inside a copied directory, must resolve (symlinks
 // followed) inside their mount. See docs/planning/06-cli-core-loop.md, section 3.
 
 const LOCK_TIMEOUT_MS = 30_000;
@@ -126,19 +129,35 @@ async function withLock<T>(lock: string, body: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Point `buildDir` at `version` atomically and remove the version it pointed at before. */
+/** Repoint the symlink `path` at `target` atomically. */
+async function relink(path: string, target: string): Promise<void> {
+  const link = join(dirname(path), `${basename(path)}.link-${suffix()}`);
+  await symlink(target, link);
+  await rename(link, path);
+}
+
+/**
+ * Point `buildDir` at `version` atomically, keep the version it pointed at before as
+ * `<buildDir>.prev`, and remove the one `.prev` pointed at.
+ */
 async function swap(buildDir: string, version: string): Promise<void> {
   const parent = dirname(buildDir);
+  const prevLink = `${buildDir}.prev`;
   const stat = await lstat(buildDir).catch(() => undefined);
   const previous = stat?.isSymbolicLink()
     ? await readlink(buildDir)
     : undefined;
+  const older = await readlink(prevLink).catch(() => undefined);
   if (stat?.isDirectory()) await rm(buildDir, { recursive: true, force: true }); // pre-symlink layout
-  const link = join(parent, `${basename(buildDir)}.link-${suffix()}`);
-  await symlink(basename(version), link);
-  await rename(link, buildDir);
-  if (previous !== undefined && previous !== basename(version)) {
-    await rm(join(parent, previous), { recursive: true, force: true });
+  await relink(buildDir, basename(version));
+  if (previous === undefined || previous === basename(version)) return;
+  await relink(prevLink, previous);
+  if (
+    older !== undefined &&
+    older !== previous &&
+    older !== basename(version)
+  ) {
+    await rm(join(parent, older), { recursive: true, force: true });
   }
 }
 

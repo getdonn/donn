@@ -5,6 +5,8 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -158,37 +160,68 @@ describe("review fixes", () => {
     expect(
       readFileSync(join(buildDir, "plugin/skills/s/SKILL.md"), "utf8"),
     ).toBe("skill");
-    const leftovers = readdirSync(dirname(buildDir)).filter(
-      (name) => name !== "claude-code",
-    );
-    expect(leftovers).toHaveLength(1); // the one version the build directory points to
+    const leftovers = readdirSync(dirname(buildDir))
+      .filter((name) => name !== "claude-code")
+      .sort();
+    // The version the build directory points to, the one before it, and the link to that one.
+    expect(leftovers).toHaveLength(3);
+    expect(leftovers).toContain("claude-code.prev");
+    expect(leftovers).toContain(readlinkSync(buildDir));
+    expect(leftovers).toContain(readlinkSync(`${buildDir}.prev`));
   });
 
-  it("swaps builds atomically: the build directory is never missing (I2)", async () => {
+  it("keeps a build a reader resolved until the next swap (I2)", async () => {
     const { store, buildDir } = setup();
-    await writeBuild(
-      output({ "keep.txt": { content: "" }, "a.txt": { content: "1" } }),
-      { buildDir, store },
-    );
-    expect(lstatSync(buildDir).isSymbolicLink()).toBe(true);
-    // One path every build has: two checks (a.txt, then b.txt) could straddle a swap.
-    let missing = false;
-    const watch = setInterval(() => {
-      if (!existsSync(join(buildDir, "keep.txt"))) missing = true;
-    }, 0);
-    for (let i = 0; i < 20; i++) {
-      await writeBuild(
-        output({
-          "keep.txt": { content: "" },
-          [i % 2 ? "a.txt" : "b.txt"]: { content: "x" },
-        }),
-        {
-          buildDir,
-          store,
-        },
-      );
-    }
-    clearInterval(watch);
-    expect(missing).toBe(false);
+    await writeBuild(output({ "a.txt": { content: "1" } }), {
+      buildDir,
+      store,
+    });
+    const first = realpathSync(buildDir); // a reader resolved the link here
+    await writeBuild(output({ "b.txt": { content: "2" } }), {
+      buildDir,
+      store,
+    });
+    expect(readFileSync(join(first, "a.txt"), "utf8")).toBe("1");
+    const second = realpathSync(buildDir);
+    await writeBuild(output({ "c.txt": { content: "3" } }), {
+      buildDir,
+      store,
+    });
+    expect(existsSync(first)).toBe(false);
+    expect(readFileSync(join(second, "b.txt"), "utf8")).toBe("2");
   });
+
+  // macOS (APFS) briefly hides a symlink to lookups racing the rename(2) that replaces it, even
+  // with no deletes (~1% of checks in a swap storm, 2026-10-24); Linux never does. The
+  // guarantee is tested where the OS gives it.
+  it.skipIf(process.platform === "darwin")(
+    "swaps builds atomically: the build directory is never missing (I2)",
+    async () => {
+      const { store, buildDir } = setup();
+      await writeBuild(
+        output({ "keep.txt": { content: "" }, "a.txt": { content: "1" } }),
+        { buildDir, store },
+      );
+      expect(lstatSync(buildDir).isSymbolicLink()).toBe(true);
+      // One path every build has: two checks (a.txt, then b.txt) could straddle a swap.
+      let missing = false;
+      const watch = setInterval(() => {
+        if (!existsSync(join(buildDir, "keep.txt"))) missing = true;
+      }, 0);
+      for (let i = 0; i < 20; i++) {
+        await writeBuild(
+          output({
+            "keep.txt": { content: "" },
+            [i % 2 ? "a.txt" : "b.txt"]: { content: "x" },
+          }),
+          {
+            buildDir,
+            store,
+          },
+        );
+      }
+      clearInterval(watch);
+      expect(missing).toBe(false);
+    },
+  );
 });

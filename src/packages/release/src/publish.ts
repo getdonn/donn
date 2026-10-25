@@ -16,6 +16,8 @@ export interface PublishOptions {
   dryRun: boolean;
   env: NodeJS.ProcessEnv;
   run: Runner;
+  /** Pause between re-views after a publish conflict; tests inject a no-op. */
+  sleep?: (ms: number) => Promise<void>;
   /** Problems with a packed tarball; defaults to Task 3's `checkTarball`. */
   check?: (
     tarball: string,
@@ -30,6 +32,8 @@ export interface PublishSummary {
   dryRun: boolean;
   published: string[];
   skipped: string[];
+  /** The part of `skipped` that npm refused as already published at publish time. */
+  conflicted?: string[];
   failed?: { name: string; error: string };
 }
 
@@ -41,10 +45,19 @@ const MIN_NPM = [11, 5, 1] as const;
 
 export function isNpmjs(registry: string): boolean {
   try {
-    return new URL(registry).hostname.toLowerCase() === "registry.npmjs.org";
+    // A trailing dot is the same host (`registry.npmjs.org.`).
+    const host = new URL(registry).hostname.toLowerCase().replace(/\.$/, "");
+    return host === "registry.npmjs.org";
   } catch {
     throw new ReleaseError("registry", `not a valid registry URL: ${registry}`);
   }
+}
+
+function isConflict(stderr: string): boolean {
+  return (
+    /^npm error code EPUBLISHCONFLICT$/m.test(stderr) ||
+    stderr.includes("cannot publish over the previously published version")
+  );
 }
 
 /** True when `version` (major.minor.patch, numerically) is at least `min`. */
@@ -114,6 +127,26 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
     opts.check ??
     ((tarball, pkg, ws) =>
       withTarball(tarball, run, (contents) => checkTarball(contents, pkg, ws)));
+  const sleep =
+    opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  /** Up to 3 views, 2 s apart, for the registry's read lag. */
+  const serves = async (label: string): Promise<boolean> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await sleep(2000);
+      const v = await run(
+        "npm",
+        ["view", label, "version", "--registry", registry],
+        { cwd: root, env },
+      );
+      if (
+        v.code === 0 &&
+        v.stdout.trim() === label.slice(label.lastIndexOf("@") + 1)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
   for (const pkg of pkgs) {
     const label = `${pkg.name}@${pkg.version}`;
     const stop = (error: string): PublishSummary => {
@@ -171,6 +204,19 @@ export async function publish(opts: PublishOptions): Promise<PublishSummary> {
     // Keep npm's own account (provenance / transparency-log URL) in the log.
     if (res.stderr) process.stderr.write(res.stderr);
     if (res.code !== 0) {
+      // npm answers the same for a version that was published meanwhile and
+      // for an unpublished (tombstoned) one that nobody can install, so only
+      // a registry that serves the version counts as already published.
+      if (isConflict(res.stderr)) {
+        if (await serves(label)) {
+          summary.skipped.push(label);
+          (summary.conflicted ??= []).push(label);
+          continue;
+        }
+        return stop(
+          `npm publish exited ${res.code}: ${res.stderr.trim().slice(0, 500)}; the registry does not serve ${label}`,
+        );
+      }
       return stop(
         `npm publish exited ${res.code}: ${res.stderr.trim().slice(0, 500)}`,
       );

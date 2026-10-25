@@ -77,6 +77,9 @@ export interface RunResult {
   stderr: string;
 }
 
+/** The user's home folder for tests that do not set one: it does not exist. */
+export const NO_USER_HOME = join(tmpdir(), "donn-no-user-home");
+
 /** Where tests that do not exercise managed settings keep `managed install|check` pointed. */
 export const NO_MANAGED_ROOT = join(
   tmpdir(),
@@ -133,6 +136,8 @@ export async function zz(
     env: {
       // Launches must not start real daemons; a test that wants auto-start sets this to "".
       DONN_NO_DAEMON: "1",
+      // Never the developer's own home: doctor looks for an old home under it.
+      HOME: NO_USER_HOME,
       ...(options.home && { DONN_HOME: options.home }),
       ...options.env,
     },

@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { readFile, rename, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   deleteKeychainItem,
@@ -47,6 +46,7 @@ import {
   legacyDaemonPid,
   legacyMod,
   madeByDonn,
+  madeByInitOrLogin,
   moveHome,
   occupied,
   oldHomeValues,
@@ -61,12 +61,17 @@ import {
   rewriteMarkers,
   rewriteMarkersIn,
   setAsideOf,
+  shellWord,
   stagingOf,
   staleFiles,
   stopLegacyDaemon,
   targetExists,
   targetMadeByDonn,
+  targetMadeByInitOrLogin,
+  unmigratedRepo,
   updateProgress,
+  userHome,
+  legacyHome,
   writeThrough,
   yamlFiles,
   type MoveOptions,
@@ -128,8 +133,8 @@ export interface PlanOptions {
 
 /** The user's home folder, the old donn home in it, and where the new one goes. */
 function where(io: CliIo) {
-  const user = io.env.HOME ?? homedir();
-  const src = join(user, LEGACY.home);
+  const user = userHome(io);
+  const src = legacyHome(io);
   const target = absoluteHome(io, homeOf(io));
   /**
    * The home as it is now: the old one until it has moved, then the new one. Between a verified
@@ -279,10 +284,6 @@ async function oldSwitches(
   }
 }
 
-/** A POSIX-shell word: as is when plainly safe, otherwise single-quoted. */
-const shellWord = (value: string) =>
-  /^[\w./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
-
 /**
  * Projects with a switch in state.json whose old project folder is still there, each with the
  * command that migrates it. Its switch already names `.donn/`, so it matches once moved.
@@ -294,9 +295,8 @@ export async function pendingProjects(
   const state = await readState(w.live()).catch(() => undefined);
   const dirs = new Set<string>();
   for (const key of Object.keys(state?.projects ?? {})) {
-    if (![LEGACY.home, ".donn"].includes(basename(key))) continue;
-    const dir = dirname(key);
-    if (existsSync(join(dir, LEGACY.home))) dirs.add(dir);
+    const dir = unmigratedRepo(key);
+    if (dir !== undefined) dirs.add(dir);
   }
   return [...dirs]
     .sort()
@@ -504,10 +504,15 @@ async function oldHomeElsewhere(
       `${name} is set ${place} (${value}); donn migrate moves only ~/${LEGACY.home}: unset it, or move that home by hand`,
       { variable: name, value },
     );
+  // A launchd plist or an env file does not expand `~`: it stands for the user's home.
+  const expanded = (value: string) =>
+    value === "~" || value.startsWith("~/")
+      ? join(w.user, value.slice(2))
+      : value;
   const elsewhere = (value: string | undefined): value is string =>
     value !== undefined &&
     value !== "" &&
-    resolve(io.cwd, value) !== resolve(w.src);
+    resolve(io.cwd, expanded(value)) !== resolve(w.src);
   const fromEnv = io.env[name];
   if (elsewhere(fromEnv)) throw refuse("in your environment", fromEnv);
   const file = old && (await installedService(old));
@@ -539,9 +544,11 @@ export async function planMigration(
     (await occupied(w.target)) &&
     !(await onlyProgress(w.target))
   ) {
-    throw (await madeByDonn(w.target))
-      ? await targetMadeByDonn(w.target)
-      : targetExists(w.target);
+    const written = await madeByInitOrLogin(w.target);
+    if (await madeByDonn(w.target)) throw await targetMadeByDonn(w.target);
+    throw written === undefined
+      ? targetExists(w.target)
+      : await targetMadeByInitOrLogin(w.target, written);
   }
   const oldInstalled = async () =>
     old !== undefined && (existsSync(old.path) || (await old.loaded()));
@@ -879,7 +886,7 @@ export async function migrateProject(
   gitignore?: { file: string; line: number; text: string }[];
 }> {
   const start = resolve(io.cwd, dir ?? ".");
-  const root = await findProjectRoot(start, resolve(io.env.HOME ?? homedir()));
+  const root = await findProjectRoot(start, resolve(userHome(io)));
   if (root === undefined) return { start };
   const legacyDir = join(root, LEGACY.home);
   const newDir = join(root, ".donn");

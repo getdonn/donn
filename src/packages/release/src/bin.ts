@@ -2,7 +2,7 @@
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { checkTarball } from "./check.js";
-import { claim } from "./claim.js";
+import { claim, claimLines } from "./claim.js";
 import { ReleaseError } from "./errors.js";
 import { packAll } from "./pack.js";
 import { publish } from "./publish.js";
@@ -14,7 +14,7 @@ import { withTarball } from "./tarball.js";
 const USAGE = `usage: donn-release <command> [options]
 
   pack [--check]
-  smoke [--registry <url>]
+  smoke [--registry <url>] [--node <path>]
   publish --registry <url> [--dry-run] [--json]
   claim [--deprecate] [--yes]
 `;
@@ -22,6 +22,7 @@ const USAGE = `usage: donn-release <command> [options]
 interface Flags {
   check?: boolean;
   registry?: string;
+  node?: string;
   "dry-run"?: boolean;
   json?: boolean;
   deprecate?: boolean;
@@ -55,39 +56,34 @@ async function pack(flags: Flags): Promise<void> {
   if (failed) throw new ReleaseError("check", "tarball check failed");
 }
 
-async function claimCommand(flags: Flags): Promise<void> {
-  const yes = flags.yes === true;
-  const res = await claim({
-    root: ROOT,
-    deprecate: flags.deprecate === true,
-    yes,
-    run: realRunner,
-  });
-  const verb = (done: string, would: string) => (yes ? done : would);
-  for (const name of res.existing) {
-    process.stdout.write(`${name} is already on npm\n`);
-  }
-  for (const name of res.claimed) {
-    process.stdout.write(`${verb("claimed", "would claim")} ${name}\n`);
-  }
-  for (const name of res.deprecated) {
-    process.stdout.write(
-      `${verb("deprecated", "would deprecate")} ${name}@0.0.0\n`,
+async function claimCommand(flags: Flags): Promise<number> {
+  const mode = { deprecate: flags.deprecate === true, yes: flags.yes === true };
+  const res = await claim({ root: ROOT, run: realRunner, ...mode });
+  for (const line of claimLines(res, mode)) process.stdout.write(`${line}\n`);
+  if (res.failed.length > 0) {
+    process.stderr.write(
+      `deprecate failed for ${res.failed.map((f) => f.name).join(", ")}\n`,
     );
+    return 1;
   }
-  if (!yes) process.stdout.write("nothing changed; pass --yes to do it\n");
+  return 0;
 }
 
 async function smokeCommand(flags: Flags): Promise<void> {
   const run = realRunner;
   if (flags.registry) {
-    await smoke({ root: ROOT, source: { registry: flags.registry }, run });
+    await smoke({
+      root: ROOT,
+      source: { registry: flags.registry },
+      run,
+      node: flags.node,
+    });
     process.stdout.write("smoke ok\n");
     return;
   }
   const all = await listWorkspaces(ROOT, run);
   const tarballs = await packAll(ROOT, publicPackages(all), run);
-  await smoke({ root: ROOT, source: { tarballs }, run });
+  await smoke({ root: ROOT, source: { tarballs }, run, node: flags.node });
   process.stdout.write("smoke ok\n");
 }
 
@@ -111,7 +107,9 @@ async function publishCommand(flags: Flags): Promise<number> {
     }
     for (const name of summary.skipped) {
       process.stdout.write(
-        `${name} skipped (already on ${summary.registry})\n`,
+        summary.conflicted?.includes(name)
+          ? `skipped ${name} (npm already has this version)\n`
+          : `skipped ${name} (already on ${summary.registry})\n`,
       );
     }
     if (summary.failed) {
@@ -139,6 +137,7 @@ async function main(argv: string[]): Promise<number> {
       options: {
         check: { type: "boolean" },
         registry: { type: "string" },
+        node: { type: "string" },
         "dry-run": { type: "boolean" },
         json: { type: "boolean" },
         deprecate: { type: "boolean" },

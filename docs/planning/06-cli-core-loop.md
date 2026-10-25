@@ -133,6 +133,12 @@ function runPlan(plan: ActivationPlan, options: { secretEnv: Record<string, stri
   30 s timeout), atomically repoints the symlink and removes the previous version. Two
   concurrent builds of one persona no longer crash, and the build directory is never missing
   while a session starts. Filesystem errors become `ExecutorError`s naming the source.
+- *Amended 2026-10-24:* the replaced version is kept, behind a `<buildDir>.prev` symlink, until
+  the next swap, so a reader that resolved the link just before a swap does not lose the
+  directory mid-read (`donn doctor --fix` leaves it alone). "Never missing" holds on Linux; on
+  macOS a lookup racing the `rename(2)` of the symlink can briefly fail (measured: about 1% of
+  lookups during back-to-back swaps, none on Linux), so readers there should tolerate a
+  transient `ENOENT` during a rebuild.
 - **`runPlan`** spawns each `launch` step with `stdio: "inherit"`, env = current env + step env +
   resolved secrets, and the step's `cwd`; forwards `SIGINT`/`SIGTERM`; resolves to the child's
   exit code.
