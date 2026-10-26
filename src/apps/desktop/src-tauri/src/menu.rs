@@ -218,7 +218,7 @@ fn projects<'a>(
 }
 
 /// A project's root: the parent of its `.donn`, else the path itself.
-fn root(path: &str) -> PathBuf {
+pub(crate) fn root(path: &str) -> PathBuf {
     let p = Path::new(path);
     match (p.file_name(), p.parent()) {
         (Some(name), Some(parent)) if name == ".donn" => parent.to_path_buf(),

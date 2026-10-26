@@ -46,7 +46,7 @@ pub struct Switched {
 }
 
 /// `donn list --json`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Personas {
     pub personas: Vec<PersonaRef>,
 }
