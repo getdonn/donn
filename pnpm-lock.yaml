@@ -266,6 +266,9 @@ importers:
       '@getdonn/cli-schemas':
         specifier: workspace:*
         version: link:../../packages/cli-schemas
+      '@getdonn/spec':
+        specifier: workspace:*
+        version: link:../../packages/spec
       '@tanstack/react-query':
         specifier: ^5.104.5
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)

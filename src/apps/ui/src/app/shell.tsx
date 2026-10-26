@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BotIcon,
   ChevronsUpDownIcon,
@@ -38,6 +38,7 @@ import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CliFailure } from "@/lib/bridge";
+import { folderName, useProjects } from "@/lib/projects";
 import { useBridge, useProject } from "./providers";
 
 // The frame around every screen (docs/planning/26-gui.md §3): the five sections in a sidebar,
@@ -50,16 +51,6 @@ const SECTIONS = [
   { to: "/registry", label: "Registry", icon: LibraryIcon },
   { to: "/agents", label: "Agents", icon: BotIcon },
 ] as const;
-
-/** A project's folder name, for the picker; the full path is its title. */
-export const folderName = (path: string) =>
-  path.split("/").filter(Boolean).at(-1) ?? path;
-
-/** The projects the daemon knows: `GET /v1/projects`. */
-export function useProjects() {
-  const bridge = useBridge();
-  return useQuery({ queryKey: ["projects"], queryFn: () => bridge.projects() });
-}
 
 function AddProjectDialog({
   open,

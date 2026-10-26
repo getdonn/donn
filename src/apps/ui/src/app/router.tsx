@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Placeholder } from "@/routes/placeholder";
-import { ProjectsRoute } from "@/routes/projects";
+import { PersonasRoute } from "@/routes/personas";
 import { Shell } from "./shell";
 
 // The app's routes: one per section of docs/planning/26-gui.md §3. The bridge serves
@@ -13,7 +13,7 @@ export function createRouter() {
       element: <Shell />,
       children: [
         { index: true, element: <Navigate to="/projects" replace /> },
-        { path: "projects", element: <ProjectsRoute /> },
+        { path: "projects", element: <PersonasRoute /> },
         {
           path: "sessions",
           element: (

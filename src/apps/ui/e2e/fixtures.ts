@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -33,6 +34,8 @@ export interface Donn {
   repo: string;
   /** A second project, not yet known: for "Add project…". */
   other: string;
+  /** What the fake `$VISUAL` was started with, one line per start (its argv). */
+  editorLog: string;
   /** Runs the built CLI against the temp home. */
   cli(args: string[]): {
     status: number | null;
@@ -61,6 +64,14 @@ function project(dir: string) {
   put(join(dir, ".donn/hooks/format.sh"), "#!/bin/sh\nexit 0\n");
 }
 
+/** An executable that appends its arguments, space-joined, to `log`; returns its path. */
+function editor(root: string, log: string) {
+  const script = join(root, "fake-editor.sh");
+  put(script, `#!/bin/sh\necho "$*" >> '${log}'\n`);
+  chmodSync(script, 0o755);
+  return script;
+}
+
 function seed(): Omit<Donn, "cli" | "url"> {
   // Resolved: macOS's tmpdir is a symlink, and the daemon reports real paths.
   const root = realpathSync(mkdtempSync(join(tmpdir(), "donn-ui-e2e-")));
@@ -83,7 +94,8 @@ function seed(): Omit<Donn, "cli" | "url"> {
   project(other);
   put(join(home, "ui.json"), `${JSON.stringify({ projects: [repo] })}\n`);
   mkdirSync(join(root, "user-home"), { recursive: true });
-  return { root, home, repo, other };
+  const editorLog = join(root, "editor-argv.txt");
+  return { root, home, repo, other, editorLog };
 }
 
 export const test = base.extend<{ signIn: string }, { donn: Donn }>({
@@ -100,6 +112,8 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
         PATH: process.env.PATH,
         DONN_HOME: seeded.home,
         HOME: join(seeded.root, "user-home"),
+        // The bridge opens files with $VISUAL (never $EDITOR): a script that records its argv.
+        VISUAL: editor(seeded.root, seeded.editorLog),
         TMPDIR: process.env.TMPDIR,
       };
       const cli: Donn["cli"] = (args) => {
