@@ -116,6 +116,35 @@ describe("donn status", () => {
     StatusOutput.parse(JSON.parse(json.stdout));
   });
 
+  it("status --json reports the switches", async () => {
+    const dot = join(root, "repo/.donn");
+    const switched = {
+      default: "org/base",
+      projects: { [dot]: "team/payments" },
+    };
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(home, "state.json"),
+      JSON.stringify({ version: 1, ...switched }),
+    );
+    for (const daemon of [false, true]) {
+      if (daemon) await start();
+      const r = await zz(["status", "--json"], { cwd: root, home });
+      const out = JSON.parse(r.stdout) as { daemon: boolean };
+      expect(out.daemon).toBe(daemon);
+      expect(out).toMatchObject({ switched });
+      StatusOutput.parse(out);
+    }
+  });
+
+  it("reports empty switches without a state.json", async () => {
+    const r = await zz(["status", "--json"], { cwd: root, home });
+    const out = JSON.parse(r.stdout) as unknown;
+    expect(out).toMatchObject({ switched: { projects: {} } });
+    expect((out as { switched: object }).switched).toEqual({ projects: {} });
+    StatusOutput.parse(out);
+  });
+
   it("falls back when the socket is dead", async () => {
     const paths = daemonPaths(home);
     mkdirSync(paths.dir, { recursive: true });
