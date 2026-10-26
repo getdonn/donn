@@ -95,7 +95,13 @@ function client(
 }
 
 const LIST = {
-  personas: [{ ref: "team/payments-backend", layer: "team" }],
+  personas: [
+    {
+      ref: "team/payments-backend",
+      layer: "team",
+      path: "/p/team/payments-backend.yaml",
+    },
+  ],
 };
 
 describe("run", () => {

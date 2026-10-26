@@ -88,6 +88,14 @@ describe("layerFile", () => {
     expect(layerFile("project/persona", undefined)).toBeUndefined();
   });
 
+  it("prefers the file the CLI reports for a ref", () => {
+    const listed = { "team/payments": "/p/team/payments.yaml" };
+    expect(layerFile("team/payments", "/code/api", listed)).toBe(
+      "/p/team/payments.yaml",
+    );
+    expect(layerFile("org/base", "/code/api", listed)).toBeUndefined();
+  });
+
   it("splits a ref into its kind", () => {
     expect(layerKind("org/base")).toBe("org");
     expect(layerKind("user/overrides")).toBe("user");
@@ -101,7 +109,10 @@ describe("fieldGroups", () => {
     mcp: {
       gateway: "bifrost://corp",
       servers: {
-        db: { command: "npx", env: { TOKEN: "secret://vault/x" } },
+        db: {
+          command: "npx",
+          env: { TOKEN: "secret://vault/x", COPY: "secret://vault/x" },
+        },
         web: { url: "https://x.test" },
       },
     },
@@ -132,6 +143,7 @@ describe("fieldGroups", () => {
       "vault",
       "secret://vault/x",
     ]);
+    expect(groups.secrets).toHaveLength(2);
     expect(groups.secrets![1]!.path).toBe("mcp.servers.db");
   });
 });

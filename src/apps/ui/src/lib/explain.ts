@@ -53,13 +53,15 @@ export function explainValue(
 export const layerKind = (ref: string) => ref.split("/")[0] ?? ref;
 
 /**
- * The file behind a layer, when the app can know it. Only the project's own is derivable: no
- * command reports where the personas folder or the user layer live.
+ * The file behind a layer: the one `donn list --json` reports for its ref (personas, and the
+ * user overlay), else the project's own `.donn/persona.yaml`, which the project folder implies.
  */
 export function layerFile(
   ref: string,
   project: string | undefined,
+  listed: Readonly<Record<string, string>> = {},
 ): string | undefined {
+  if (listed[ref] !== undefined) return listed[ref];
   return layerKind(ref) === "project" && project !== undefined
     ? `${project.replace(/\/+$/, "")}/.donn/persona.yaml`
     : undefined;
@@ -180,7 +182,8 @@ export function fieldGroups(ir: Ir): FieldGroup[] {
     })),
     { path: "models.gateway", refs: secretRefs(ir.models.gateway) },
   ].flatMap(({ path, refs: found }) =>
-    found.map((ref) => ({ path, label: ref, detail: path })),
+    // One server may name the same secret twice: listed once.
+    [...new Set(found)].map((ref) => ({ path, label: ref, detail: path })),
   );
   return [
     { id: "instructions", title: "Instructions", items: instructions },

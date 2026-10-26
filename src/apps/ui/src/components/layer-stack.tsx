@@ -11,9 +11,12 @@ import { layerFile, layerKind } from "@/lib/explain";
 export function LayerStack({
   layers,
   project,
+  files,
 }: {
   layers: string[];
   project: string;
+  /** The file of each layer ref that `donn list` reported. */
+  files: Record<string, string>;
 }) {
   const bridge = useBridge();
   const open = useMutation({
@@ -23,7 +26,7 @@ export function LayerStack({
   return (
     <ol aria-label="Layers" className="divide-y rounded-md border">
       {layers.map((ref) => {
-        const file = layerFile(ref, project);
+        const file = layerFile(ref, project, files);
         return (
           <li key={ref} className="flex items-center gap-3 px-3 py-1.5">
             <Badge variant="outline">{layerKind(ref)}</Badge>
@@ -33,9 +36,7 @@ export function LayerStack({
               size="sm"
               disabled={file === undefined || open.isPending}
               title={
-                file === undefined
-                  ? "The CLI does not report this layer's file"
-                  : file
+                file === undefined ? "No file is known for this layer" : file
               }
               onClick={() => file !== undefined && open.mutate(file)}
             >

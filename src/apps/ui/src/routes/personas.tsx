@@ -45,6 +45,15 @@ function PersonaOf({ project }: { project: string }) {
     chosen === IN_USE ? ["--explain"] : ["--explain", chosen],
     project,
   );
+  // Where each layer's file is: `list` reports the personas' and the user overlay's.
+  const files: Record<string, string> = {
+    ...Object.fromEntries(
+      (personas.data?.personas ?? []).map(({ ref, path }) => [ref, path]),
+    ),
+    ...(personas.data?.overlay && {
+      [personas.data.overlay.ref]: personas.data.overlay.path,
+    }),
+  };
   return (
     <div role="group" aria-label="Persona" className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -71,7 +80,11 @@ function PersonaOf({ project }: { project: string }) {
       )}
       {resolved.data !== undefined && (
         <>
-          <LayerStack layers={resolved.data.ir.layers} project={project} />
+          <LayerStack
+            layers={resolved.data.ir.layers}
+            project={project}
+            files={files}
+          />
           {resolved.data.warnings.length > 0 && (
             <Alert>
               <AlertDescription>

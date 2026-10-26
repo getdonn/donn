@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   chmodSync,
   cpSync,
   existsSync,
@@ -36,6 +37,8 @@ export interface Donn {
   other: string;
   /** What the fake `$VISUAL` was started with, one line per start (its argv). */
   editorLog: string;
+  /** The personas folder (org/, area/, team/). */
+  personas: string;
   /** Runs the built CLI against the temp home. */
   cli(args: string[]): {
     status: number | null;
@@ -56,6 +59,21 @@ function project(dir: string) {
   cpSync(
     join(FIXTURE, "project/checkout-api.yaml"),
     join(dir, ".donn/persona.yaml"),
+  );
+  // An agent, an MCP server naming one secret twice and a default model, for each group.
+  appendFileSync(
+    join(dir, ".donn/persona.yaml"),
+    `agents:
+  define:
+    bot: { template: "eve:blank", target: local }
+models:
+  default: anthropic/claude-opus-4.5
+mcp:
+  servers:
+    ledger:
+      command: ledger-mcp
+      env: { PRIMARY: "secret://vault/ledger", REPLICA: "secret://vault/ledger" }
+`,
   );
   put(
     join(dir, ".donn/instructions/checkout-overview.md"),
@@ -84,6 +102,11 @@ function seed(): Omit<Donn, "cli" | "url"> {
   }
   cpSync(join(FIXTURE, "user/overrides.yaml"), join(home, "overrides.yaml"));
   put(join(home, "config.yaml"), `personas: ${personas}\n`);
+  // A gateway for model calls, set by the org layer.
+  appendFileSync(
+    join(personas, "org/base.yaml"),
+    "models:\n  gateway: { type: vercel-ai-gateway }\n",
+  );
   put(join(personas, "org/instructions/conduct.md"), "Review kindly.");
   put(join(personas, "org/hooks/block-prod-db.sh"), "#!/bin/sh\nexit 0\n");
   put(
@@ -95,7 +118,7 @@ function seed(): Omit<Donn, "cli" | "url"> {
   put(join(home, "ui.json"), `${JSON.stringify({ projects: [repo] })}\n`);
   mkdirSync(join(root, "user-home"), { recursive: true });
   const editorLog = join(root, "editor-argv.txt");
-  return { root, home, repo, other, editorLog };
+  return { root, home, repo, other, editorLog, personas };
 }
 
 export const test = base.extend<{ signIn: string }, { donn: Donn }>({
