@@ -33,6 +33,33 @@ From the Tauri docs (v2.tauri.app, read 2026-10-26) and the registries:
   `tauri-plugin-dialog` from Rust, `tauri-plugin-opener` for external links, ad-hoc signing
   (`signingIdentity: "-"`).
 
+*Confirmed 2026-10-26 (layer 2):* against v2.tauri.app, docs.rs and the crates' sources (`tauri`
+2.12.5, `tauri-build` 2.7.4, `tauri-plugin-single-instance` 2.5.4, `tauri-plugin-dialog` 2.8.3,
+`tauri-plugin-opener` 2.7.2, `tauri-plugin-autostart` 2.7.0; the plugins need Rust 1.90+).
+
+- Confirmed: `App::set_activation_policy(tauri::ActivationPolicy::Accessory)`, macOS only
+  (`#[cfg(target_os = "macos")]`), in `setup`; `AppHandle::set_activation_policy` returns a
+  `Result`. It is missing from docs.rs, which builds on Linux.
+- Confirmed: `WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))` (http or https only)
+  and `.on_navigation(|url: &Url| -> bool)`; `false` cancels. A navigation from Rust
+  (`Webview::navigate`, `reload`) also goes through the handler, so it must accept a new bridge
+  port after a daemon restart (read the port from shared state, not a captured copy). Links with
+  `target=_blank` are new-window requests: `on_new_window` (return `NewWindowResponse::Deny`).
+- Confirmed: `tauri_plugin_single_instance::init(|app: &AppHandle, args: Vec<String>, cwd:
+  String| …)`, registered first; no capability needed. Linux uses D-Bus, macOS a Unix socket.
+- Confirmed: `app.dialog().message(text).kind(MessageDialogKind::Error).title(…)` with `.show(|ok|
+  …)` or `.blocking_show()` (not on the main thread) via `tauri_plugin_dialog::DialogExt`; Rust
+  calls need no permission (permissions gate the webview's commands).
+- Confirmed: `app.opener().open_url(url, None::<&str>)` via `tauri_plugin_opener::OpenerExt`.
+  The plugin injects a link-click script by default; the shell builds it with
+  `Builder::new().open_js_links_on_click(false)`.
+- Confirmed: `bundle.macOS.signingIdentity: "-"` (or `APPLE_SIGNING_IDENTITY=-`) signs ad hoc.
+- Confirmed: a capability without `remote` is compiled with `"local": true` and grants nothing to
+  a remote URL ("By default the API is only accessible to bundled code"); after a navigation to a
+  remote URL only a capability whose `remote` matches applies.
+- New: `tauri::generate_context!()` fails without `src-tauri/icons/icon.png`; layer 2 commits a
+  placeholder, layer 3 the real icons (`bundle.icon`).
+
 From this repo (2026-10-26):
 
 - This Mac has no Rust toolchain.

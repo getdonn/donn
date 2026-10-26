@@ -12,6 +12,10 @@ coverage/
 test-results/
 playwright-report/
 
+# Tauri (the desktop app): Cargo output and generated ACL schemas
+src/apps/desktop/src-tauri/target/
+src/apps/desktop/src-tauri/gen/
+
 # Persona builds (may contain resolved secrets)
 .donn/build/
 

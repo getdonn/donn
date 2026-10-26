@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core defaults for the bundled page only. No `remote`: the bridge's URL gets no IPC (spec 28 §4).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

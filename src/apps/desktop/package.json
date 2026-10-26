@@ -1,0 +1,23 @@
+{
+  "name": "@getdonn/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The donn menu-bar app (Tauri 2), built from source",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "true",
+    "test": "true",
+    "lint": "true",
+    "check-types": "true",
+    "bundle": "tauri build",
+    "rs:test": "cd src-tauri && cargo test",
+    "rs:check": "cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -1,0 +1,5 @@
+# The Rust the shell builds with (spec 28 §5); CI installs this one.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
