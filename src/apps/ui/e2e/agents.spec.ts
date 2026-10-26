@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { E2E_SECRET, expect, test } from "./fixtures";
@@ -6,14 +6,15 @@ import { E2E_SECRET, expect, test } from "./fixtures";
 // Screen 5, agents (docs/planning/26-gui.md §3): the list and the agent page over the real
 // bridge. eve, Vercel and Docker are the PATH shims in e2e/bin (README.md there): `eve start`
 // listens for real, `eve add` replays the CLI's recordings. The project persona declares bot
-// (local), box (self-host) and cloud (vercel); box and cloud take `secret://env/E2E_SECRET`,
-// whose value is in the daemon's environment and must never reach the page. One home per
+// (local), box (self-host), cloud and sky (vercel); box and sky take `secret://env/E2E_SECRET`,
+// whose value is in the daemon's environment and must never reach the page (cloud takes a plain
+// value). One home per
 // worker: the tests build on each other, so they run in order.
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(({ donn }) => {
-  for (const name of ["box", "cloud"]) {
+  for (const name of ["box", "cloud", "sky"]) {
     const r = donn.cli(["agent", "create", name, "--json"]);
     expect(r.status, r.stderr).toBe(0);
   }
@@ -191,24 +192,34 @@ test("a run from the app refuses an env-provider secret with the CLI's fix", asy
   await noSecret(page);
 });
 
-test("vercel: deploy confirms the names it will push, then deploys", async ({
+const pushed = (dir: string) =>
+  existsSync(join(dir, ".e2e-pushed.txt"))
+    ? readFileSync(join(dir, ".e2e-pushed.txt"), "utf8")
+        .split("\n")
+        .filter(Boolean)
+    : [];
+
+test("vercel: every deploy confirms what it will do first", async ({
   page,
   signIn,
   donn,
 }) => {
+  const dir = join(donn.repo, "agents/cloud");
   await agentPage(page, signIn, "cloud");
   await expect(
     page.getByRole("button", { name: "Run", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Deploy…" }).click();
   const dialog = page.getByRole("dialog", { name: "Deploy cloud to Vercel?" });
+  await expect(dialog).toContainText("links cloud to a new Vercel project");
   await expect(dialog.getByRole("list", { name: "Variables" })).toHaveText(
-    "API_TOKEN",
+    "GREETING",
   );
-  await noSecret(page);
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
-  expect(existsSync(join(donn.repo, "agents/cloud/.vercel"))).toBe(false);
+  // The dry run did nothing outward.
+  expect(existsSync(join(dir, ".vercel"))).toBe(false);
+  expect(pushed(dir)).toEqual([]);
 
   await page.getByRole("button", { name: "Deploy…" }).click();
   await dialog.getByRole("button", { name: "Deploy", exact: true }).click();
@@ -216,5 +227,53 @@ test("vercel: deploy confirms the names it will push, then deploys", async ({
     page.getByRole("status").filter({ hasText: "Deployed" }),
   ).toContainText("https://e2e-agent.vercel.app", { timeout: 15_000 });
   await expect(page.getByTestId("agent-state")).toHaveText("deployed");
+  expect(pushed(dir)).toEqual(["GREETING"]);
+
+  // A second deploy has nothing new to set and is linked: it still asks.
+  await page.getByRole("button", { name: "Deploy…" }).click();
+  await expect(dialog).toContainText("Nothing new to set");
+  await expect(dialog).not.toContainText("new Vercel project");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(pushed(dir)).toEqual(["GREETING"]);
+});
+
+test("a deploy from the app refuses an env-provider secret with the CLI's fix, pushing nothing", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  const dir = join(donn.repo, "agents/sky");
+  await agentPage(page, signIn, "sky");
+  await page.getByRole("button", { name: "Deploy…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Deploy sky to Vercel?" });
+  await expect(dialog.getByRole("list", { name: "Variables" })).toHaveText(
+    "API_TOKEN",
+  );
   await noSecret(page);
+  await dialog.getByRole("button", { name: "Deploy", exact: true }).click();
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText(
+    "a deploy started from donn ui has no shell environment",
+    { timeout: 15_000 },
+  );
+  await expect(alert).toContainText("use the keychain provider");
+  expect(existsSync(join(dir, ".vercel"))).toBe(false);
+  expect(pushed(dir)).toEqual([]);
+  await noSecret(page);
+});
+
+test("a file that cannot be opened says why", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  await agentPage(page, signIn, "box");
+  await page.getByRole("button", { name: "Build" }).click();
+  const dockerfile = page.getByRole("region", { name: "Dockerfile" });
+  await expect(dockerfile).toBeVisible({ timeout: 15_000 });
+  // Gone since the build: the bridge refuses to open it, and the page says so.
+  rmSync(join(donn.repo, "agents/box/deploy/donn/Dockerfile"));
+  await dockerfile.getByRole("button", { name: "Open" }).click();
+  await expect(dockerfile.getByRole("alert")).toBeVisible();
 });

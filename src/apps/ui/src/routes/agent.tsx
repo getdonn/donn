@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-  AgentAddOutput,
   AgentBuildOutput,
   AgentDeployOutput,
   CommandName,
@@ -8,7 +7,8 @@ import type {
 } from "@getdonn/cli-schemas";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { AgentQuestionForm, type Answer } from "@/components/agent-question";
+import { AddConnection } from "@/components/agent-add";
+import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,23 +25,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { runKey, useBridge, useProject, useRun } from "@/app/providers";
-import {
-  CliFailure,
-  jobOutput,
-  type Bridge,
-  type JobHandle,
-} from "@/lib/bridge";
+import { CliFailure, jobOutput, type Bridge } from "@/lib/bridge";
 import { useDaemonEvents, type DaemonEvent } from "@/lib/events";
 import { currency, StateBadge, syncFailure, type AgentRow } from "./agents";
 
 // Screen 5, the agent page (docs/planning/26-gui.md §3): run and stop (local, self-host), build
-// (self-host: the Dockerfile and env.json as written, refs only), deploy (vercel: a dialog with
-// the variable names the CLI would push, then `deploy --yes`; §2 "Outward actions confirm in
-// the UI"), sync, open the folder, add a channel or connection (eve's questions as fields), the
+// (self-host: the Dockerfile and env.json as written, refs only), deploy (vercel: always a
+// dialog first, from `deploy --dry-run`, then `deploy --yes`; §2 "Outward actions confirm in
+// the UI"), sync, open the folder, add a channel or connection (components/agent-add.tsx), the
 // log (`agent logs --json`, refetched on `agent.*` events and polled while it runs) and the
 // agent's live events. Every failure is the CLI's own message and fix, shown inline. No secret
 // value is ever asked for: `agent env --resolve` is never run.
@@ -61,18 +54,6 @@ async function runJob<C extends CommandName>(
   return jobOutput(command, await job.done);
 }
 
-function ErrorText({ error }: { error: unknown }) {
-  if (error === undefined || error === null) return null;
-  return (
-    <p role="alert" className="text-sm text-destructive">
-      {error instanceof Error ? error.message : String(error)}
-      {error instanceof CliFailure && error.fix && (
-        <span className="block text-muted-foreground">{error.fix}</span>
-      )}
-    </p>
-  );
-}
-
 function FileView({
   title,
   path,
@@ -83,6 +64,10 @@ function FileView({
   text: string;
 }) {
   const bridge = useBridge();
+  const open = useMutation({
+    meta: { quiet: true },
+    mutationFn: () => bridge.open(path),
+  });
   return (
     <section aria-label={title} className="grid gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -90,11 +75,13 @@ function FileView({
         <Button
           size="sm"
           variant="outline"
-          onClick={() => void bridge.open(path).catch(() => undefined)}
+          disabled={open.isPending}
+          onClick={() => open.mutate()}
         >
           Open
         </Button>
       </div>
+      <ErrorText error={open.error} />
       <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
         {text}
       </pre>
@@ -125,14 +112,11 @@ function Built({ out }: { out: AgentBuildOutput }) {
   );
 }
 
-/** What `agent deploy` without `--yes` said it would do: the names it would set. */
-interface DeployReview {
-  names: string[];
-  message: string;
-}
+/** `agent deploy --dry-run`: what a deploy would do, shown before every deploy. */
+type DeployPlan = Extract<AgentDeployOutput, { dryRun: true }>;
 
 function deployed(name: string, out: AgentDeployOutput): string {
-  if ("dryRun" in out) return `${name} was not deployed (a dry run)`;
+  if ("dryRun" in out) return `${name} was not deployed: a dry run`;
   return [
     `Deployed ${name}${out.url ? `: ${out.url}` : ""}`,
     out.pushed.length > 0 ? `set ${out.pushed.join(", ")}` : undefined,
@@ -152,7 +136,7 @@ function Actions({ project, agent }: { project: string; agent: AgentRow }) {
   const [note, setNote] = useState<string>();
   const [error, setError] = useState<unknown>();
   const [built, setBuilt] = useState<AgentBuildOutput>();
-  const [review, setReview] = useState<DeployReview>();
+  const [review, setReview] = useState<DeployPlan>();
   const refresh = () => queries.invalidateQueries({ queryKey: ["run"] });
   const quiet = {
     meta: { quiet: true },
@@ -214,25 +198,20 @@ function Actions({ project, agent }: { project: string; agent: AgentRow }) {
       );
     },
   });
-  // Without --yes the CLI stops before resolving a secret, naming what it would push; when
-  // there is nothing to confirm (linked, nothing new to set) it deploys, as on a terminal.
+  // Every deploy confirms first (spec 26 §2): the dry run links, sets, resolves and deploys
+  // nothing, and the dialog shows what it reports.
   const check = useMutation({
     ...quiet,
-    onError: (failure: unknown) => {
-      if (
-        failure instanceof CliFailure &&
-        failure.code === "confirmation-required"
-      )
-        setReview({
-          names: Array.isArray(failure.details.names)
-            ? failure.details.names.filter((n) => typeof n === "string")
-            : [],
-          message: failure.message,
-        });
-      else setError(failure);
+    mutationFn: async () => {
+      const out = await bridge.run(
+        "agent deploy",
+        [name, "--dry-run"],
+        project,
+      );
+      if (!("dryRun" in out)) throw new Error("deploy did not do a dry run");
+      return out;
     },
-    mutationFn: () => runJob(bridge, "agent deploy", [name], project, setLine),
-    onSuccess: (out) => setNote(deployed(name, out)),
+    onSuccess: setReview,
   });
   const deploy = useMutation({
     ...quiet,
@@ -317,7 +296,11 @@ function Actions({ project, agent }: { project: string; agent: AgentRow }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Deploy {name} to Vercel?</DialogTitle>
-            <DialogDescription>{review?.message}</DialogDescription>
+            <DialogDescription>
+              {review?.firstDeploy
+                ? `It links ${name} to a new Vercel project${review.project ? ` (${review.project})` : ""} first, then runs eve deploy.`
+                : `Linked${review?.project ? ` to ${review.project}` : ""}; it runs eve deploy.`}
+            </DialogDescription>
           </DialogHeader>
           {review !== undefined &&
             (review.names.length > 0 ? (
@@ -335,9 +318,7 @@ function Actions({ project, agent }: { project: string; agent: AgentRow }) {
                 </ul>
               </div>
             ) : (
-              <p className="text-sm">
-                It links {name} to a new Vercel project first.
-              </p>
+              <p className="text-sm">Nothing new to set in Vercel.</p>
             ))}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReview(undefined)}>
@@ -349,158 +330,6 @@ function Actions({ project, agent }: { project: string; agent: AgentRow }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-type Asked = Extract<AgentAddOutput, { status: "needs-answer" }>;
-
-type Step =
-  | { at: "idle" }
-  | { at: "running" }
-  | { at: "question"; job: JobHandle; asked: Asked }
-  | {
-      at: "prerequisite";
-      out: Extract<AgentAddOutput, { status: "needs-prerequisite" }>;
-    }
-  | { at: "completed"; out: Extract<AgentAddOutput, { status: "completed" }> }
-  | { at: "failed"; error: unknown };
-
-/** `donn agent add <name> <item>` as a job, eve's questions answered in the page. */
-function AddConnection({ project, name }: { project: string; name: string }) {
-  const bridge = useBridge();
-  const queries = useQueryClient();
-  const [item, setItem] = useState("");
-  const [step, setStep] = useState<Step>({ at: "idle" });
-  const [line, setLine] = useState<string>();
-
-  const follow = async (start: () => Promise<JobHandle>) => {
-    setStep({ at: "running" });
-    setLine(undefined);
-    try {
-      const job = await start();
-      job.on((event) => {
-        if (event.type === "job.progress") setLine(event.line);
-      });
-      const out = jobOutput("agent add", await job.done, { accept: [0, 2] });
-      if (out.status === "needs-answer")
-        setStep({ at: "question", job, asked: out });
-      else if (out.status === "needs-prerequisite")
-        setStep({ at: "prerequisite", out });
-      else setStep({ at: "completed", out });
-    } catch (error) {
-      setStep({ at: "failed", error });
-    } finally {
-      void queries.invalidateQueries({ queryKey: ["run"] });
-    }
-  };
-  /** A continuation the CLI printed: a new job of it, in this project. */
-  const again = (argv: string[]) => () => bridge.job(argv, project);
-
-  const answer = (answers: Answer[]) => {
-    if (step.at !== "question") return;
-    const { job, asked } = step;
-    const [first] = answers;
-    if (first === undefined) return;
-    // One answer goes through the job's /answer. An editable-select's typed value is a second
-    // answer, which /answer cannot carry: both go on the continuation the CLI printed, as
-    // `--answer=<key>=<JSON>` tokens (never a secret: those have no field).
-    void follow(
-      answers.length === 1
-        ? () => job.answer(first.key, first.value)
-        : again([
-            ...asked.continue,
-            ...answers.map(
-              (a) => `--answer=${a.key}=${JSON.stringify(a.value)}`,
-            ),
-          ]),
-    );
-  };
-  const running = step.at === "running";
-
-  return (
-    <div className="grid gap-4">
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const wanted = item.trim();
-          if (wanted !== "") void follow(again(["agent", "add", name, wanted]));
-        }}
-      >
-        <div className="grid gap-1.5">
-          <Label htmlFor="registry-item">Registry item</Label>
-          <Input
-            id="registry-item"
-            className="w-72"
-            placeholder="channel/github"
-            value={item}
-            disabled={running || step.at === "question"}
-            onChange={(event) => setItem(event.target.value)}
-          />
-        </div>
-        <Button
-          type="submit"
-          disabled={running || step.at === "question" || item.trim() === ""}
-        >
-          Add
-        </Button>
-        {(step.at === "question" || step.at === "prerequisite") && (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setStep({ at: "idle" })}
-          >
-            Cancel
-          </Button>
-        )}
-      </form>
-      {running && (
-        <p className="truncate text-sm text-muted-foreground">
-          {line ?? "Running eve add…"}
-        </p>
-      )}
-      {step.at === "question" && (
-        <div className="grid gap-2">
-          <AgentQuestionForm
-            key={step.job.id}
-            question={step.asked.question}
-            onAnswer={answer}
-          />
-          {step.asked.question.kind === "environment" && (
-            <div>
-              <Button
-                variant="outline"
-                onClick={() => void follow(again(step.asked.continue))}
-              >
-                Try again
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-      {step.at === "prerequisite" && (
-        <div className="grid gap-2 text-sm">
-          <p>{step.out.prerequisite.message}</p>
-          <p className="text-muted-foreground">{step.out.fix}</p>
-          <div>
-            <Button
-              variant="outline"
-              onClick={() => void follow(again(step.out.continue))}
-            >
-              Done, continue
-            </Button>
-          </div>
-        </div>
-      )}
-      {step.at === "completed" && (
-        <p role="status" className="text-sm">
-          Added {step.out.item}
-          {step.out.deploymentRequired &&
-            `; deploy ${name} for it to take effect`}
-        </p>
-      )}
-      {step.at === "failed" && <ErrorText error={step.error} />}
     </div>
   );
 }

@@ -3,7 +3,12 @@
 // project's own eve (`exec eve build|start|add|link|deploy`) and Vercel CLI (`exec vercel
 // --version|env add`). Nothing is downloaded and nothing leaves the machine.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -150,9 +155,12 @@ if (args[0] === "install") {
   eve(args.slice(2));
 } else if (args[0] === "exec" && args[1] === "vercel") {
   if (args[2] === "--version") process.stdout.write("50.1.0\n");
-  // `env add <name> production`: the value comes on stdin and is dropped.
-  else if (args[2] === "env" && args[3] === "add") process.stdin.resume();
-  else fail(`unexpected vercel ${args.slice(2).join(" ")}`);
+  // `env add <name> production`: the value comes on stdin and is dropped; the name is kept in
+  // the agent's `.e2e-pushed.txt`.
+  else if (args[2] === "env" && args[3] === "add") {
+    appendFileSync(join(cwd, ".e2e-pushed.txt"), `${args[4]}\n`);
+    process.stdin.resume();
+  } else fail(`unexpected vercel ${args.slice(2).join(" ")}`);
 } else {
   fail(`unexpected ${args.join(" ")}`);
 }

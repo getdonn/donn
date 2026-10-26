@@ -32,7 +32,7 @@ const FIXTURE = join(
 
 /**
  * A persona secret's value, in the daemon's environment only (`secret://env/E2E_SECRET`, the
- * `API_TOKEN` of agents box and cloud): the page must never show it.
+ * `API_TOKEN` of agents box and sky): the page must never show it.
  */
 export const E2E_SECRET = "e2e-secret-value-7f3a91";
 
@@ -81,7 +81,8 @@ function project(dir: string) {
     join(FIXTURE, "project/checkout-api.yaml"),
     join(dir, ".donn/persona.yaml"),
   );
-  // Agents, one per target (box and cloud take a persona secret), an MCP server naming one
+  // Agents, one per target and a second vercel one (box and sky take a persona secret from the
+  // env provider, cloud a plain value), an MCP server naming one
   // secret twice and a default model, for each group.
   appendFileSync(
     join(dir, ".donn/persona.yaml"),
@@ -93,6 +94,10 @@ function project(dir: string) {
       target: self-host
       env: { API_TOKEN: "secret://env/E2E_SECRET" }
     cloud:
+      template: "eve:blank"
+      target: vercel
+      env: { GREETING: "hello" }
+    sky:
       template: "eve:blank"
       target: vercel
       env: { API_TOKEN: "secret://env/E2E_SECRET" }
