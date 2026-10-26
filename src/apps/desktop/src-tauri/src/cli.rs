@@ -465,11 +465,9 @@ mod tests {
 
     #[test]
     fn version_runs_the_binary_with_the_located_path() {
-        use std::os::unix::fs::PermissionsExt;
-        let bin = std::env::temp_dir().join("donn-cli-test-version");
+        let _serial = serial();
         let body = "#!/bin/sh\n[ \"$1\" = --version ] && [ \"$#\" = 1 ] || exit 3\necho \"0.14.2 $PATH\"\n";
-        std::fs::write(&bin, body).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let bin = script("donn-cli-test-version", body);
         let donn = Donn::new(bin.clone(), Some("/opt/x:/usr/bin:/bin".into()));
         assert_eq!(donn.version().unwrap(), "0.14.2 /opt/x:/usr/bin:/bin");
 
@@ -483,10 +481,8 @@ mod tests {
 
     #[test]
     fn version_is_bounded_when_donn_hangs() {
-        use std::os::unix::fs::PermissionsExt;
-        let bin = std::env::temp_dir().join("donn-cli-test-version-hang");
-        std::fs::write(&bin, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _serial = serial();
+        let bin = script("donn-cli-test-version-hang", "#!/bin/sh\nsleep 30\n");
         let start = Instant::now();
         let err = Donn::new(bin.clone(), None).version().unwrap_err();
         assert!(
