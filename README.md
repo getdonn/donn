@@ -276,7 +276,8 @@ files: `create`, `sync` and `build` write `secret://` refs and env names only.
 eve's setup questions are asked on a terminal; elsewhere (and with `--json`) `add` exits 2 with
 the question and the command that continues it, `--answer key=<JSON>` added. A secret question is
 never answered on a command line: donn names the variable eve reads, to set before running it
-again. eve's `eve link` prerequisite is run for a vercel agent and shown as a step for the others.
+again. `--answer` is taken only for a question eve has asked that agent before (donn cannot tell
+an unasked secret from a plain question): run without it first. eve's `eve link` prerequisite is run for a vercel agent and shown as a step for the others.
 
 **`local`** is for trying and developing an agent. `run` builds it and starts `eve start` on
 `127.0.0.1` with a free port, `NODE_ENV=production`, secrets resolved into its environment and a

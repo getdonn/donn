@@ -178,22 +178,56 @@ const eveArgs = (item: string, state: AddState) => [
   ...[...state.answers].flatMap(([k, v]) => ["--answer", `${k}=${v}`]),
 ];
 
-/** The secret keys questions asked, by item: `<home>/agents/<hash>/<name>.add.json`. */
-type Secrets = Record<string, Record<string, string>>;
+/**
+ * The questions eve asked, by item: `<home>/agents/<hash>/<name>.add.json`. `environment` maps a
+ * secret's key to its variable; `asked` lists every other key. Only those take an answer: donn
+ * cannot tell an unasked secret from a plain question, and eve takes either from its argv.
+ */
+interface Asked {
+  environment: Record<string, Record<string, string>>;
+  asked: Record<string, string[]>;
+}
 
-const secretsFile = (home: string, root: string, name: string) =>
+const askedFile = (home: string, root: string, name: string) =>
   agentStatePath(home, root, `${name}.add.json`);
 
-async function readSecrets(file: string): Promise<Secrets> {
+const record = (value: unknown) =>
+  typeof value === "object" && value !== null ? value : {};
+
+async function readAsked(file: string): Promise<Asked> {
   try {
-    const raw: unknown = JSON.parse(await readFile(file, "utf8"));
-    const environment = (raw as { environment?: unknown })?.environment;
-    return typeof environment === "object" && environment !== null
-      ? (environment as Secrets)
-      : {};
+    const raw = record(JSON.parse(await readFile(file, "utf8")));
+    return {
+      environment: record(
+        (raw as { environment?: unknown }).environment,
+      ) as Asked["environment"],
+      asked: record((raw as { asked?: unknown }).asked) as Asked["asked"],
+    };
   } catch {
-    return {};
+    return { environment: {}, asked: {} };
   }
+}
+
+/** Records the question eve asked for `item`: a secret's variable, else its key(s). */
+async function recordAsked(
+  file: string,
+  item: string,
+  question: AgentQuestion,
+): Promise<void> {
+  const state = await readAsked(file);
+  if (question.kind === "environment" && question.variable) {
+    state.environment[item] = {
+      ...state.environment[item],
+      [question.key]: question.variable,
+    };
+  } else {
+    const keys = [
+      question.key,
+      ...(question.editable ? [question.editable.key] : []),
+    ];
+    state.asked[item] = [...new Set([...(state.asked[item] ?? []), ...keys])];
+  }
+  await writeFileAtomic(file, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 /** `donn agent add <name> <item>`. */
@@ -212,7 +246,7 @@ export async function add(
   const ctx = await projectContext(io, options.project);
   const { root, agent, dir } = await loadCreatedAgent(ctx, io, name);
   const lock = agentLockPath(ctx.home, root, name);
-  const file = secretsFile(ctx.home, root, name);
+  const file = askedFile(ctx.home, root, name);
 
   const continuing = (state: AddState) => [
     "agent",
@@ -233,9 +267,15 @@ export async function add(
       )
       .join(" ")}`;
 
-  // A secret is never answered on a command line: refused before eve sees it.
-  const secrets = await readSecrets(file);
-  const known = Object.hasOwn(secrets, item) ? secrets[item]! : {};
+  // A secret is never answered on a command line, and neither is a question eve has not asked
+  // (it could be a secret): both refused before eve sees them.
+  const state0 = await readAsked(file);
+  const known = Object.hasOwn(state0.environment, item)
+    ? state0.environment[item]!
+    : {};
+  const keys = new Set(
+    Object.hasOwn(state0.asked, item) ? state0.asked[item] : [],
+  );
   for (const [key] of given) {
     const variable = Object.hasOwn(known, key) ? known[key] : undefined;
     if (variable !== undefined) {
@@ -246,6 +286,16 @@ export async function add(
           key,
           variable,
           fix: `set ${variable} in the environment, then run donn agent add ${name} ${item} without --answer ${key}`,
+        },
+      );
+    }
+    if (!keys.has(key)) {
+      throw new CliError(
+        "not-asked",
+        `eve has not asked ${key} for ${item} yet; an answer is taken only for a question eve asked`,
+        {
+          key,
+          fix: `run donn agent add ${name} ${item} without --answer ${key}, then answer what eve asks`,
         },
       );
     }
@@ -279,16 +329,8 @@ export async function add(
             outcome = outcomeOf(event) ?? outcome;
           },
         });
-        const asked =
-          outcome?.type === "question" ? outcome.question : undefined;
-        if (asked?.kind === "environment" && asked.variable) {
-          const secrets = await readSecrets(file);
-          secrets[item] = { ...secrets[item], [asked.key]: asked.variable };
-          await writeFileAtomic(
-            file,
-            `${JSON.stringify({ environment: secrets }, null, 2)}\n`,
-          );
-        }
+        if (outcome?.type === "question")
+          await recordAsked(file, item, outcome.question);
         return run;
       },
       { refreshMs: LOCK_REFRESH_MS },

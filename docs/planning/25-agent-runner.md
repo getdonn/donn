@@ -323,6 +323,12 @@ Workflow world's database variable for `self-host`).
   a value that is not already JSON (a bare string becomes `"…"`). eve's `--yes` accepts its
   recommended answers; donn does not pass it to `eve add`, keeping the decision above that
   defaults are never accepted unseen.
+  *Amended 2026-10-26 (real-eve check, maintainer's decision):* eve 0.83.2 takes an `--answer`
+  for a secret question before its own environment rule, and donn can only tell a secret from a
+  plain question once eve has asked it. So `--answer` is taken only for a key eve has asked that
+  agent for that item before (recorded beside the agent's state; refused otherwise as
+  `not-asked`, before eve runs), and the bridge's `/answer` only for the job's own question.
+  Pre-answering a first run from a script is no longer possible; after one run it is.
 - **Exit 1** shows eve's last event as is, with the command that failed.
 - A prerequisite eve reports (`eve link`) is run by donn only for `vercel` targets; otherwise it
   is shown as a step for the user.
