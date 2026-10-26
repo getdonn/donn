@@ -369,7 +369,16 @@ file manager for a folder); a daemon installed as a login service (`donn daemon 
 has no `$VISUAL`, so it uses the OS opener; a daemon started from your shell has your `$VISUAL`. Secrets never
 reach the page: it shows `secret://` refs and variable names, never values. A run or deploy started
 from the app has no shell, so it refuses `secret://env/...` refs: use the `keychain` provider for
-those. The desktop app (a Tauri shell around the same page) is deferred.
+those.
+
+## Desktop app
+
+`src/apps/desktop` is donn in the menu bar: the default persona and each live session's persona at
+a glance, a switcher, the created agents with run and stop, and "Open donn" for the web app in a
+window. Like the web app it has no logic of its own: it runs the installed `donn` (0.14.0 or later).
+It is built from source for now (macOS and Linux): `pnpm --filter @getdonn/desktop bundle`, then
+copy `donn.app` to `/Applications`. Prerequisites, output paths and how it finds `donn` are in
+[`src/apps/desktop/README.md`](src/apps/desktop/README.md).
 
 ## Upgrading from zzpersona
 

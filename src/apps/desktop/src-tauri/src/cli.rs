@@ -41,6 +41,14 @@ impl fmt::Display for Missing {
 
 impl std::error::Error for Missing {}
 
+/// Why the app cannot use the CLI (spec 28 §2): the tray shows only this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliProblem {
+    NotFound,
+    /// `donn --version` printed this, below `MIN_CLI`.
+    TooOld(String),
+}
+
 /// A failed CLI call: the CLI's `{ error }` envelope, or `unreadable`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CliFailure {
@@ -104,6 +112,11 @@ pub fn version_ok(version_output: &str, min: (u32, u32, u32)) -> bool {
         return false;
     };
     !v.pre && (v.major, v.minor, v.patch) >= min
+}
+
+/// The version gate on `donn --version` output: `None` when it is new enough.
+pub fn version_problem(version_output: &str) -> Option<CliProblem> {
+    (!version_ok(version_output, MIN_CLI)).then(|| CliProblem::TooOld(version_output.trim().into()))
 }
 
 /// The failure for a non-zero exit: the CLI's envelope from stdout, then stderr.
@@ -332,6 +345,30 @@ impl Donn {
         answer(status, &out.stdout, &out.stderr)
     }
 
+    /// `donn --version`'s trimmed stdout (no `--json`: it would print an
+    /// object). An error says why there is none.
+    pub fn version(&self) -> Result<String, String> {
+        let out = self
+            .command()
+            .arg("--version")
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| format!("could not run {}: {e}", self.bin.display()))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(format!(
+                "{} --version: {}",
+                self.bin.display(),
+                stderr.trim()
+            ));
+        }
+        if stdout.is_empty() {
+            return Err(format!("{} --version printed nothing", self.bin.display()));
+        }
+        Ok(stdout)
+    }
+
     /// Starts `donn status --watch --json`: stdout piped, stdin and stderr null.
     pub fn spawn_watch(&self) -> std::io::Result<Child> {
         self.command()
@@ -403,6 +440,37 @@ mod tests {
         assert!(version_ok("1.0.0", min));
         assert!(!version_ok("garbage", min));
         assert!(!version_ok("", min));
+    }
+
+    #[test]
+    fn version_problem_names_the_old_version() {
+        assert_eq!(version_problem("0.14.0\n"), None);
+        assert_eq!(
+            version_problem("0.13.2\n"),
+            Some(CliProblem::TooOld("0.13.2".into()))
+        );
+        assert_eq!(
+            version_problem(" 0.14.0-next.1 "),
+            Some(CliProblem::TooOld("0.14.0-next.1".into()))
+        );
+    }
+
+    #[test]
+    fn version_runs_the_binary_with_the_located_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = std::env::temp_dir().join("donn-cli-test-version");
+        let body = "#!/bin/sh\n[ \"$1\" = --version ] && [ \"$#\" = 1 ] || exit 3\necho \"0.14.2 $PATH\"\n";
+        std::fs::write(&bin, body).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let donn = Donn::new(bin.clone(), Some("/opt/x:/usr/bin:/bin".into()));
+        assert_eq!(donn.version().unwrap(), "0.14.2 /opt/x:/usr/bin:/bin");
+
+        std::fs::write(&bin, "#!/bin/sh\necho nope >&2\nexit 1\n").unwrap();
+        assert!(donn.version().unwrap_err().contains("nope"));
+        std::fs::write(&bin, "#!/bin/sh\n").unwrap();
+        assert!(donn.version().is_err(), "no output is no version");
+        std::fs::remove_file(&bin).unwrap();
+        assert!(donn.version().is_err());
     }
 
     #[test]
