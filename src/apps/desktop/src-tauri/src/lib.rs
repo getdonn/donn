@@ -47,6 +47,10 @@ pub fn run() {
                 code: None, api, ..
             } => api.prevent_exit(),
             RunEvent::Exit => watch::stop(app),
+            // macOS: opening the running app again (Finder, `open -a`) is a
+            // reopen, not a second instance (spec 28 §4).
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => window::open(app, None),
             _ => {}
         });
 }

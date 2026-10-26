@@ -26,11 +26,54 @@ const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'~');
 
 /// The window's state: the bridge's port, which `on_navigation` reads (a
-/// daemon restart moves it), and `daemon` in the last snapshot.
+/// daemon restart moves it), and the sign-ins.
 #[derive(Default)]
 struct Shell {
     port: Arc<AtomicU16>,
-    daemon: Mutex<Option<bool>>,
+    track: Mutex<Track>,
+}
+
+/// The daemon as last known (snapshots, or a `donn ui` that answered, which
+/// starts it) and the `donn ui` sign-ins: the newest, and how many run.
+#[derive(Default)]
+struct Track {
+    daemon: Option<bool>,
+    latest: u64,
+    running: u32,
+}
+
+impl Track {
+    fn up(&self) -> bool {
+        self.daemon == Some(true)
+    }
+
+    /// A snapshot. True: the daemon is back after being down, and no sign-in
+    /// that would load a fresh URL anyway is running.
+    fn snapshot(&mut self, up: bool) -> bool {
+        let before = self.daemon.replace(up);
+        before == Some(false) && up && self.running == 0
+    }
+
+    /// A sign-in starts; its number.
+    fn begin(&mut self) -> u64 {
+        self.latest += 1;
+        self.running += 1;
+        self.latest
+    }
+
+    /// A sign-in ended (`ok`: `donn ui` answered, so the daemon is up). True:
+    /// it is the newest; an older one's result is dropped.
+    fn finish(&mut self, seq: u64, ok: bool) -> bool {
+        self.running = self.running.saturating_sub(1);
+        if ok {
+            self.daemon = Some(true);
+        }
+        self.is_latest(seq)
+    }
+
+    fn is_latest(&self, seq: u64) -> bool {
+        seq == self.latest
+    }
 }
 
 /// Where a navigation goes.
@@ -38,9 +81,10 @@ struct Shell {
 enum Nav {
     /// The bridge: the webview loads it.
     Load,
-    /// Another `http(s)` URL: the default browser.
+    /// Another `http(s)` URL, not on `127.0.0.1`: the default browser.
     Browser,
-    /// Anything else (`file:`, `javascript:`, `about:`): nowhere.
+    /// Anything else (`file:`, `javascript:`, `about:`, a stale bridge URL
+    /// with its one-time code): nowhere.
     Deny,
 }
 
@@ -63,7 +107,7 @@ pub fn agent_page(project: &str, name: &str) -> String {
 fn route(url: &Url, port: u16) -> Nav {
     if allowed_navigation(url, port) {
         Nav::Load
-    } else if matches!(url.scheme(), "http" | "https") {
+    } else if matches!(url.scheme(), "http" | "https") && url.host_str() != Some("127.0.0.1") {
         Nav::Browser
     } else {
         Nav::Deny
@@ -77,11 +121,6 @@ fn parse_ui(v: &Value) -> Option<(Url, u16)> {
     allowed_navigation(&url, port).then_some((url, port))
 }
 
-/// Whether a snapshot shows the daemon back after one that showed it down.
-fn came_back(before: Option<bool>, now: bool) -> bool {
-    before == Some(false) && now
-}
-
 /// Manages the window's state (at setup).
 pub fn install(app: &AppHandle) {
     app.manage(Shell::default());
@@ -93,7 +132,7 @@ pub fn open(app: &AppHandle, page: Option<String>) {
     let Some(state) = app.try_state::<Shell>() else {
         return;
     };
-    let up = *state.daemon.lock().unwrap() == Some(true);
+    let up = state.track.lock().unwrap().up();
     if page.is_none()
         && up
         && let Some(window) = app.get_webview_window(LABEL)
@@ -110,8 +149,8 @@ pub fn on_snapshot(app: &AppHandle, s: &Snapshot) {
     let Some(state) = app.try_state::<Shell>() else {
         return;
     };
-    let before = state.daemon.lock().unwrap().replace(s.daemon);
-    if came_back(before, s.daemon) {
+    let back = state.track.lock().unwrap().snapshot(s.daemon);
+    if back {
         daemon_back(app);
     }
 }
@@ -129,6 +168,10 @@ fn sign_in(app: &AppHandle, page: Option<String>, create: bool) {
     let Some(donn) = tray::donn(app) else {
         return;
     };
+    let Some(state) = app.try_state::<Shell>() else {
+        return;
+    };
+    let seq = state.track.lock().unwrap().begin();
     let app = app.clone();
     std::thread::spawn(move || {
         let mut args = vec!["ui", "--no-open"];
@@ -142,20 +185,28 @@ fn sign_in(app: &AppHandle, page: Option<String>, create: bool) {
                 fix: None,
             })
         });
+        let track = &app.state::<Shell>().track;
+        if !track.lock().unwrap().finish(seq, opened.is_ok()) {
+            return;
+        }
         match opened {
             Ok((url, port)) => {
                 let handle = app.clone();
-                let _ = app.run_on_main_thread(move || show(&handle, url, port, create));
+                let _ = app.run_on_main_thread(move || show(&handle, seq, url, port, create));
             }
             Err(failure) => tray::alert(&app, tray::failure_text(&failure)),
         }
     });
 }
 
-/// Main thread: the port first (`on_navigation` checks the new URL against
-/// it), then the existing window navigated, or a new one.
-fn show(app: &AppHandle, url: Url, port: u16, create: bool) {
+/// Main thread: unless a newer sign-in started, the port first
+/// (`on_navigation` checks the new URL against it), then the existing window
+/// navigated, or a new one.
+fn show(app: &AppHandle, seq: u64, url: Url, port: u16, create: bool) {
     let state = app.state::<Shell>();
+    if !state.track.lock().unwrap().is_latest(seq) {
+        return;
+    }
     state.port.store(port, Ordering::SeqCst);
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.navigate(url);
@@ -248,12 +299,15 @@ mod tests {
     fn routes_bridge_browser_or_nowhere() {
         assert_eq!(route(&url("http://127.0.0.1:4100/agents"), 4100), Nav::Load);
         assert_eq!(route(&url("https://example.com/"), 4100), Nav::Browser);
-        assert_eq!(route(&url("http://127.0.0.1:4101/"), 4100), Nav::Browser);
+        // Another port on 127.0.0.1 is a stale bridge URL (its one-time code
+        // with it): never the browser.
+        assert_eq!(route(&url("http://127.0.0.1:4101/#t=abc"), 4100), Nav::Deny);
+        assert_eq!(route(&url("https://127.0.0.1:4100/"), 4100), Nav::Deny);
         assert_eq!(route(&url("file:///etc/passwd"), 4100), Nav::Deny);
         assert_eq!(route(&url("javascript:alert(1)"), 4100), Nav::Deny);
         assert_eq!(route(&url("about:blank"), 4100), Nav::Deny);
         // Before any open the port is 0: nothing is the bridge.
-        assert_eq!(route(&url("http://127.0.0.1:4100/"), 0), Nav::Browser);
+        assert_eq!(route(&url("http://127.0.0.1:4100/"), 0), Nav::Deny);
     }
 
     #[test]
@@ -278,10 +332,49 @@ mod tests {
 
     #[test]
     fn the_daemon_comes_back_only_after_down() {
-        assert!(came_back(Some(false), true));
-        assert!(!came_back(None, true), "the first snapshot");
-        assert!(!came_back(Some(true), true));
-        assert!(!came_back(Some(false), false));
-        assert!(!came_back(Some(true), false));
+        let mut t = Track::default();
+        assert!(!t.snapshot(true), "the first snapshot");
+        assert!(!t.snapshot(true));
+        assert!(!t.snapshot(false));
+        assert!(!t.snapshot(false));
+        assert!(t.snapshot(true), "down, then up");
+        assert!(!t.snapshot(false) && !t.snapshot(false));
+    }
+
+    #[test]
+    fn an_open_that_started_the_daemon_is_no_comeback() {
+        let mut t = Track::default();
+        t.snapshot(false);
+        let open = t.begin();
+        assert!(t.finish(open, true));
+        assert!(!t.snapshot(true), "the open already signed in");
+        assert!(t.up());
+    }
+
+    #[test]
+    fn no_comeback_while_a_sign_in_runs() {
+        let mut t = Track::default();
+        t.snapshot(false);
+        let open = t.begin();
+        // The daemon is up before `donn ui` returns: that open signs in.
+        assert!(!t.snapshot(true));
+        assert!(t.finish(open, true));
+        // A failed sign-in leaves the daemon as the snapshots say.
+        t.snapshot(false);
+        let open = t.begin();
+        assert!(t.finish(open, false));
+        assert!(!t.up());
+        assert!(t.snapshot(true));
+    }
+
+    #[test]
+    fn only_the_latest_sign_in_is_shown() {
+        let mut t = Track::default();
+        let a = t.begin();
+        let b = t.begin();
+        assert!(!t.finish(a, true), "older than b: dropped");
+        assert!(t.finish(b, true));
+        let c = t.begin();
+        assert!(t.finish(c, false), "the latest, even failed, is reported");
     }
 }
