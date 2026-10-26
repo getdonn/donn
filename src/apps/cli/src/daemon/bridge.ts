@@ -9,6 +9,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ANSWER_KEY } from "../agent/questions.js";
 import { CliError } from "../errors.js";
 import {
   knownProjects,
@@ -19,7 +20,7 @@ import {
   type Opener,
 } from "./bridge-open.js";
 import { failure, readBody, runRequest, sameToken } from "./http.js";
-import { createJobs, type JobEvent } from "./jobs.js";
+import { createJobs, secretVariable, type JobEvent } from "./jobs.js";
 import type { runInProcess } from "./run.js";
 import { uiAllowed } from "./ui-allow.js";
 
@@ -139,12 +140,6 @@ function send(
   });
   res.end(`${JSON.stringify(body)}\n`);
 }
-
-/**
- * A question's key: `[a-z][a-z0-9-]*` parts, any case, joined by `.` (spec 25 §6's example key
- * is `github.app`). Nothing a flag parser or eve could read as more than a key.
- */
-const ANSWER_KEY = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/i;
 
 /** `{ key, value }` (`/v1/jobs/<id>/answer`), or why not. */
 function answerRequest(text: string): string | { key: string; value: unknown } {
@@ -473,7 +468,23 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
       const next = jobs.continuation(id, body.key, body.value);
       if (typeof next !== "string") return next;
       if (next === "no-such-job") noSuchJob(res, id);
-      else
+      else if (next === "secret-question") {
+        // 25 §6: a secret is never answered on a command line; eve reads its variable.
+        const variable = secretVariable(jobs.get(id)?.question?.question);
+        send(
+          res,
+          400,
+          failure(
+            "secret-question",
+            `job ${id} asks for a secret: set ${variable} where eve runs, never as an answer`,
+            {
+              id,
+              variable,
+              fix: `a job runs eve in the daemon's environment: set ${variable} there and start the job again, or run the same donn agent add in a terminal with ${variable} set`,
+            },
+          ),
+        );
+      } else
         send(
           res,
           409,

@@ -35,7 +35,8 @@ donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile 
 donn agent deploy pr-bot         # vercel: link, env push after confirming, eve deploy
 ```
 
-Also `list`, `sync`, `stop`, `logs`, `env` and `exec` (meant for entrypoints and scripts: no
+Also `add` (an eve registry item, such as `channel/github`, with eve's questions), `templates`,
+`list`, `sync`, `stop`, `logs`, `env` and `exec` (meant for entrypoints and scripts: no
 stdin or terminal). Run self-host images with `docker run --init`. The
 [README's Agents section](https://github.com/getdonn/donn#agents) covers targets, the two images
 to ship, `env.json` and secrets.

@@ -4,6 +4,7 @@ import { Command, CommanderError, Option } from "commander";
 import type { AgentControl } from "./agent/run.js";
 import type { Spawn } from "./agent/spawn.js";
 import {
+  agentAddCommand,
   agentBuildCommand,
   agentCreateCommand,
   agentDeployCommand,
@@ -14,6 +15,7 @@ import {
   agentRunCommand,
   agentStopCommand,
   agentSyncCommand,
+  agentTemplatesCommand,
 } from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
@@ -106,6 +108,8 @@ export interface CliIo {
   spawn?: Spawn;
   /** Injected in tests; downloads eve's template tarballs. Defaults to globalThis.fetch. */
   fetch?: typeof fetch;
+  /** A line typed on the terminal after `prompt`; undefined when there is none. Defaults to a TTY prompt. */
+  ask?: (prompt: string) => Promise<string | undefined>;
   /** Set inside the daemon: its running agents, so `agent run|stop|list` use them directly. */
   agents?: AgentControl;
 }
@@ -554,6 +558,41 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .action((name: string, options) =>
           handle(options.json, () => agentCreateCommand(io, name, options)),
+        );
+
+      agent
+        .command("add")
+        .description(
+          "Add an eve registry item (channel, connection, tool…) to a created agent: eve add, its questions asked or returned",
+        )
+        .argument("<name>", "the agent, as in agents.define")
+        .argument("<item>", "the item, as eve add takes it: channel/github")
+        .option(
+          "--answer <key=json>",
+          "answer eve's question <key> (repeatable); a value that is not JSON is a string",
+          (value: string, previous: string[] = []) => [...previous, value],
+        )
+        .option(
+          "--skip-install",
+          "skip eve's dependency install (the continuation sets it once installed)",
+        )
+        .option("--project <dir>", "the project folder (default: here)")
+        .option(
+          "--json",
+          "print { status, item, … }: completed, needs-answer (exit 2, with the command that continues) or needs-prerequisite (exit 2)",
+        )
+        .action((name: string, item: string, options) =>
+          handle(options.json, () => agentAddCommand(io, name, item, options)),
+        );
+
+      agent
+        .command("templates")
+        .description(
+          "List the templates agent create takes, with the Vercel-only services each uses",
+        )
+        .option("--json", "print { templates } as JSON")
+        .action((options) =>
+          handle(options.json, () => agentTemplatesCommand(io, options)),
         );
 
       agent

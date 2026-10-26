@@ -253,6 +253,8 @@ donn agent env pr-bot            # names and secret refs; --resolve prints value
 donn agent exec pr-bot -- <cmd>  # a command in the agent's folder with its env resolved
 donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile and env.json
 donn agent deploy pr-bot         # vercel: eve link, env push after confirming, eve deploy
+donn agent add pr-bot channel/github   # eve add, its questions asked (or --answer key=<JSON>)
+donn agent templates             # the templates create takes, with their Vercel-only services
 ```
 
 Every subcommand takes `--json` and `--project <dir>`.
@@ -269,6 +271,12 @@ created agent it reaches and restarts a running one; without it, `build` and `de
 agent whose donn files are older than its persona (`agent-stale`: `donn agent sync` first), and a
 foreground `run` warns. Secret values never go in the agent's
 files: `create`, `sync` and `build` write `secret://` refs and env names only.
+
+**`add`.** `donn agent add <name> <item>` runs the agent's own `eve add <item> --non-interactive`.
+eve's setup questions are asked on a terminal; elsewhere (and with `--json`) `add` exits 2 with
+the question and the command that continues it, `--answer key=<JSON>` added. A secret question is
+never answered on a command line: donn names the variable eve reads, to set before running it
+again. eve's `eve link` prerequisite is run for a vercel agent and shown as a step for the others.
 
 **`local`** is for trying and developing an agent. `run` builds it and starts `eve start` on
 `127.0.0.1` with a free port, `NODE_ENV=production`, secrets resolved into its environment and a

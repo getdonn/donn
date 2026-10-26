@@ -1,3 +1,4 @@
+import { ANSWER_KEY } from "../agent/questions.js";
 import { allowedRun } from "./run.js";
 
 // The commands the loopback bridge runs for the UI (`POST /v1/run`), each with `--json`. A
@@ -30,6 +31,8 @@ interface Form {
   refused?: Readonly<Record<string, string>>;
   /** Machine- or registry-wide: runs without a project, in the daemon's home. */
   global?: true;
+  /** Takes `--answer=<key>=<JSON>`, one argument each, as often as asked (`agent add`). */
+  answers?: true;
 }
 
 const OVERLAY = ["--no-overlay", "--local"];
@@ -112,6 +115,17 @@ const AGENT: Readonly<Record<string, Form>> = {
         "agent logs --follow never ends: the UI reads the agent's events",
     },
   },
+  add: {
+    switches: ["--skip-install"],
+    values: PROJECT,
+    args: [2, 2],
+    answers: true,
+    refused: {
+      "--answer":
+        "agent add: the UI sends --answer=<key>=<JSON> as one argument",
+    },
+  },
+  templates: { global: true },
 };
 
 /** Commands the UI never runs, with why. */
@@ -156,7 +170,7 @@ export function uiAllowed(argv: readonly string[]): UiVerdict {
       return no("agent exec is never run from the UI: it runs any command");
     if (sub === undefined || !Object.hasOwn(AGENT, sub))
       return no(
-        "agent takes list, create, sync, build, deploy, env, run, stop or logs",
+        "agent takes list, create, sync, build, deploy, env, run, stop, logs, add or templates",
       );
     return check(`agent ${sub}`, AGENT[sub]!, argv.slice(2));
   }
@@ -178,6 +192,14 @@ function check(name: string, form: Form, rest: readonly string[]): UiVerdict {
       continue;
     }
     if (token === "--") return no(`${name}: nothing passes through after --`);
+    if (form.answers && token.startsWith("--answer=")) {
+      // The key as POST /v1/jobs/<id>/answer checks it; the value is the CLI's to read.
+      const at = token.indexOf("=", "--answer=".length);
+      const key = at === -1 ? "" : token.slice("--answer=".length, at);
+      if (!ANSWER_KEY.test(key) || at === token.length - 1)
+        return no(`${name}: --answer=<key>=<JSON>, the key a question's`);
+      continue;
+    }
     if (form.refused && Object.hasOwn(form.refused, token))
       return no(form.refused[token]!);
     if (seen.has(token)) return no(`${name}: ${token} given twice`);

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { CliError } from "./errors.js";
 
@@ -42,10 +42,15 @@ const LOCK_TIMEOUT_MS = 5_000;
 /** Holders write a small file and let go in milliseconds; an older lock was abandoned. */
 const LOCK_STALE_MS = 10_000;
 
-/** Serialize `body` across processes with a directory lock (mkdir is atomic). */
+/**
+ * Serialize `body` across processes with a directory lock (mkdir is atomic). A body that runs
+ * longer than a write (`agent add` drives eve) passes `refreshMs`: the lock's time is renewed at
+ * that interval, so others do not take it for abandoned.
+ */
 export async function withFileLock<T>(
   lock: string,
   body: () => Promise<T>,
+  options: { refreshMs?: number } = {},
 ): Promise<T> {
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   await mkdir(dirname(lock), { recursive: true });
@@ -73,9 +78,17 @@ export async function withFileLock<T>(
       await new Promise((resolve) => setTimeout(resolve, LOCK_POLL_MS));
     }
   }
+  const refresh =
+    options.refreshMs === undefined
+      ? undefined
+      : setInterval(() => {
+          const now = new Date();
+          void utimes(lock, now, now).catch(() => {});
+        }, options.refreshMs);
   try {
     return await body();
   } finally {
+    clearInterval(refresh);
     await rm(lock, { recursive: true, force: true });
   }
 }

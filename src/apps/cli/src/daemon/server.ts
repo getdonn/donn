@@ -37,6 +37,7 @@ import type {
   SessionStatus,
 } from "./client.js";
 import { failure, readBody, runRequest, sameToken } from "./http.js";
+import { redactAnswers } from "./jobs.js";
 import { createLog } from "./log.js";
 import { daemonPaths, privateSocketDir } from "./paths.js";
 import { isDaemonProcess } from "./process.js";
@@ -753,7 +754,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     cwd,
     lines,
   ) => {
-    await log(`run ${JSON.stringify(argv)} in ${JSON.stringify(cwd)}`);
+    // An answer's value is the user's: never in the log.
+    await log(
+      `run ${JSON.stringify(redactAnswers(argv))} in ${JSON.stringify(cwd)}`,
+    );
     const result = await runInProcess(runIo, argv, cwd, lines);
     const created = result.exitCode === 0 && agentCreated(argv, cwd);
     // Unless the pass the index change started has announced it already.

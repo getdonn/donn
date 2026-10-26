@@ -21,6 +21,18 @@ import { allowedRun, runInProcess, type RunResult } from "./daemon/run.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
 import { uiAllowed } from "./daemon/ui-allow.js";
 import { createSession } from "./session.js";
+import {
+  agentProbe,
+  agentProject,
+  createAgent,
+  SECRETS,
+} from "./test/created-agent.js";
+import {
+  COMPLETED,
+  INPUT_REQUIRED,
+  SECRET_PREREQUISITE,
+} from "./test/eve-add/recordings.js";
+import { fakeEve, type FakeEve } from "./test/fake-eve.js";
 import { installedProbe, quietIo, seed, zz, type Seeded } from "./test/seed.js";
 
 // The loopback bridge for the local web UI: Host/Origin checks, the one-time code and the UI
@@ -315,6 +327,20 @@ describe("uiAllowed", () => {
       ["agent", "run", "bot", "--json"],
       ["agent", "stop", "bot", "--json"],
       ["agent", "logs", "bot", "--json"],
+      ["agent", "add", "bot", "channel/github", "--json"],
+      [
+        "agent",
+        "add",
+        "bot",
+        "channel/github",
+        "--skip-install",
+        '--answer=github-events=["pull_request"]',
+        '--answer=github.app="donn-bot"',
+        "--project",
+        "/p",
+        "--json",
+      ],
+      ["agent", "templates", "--json"],
     ]) {
       expect(uiAllowed(argv), argv.join(" ")).toMatchObject({ ok: true });
     }
@@ -351,6 +377,11 @@ describe("uiAllowed", () => {
         project: false,
       });
     expect(uiAllowed(["login", "https://r", "--json"])).toMatchObject({
+      project: false,
+    });
+    expect(uiAllowed(["agent", "templates", "--json"])).toEqual({
+      ok: true,
+      name: "agent templates",
       project: false,
     });
     for (const argv of [
@@ -414,6 +445,18 @@ describe("uiAllowed", () => {
       [["publish", "--json"], /argument/],
       [["diff", "--json"], /argument/],
       [["write", "--json", "--force"], /--force/],
+      [["agent", "add", "bot", "--json"], /argument/],
+      [
+        ["agent", "add", "bot", "x", "--answer", "k=1", "--json"],
+        /one argument/,
+      ],
+      [["agent", "add", "bot", "x", "--answer=k", "--json"], /--answer=/],
+      [["agent", "add", "bot", "x", "--answer=k=", "--json"], /--answer=/],
+      [["agent", "add", "bot", "x", "--answer=1k=1", "--json"], /--answer=/],
+      [["agent", "add", "bot", "x", "--answer=a b=1", "--json"], /--answer=/],
+      [["agent", "add", "bot", "x", "--yes", "--json"], /--yes/],
+      [["agent", "create", "bot", "--answer=k=1", "--json"], /--answer=/],
+      [["agent", "templates", "x", "--json"], /argument/],
     ] as const) {
       const verdict = uiAllowed(argv);
       expect(verdict.ok, JSON.stringify(argv)).toBe(false);
@@ -1081,6 +1124,36 @@ describe("POST /ui/open", { timeout: 20_000 }, () => {
     });
   });
 
+  it("logs each run's argv with its --answer values hidden", async () => {
+    pick(s.repo);
+    const daemon = await startTestDaemon();
+    const { port, code } = (await uiOpen(daemon)).body as {
+      port: number;
+      code: string;
+    };
+    const { token } = (
+      await call(port, "POST", "/v1/session", { body: { code } })
+    ).body as { token: string };
+    const res = await call(port, "POST", "/v1/run", {
+      token,
+      body: {
+        argv: [
+          "agent",
+          "add",
+          "kody",
+          "channel/github",
+          '--answer=github-app="ANSWER-VALUE"',
+          "--json",
+        ],
+        cwd: s.repo,
+      },
+    });
+    expect(res.status).toBe(200);
+    const log = readFileSync(join(s.home, "daemon/daemon.log"), "utf8");
+    expect(log).toContain("--answer=github-app=***");
+    expect(log).not.toContain("ANSWER-VALUE");
+  });
+
   it("rotates the UI token when the bridge reopens, and closes it with the daemon", async () => {
     const daemon = await startTestDaemon();
     const first = (await uiOpen(daemon)).body as { port: number; code: string };
@@ -1533,6 +1606,148 @@ describe("jobs", { timeout: 20_000 }, () => {
     const none = await answer({ key: "k", value: 1 }, plain);
     expect(none.status).toBe(409);
     expect(none.body).toMatchObject({ error: { code: "no-question" } });
+  });
+
+  /** A bridge running the real CLI against a created agent `kody`, eve faked. */
+  async function agentBridge(spawn: FakeEve) {
+    agentProject(s);
+    await createAgent(s);
+    pick(s.repo);
+    const { bridge: b } = await bridge({
+      io: {
+        ...quietIo({ cwd: s.repo, home: s.home }),
+        env: { DONN_HOME: s.home, HOME: s.home, ...SECRETS },
+        probe: agentProbe(),
+        spawn,
+      },
+    });
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    await stream.status;
+    const done = (id: string) =>
+      vi.waitFor(() =>
+        expect(
+          stream.events().find((e) => e.type === "job.done" && e.id === id),
+        ).toBeDefined(),
+      );
+    return { b, token, stream, done };
+  }
+
+  it("agent add: eve's question is a job.question; the answer continues it with eve's --answer", async () => {
+    const spawn = fakeEve({
+      replies: [
+        {
+          eve: ["add"],
+          when: (c) => !c.args.includes("--answer"),
+          lines: INPUT_REQUIRED,
+          exitCode: 2,
+        },
+        { eve: ["add"], lines: COMPLETED },
+      ],
+    });
+    const { b, token, stream, done } = await agentBridge(spawn);
+    const argv = ["agent", "add", "kody", "channel/github", "--json"];
+    const { id } = (
+      await call(b.port, "POST", "/v1/jobs", {
+        token,
+        body: { argv, cwd: s.repo },
+      })
+    ).body as { id: string };
+    await done(id);
+    expect(stream.events().find((e) => e.type === "job.question")).toEqual({
+      type: "job.question",
+      id,
+      question: expect.objectContaining({
+        key: "github-events",
+        kind: "multi-select",
+      }),
+      continue: [
+        "agent",
+        "add",
+        "kody",
+        "channel/github",
+        "--skip-install",
+        "--json",
+      ],
+    });
+    // eve's progress arrives as the job's.
+    expect(stream.events()).toContainEqual({
+      type: "job.progress",
+      id,
+      line: "Installed channel/github",
+    });
+
+    const answered = await call(b.port, "POST", `/v1/jobs/${id}/answer`, {
+      token,
+      body: { key: "github-events", value: ["pull_request"] },
+    });
+    expect(answered.status).toBe(202);
+    const next = (answered.body as { id: string }).id;
+    await done(next);
+    const view = await jobOf(b.port, token, next);
+    expect(view).toMatchObject({ state: "done", exitCode: 0, parent: id });
+    expect(JSON.parse(view.stdout as string)).toMatchObject({
+      status: "completed",
+      item: "channel/github",
+    });
+    const last = spawn.calls.at(-1)!.args;
+    expect(last.slice(last.indexOf("eve") + 1)).toEqual([
+      "add",
+      "channel/github",
+      "--non-interactive",
+      "--skip-install",
+      "--answer",
+      'github-events=["pull_request"]',
+    ]);
+    // The job's argv shows no answer value.
+    expect(view.argv).toEqual([
+      "agent",
+      "add",
+      "kody",
+      "channel/github",
+      "--skip-install",
+      "--json",
+      "--answer=github-events=***",
+    ]);
+  });
+
+  it("agent add: a secret question is refused an answer, 400 secret-question naming the variable", async () => {
+    const spawn = fakeEve({
+      replies: [{ eve: ["add"], lines: SECRET_PREREQUISITE, exitCode: 2 }],
+    });
+    const { b, token, stream, done } = await agentBridge(spawn);
+    const { id } = (
+      await call(b.port, "POST", "/v1/jobs", {
+        token,
+        body: {
+          argv: ["agent", "add", "kody", "channel/github", "--json"],
+          cwd: s.repo,
+        },
+      })
+    ).body as { id: string };
+    await done(id);
+    expect(
+      stream.events().find((e) => e.type === "job.question"),
+    ).toMatchObject({
+      question: { kind: "environment", variable: "GITHUB_APP_PRIVATE_KEY" },
+    });
+    const refused = await call(b.port, "POST", `/v1/jobs/${id}/answer`, {
+      token,
+      body: { key: "github-private-key", value: "s3cr3t" },
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body).toMatchObject({
+      error: {
+        code: "secret-question",
+        details: {
+          variable: "GITHUB_APP_PRIVATE_KEY",
+          fix: expect.stringContaining("GITHUB_APP_PRIVATE_KEY"),
+        },
+      },
+    });
+    expect(refused.text).not.toContain("s3cr3t");
+    expect(spawn.calls.filter((c) => c.args.includes("add"))).toHaveLength(1);
+    expect(await jobOf(b.port, token, id)).not.toHaveProperty("answeredBy");
   });
 });
 

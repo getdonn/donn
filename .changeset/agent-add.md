@@ -1,0 +1,5 @@
+---
+"@getdonn/cli": minor
+---
+
+`donn agent add <name> <item>` runs `eve add <item> --non-interactive` in a created agent, under its lock, and passes eve's setup questions on in eve's own shape (`key`, `message`, `kind`, `options`, `recommended`, `required`). On a terminal it asks them and continues; otherwise (and with `--json`) it exits 2 with `needs-answer`, the question and the command that continues it: answer with `--answer key=<JSON>` (repeatable; a value that is not JSON is taken as a string). A secret question (`kind: "environment"`) is never answered on a command line: donn names the variable eve reads and refuses `--answer` for it. For a vercel agent donn runs the `eve link` prerequisite itself; for others it exits 2 with `needs-prerequisite`. `donn agent templates` lists the templates `create` takes, each with the Vercel-only services its code uses, plus `eve:blank`. In `donn ui`, an `agent add` job's question is a `job.question` answered through `POST /v1/jobs/<id>/answer` (a secret question is refused there too), and answer values are hidden in the daemon log and in job views.
