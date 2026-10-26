@@ -552,6 +552,7 @@ describe("the sign-in link", () => {
       env: { DONN_REGISTRY_TOKEN: registry.token },
     });
     expect(r.stdout).toContain("mallory[2J at");
+    // eslint-disable-next-line no-control-regex -- asserting no control characters survive
     expect(r.stdout).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
   });
 

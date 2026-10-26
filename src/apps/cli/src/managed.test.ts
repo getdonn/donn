@@ -131,7 +131,10 @@ const manifestOf = (dir: string) =>
 const settingsOf = (dir: string) =>
   JSON.parse(
     readFileSync(join(dir, "managed-settings.d/50-donn.json"), "utf8"),
-  ) as Record<string, any>;
+  ) as {
+    permissions: { allow?: string[]; ask?: string[]; deny?: string[] };
+    claudeMd?: string;
+  };
 
 describe("donn managed build", () => {
   it("builds the org layer by default", async () => {
@@ -259,7 +262,8 @@ locks:
     expect(parsed.out).toBeNull();
     expect(
       parsed.report.entries.some(
-        (e: any) => e.outcome === "refused" && e.layer === "team/payments",
+        (e: { outcome: string; layer: string }) =>
+          e.outcome === "refused" && e.layer === "team/payments",
       ),
     ).toBe(true);
   });
@@ -278,7 +282,7 @@ targets:
     expect(r.code).toBe(0);
     const { report } = JSON.parse(r.stdout);
     const entries = report.entries.filter(
-      (e: any) =>
+      (e: { path: string; layer: string }) =>
         e.path.startsWith("policy") ||
         e.path.includes("strictKnownMarketplaces"),
     );

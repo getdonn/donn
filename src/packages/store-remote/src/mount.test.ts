@@ -67,7 +67,10 @@ describe("withRegistry", () => {
     const { home, personas, local, index } = setup();
     put(join(personas, "org/acme.yaml"), persona("local"));
     const store = withRegistry(local, home, index, () => {});
-    expect(((await store.load("org/acme")) as any).metadata.name).toBe("local");
+    expect(
+      ((await store.load("org/acme")) as { metadata: { name: string } })
+        .metadata.name,
+    ).toBe("local");
     expect(store.published("org/acme")).toBeUndefined();
     expect(store.dir?.("org/acme")).toBe("org");
   });

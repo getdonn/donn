@@ -8,7 +8,6 @@ import adapter, {
   patchAgentTs,
 } from "@getdonn/adapter-eve";
 import type {
-  AgentCompileInput,
   AgentCompileOutput,
   PortabilityEntry,
 } from "@getdonn/adapter-sdk";
