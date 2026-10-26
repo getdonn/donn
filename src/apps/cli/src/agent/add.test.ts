@@ -20,6 +20,7 @@ import {
 import { fakeEve, type FakeEve, type FakeEveCall } from "../test/fake-eve.js";
 import { seed, zz, type Seeded } from "../test/seed.js";
 import { askAnswers, parseAnswer, type AgentQuestion } from "./questions.js";
+import { agentStatePath } from "./registry.js";
 
 // `donn agent add`: eve add's question protocol, replayed from the spike's recordings
 // (docs/planning/26-gui.md, the 2026-10-25 amendment; 25-agent-runner.md §6). And
@@ -53,6 +54,13 @@ const askingEve = () =>
       { eve: ["add"], lines: PREREQUISITE, exitCode: 2 },
     ],
   });
+
+/** Questions eve asked before, as donn records them: their answers are taken. */
+const asked = (...keys: string[]) => {
+  const file = agentStatePath(s.home, s.repo, "kody.add.json");
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, JSON.stringify({ asked: { [ITEM]: keys } }));
+};
 
 const add = (argv: string[], extra: Partial<Parameters<typeof zz>[1]> = {}) =>
   zz(["agent", "add", "kody", ITEM, ...argv, "--project", s.repo], {
@@ -116,6 +124,8 @@ describe("donn agent add", () => {
 
   it("passes an answer to eve as --answer key=<JSON>; a local agent is shown the prerequisite", async () => {
     const spawn = askingEve();
+    expect((await add(["--json"], { spawn })).code).toBe(2);
+    spawn.calls.length = 0;
     const r = await add(
       ["--skip-install", '--answer=github-events=["pull_request"]', "--json"],
       { spawn },
@@ -159,6 +169,7 @@ describe("donn agent add", () => {
   });
 
   it("takes --answer key=<JSON> as two arguments, encoding a value that is not JSON", async () => {
+    asked("app-name", "private", "events");
     const spawn = fakeEve({
       replies: [{ eve: ["add"], lines: COMPLETED }],
     });
@@ -185,6 +196,30 @@ describe("donn agent add", () => {
       "--answer",
       "events=[1]",
     ]);
+  });
+
+  it("refuses an answer to a question eve has not asked, running nothing, never echoing it", async () => {
+    // Unasked, donn cannot tell a secret from a plain question: eve would take either from argv.
+    const spawn = askingEve();
+    const r = await add(
+      ["--answer=github-private-key=s3cr3t-FIRST", "--json"],
+      { spawn },
+    );
+    expect(r.code, r.stdout).toBe(1);
+    expect(JSON.parse(r.stdout).error).toMatchObject({
+      code: "not-asked",
+      key: "github-private-key",
+      fix: expect.stringContaining("without --answer github-private-key"),
+    });
+    expect(r.stdout + r.stderr).not.toContain("s3cr3t-FIRST");
+    expect(spawn.calls).toEqual([]);
+
+    // Asked once, its answer is taken.
+    expect((await add(["--json"], { spawn })).code).toBe(2);
+    const taken = await add(['--answer=github-events=["issues"]', "--json"], {
+      spawn,
+    });
+    expect(JSON.parse(taken.stdout).status).toBe("needs-prerequisite");
   });
 
   it("refuses an answer without a question's key, running nothing", async () => {
@@ -416,6 +451,7 @@ describe("donn agent add on a vercel agent", () => {
   });
 
   it("runs eve link for the prerequisite, then continues", async () => {
+    asked("github-events");
     let linked = false;
     const spawn = fakeEve({
       replies: [

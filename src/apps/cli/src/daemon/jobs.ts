@@ -89,7 +89,8 @@ export interface Jobs {
     | "no-such-job"
     | "no-question"
     | "answered"
-    | "secret-question";
+    | "secret-question"
+    | "not-asked";
   /** A job as `GET /v1/jobs/<id>` answers it. */
   view(job: Job): Record<string, unknown>;
   /** Cancels the queued jobs (each a `job.done` with `cancelled`) and starts none again. */
@@ -117,6 +118,17 @@ export function redactAnswers(argv: readonly string[]): string[] {
         ? hide(arg)
         : arg,
   );
+}
+
+/** The keys a question takes answers under: its own, and an editable-select's typed value's. */
+function questionKeys(question: unknown): string[] {
+  if (typeof question !== "object" || question === null) return [];
+  const { key, editable } = question as { key?: unknown; editable?: unknown };
+  const typed =
+    typeof editable === "object" && editable !== null
+      ? (editable as { key?: unknown }).key
+      : undefined;
+  return [key, typed].filter((k): k is string => typeof k === "string");
 }
 
 /** The variable a secret question (`kind: "environment"`) names; undefined for any other. */
@@ -270,6 +282,9 @@ export function createJobs(options: JobsOptions): Jobs {
       if (job.answeredBy !== undefined) return "answered";
       if (secretVariable(job.question.question) !== undefined)
         return "secret-question";
+      // Only the question asked: another key could be a secret eve has not asked yet.
+      if (!questionKeys(job.question.question).includes(key))
+        return "not-asked";
       return {
         argv: [
           ...job.question.continue,
