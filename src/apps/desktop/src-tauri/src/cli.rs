@@ -16,6 +16,10 @@ pub const MIN_CLI: (u32, u32, u32) = (0, 14, 0);
 /// What the login shell is asked: where `donn` is, and its own PATH (an app
 /// opened from Finder has a bare one, and `donn` is a Node script that needs
 /// `node` on it). A fixed string: nothing is interpolated.
+///
+/// Asked of an interactive login shell (`-ilc`): `pnpm setup` and nvm put
+/// their PATH lines in `~/.zshrc`, which a plain login shell does not read.
+/// Its noise is skipped by the parsers; `LOCATE_TIMEOUT` bounds a hang.
 const LOOKUP: &str = r#"command -v donn; printf "PATH=%s\n" "$PATH""#;
 
 /// How long a login shell may take to answer `LOOKUP`.
@@ -82,7 +86,7 @@ pub fn locate(env_bin: Option<&str>, shell: &str) -> Result<Donn, Missing> {
             Err(Missing(format!("DONN_BIN is not a file: {bin}")))
         };
     }
-    let out = shell_command_v(shell).map_err(|e| Missing(format!("{shell} -lc: {e}")))?;
+    let out = shell_command_v(shell).map_err(|e| Missing(format!("{shell} -ilc: {e}")))?;
     let bin = parse_command_v(&out)
         .ok_or_else(|| Missing("donn is not on the login shell's PATH".into()))?;
     Ok(Donn::new(bin, parse_path(&out)))
@@ -138,13 +142,13 @@ fn unreadable(message: String) -> CliFailure {
     }
 }
 
-/// Runs `<shell> -lc LOOKUP`. The whole call is bounded by
+/// Runs `<shell> -ilc LOOKUP`. The whole call is bounded by
 /// `LOCATE_TIMEOUT`: the shell is killed and reaped past it, and once the shell
 /// exits the output is collected for only a short grace, so a grandchild that
 /// inherited stdout cannot hold the app up. The reader thread is abandoned.
 fn shell_command_v(shell: &str) -> std::io::Result<String> {
     let mut child = Command::new(shell)
-        .args(["-lc", LOOKUP])
+        .args(["-ilc", LOOKUP])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
