@@ -3,6 +3,7 @@ import { createdAgentRows, createdLine } from "../agent/list.js";
 import type { CliIo } from "../cli.js";
 import { homeOf } from "../context.js";
 import { connectDaemon, type SessionStatus } from "../daemon/client.js";
+import { CliError } from "../errors.js";
 import { updateFix } from "../daemon/service.js";
 import { listSessions } from "../session.js";
 import { readState } from "../state.js";
@@ -57,11 +58,18 @@ async function gather(io: CliIo): Promise<Gathered> {
     client?.probed.syncFailed,
   );
   // The switches in state.json, keys as stored (docs/planning/28-desktop.md section 1).
-  const state = await readState(home);
-  const switched = {
-    ...(state.default !== undefined && { default: state.default }),
-    projects: state.projects,
-  };
+  // A corrupt state.json must not break a diagnostic command: report it instead.
+  let switched: StatusJson["switched"];
+  try {
+    const state = await readState(home);
+    switched = {
+      ...(state.default !== undefined && { default: state.default }),
+      projects: state.projects,
+    };
+  } catch (error) {
+    if (!(error instanceof CliError)) throw error;
+    switched = { projects: {}, error: error.message };
+  }
   if (client) {
     const status = client.probed;
     return {

@@ -40,6 +40,7 @@ const ManagedStatus = z.union([
 const Switched = z.strictObject({
   default: z.string().optional(),
   projects: z.record(z.string(), z.string()),
+  error: z.string().optional(),
 });
 
 /**

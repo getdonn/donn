@@ -145,6 +145,20 @@ describe("donn status", () => {
     StatusOutput.parse(out);
   });
 
+  it("still reports status when state.json is invalid", async () => {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "state.json"), "{not json");
+    const r = await zz(["status", "--json"], { cwd: root, home });
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout) as {
+      switched: { projects: object; error?: string };
+    };
+    expect(out.switched.projects).toEqual({});
+    expect(out.switched.error).toBeTruthy();
+    StatusOutput.parse(out);
+    expect((await zz(["status"], { cwd: root, home })).code).toBe(0);
+  });
+
   it("falls back when the socket is dead", async () => {
     const paths = daemonPaths(home);
     mkdirSync(paths.dir, { recursive: true });
