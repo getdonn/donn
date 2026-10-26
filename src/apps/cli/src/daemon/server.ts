@@ -62,6 +62,8 @@ export interface DaemonOptions {
   passwdHome?: () => string | undefined;
   /** Runs the agents' own eve (spec 25); defaults to node:child_process. */
   spawn?: Spawn;
+  /** Test seam: the file watching; watch.ts's by default. */
+  watch?: typeof watchSources;
   /** Test seam: the UI bridge's idle timing and app folder (spec 26 §2). */
   bridge?: Pick<BridgeOptions, "idleMs" | "tickMs" | "uiDir">;
 }
@@ -510,8 +512,19 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const key = watchKey(paths);
     if (watcher && key === watchedKey) return;
     watcher?.close();
-    watcher = watchSources(paths, changed, debounceMs, accept);
+    const armed = (options.watch ?? watchSources)(
+      paths,
+      changed,
+      debounceMs,
+      accept,
+    );
+    watcher = armed;
     watchedKey = key;
+    // An edit made while the watchers arm can go unseen: once they settle, one more pass over
+    // every source catches up on it. Unchanged sources make it a pass of skips.
+    void armed.settled.then(() => {
+      if (watcher === armed && !stopping) void refreshAll();
+    });
   };
 
   /** What changed since the last pass, for the agents: every source, or these paths. */

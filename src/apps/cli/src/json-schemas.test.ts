@@ -41,6 +41,7 @@ import {
 } from "@getdonn/cli-schemas";
 import { startMockRegistry } from "@getdonn/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 import { agentLogPath } from "./agent/run.js";
 import { createCli } from "./cli.js";
 import {
@@ -69,7 +70,9 @@ const covered = new Set<string>();
 
 /** Parses `stdout` as the output of `key` (and as nothing looser) and returns it. */
 function parses(key: string, stdout: string): unknown {
-  const schema = COMMAND_OUTPUTS[key];
+  const schema = (COMMAND_OUTPUTS as Record<string, z.ZodType | undefined>)[
+    key
+  ];
   expect(schema, `COMMAND_OUTPUTS has "${key}"`).toBeDefined();
   const value: unknown = JSON.parse(stdout);
   covered.add(key);
@@ -94,8 +97,12 @@ describe("persona commands", () => {
   it("list", async () => {
     const r = await zz(["list", "--json"], here());
     expect(r.code).toBe(0);
-    const out = parses("list", r.stdout) as { personas: unknown[] };
+    const out = parses("list", r.stdout) as {
+      personas: { path?: string }[];
+    };
     expect(out.personas.length).toBeGreaterThan(0);
+    for (const persona of out.personas)
+      expect(persona.path ?? "/").toMatch(/^\//);
     expect(ListOutput).toBe(COMMAND_OUTPUTS["list"]);
   });
 
@@ -458,6 +465,14 @@ describe("registry commands", () => {
     expect(out.changes.length).toBeGreaterThan(0);
     parses("pull", (await run(["pull", "--json"])).stdout);
     expect(PullOutput).toBe(COMMAND_OUTPUTS["pull"]);
+
+    // A layer that now resolves from the registry cache has no file to edit.
+    const listed = parses("list", (await run(["list", "--json"])).stdout) as {
+      personas: { ref: string; source: string; path?: string }[];
+    };
+    const acme = listed.personas.find((p) => p.ref === "org/acme")!;
+    expect(acme.source).toBe("registry");
+    expect(acme).not.toHaveProperty("path");
   });
 });
 

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seed, zz, type Seeded } from "./test/seed.js";
 
@@ -13,11 +14,33 @@ describe("donn list", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual({
       personas: [
-        { ref: "area/fintech", layer: "area" },
-        { ref: "org/base", layer: "org" },
-        { ref: "project/persona", layer: "project" },
-        { ref: "team/payments", layer: "team" },
+        {
+          ref: "area/fintech",
+          layer: "area",
+          source: "local",
+          path: join(s.personas, "area/fintech.yaml"),
+        },
+        {
+          ref: "org/base",
+          layer: "org",
+          source: "local",
+          path: join(s.personas, "org/base.yaml"),
+        },
+        {
+          ref: "project/persona",
+          layer: "project",
+          source: "local",
+          path: join(s.repo, ".donn/persona.yaml"),
+        },
+        {
+          ref: "team/payments",
+          layer: "team",
+          source: "local",
+          path: join(s.personas, "team/payments.yaml"),
+        },
       ],
+      // The user overlay is not a persona to pick, but it is a layer with a file.
+      overlay: { ref: "user/overrides", path: join(s.home, "overrides.yaml") },
     });
   });
 

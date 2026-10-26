@@ -1,0 +1,10 @@
+{
+  "extends": "@getdonn/typescript-config/base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "e2e"]
+}

@@ -16,7 +16,11 @@ import {
   type DaemonEvent,
 } from "./daemon/client.js";
 import { allowedRun } from "./daemon/run.js";
-import { startDaemon, type Daemon } from "./daemon/server.js";
+import {
+  startDaemon,
+  type Daemon,
+  type DaemonOptions,
+} from "./daemon/server.js";
 import {
   agentProbe,
   agentProject,
@@ -62,8 +66,12 @@ afterEach(async () => {
   s.cleanup();
 });
 
-async function start(env: NodeJS.ProcessEnv = SECRETS) {
+async function start(
+  env: NodeJS.ProcessEnv = SECRETS,
+  seams: Pick<DaemonOptions, "watch"> = {},
+) {
   const daemon = await startDaemon({
+    ...seams,
     home: s.home,
     env: { ...env, VITEST: "true", NODE_ENV: "test", EVE_DEV: "1" },
     version: cliVersion(),
@@ -609,6 +617,33 @@ describe("the daemon keeps created agents current", () => {
   );
 
   it(
+    "an edit the watchers miss while they arm is synced once they settle",
+    { timeout: 15_000 },
+    async () => {
+      // fs.watch arms asynchronously (FSEvents on macOS), so an edit made just after the daemon
+      // starts watching can go unseen. These watchers see nothing and settle when told to.
+      let settle!: () => void;
+      const settled = new Promise<void>((resolve) => (settle = resolve));
+      await start(SECRETS, {
+        watch: (paths) => ({ paths, settled, close: () => {} }),
+      });
+      writeFileSync(
+        join(s.personas, "org/instructions/conduct.md"),
+        "Review kindly, v2.",
+      );
+      settle();
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual(
+            expect.objectContaining({ type: "agent.synced", name: "kody" }),
+          ),
+        { timeout: 5_000 },
+      );
+      expect(Object.values(files()).join("\n")).toContain("Review kindly, v2.");
+    },
+  );
+
+  it(
     "an edited owned file stops the sync: agent.sync-failed, a status line, no write",
     { timeout: 15_000 },
     async () => {
@@ -880,6 +915,12 @@ describe("env-provider secrets of a run (spec 26 §2)", () => {
       expect(ran.code).toBe(0);
       expect(startCall()!.env.API_TOKEN).toBe("tok-SHELLONLY");
       expect(Object.values(startCall()!.env)).toContain("sk-gw-SHELLONLY");
+      // The run answers once the agent listens; its log lines are appended after.
+      await vi.waitFor(() =>
+        expect(
+          readFileSync(agentLogPath(s.home, s.repo, "kody"), "utf8"),
+        ).toContain("using ***"),
+      );
       const text = await shown(daemon);
       expect(text).toContain("using ***");
       expect(text).not.toContain("SHELLONLY");

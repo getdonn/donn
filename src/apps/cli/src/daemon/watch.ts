@@ -8,9 +8,22 @@ export interface Watch {
   close(): void;
   /** The paths asked for, in order: what `GET /status` reports as `watching`. */
   paths: string[];
+  /**
+   * Settles once the watchers are taken to be live. `fs.watch` can arm asynchronously (FSEvents on
+   * macOS): a change made in the first moments after it returns can go unseen, so whoever reads
+   * the sources reads them again once this settles.
+   */
+  settled: Promise<void>;
 }
 
 let openWatchers = 0;
+
+/**
+ * How long after arming the watchers are taken to be live. Under heavy load on macOS a change
+ * made up to ~10 ms after `fs.watch` returned was missed in about half of tries, never one made
+ * 50 ms after; a second is a wide margin.
+ */
+const SETTLE_MS = 1_000;
 
 /** Test-only: the folder watchers open in this process, to show none outlives `close()`. */
 export const openWatcherCount = () => openWatchers;
@@ -90,11 +103,20 @@ export function watchSources(
     });
   }
 
+  let settle: NodeJS.Timeout | undefined;
+  const settled = new Promise<void>((resolve) => {
+    settle = setTimeout(resolve, SETTLE_MS);
+    settle.unref();
+  });
+
   return {
     paths,
+    settled,
     close() {
       closed = true;
       clearTimeout(timer);
+      // Closed before it settled: it never does.
+      clearTimeout(settle);
       for (const watcher of watchers) watcher.close();
       openWatchers -= watchers.length;
       watchers.length = 0;

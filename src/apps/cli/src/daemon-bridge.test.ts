@@ -2023,12 +2023,14 @@ describe("POST /v1/open", { timeout: 20_000 }, () => {
     });
     const paths = [
       join(s.home, "personas/user/me.yaml"),
+      // The user overlay layer is one file of the home.
+      join(s.home, "overrides.yaml"),
       join(s.repo, ".donn/persona.yaml"),
       s.repo,
       join(s.root, "bot-home/agent.ts"),
     ];
     put(paths[0]!, "name: me\n");
-    put(paths[3]!, "export {};\n");
+    put(paths[4]!, "export {};\n");
     const { answers, calls } = await openAll(paths, {
       env: { VISUAL: "ed" },
     });
