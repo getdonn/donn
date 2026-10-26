@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+// Stands in for pnpm in the e2e (see README.md): `install`, `dlx eve init`, and the agent
+// project's own eve (`exec eve build|start|add|link|deploy`) and Vercel CLI (`exec vercel
+// --version|env add`). Nothing is downloaded and nothing leaves the machine.
+
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+// The CLI's recordings of `eve add channel/github` (eve 0.83.2).
+const RECORDINGS = join(HERE, "../../../cli/src/test/eve-add");
+const args = process.argv.slice(2);
+const cwd = process.cwd();
+
+const put = (path, text) => {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, text);
+};
+const fail = (message) => {
+  process.stderr.write(`e2e pnpm: ${message}\n`);
+  process.exit(1);
+};
+
+/** A recorded stream, line by line, on `stream`. */
+const replay = (file, stream) => {
+  const text = readFileSync(join(RECORDINGS, file), "utf8");
+  (stream === "stderr" ? process.stderr : process.stdout).write(text);
+};
+
+const event = (body, stream = "stdout") =>
+  (stream === "stderr" ? process.stderr : process.stdout).write(
+    `${JSON.stringify({ version: 1, ...body })}\n`,
+  );
+
+/**
+ * `eve add <item>`, by item: `channel/github` asks its multi-select question, then completes
+ * once answered, keeping the answers it got in `.e2e-answers.json`; `channel/secret` asks for
+ * a secret (an `environment` question); `channel/linked` needs `eve link` first. Anything else
+ * is an unknown item.
+ */
+function add([item, ...rest]) {
+  const answers = rest.filter((a, i) => rest[i - 1] === "--answer");
+  if (item === "channel/github") {
+    if (!answers.some((a) => a.startsWith("github-events="))) {
+      replay("input-required.stdout.txt", "stdout");
+      replay("input-required.stderr.txt", "stderr");
+      process.exit(2);
+    }
+    put(join(cwd, ".e2e-answers.json"), `${JSON.stringify(answers)}\n`);
+    process.stdout.write("GitHub App: donn-e2e\n");
+    event({
+      type: "completed",
+      item,
+      completedItems: [item],
+    });
+    process.exit(0);
+  }
+  if (item === "channel/secret") {
+    event(
+      {
+        type: "blocked",
+        item,
+        installed: true,
+        completedItems: [],
+        status: "input_required",
+        question: {
+          key: "webhook-secret",
+          message: "Webhook secret",
+          required: true,
+          kind: "environment",
+          variable: "E2E_WEBHOOK_SECRET",
+          sensitive: true,
+        },
+        next: {
+          command: "eve",
+          args: ["add", item, "--non-interactive", "--skip-install"],
+        },
+      },
+      "stderr",
+    );
+    process.exit(2);
+  }
+  if (item === "channel/linked") {
+    replay("prerequisite.stdout.txt", "stdout");
+    replay("prerequisite.stderr.txt", "stderr");
+    process.exit(2);
+  }
+  event({
+    type: "failed",
+    item,
+    completedItems: [],
+    message: `Unknown registry item ${item}.`,
+  });
+  process.exit(1);
+}
+
+/** `eve start`: a real server on a free port, until signalled. */
+function start() {
+  const host = args[args.indexOf("--host") + 1] ?? "127.0.0.1";
+  const server = createServer((_req, res) => res.end("ok\n"));
+  server.listen(0, host, () => {
+    const { port } = server.address();
+    process.stdout.write(
+      `[START] server listening at http://${host}:${port}/\n`,
+    );
+  });
+  const end = () => server.close(() => process.exit(0));
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, end);
+}
+
+function eve([command, ...rest]) {
+  switch (command) {
+    case "build":
+      mkdirSync(join(cwd, ".output/server"), { recursive: true });
+      process.stdout.write("built .output\n");
+      return;
+    case "start":
+      return start();
+    case "add":
+      return add(rest);
+    case "link":
+      put(
+        join(cwd, ".vercel/project.json"),
+        `${JSON.stringify({ projectId: "prj_e2e", orgId: "team_e2e" })}\n`,
+      );
+      process.stdout.write("Linked to e2e/agent\n");
+      return;
+    case "deploy":
+      process.stdout.write("Production: https://e2e-agent.vercel.app\n");
+      return;
+    default:
+      fail(`unexpected eve ${command}`);
+  }
+}
+
+if (args[0] === "install") {
+  mkdirSync(join(cwd, "node_modules/eve"), { recursive: true });
+} else if (args[0]?.startsWith("--package=eve@") && args[2] === "eve") {
+  // `--package=eve@<v> dlx eve init <dir> --non-interactive`: a minimal agent.
+  const dir = args[4];
+  if (args[1] !== "dlx" || args[3] !== "init" || !dir) fail(args.join(" "));
+  put(join(dir, "pnpm-workspace.yaml"), "packages:\n  - .\n");
+  put(
+    join(dir, "agent/agent.ts"),
+    'import { defineAgent } from "eve";\nexport default defineAgent({ model: "openai/gpt-6-luna-fast" });\n',
+  );
+} else if (args[0] === "exec" && args[1] === "eve") {
+  eve(args.slice(2));
+} else if (args[0] === "exec" && args[1] === "vercel") {
+  if (args[2] === "--version") process.stdout.write("50.1.0\n");
+  // `env add <name> production`: the value comes on stdin and is dropped; the name is kept in
+  // the agent's `.e2e-pushed.txt`.
+  else if (args[2] === "env" && args[3] === "add") {
+    appendFileSync(join(cwd, ".e2e-pushed.txt"), `${args[4]}\n`);
+    process.stdin.resume();
+  } else fail(`unexpected vercel ${args.slice(2).join(" ")}`);
+} else {
+  fail(`unexpected ${args.join(" ")}`);
+}

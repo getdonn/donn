@@ -1,3 +1,4 @@
+import { add, type AddOptions } from "../agent/add.js";
 import { build, type BuildOptions } from "../agent/build.js";
 import { deploy, type DeployOptions } from "../agent/deploy.js";
 import { create, type CreateOptions } from "../agent/create.js";
@@ -6,6 +7,7 @@ import { projectContext } from "../agent/load.js";
 import { agentStates, formatRows } from "../agent/list.js";
 import { logs, run, stop, type RunOptions } from "../agent/run.js";
 import { sync, type SyncOptions } from "../agent/sync.js";
+import { templateRows } from "../agent/template.js";
 import type { CliIo } from "../cli.js";
 
 // donn agent: build, run and deploy agents on a persona. See docs/planning/25-agent-runner.md.
@@ -125,4 +127,36 @@ export async function agentDeployCommand(
   options: DeployOptions,
 ): Promise<number> {
   return deploy(io, name, options);
+}
+
+/** `donn agent add <name> <item>`: see agent/add.ts. */
+export async function agentAddCommand(
+  io: CliIo,
+  name: string,
+  item: string,
+  options: AddOptions,
+): Promise<number> {
+  return add(io, name, item, options);
+}
+
+/** `donn agent templates`: the templates `create --template eve:<slug>` takes. */
+export async function agentTemplatesCommand(
+  io: CliIo,
+  options: { json?: boolean },
+): Promise<number> {
+  const templates = templateRows();
+  if (options.json) {
+    io.stdout.write(`${JSON.stringify({ templates }, null, 2)}\n`);
+    return 0;
+  }
+  for (const t of templates) {
+    const tags = [
+      t.vercelOnly ? "Vercel-only services" : undefined,
+      t.services.length > 0 ? t.services.join(", ") : undefined,
+    ].filter(Boolean);
+    io.stdout.write(
+      `eve:${t.slug}  ${t.title}${tags.length > 0 ? `  (${tags.join("; ")})` : ""}\n`,
+    );
+  }
+  return 0;
 }

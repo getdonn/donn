@@ -8,7 +8,12 @@ import { cliVersion } from "../commands/daemon.js";
 import type { Context } from "../context.js";
 import { connectDaemon, type AgentInfo } from "../daemon/client.js";
 import { CliError } from "../errors.js";
-import { agentEnvironment, envInputs, type AgentEnvironment } from "./env.js";
+import {
+  agentEnvironment,
+  envInputs,
+  envSecrets,
+  type AgentEnvironment,
+} from "./env.js";
 import { eveEnv, packageManager, runEve } from "./eve.js";
 import { projectContext, projectRoot } from "./load.js";
 import { agentStatePath } from "./registry.js";
@@ -62,12 +67,21 @@ export interface StartOptions {
   killAfterMs?: number;
 }
 
+/** What a run is started with besides the agent: see docs/planning/26-gui.md §2. */
+export interface RunRequest {
+  /** Values of the agent's env-provider refs, by ref, from a terminal's own environment. */
+  env?: Record<string, string>;
+  /** `ui`: started from donn ui, which has no shell, so an env-provider ref not sent fails. */
+  origin?: "ui";
+}
+
 /** The running agents and how to start and stop them: the daemon's, or its socket's. */
 export interface AgentControl {
   list(): Promise<AgentInfo[]>;
   run(
     project: string,
     name: string,
+    request?: RunRequest,
   ): Promise<{ agent: AgentInfo; already: boolean }>;
   stop(
     project: string,
@@ -271,7 +285,12 @@ export async function runEnvironment(
   ctx: Context,
   io: CliIo,
   name: string,
-  options: { start: boolean },
+  options: {
+    start: boolean;
+    request?: RunRequest;
+    /** A restart after a sync: sent values for refs the persona no longer uses are dropped. */
+    restart?: boolean;
+  },
 ): Promise<{
   root: string;
   dir: string;
@@ -282,8 +301,12 @@ export async function runEnvironment(
   /** The created agent the env was read from. */
   agent: AgentEnvironment;
 }> {
+  const request = options.request ?? {};
   const env = await agentEnvironment(ctx, io, name, {
     resolve: true,
+    ...(request.env && { provided: request.env }),
+    ...(options.restart && { unused: "ignore" as const }),
+    ...(request.origin === "ui" && { refs: "not-env" as const }),
     // `eve start` cannot serve every target: refused before a secret is resolved.
     ...(options.start && {
       check: (target: string) => assertRunnable(name, target),
@@ -320,7 +343,8 @@ export async function agentControl(
   if (client === undefined) return undefined;
   return {
     list: () => client.agents(),
-    run: (project, name) => client.runAgent(project, name),
+    run: (project, name, request) =>
+      client.runAgent(project, name, request?.env),
     stop: (project, name) => client.stopAgent(project, name),
   };
 }
@@ -366,10 +390,20 @@ function printStarted(
 ): void {
   const { name, url, pid, token } = agent;
   if (options.json) {
+    // Only AgentInfo's own fields: a foreground run is the process handle, whose `exited`
+    // promise would print as `{}`.
+    const { project, startedAt } = agent;
     io.stdout.write(
       `${JSON.stringify(
         {
-          agent,
+          agent: {
+            name,
+            project,
+            url,
+            ...(pid !== undefined && { pid }),
+            startedAt,
+            token,
+          },
           ...(extra.already !== undefined && { already: extra.already }),
         },
         null,
@@ -411,7 +445,19 @@ export async function run(
   if (options.dev) return dev(ctx, io, name);
   const control = await agentControl(io, ctx.home);
   if (control !== undefined) {
-    const { agent, already } = await control.run(projectRoot(ctx), name);
+    // Over the socket: the daemon has none of this shell's exports, so the env-provider
+    // secrets go with the request (spec 26 §2). In-process (`io.agents`) there is no shell.
+    const env =
+      io.agents === undefined
+        ? await envSecrets(ctx, io, name, (target) =>
+            assertRunnable(name, target),
+          )
+        : {};
+    const { agent, already } = await control.run(
+      projectRoot(ctx),
+      name,
+      Object.keys(env).length > 0 ? { env } : {},
+    );
     printStarted(io, agent, options, { already });
     return 0;
   }

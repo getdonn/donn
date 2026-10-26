@@ -199,6 +199,22 @@ describe("donn agent build", () => {
     expect(out.report).toBeDefined();
   });
 
+  it("--json carries what it wrote, as written: refs, never a secret value", async () => {
+    await createSelfHost();
+    const r = await build(["--json"]);
+    const out = JSON.parse(r.stdout);
+    expect(out.contents).toEqual({
+      dockerfile: readFileSync(
+        join(agentDir(), "deploy/donn/Dockerfile"),
+        "utf8",
+      ),
+      envFile: readFileSync(join(agentDir(), "deploy/donn/env.json"), "utf8"),
+    });
+    expect(out.contents.envFile).toContain("secret://env/API_TOKEN");
+    expect(r.stdout).not.toContain("tok-SECRET");
+    expect(r.stdout).not.toContain("sk-gw-SECRET");
+  });
+
   it("without the prepared-artifacts file there is no sandbox image, and it says so", async () => {
     await createSelfHost();
     const r = await build([], building(false));

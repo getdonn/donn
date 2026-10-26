@@ -15,6 +15,23 @@
 > example `eve link`); eve's `next.args` is the continuation; events arrive on stdout and stderr
 > mixed with text. Recordings: `spikes/eve-runner/templates/fixtures/` and
 > `spikes/eve-runner/runtime/recordings/`.
+> *Amended 2026-10-25 (planning, maintainer's decisions):*
+> - **Stack.** Vite 8 + React 19 + TypeScript; shadcn/ui on Tailwind CSS v4 (open question 2);
+>   react-router for routes, TanStack Query for requests. Next.js's static export was the
+>   alternative; nothing here server-renders.
+> - **Desktop deferred.** Layers 1–3 (bridge, `donn ui`, the web app with every screen) are built
+>   now; layer 4 (Tauri 2, tray, packaging) follows once the web app has been used and open
+>   question 1 is decided. This machine has no Rust toolchain yet.
+> - **Env secrets under the daemon** (left open by `25`'s final review): a terminal
+>   `donn agent run` resolves `secret://env/…` refs itself and sends those values with the run
+>   request over the user-only socket; a run started from the GUI has no shell, so it refuses
+>   env-provider refs with the fix to use the keychain provider. Other providers resolve in the
+>   daemon as before (§2, "Env secrets").
+> - **Output schemas.** The CLI has no zod schemas for its `--json` output yet; a private
+>   workspace package `@getdonn/cli-schemas` defines them, the CLI's tests validate real output
+>   against them, and the app imports them (§4).
+> - **Templates.** The builder lists templates through a new `donn agent templates --json` (the
+>   adapter's table plus the `eve:blank` entry), so the app reads nothing outside the CLI.
 
 ## Intent
 
@@ -76,18 +93,38 @@ of its release work (Open questions).
   | `GET /` and static assets | The app |
   | `POST /v1/run` | `{ argv, cwd }` → the CLI in process with `--json`; the same handler as `POST /run` (spec 15) with the UI allowlist below |
   | `POST /v1/jobs` | The same, for long operations (`agent create`, `build`, `deploy`, `pull`): returns a job id |
-  | `GET /v1/events` | The daemon's server-sent events (spec 14) plus `job.progress`, `job.question`, `job.done` and the `agent.*` events of `25` |
+  | `GET /v1/events` | The daemon's server-sent events (spec 14) plus `job.progress`, `job.question`, `job.done` and the `agent.*` events of `25`; *(amended 2026-10-25, final review)* and last, before the bridge closes its streams for any reason, `ui.closing { reason: "idle" \| "daemon-stopping" }`, on which the app ends its session (it also ends after five failed reconnects) |
   | `POST /v1/jobs/<id>/answer` | Answers a `job.question` (`25` §6) |
-  | `POST /v1/open` | `{ path }` → the user's editor (`$VISUAL`, `$EDITOR`, else the OS default); the path must be inside a known personas root or the project |
+  | `POST /v1/open` | `{ path }` → the user's editor (`$VISUAL`, else the OS default; *amended 2026-10-25*, see below); the path must be inside a known personas root or the project |
 
 - **The UI allowlist** (every form with `--json`): `list`, `switch` in the forms `/run` allows,
-  `resolve` (with `--explain`), `capabilities`, `diff`, `status`, `doctor`, `whoami`, `login`,
-  `logout`, `pull`, `publish`, `write`, `managed build|check` and every `agent` subcommand. Never
-  `daemon`, `mod install`, `managed install|uninstall` (they need `sudo`), `migrate`, `init`,
-  `live` (it belongs to a harness session), or a harness launch (`claude`, `codex`).
+  `resolve` (with `--explain`), `compile` (*added 2026-10-25*, for the compile reports),
+  `capabilities`, `diff`, `status`, `doctor`, `whoami`, `login`, `logout`, `pull`, `publish`,
+  `write`, `managed build|check` and every `agent` subcommand. Never `daemon`, `mod install`,
+  `managed install|uninstall` (they need `sudo`), `migrate`, `init`, `live` (it belongs to a harness
+  session), or a harness launch (`claude`, `codex`).
 - **Outward actions confirm in the UI.** `publish`, `agent deploy` and the env push it does are
   sent with the CLI's own confirmation flag only after a dialog that shows what the CLI would have
   prompted. The CLI is unchanged: it already prompts for these on a TTY.
+  *(Amended 2026-10-25, layer 3 review:)* a deploy always confirms in the app, even when the CLI
+  would not prompt (already linked, nothing new to set): the dialog comes from `donn agent deploy
+  <name> --dry-run --json` (`linked`, `project`, the `names` it would set, `firstDeploy`), which
+  links, sets, resolves and deploys nothing; confirming sends `deploy --yes` as a job.
+- **Env secrets** *(added 2026-10-25)*. A run the bridge starts carries no caller environment:
+  a `secret://env/…` ref fails `secret-unresolved` with a fix naming the keychain provider (and
+  so does a deploy the bridge starts, *amended 2026-10-25*: its env push resolves no env-provider
+  ref either). The
+  socket's `POST /agents/run` accepts `{ env: { <ref>: <value> } }` from a terminal `donn agent
+  run`, which resolves env-provider refs in its own environment first; the daemon uses those
+  values for that run only and never logs or stores them.
+- **`/v1/open`** *(amended 2026-10-25)*. `$VISUAL` (split on whitespace, the path last), else the
+  OS opener; not `$EDITOR`: a terminal editor the daemon starts detached has no terminal. The OS
+  opener must show, not run: on macOS `open -t` for a file (the default text editor, so never an
+  `.app`, a `.command` or a `.webloc` launched) and `open -R` for a folder (revealed in Finder; an
+  `.app` bundle is a folder); on Linux `xdg-open`, refused an executable file or a `.desktop`
+  entry (`403 not-openable`, fix: set `$VISUAL`). The path is realpath'd and must lie inside the
+  personas root, `<home>/personas`, a known project or a created agent's folder (`403
+  outside-roots`).
 - **`cwd`** must be a project the daemon knows (it has a session or a created agent there) or one
   the user picked in the app's project picker, which records it in `~/.donn/ui.json`.
 
@@ -112,6 +149,11 @@ of its release work (Open questions).
      review: the compile report and the portability report from `donn agent create --dry-run`,
      blocking entries first, and the `agents.define` entry that will be added; (e) create, as a
      job, with eve's questions as form fields; secret questions show the variable to set instead.
+     _(2026-10-25)_ `agent create` asks no eve questions (spec 25 §2 step 8 was removed); the
+     questions come from `agent add`, on the agent page. The builder's last step says "Add channels
+     or connections from the agent page". A dry run does not fetch the template, so a blocking
+     entry from a template's own files shows only when create stops at it; the builder then
+     lists it and asks for "Accept portability" before retrying with `--accept-portability`.
    - **Agent page:** run and stop (local), build (self-host: the Dockerfile and `env.json`, names
      and refs only), deploy (Vercel, with the env names it will push), logs and live session
      events, sync, open the agent directory in the editor.
@@ -120,6 +162,10 @@ of its release work (Open questions).
 
 - `src/apps/ui`: Vite, React, TypeScript; a small typed client over `/v1/run` whose result types
   come from the CLI's `--json` output schemas (zod), so the app and the CLI cannot drift.
+  *(2026-10-25)* The schemas live in the private package `@getdonn/cli-schemas` (a dev
+  dependency of the CLI, whose tests parse real output with them, and a dependency of the app,
+  which bundles them). The app's build is copied into the CLI's `dist/ui/` at build time, so the
+  published `@getdonn/cli` serves it with no extra package.
 - `src/apps/desktop`: Tauri 2; the shell only: daemon start or attach, token, tray, window.
 - The bridge lives in the daemon (`src/apps/cli`, where the daemon runs today).
 
@@ -128,7 +174,7 @@ of its release work (Open questions).
 | 1 `bridge` | the loopback listener, the UI token and one-time code, Host/Origin checks, the UI allowlist, jobs and their events, `/v1/open`; `donn ui` |
 | 2 `app` | `src/apps/ui`: shell, project picker, screens 1–4 |
 | 3 `agents` | screen 5, after `25`'s layer 2 |
-| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux |
+| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux (*deferred 2026-10-25*) |
 
 - **Bridge:** requests without the token, with a wrong `Host` or a foreign `Origin` are refused; a
   used one-time code fails; a command outside the allowlist is `403`; `/v1/open` outside a known

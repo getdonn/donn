@@ -173,7 +173,7 @@ export function openerCommand(
 }
 
 /** Open `href` in the person's browser; never throws and never waits for it. */
-async function defaultOpenBrowser(href: string): Promise<void> {
+export async function defaultOpenBrowser(href: string): Promise<void> {
   const [command, args] = openerCommand(process.platform, href);
   try {
     const child = spawn(command, args, { stdio: "ignore", detached: true });

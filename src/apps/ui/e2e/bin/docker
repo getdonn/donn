@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+// Stands in for docker in the e2e (see README.md): `info` answers, `ps` lists no eve-sbx-
+// sandbox containers. Never a real Docker.
+
+const [command] = process.argv.slice(2);
+if (command === "info") process.stdout.write("Server Version: e2e\n");
+else if (command !== "ps") {
+  process.stderr.write(`e2e docker: unexpected ${command}\n`);
+  process.exit(1);
+}

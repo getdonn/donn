@@ -20,3 +20,6 @@ spikes/
 
 # Generated OpenAPI golden file (compared exactly)
 src/packages/registry-api/openapi.json
+
+# Vendored verbatim (shadcn 4.22.1); re-copied, never edited
+src/apps/ui/src/shadcn.css

@@ -6,7 +6,7 @@ import { CliError } from "../errors.js";
 import { withFileLock } from "../fs.js";
 import { managedEnv } from "../managed/env.js";
 import { spawnWithInput } from "../registry.js";
-import { agentEnvironment, type EnvEntry } from "./env.js";
+import { agentEnvironment, noShellFix, type EnvEntry } from "./env.js";
 import { packageManager, runEve, runTool, eveEnv } from "./eve.js";
 import { posixRelative, readManifest, writeManifest } from "./files.js";
 import { projectContext } from "./load.js";
@@ -20,6 +20,8 @@ import { assertSynced } from "./sync.js";
 
 export interface DeployOptions {
   yes?: boolean;
+  /** Say what a deploy would link and set; do none of it and resolve no secret. */
+  dryRun?: boolean;
   json?: boolean;
   project?: string;
 }
@@ -92,6 +94,19 @@ export function valuesFor(
 const mask = (text: string, value: string) =>
   value === "" ? text : text.split(value).join("***");
 
+/** The Vercel project `.vercel/project.json` names, when it names one. */
+async function linkedProject(dir: string): Promise<string | undefined> {
+  try {
+    const linked = JSON.parse(
+      await readFile(join(dir, ".vercel/project.json"), "utf8"),
+    );
+    const name: unknown = linked?.projectName;
+    return typeof name === "string" && name !== "" ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Adds `names` to the manifest's `pushedEnv` under the agent's lock. */
 async function recordPushed(
   lock: string,
@@ -149,6 +164,30 @@ export async function deploy(
 
   const unlinked = !existsSync(join(dir, ".vercel/project.json"));
 
+  // What a deploy would do, for donn ui's confirmation (spec 26 §2): nothing linked, set,
+  // resolved or deployed.
+  if (options.dryRun) {
+    const project = unlinked ? name : await linkedProject(dir);
+    const plan = {
+      agent: name,
+      dryRun: true,
+      linked: !unlinked,
+      ...(project !== undefined && { project }),
+      names,
+      firstDeploy: unlinked,
+    };
+    if (options.json) io.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
+    else
+      io.stdout.write(
+        `${unlinked ? `would link ${name} to a new Vercel project` : `${name} is linked${project ? ` to ${project}` : ""}`}\n` +
+          (names.length > 0
+            ? `would set in Vercel production:\n${names.map((n) => `  ${n}\n`).join("")}`
+            : "nothing new to set in Vercel\n") +
+          `then eve deploy\n`,
+      );
+    return 0;
+  }
+
   // Before any secret is resolved or anything leaves this machine. A first deploy always asks
   // (it creates a Vercel project), even with no variable to set.
   if (names.length > 0 || unlinked) {
@@ -205,7 +244,11 @@ export async function deploy(
           (
             await agentEnvironment(ctx, io, name, {
               resolve: true,
+              // From donn ui there is no shell: an env-provider ref fails (spec 26 §2).
+              ...(io.fromUi && { refs: "not-env" as const }),
               check: (target) => assertDeployable(name, target),
+            }).catch((error: unknown) => {
+              throw io.fromUi ? noShellFix(error, "deploy", name) : error;
             })
           ).entries,
         )

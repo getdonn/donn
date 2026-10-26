@@ -1,4 +1,6 @@
 import { AdapterInputError } from "@getdonn/adapter-sdk";
+import { ResolveError } from "@getdonn/resolver";
+import { SecretResolutionError } from "@getdonn/secrets";
 import { describe, expect, it } from "vitest";
 import type { CliIo } from "./cli.js";
 import { report } from "./errors.js";
@@ -33,6 +35,34 @@ describe("report", () => {
     expect(JSON.parse(json.out.stdout).error).toEqual({
       code: "adapter",
       message: "skill x: ../x is outside",
+    });
+  });
+});
+
+describe("every --json envelope carries a message", () => {
+  it("a resolver error: its text form, naming the ref and the layer", () => {
+    const json = io();
+    report(
+      json.cliIo,
+      true,
+      new ResolveError("missing-ref", { ref: "org/nope", from: "team/t" }),
+    );
+    expect(JSON.parse(json.out.stdout).error).toEqual({
+      code: "missing-ref",
+      message: "missing-ref: ref=org/nope, from=team/t",
+      ref: "org/nope",
+      from: "team/t",
+    });
+  });
+
+  it("a secrets error: its text form, with the failures", () => {
+    const json = io();
+    const failures = [{ ref: "secret://env/X", reason: "X is not set" }];
+    report(json.cliIo, true, new SecretResolutionError(failures));
+    expect(JSON.parse(json.out.stdout).error).toEqual({
+      code: "secrets",
+      message: "could not resolve 1 secret(s):\n  secret://env/X: X is not set",
+      failures,
     });
   });
 });

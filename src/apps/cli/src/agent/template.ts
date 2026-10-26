@@ -1,5 +1,5 @@
-import adapter, { TEMPLATES_AT } from "@getdonn/adapter-eve";
-import type { TemplateInfo } from "@getdonn/adapter-sdk";
+import adapter, { portability, TEMPLATES_AT } from "@getdonn/adapter-eve";
+import type { TemplateInfo, VercelService } from "@getdonn/adapter-sdk";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { templateDigest } from "./digest.js";
@@ -10,6 +10,40 @@ import { newestFirst } from "./versions.js";
 // against the adapter's table before anything is written. See docs/planning/25-agent-runner.md.
 
 const REPO = "https://github.com/vercel/eve";
+
+/** A template as `donn agent templates` lists it. */
+export interface TemplateRow {
+  slug: string;
+  title: string;
+  /** The Vercel-only services its code uses (the adapter's table). */
+  services: VercelService[];
+  /** Off Vercel (local or self-host), the adapter reports a blocking portability entry. */
+  vercelOnly: boolean;
+  /** Kept in eve's repository at the adapter's tag (`repoPath`); `blank` is eve init's. */
+  inRepo: boolean;
+}
+
+/** The adapter's templates, then `blank` (spec 26, 2026-10-25: the builder reads this). */
+export function templateRows(): TemplateRow[] {
+  return [
+    ...adapter.templates().map((t) => ({
+      slug: t.slug,
+      title: t.title,
+      services: [...t.services],
+      vercelOnly: (["local", "self-host"] as const).some((target) =>
+        portability(`eve:${t.slug}`, target).some((e) => e.blocking),
+      ),
+      inRepo: t.repoPath !== undefined,
+    })),
+    {
+      slug: "blank",
+      title: "Blank agent",
+      services: [],
+      vercelOnly: false,
+      inRepo: false,
+    },
+  ];
+}
 const NEAREST_TAGS = 5;
 
 /** The tagged versions with the same major.minor, newest first. */
