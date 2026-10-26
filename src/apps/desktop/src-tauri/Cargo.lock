@@ -809,6 +809,7 @@ dependencies = [
 name = "donn-desktop"
 version = "0.1.0"
 dependencies = [
+ "percent-encoding",
  "serde",
  "serde_json",
  "signal-hook",

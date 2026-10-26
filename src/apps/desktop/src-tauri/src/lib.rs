@@ -1,18 +1,23 @@
 //! The donn menu-bar shell (spec 28 §2). It has no logic of its own: every
-//! read and every action is a `donn` command. Windows are created from Rust.
+//! read and every action is a `donn` command. The window is created from
+//! Rust (`window.rs`).
 
 pub mod cli;
 pub mod menu;
 pub mod snapshot;
 pub mod tray;
 pub mod watch;
+pub mod window;
 
 use tauri::{AppHandle, RunEvent};
 
 pub fn run() {
     tauri::Builder::default()
-        // First, as the plugin's docs require: a second launch lands here.
-        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
+        // First, as the plugin's docs require: a second launch lands here and
+        // opens or focuses the window (spec 28 §4).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            window::open(app, None);
+        }))
         .plugin(tauri_plugin_dialog::init())
         // Links are opened from Rust; no script is injected into the bridge's
         // pages, which have no IPC anyway (spec 28 §4).
@@ -27,6 +32,7 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
             tray::install(&handle)?;
+            window::install(&handle);
             quit_on_signals(&handle)?;
             // Locating `donn` asks a login shell (up to 5 s): not on the main thread.
             std::thread::spawn(move || connect(handle));
@@ -34,10 +40,14 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building the donn shell")
-        .run(|app, event| {
-            if let RunEvent::Exit = event {
-                watch::stop(app);
-            }
+        .run(|app, event| match event {
+            // Closing the window leaves the tray running; `app.exit(0)` (Quit,
+            // signals) carries a code and still exits (spec 28 §4).
+            RunEvent::ExitRequested {
+                code: None, api, ..
+            } => api.prevent_exit(),
+            RunEvent::Exit => watch::stop(app),
+            _ => {}
         });
 }
 
@@ -48,7 +58,10 @@ fn connect(app: AppHandle) {
         Ok(donn) => {
             tray::set_donn(&app, donn.clone());
             let handle = app.clone();
-            watch::start(app, donn, move |s| tray::rebuild(&handle, &s));
+            watch::start(app, donn, move |s| {
+                tray::rebuild(&handle, &s);
+                window::on_snapshot(&handle, &s);
+            });
         }
         Err(_) => tray::cli_missing(&app),
     }

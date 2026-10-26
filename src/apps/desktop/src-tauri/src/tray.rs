@@ -14,6 +14,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use crate::cli::{CliFailure, Donn};
 use crate::menu::{self, Action, Entry, action_args, action_for, badge, menu_model};
 use crate::snapshot::{Personas, Snapshot};
+use crate::window;
 
 const TRAY: &str = "donn";
 
@@ -58,6 +59,11 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
 /// The CLI was found: actions and lists run it.
 pub fn set_donn(app: &AppHandle, donn: Donn) {
     *app.state::<Tray>().donn.lock().unwrap() = Some(donn);
+}
+
+/// The located CLI, once `set_donn` has run.
+pub fn donn(app: &AppHandle) -> Option<Donn> {
+    app.try_state::<Tray>()?.donn.lock().unwrap().clone()
 }
 
 /// No CLI: one disabled line and Quit.
@@ -201,8 +207,12 @@ fn on_menu(app: &AppHandle, id: &str) {
     match action {
         None => {}
         Some(Action::Quit) => app.exit(0),
-        // The window and start at login are not built yet (spec 28 §4).
-        Some(Action::Open | Action::OpenAgent { .. } | Action::ToggleLogin) => {}
+        Some(Action::Open) => window::open(app, None),
+        Some(Action::OpenAgent { project, name }) => {
+            window::open(app, Some(window::agent_page(&project, &name)));
+        }
+        // Start at login is not built yet (spec 28 §4).
+        Some(Action::ToggleLogin) => {}
         Some(action) => run(app, &action),
     }
 }
@@ -221,14 +231,19 @@ fn run(app: &AppHandle, action: &Action) {
     std::thread::spawn(move || {
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         if let Err(failure) = donn.run(&args, &cwd) {
-            // Non-blocking: `blocking_show` must not run on the main thread.
-            app.dialog()
-                .message(failure_text(&failure))
-                .kind(MessageDialogKind::Error)
-                .title("donn")
-                .show(|_| {});
+            alert(&app, failure_text(&failure));
         }
     });
+}
+
+/// The "donn" error dialog. Non-blocking: `blocking_show` must not run on the
+/// main thread.
+pub fn alert(app: &AppHandle, text: String) {
+    app.dialog()
+        .message(text)
+        .kind(MessageDialogKind::Error)
+        .title("donn")
+        .show(|_| {});
 }
 
 /// A disabled line and Quit.
@@ -249,7 +264,7 @@ fn canon(p: &str) -> String {
     std::fs::canonicalize(p).map_or_else(|_| p.to_owned(), |c| c.display().to_string())
 }
 
-fn home() -> PathBuf {
+pub fn home() -> PathBuf {
     home_from(std::env::var("HOME").ok())
 }
 
@@ -267,7 +282,7 @@ fn tooltip(s: &Snapshot) -> String {
 }
 
 /// A failed action's dialog: the CLI's `message`, then its `fix`.
-fn failure_text(f: &CliFailure) -> String {
+pub fn failure_text(f: &CliFailure) -> String {
     match &f.fix {
         Some(fix) => format!("{}\n\n{fix}", f.message),
         None => f.message.clone(),
