@@ -5,6 +5,12 @@ import { expect, test } from "./fixtures";
 // record whose process is the worker), switching with the spec 17 report, and the capability
 // matrix with the current persona's compile reports.
 
+// A switch is remembered for the folder, and the worker's later test files share the home: a
+// test that switches would otherwise leave the repo on area/fintech for them.
+test.afterEach(({ donn }) => {
+  donn.cli(["switch", "--clear"]);
+});
+
 test("a seeded session appears with its harness, project and persona", async ({
   page,
   signIn,
