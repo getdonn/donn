@@ -808,6 +808,7 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .description("Open the donn app in your browser, served by the daemon")
         .option("--no-open", "print the URL instead of opening the browser")
         .option("--port <n>", "listen on this port (1024-65535)")
+        .option("--page <path>", "open this app route, e.g. /agents/a/bot")
         .option("--json", "print { url, port } as JSON")
         .action((options) =>
           handle(options.json, () => uiCommand(io, options)),

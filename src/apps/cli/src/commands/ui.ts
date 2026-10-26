@@ -16,7 +16,20 @@ export interface UiOptions {
   /** commander's `--no-open` sets this to false. */
   open?: boolean;
   port?: string;
+  page?: string;
   json?: boolean;
+}
+
+/** `--page`: an app route, one leading `/` and no fragment (the sign-in code takes that). */
+function parsePage(text: string | undefined): string {
+  if (text === undefined) return "/";
+  if (!text.startsWith("/") || text.startsWith("//") || text.includes("#")) {
+    throw new CliError(
+      "usage",
+      "--page must start with one / and contain no #",
+    );
+  }
+  return text;
 }
 
 const BUILD_FIX = "pnpm --filter @getdonn/ui build";
@@ -61,6 +74,7 @@ export async function uiCommand(
   options: UiOptions,
 ): Promise<number> {
   const port = parsePort(options.port);
+  const page = parsePage(options.page);
   const home = homeOf(io);
   const config = await loadConfig(home, io.env, io.passwdHome);
   await ensureDaemon(io, home, config);
@@ -80,7 +94,7 @@ export async function uiCommand(
       `donn: the app is not built, so the page will not load; ${BUILD_FIX}\n`,
     );
   }
-  const base = `http://127.0.0.1:${opened.port}/`;
+  const base = `http://127.0.0.1:${opened.port}${page}`;
   const url = `${base}#t=${opened.code}`;
   if (options.json) {
     if (options.open !== false) {
