@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router";
 import { Placeholder } from "@/routes/placeholder";
 import { CapabilitiesRoute } from "@/routes/capabilities";
 import { SessionsRoute } from "@/routes/sessions";
+import { RegistryRoute } from "@/routes/registry";
 import { PersonasRoute } from "@/routes/personas";
 import { Shell } from "./shell";
 
@@ -18,15 +19,7 @@ export function createRouter() {
         { path: "projects", element: <PersonasRoute /> },
         { path: "sessions", element: <SessionsRoute /> },
         { path: "capabilities", element: <CapabilitiesRoute /> },
-        {
-          path: "registry",
-          element: (
-            <Placeholder
-              title="Registry"
-              about="Sign in, who you are, pull and publish."
-            />
-          ),
-        },
+        { path: "registry", element: <RegistryRoute /> },
         {
           path: "agents",
           element: (

@@ -6,13 +6,15 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { startMockRegistry } from "@getdonn/registry-api/mock";
 import { test as base } from "@playwright/test";
 
 // A daemon per worker on a temporary home, seeded as the CLI's tests are
@@ -45,6 +47,10 @@ export interface Donn {
     stdout: string;
     stderr: string;
   };
+  /** The mock registry the registry screen signs in to (a fresh login each test). */
+  registry: Awaited<ReturnType<typeof startMockRegistry>>;
+  /** The URLs the daemon tried to open in a browser (the PATH shims in e2e/bin record them). */
+  opened(): string[];
   /** A new `donn ui` URL, with a one-time code. */
   url(): string;
   /**
@@ -99,7 +105,7 @@ function editor(root: string, log: string) {
   return script;
 }
 
-function seed(): Omit<Donn, "cli" | "url" | "session"> {
+function seed(): Omit<Donn, "cli" | "url" | "session" | "registry" | "opened"> {
   // Resolved: macOS's tmpdir is a symlink, and the daemon reports real paths.
   const root = realpathSync(mkdtempSync(join(tmpdir(), "donn-ui-e2e-")));
   const home = join(root, "home");
@@ -140,8 +146,13 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
         );
       }
       const seeded = seed();
+      const registry = await startMockRegistry();
+      const openedLog = join(seeded.root, "opened.txt");
       const env: NodeJS.ProcessEnv = {
-        PATH: process.env.PATH,
+        // e2e/bin first: `open`/`xdg-open` record the URL instead of opening a browser, and
+        // `security`/`secret-tool` fail so a token goes to a file, never a real keychain.
+        PATH: [join(HERE, "bin"), process.env.PATH].join(delimiter),
+        DONN_E2E_OPENED: openedLog,
         DONN_HOME: seeded.home,
         HOME: join(seeded.root, "user-home"),
         // The bridge opens files with $VISUAL (never $EDITOR): a script that records its argv.
@@ -180,10 +191,15 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
         );
         return dir;
       };
+      const opened = () =>
+        existsSync(openedLog)
+          ? readFileSync(openedLog, "utf8").split("\n").filter(Boolean)
+          : [];
       try {
-        await use({ ...seeded, cli, url, session });
+        await use({ ...seeded, cli, url, session, registry, opened });
       } finally {
         cli(["daemon", "stop"]);
+        await registry.stop();
         rmSync(seeded.root, { recursive: true, force: true });
       }
     },

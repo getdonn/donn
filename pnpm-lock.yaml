@@ -306,6 +306,9 @@ importers:
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
+      '@getdonn/registry-api':
+        specifier: workspace:*
+        version: link:../../packages/registry-api
       '@getdonn/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
