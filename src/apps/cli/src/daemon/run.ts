@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 import { rootOf } from "../agent/run.js";
+import { lineSplitter } from "../agent/spawn.js";
 import { createCli, type CliIo } from "../cli.js";
 
 // POST /run: the Claude Code mod's commands and the agent commands the GUI sends, run in-process
@@ -148,27 +149,51 @@ export interface RunResult {
   stderr: string;
 }
 
+/** Called for each line a run prints, as it prints it; a last line without a newline counts. */
+export interface RunLines {
+  onStdout?: (line: string) => void;
+  onStderr?: (line: string) => void;
+}
+
 /** Run `donn <argv>` in `cwd` with the daemon's io, capturing what it prints. */
 export async function runInProcess(
   io: Omit<CliIo, "cwd" | "stdout" | "stderr">,
   argv: string[],
   cwd: string,
+  lines: RunLines = {},
 ): Promise<RunResult> {
   let stdout = "";
   let stderr = "";
+  const out = lineSplitter((line) => lines.onStdout?.(line));
+  const err = lineSplitter((line) => lines.onStderr?.(line));
   try {
     const exitCode = await createCli({
       ...io,
       cwd,
-      stdout: { write: (text: string) => (stdout += text) },
-      stderr: { write: (text: string) => (stderr += text) },
+      stdout: {
+        write: (text: string) => {
+          stdout += text;
+          out.push(text);
+          return true;
+        },
+      },
+      stderr: {
+        write: (text: string) => {
+          stderr += text;
+          err.push(text);
+          return true;
+        },
+      },
     }).run(argv);
     return { exitCode, stdout, stderr };
   } catch (error) {
-    return {
-      exitCode: 1,
-      stdout: "",
-      stderr: error instanceof Error ? error.message : String(error),
-    };
+    const message = error instanceof Error ? error.message : String(error);
+    // A thrown run's message is its own line, after anything half-printed.
+    err.end();
+    err.push(message);
+    return { exitCode: 1, stdout: "", stderr: message };
+  } finally {
+    out.end();
+    err.end();
   }
 }

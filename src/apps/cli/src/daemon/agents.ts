@@ -10,6 +10,7 @@ import {
   type AgentControl,
   type AgentInfo,
   type RunningAgent,
+  type RunRequest,
 } from "../agent/run.js";
 import { syncAgent } from "../agent/sync.js";
 import type { CliIo } from "../cli.js";
@@ -20,8 +21,9 @@ import { createLog, type DaemonLog } from "./log.js";
 // The daemon's running agents: started with their env resolved, each one's output in its own
 // log, stopped on request or when the daemon closes, synced when their persona changes and
 // restarted after a sync. Events and logs carry names, projects, URLs, pids, file paths and
-// error codes, never the route token or an env value.
-// See docs/planning/25-agent-runner.md, sections 3, 4 `local` and 7.
+// error codes, never the route token or an env value. The env-provider secrets a terminal run
+// sends are kept in memory with its entry, for its restarts, and nowhere else.
+// See docs/planning/25-agent-runner.md, sections 3, 4 `local` and 7, and 26-gui.md §2.
 
 export interface AgentRunnerOptions {
   home: string;
@@ -57,21 +59,36 @@ interface Entry {
   flushed: () => Promise<void>;
   /** What its env was made from at start (envInputs): a change restarts it. */
   inputs: string;
+  /** What it was started with (sent env values, origin): its restarts reuse it. */
+  request: RunRequest;
   stopping: boolean;
 }
 
 /**
- * A secret the env provider could not resolve, in the daemon: its environment is the service's,
- * which carries none of the user's shell exports (spec 16), so the fix names that cause.
+ * A secret the env provider could not resolve, in the daemon. A run from donn ui has no shell
+ * at all (spec 26 §2); any other resolves what a terminal did not send in the daemon's own
+ * environment, the service's, which carries none of the user's shell exports (spec 16). The fix
+ * names the cause.
  */
-function daemonSecretFix(error: unknown, name: string): unknown {
+function daemonSecretFix(
+  error: unknown,
+  name: string,
+  request: RunRequest,
+): unknown {
   if (!(error instanceof CliError) || error.code !== "secret-unresolved")
     return error;
-  const failures = (error.details["failures"] ?? []) as { type?: string }[];
-  if (!failures.some((f) => f.type === "env")) return error;
+  const failures = (error.details["failures"] ?? []) as {
+    ref?: string;
+    type?: string;
+  }[];
+  const refs = failures.filter((f) => f.type === "env").map((f) => f.ref);
+  if (refs.length === 0) return error;
   return new CliError(error.code, error.message, {
     ...error.details,
-    fix: `the daemon resolves secrets in its own environment, which has no shell exports: use the keychain provider for this ref, or run \`donn agent run ${name}\` with the daemon stopped`,
+    fix:
+      request.origin === "ui"
+        ? `a run started from donn ui has no shell environment: use the keychain provider for ${refs.join(" and ")}, or run donn agent run ${name} in a terminal`
+        : `the daemon resolves secrets in its own environment, which has no shell exports: use the keychain provider for this ref, or run \`donn agent run ${name}\` in a terminal, which passes its env-provider secrets to the daemon`,
   });
 }
 
@@ -133,15 +150,20 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
   >();
   let closing = false;
 
-  const launch = async (project: string, name: string) => {
+  const launch = async (
+    project: string,
+    name: string,
+    request: RunRequest,
+    restart: boolean,
+  ) => {
     const ctx = await projectContext(io, project);
     const { root, dir, values, secrets, inputs } = await runEnvironment(
       ctx,
       io,
       name,
-      { start: true },
+      { start: true, request, restart },
     ).catch((error: unknown) => {
-      throw daemonSecretFix(error, name);
+      throw daemonSecretFix(error, name, request);
     });
     const path = agentLogPath(options.home, root, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -176,7 +198,13 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     });
   };
 
-  const run: AgentControl["run"] = async (project, name) => {
+  /** A run; `restart` for one after a sync, with the request the agent was started with. */
+  const begin = async (
+    project: string,
+    name: string,
+    request: RunRequest,
+    restart: boolean,
+  ): ReturnType<AgentControl["run"]> => {
     if (closing) {
       throw new CliError("daemon-stopping", "the daemon is stopping");
     }
@@ -188,11 +216,11 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     if (pending !== undefined) {
       return { agent: info((await pending).agent), already: true };
     }
-    const started = launch(root, name);
+    const started = launch(root, name, request, restart);
     starting.set(k, started);
     try {
       const { agent, flushed, inputs } = await started;
-      const entry: Entry = { agent, flushed, inputs, stopping: false };
+      const entry: Entry = { agent, flushed, inputs, request, stopping: false };
       running.set(k, entry);
       watch(k, entry);
       await log(`agent ${name} in ${root} running at ${agent.url}`);
@@ -218,6 +246,9 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       starting.delete(k);
     }
   };
+
+  const run: AgentControl["run"] = (project, name, request = {}) =>
+    begin(project, name, request, false);
 
   const stop: AgentControl["stop"] = async (project, name) => {
     const k = key(rootOf(project), name);
@@ -289,7 +320,8 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       const { stopped } = await stop(project, name);
       if (!stopped || closing) return;
       await log(`agent ${name} in ${project} restarting after a sync`);
-      await run(project, name).catch(() => undefined);
+      // With what it was started with: a terminal's env values, or donn ui's lack of them.
+      await begin(project, name, entry.request, true).catch(() => undefined);
     });
 
   const syncOnce = async (project: string, name: string) => {

@@ -94,12 +94,16 @@ export interface DaemonClient {
   runAgent(
     project: string,
     name: string,
+    /** The agent's env-provider secrets, by ref (spec 26 §2); never logged by the daemon. */
+    env?: Record<string, string>,
   ): Promise<{ agent: AgentInfo; already: boolean }>;
   /** `POST /agents/stop`. */
   stopAgent(
     project: string,
     name: string,
   ): Promise<{ stopped: boolean; leftovers?: number; exited?: number }>;
+  /** `POST /ui/open`: the loopback bridge's port and a one-time sign-in code (spec 26 §1). */
+  openUi(port?: number): Promise<{ port: number; code: string }>;
   /** Follow `GET /events`; returns a function that stops following. */
   events(on: (e: DaemonEvent) => void): () => void;
 }
@@ -285,16 +289,24 @@ export async function connectDaemon(
           agents: AgentInfo[];
         }
       ).agents,
-    runAgent: async (project, name) =>
+    runAgent: async (project, name, env) =>
       (await call("POST", "/agents/run", AGENT_RUN_TIMEOUT_MS, {
         project,
         name,
+        ...(env !== undefined && { env }),
       })) as { agent: AgentInfo; already: boolean },
     stopAgent: async (project, name) =>
       (await call("POST", "/agents/stop", AGENT_STOP_TIMEOUT_MS, {
         project,
         name,
       })) as { stopped: boolean; leftovers?: number; exited?: number },
+    openUi: async (port) =>
+      (await call(
+        "POST",
+        "/ui/open",
+        CALL_TIMEOUT_MS,
+        port === undefined ? {} : { port },
+      )) as { port: number; code: string },
     events: (on) => {
       const req = request(
         {

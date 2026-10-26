@@ -236,6 +236,9 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      '@getdonn/cli-schemas':
+        specifier: workspace:*
+        version: link:../../packages/cli-schemas
       '@getdonn/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
@@ -400,6 +403,28 @@ importers:
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(yaml@2.9.1))
+
+  src/packages/cli-schemas:
+    dependencies:
+      '@getdonn/spec':
+        specifier: workspace:*
+        version: link:../spec
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@getdonn/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@getdonn/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: 10.13.0
+        version: 10.13.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
   src/packages/eslint-config:
     devDependencies:

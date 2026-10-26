@@ -13,8 +13,16 @@ const Config = z.strictObject({
   adapters: z.array(z.string().min(1)).optional(),
   /** Secret provider packages, listed the same way. */
   secretProviders: z.array(z.string().min(1)).optional(),
-  /** `autoStart: false` stops `claude` and `codex` starting the daemon. See spec 16 §2. */
-  daemon: z.strictObject({ autoStart: z.boolean().optional() }).optional(),
+  /**
+   * `autoStart: false` stops `claude` and `codex` starting the daemon (spec 16 §2); `ui: false`
+   * keeps the daemon from opening the UI's loopback bridge (spec 26 §2).
+   */
+  daemon: z
+    .strictObject({
+      autoStart: z.boolean().optional(),
+      ui: z.boolean().optional(),
+    })
+    .optional(),
   /** The layer registry; `maxAge` is whole minutes before a pull is due (default 15). Spec 18 §3. */
   registry: z
     .strictObject({
