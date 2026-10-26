@@ -155,10 +155,13 @@ pub fn menu_model(
 }
 
 /// The whole menu when the CLI cannot be used (spec 28 §2): one disabled line
-/// with the install or update command, and Quit.
+/// with the install, update or diagnose command, and Quit.
 pub fn cli_problem_menu(problem: &CliProblem) -> Vec<Entry> {
     let line = match problem {
         CliProblem::NotFound => "donn CLI not found — npm i -g @getdonn/cli".into(),
+        CliProblem::Broken => {
+            "donn CLI did not answer --version — run donn doctor in a terminal".into()
+        }
         CliProblem::TooOld(v) => {
             format!("donn CLI {v} is too old for this app — npm i -g @getdonn/cli@latest")
         }
@@ -658,6 +661,17 @@ mod tests {
         );
         assert!(matches!(m[0], Entry::Label(_)));
         assert_eq!(action_for(&m, "quit"), Some(Action::Quit));
+
+        let m = cli_problem_menu(&CliProblem::Broken);
+        assert_eq!(
+            labels(&m),
+            [
+                "donn CLI did not answer --version — run donn doctor in a terminal",
+                "─",
+                "Quit"
+            ]
+        );
+        assert!(matches!(m[0], Entry::Label(_)));
     }
 
     #[test]

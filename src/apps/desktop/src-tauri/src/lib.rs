@@ -86,14 +86,16 @@ fn usable_cli() -> Result<cli::Donn, CliProblem> {
     })?;
     let version = donn.version().map_err(|e| {
         eprintln!("donn: CLI not usable: {e}");
-        CliProblem::NotFound
+        CliProblem::Broken
     })?;
+    let bin = donn.bin().display();
     match cli::version_problem(&version) {
+        Some(CliProblem::Broken) => {
+            eprintln!("donn: CLI not usable: {bin} --version printed {version:?}");
+            Err(CliProblem::Broken)
+        }
         Some(problem) => {
-            eprintln!(
-                "donn: CLI {version} at {} is older than the app needs",
-                donn.bin().display()
-            );
+            eprintln!("donn: CLI {version} at {bin} is older than the app needs");
             Err(problem)
         }
         None => Ok(donn),

@@ -26,6 +26,9 @@ const LOOKUP: &str = r#"command -v donn; printf "PATH=%s\n" "$PATH""#;
 /// How long a login shell may take to answer `LOOKUP`.
 const LOCATE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long `donn --version` may take.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// How long output may trail the shell's exit (a grandchild holding stdout).
 const EXIT_GRACE: Duration = Duration::from_millis(300);
 
@@ -47,6 +50,8 @@ pub enum CliProblem {
     NotFound,
     /// `donn --version` printed this, below `MIN_CLI`.
     TooOld(String),
+    /// `donn --version` failed, hung or printed nothing.
+    Broken,
 }
 
 /// A failed CLI call: the CLI's `{ error }` envelope, or `unreadable`.
@@ -114,9 +119,14 @@ pub fn version_ok(version_output: &str, min: (u32, u32, u32)) -> bool {
     !v.pre && (v.major, v.minor, v.patch) >= min
 }
 
-/// The version gate on `donn --version` output: `None` when it is new enough.
+/// The version gate on `donn --version` output: `None` when it is new enough,
+/// `Broken` when it is no version at all.
 pub fn version_problem(version_output: &str) -> Option<CliProblem> {
-    (!version_ok(version_output, MIN_CLI)).then(|| CliProblem::TooOld(version_output.trim().into()))
+    let v = version_output.trim();
+    if v.trim_start_matches('v').parse::<semver_lite::V>().is_err() {
+        return Some(CliProblem::Broken);
+    }
+    (!version_ok(v, MIN_CLI)).then(|| CliProblem::TooOld(v.into()))
 }
 
 /// The failure for a non-zero exit: the CLI's envelope from stdout, then stderr.
@@ -346,27 +356,23 @@ impl Donn {
     }
 
     /// `donn --version`'s trimmed stdout (no `--json`: it would print an
-    /// object). An error says why there is none.
+    /// object), bounded by `VERSION_TIMEOUT`. An error says why there is none.
     pub fn version(&self) -> Result<String, String> {
-        let out = self
-            .command()
-            .arg("--version")
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| format!("could not run {}: {e}", self.bin.display()))?;
-        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            return Err(format!(
-                "{} --version: {}",
-                self.bin.display(),
-                stderr.trim()
-            ));
+        let bin = self.bin.display();
+        let out = run_bounded(self.command().arg("--version"), VERSION_TIMEOUT)
+            .map_err(|e| format!("could not run {bin}: {e}"))?;
+        let Some(status) = out.status else {
+            let secs = VERSION_TIMEOUT.as_secs();
+            return Err(format!("{bin} did not answer --version within {secs} s"));
+        };
+        if !status.success() {
+            return Err(format!("{bin} --version ({status}): {}", out.stderr.trim()));
         }
-        if stdout.is_empty() {
-            return Err(format!("{} --version printed nothing", self.bin.display()));
+        let version = out.stdout.trim();
+        if version.is_empty() {
+            return Err(format!("{bin} --version printed nothing"));
         }
-        Ok(stdout)
+        Ok(version.to_owned())
     }
 
     /// Starts `donn status --watch --json`: stdout piped, stdin and stderr null.
@@ -453,6 +459,8 @@ mod tests {
             version_problem(" 0.14.0-next.1 "),
             Some(CliProblem::TooOld("0.14.0-next.1".into()))
         );
+        assert_eq!(version_problem("donn 0.14.0"), Some(CliProblem::Broken));
+        assert_eq!(version_problem("garbage"), Some(CliProblem::Broken));
     }
 
     #[test]
@@ -471,6 +479,23 @@ mod tests {
         assert!(donn.version().is_err(), "no output is no version");
         std::fs::remove_file(&bin).unwrap();
         assert!(donn.version().is_err());
+    }
+
+    #[test]
+    fn version_is_bounded_when_donn_hangs() {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = std::env::temp_dir().join("donn-cli-test-version-hang");
+        std::fs::write(&bin, "#!/bin/sh\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let start = Instant::now();
+        let err = Donn::new(bin.clone(), None).version().unwrap_err();
+        assert!(
+            start.elapsed() < Duration::from_secs(6),
+            "{:?}",
+            start.elapsed()
+        );
+        assert!(err.contains("did not answer"), "{err}");
+        std::fs::remove_file(&bin).unwrap();
     }
 
     #[test]
