@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { AgentRoute } from "@/routes/agent";
+import { AgentNewRoute } from "@/routes/agent-new";
 import { AgentsRoute } from "@/routes/agents";
 import { CapabilitiesRoute } from "@/routes/capabilities";
 import { SessionsRoute } from "@/routes/sessions";
@@ -22,6 +23,7 @@ export function createRouter() {
         { path: "capabilities", element: <CapabilitiesRoute /> },
         { path: "registry", element: <RegistryRoute /> },
         { path: "agents", element: <AgentsRoute /> },
+        { path: "agents/new", element: <AgentNewRoute /> },
         { path: "agents/:name", element: <AgentRoute /> },
         { path: "*", element: <Navigate to="/projects" replace /> },
       ],

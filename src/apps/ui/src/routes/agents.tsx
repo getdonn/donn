@@ -1,8 +1,10 @@
 import type { AgentListOutput, StatusOutput } from "@getdonn/cli-schemas";
 import { Link } from "react-router";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -140,6 +142,13 @@ export function AgentsRoute() {
   return (
     <Card>
       <CardHeader>
+        {project !== undefined && (
+          <CardAction>
+            <Button asChild>
+              <Link to="/agents/new">New agent</Link>
+            </Button>
+          </CardAction>
+        )}
         <CardTitle role="heading" aria-level={1}>
           Agents
         </CardTitle>
