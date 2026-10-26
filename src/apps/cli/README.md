@@ -35,11 +35,24 @@ donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile 
 donn agent deploy pr-bot         # vercel: link, env push after confirming, eve deploy
 ```
 
-Also `add` (an eve registry item, such as `channel/github`, with eve's questions), `templates`,
+Also `add` (an eve registry item, such as `channel/github`, with eve's questions), `templates`
+(the templates `create` takes), `deploy --dry-run` (what a deploy would set, nothing pushed),
 `list`, `sync`, `stop`, `logs`, `env` and `exec` (meant for entrypoints and scripts: no
 stdin or terminal). Run self-host images with `docker run --init`. The
 [README's Agents section](https://github.com/getdonn/donn#agents) covers targets, the two images
 to ship, `env.json` and secrets.
+
+## The web UI
+
+```sh
+donn ui              # open the app in your browser (starts the daemon if needed)
+donn ui --no-open    # print the URL, with its one-time code, instead
+donn ui --port 7777  # listen on a fixed port (127.0.0.1 only)
+```
+
+The app ships inside this package. See the
+[README's web UI section](https://github.com/getdonn/donn#the-web-ui) for the screens and the
+bridge's security model.
 
 ## Who uses it directly
 

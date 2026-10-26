@@ -190,6 +190,14 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
         });
         return { status: r.status, stdout: r.stdout, stderr: r.stderr };
       };
+      // Started here, not by `donn ui`'s auto-start: that waits about a second, which a cold
+      // CI runner can exceed. `daemon start` waits until the daemon answers.
+      const started = cli(["daemon", "start"]);
+      if (started.status !== 0) {
+        throw new Error(
+          `donn daemon start failed (${started.status}): ${started.stdout}${started.stderr}`,
+        );
+      }
       const url = () => {
         const r = cli(["ui", "--no-open", "--json"]);
         if (r.status !== 0) {

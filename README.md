@@ -344,6 +344,28 @@ inside the range this donn compiles for, Docker reachable (`local`, `self-host`)
 answering, `agent.ts` still spreading `donn`, donn's files present, the Vercel CLI (`vercel`),
 and agents the persona no longer declares. The design is `docs/planning/25-agent-runner.md`.
 
+## The web UI
+
+`donn ui [--no-open] [--port <n>]` starts the daemon if it is not running and opens the app in your
+browser (`--no-open` prints the URL instead). It is the CLI with a face, not a second product: every
+action runs a `donn` command. The app has five screens:
+
+- **Projects**: the layer stack in merge order and the resolved persona by field group, with
+  "Explain" on any value (which layer set it, what it overrode, what locks it) and "Open in editor".
+- **Sessions**: live `donn claude` and `donn codex` sessions, and a persona switch with the
+  per-harness report.
+- **Capabilities**: what each harness carries, with the compile reports for the project.
+- **Registry**: sign in to a registry, pull and publish layers.
+- **Agents**: the agents a project declares, their state, run, stop, logs, build and deploy, and a
+  builder for new ones (template, persona, target, then a dry run to review).
+
+The bridge listens on 127.0.0.1 only and signs the page in with a one-time code (valid for 60 s)
+that it trades for a bearer token. It checks every request's Host and Origin and runs only an
+allowlist of CLI commands; `daemon: { ui: false }` in `config.yaml` turns it off. Secrets never
+reach the page: it shows `secret://` refs and variable names, never values. A run or deploy started
+from the app has no shell, so it refuses `secret://env/...` refs: use the `keychain` provider for
+those. The desktop app (a Tauri shell around the same page) is deferred.
+
 ## Upgrading from zzpersona
 
 donn was called zzpersona until 2026-10-23. On a machine that ran zzpersona, run `donn migrate`
