@@ -94,7 +94,7 @@ of its release work (Open questions).
   | `POST /v1/run` | `{ argv, cwd }` → the CLI in process with `--json`; the same handler as `POST /run` (spec 15) with the UI allowlist below |
   | `POST /v1/jobs` | The same, for long operations (`agent create`, `build`, `deploy`, `pull`): returns a job id |
   | `GET /v1/events` | The daemon's server-sent events (spec 14) plus `job.progress`, `job.question`, `job.done` and the `agent.*` events of `25`; *(amended 2026-10-25, final review)* and last, before the bridge closes its streams for any reason, `ui.closing { reason: "idle" \| "daemon-stopping" }`, on which the app ends its session (it also ends after five failed reconnects) |
-  | `POST /v1/jobs/<id>/answer` | Answers a `job.question` (`25` §6) |
+  | `POST /v1/jobs/<id>/answer` | Answers a `job.question` (`25` §6); *(amended 2026-10-26)* only under the key the job asked (`400 not-asked` otherwise). Answer values are `***` in the daemon log and a job's `argv`; its `stdout` and `question.continue` keep them, because the app starts the next job from that continuation (retry after a secret, continue after a prerequisite, an editable-select's second answer). A secret is never among them (`25` §6), and jobs live only in the daemon's memory (maintainer's decision) |
   | `POST /v1/open` | `{ path }` → the user's editor (`$VISUAL`, else the OS default; *amended 2026-10-25*, see below); the path must be inside a known personas root or the project |
 
 - **The UI allowlist** (every form with `--json`): `list`, `switch` in the forms `/run` allows,

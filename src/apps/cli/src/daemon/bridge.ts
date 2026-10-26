@@ -497,6 +497,16 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
             },
           ),
         );
+      } else if (next === "not-asked") {
+        send(
+          res,
+          400,
+          failure(
+            "not-asked",
+            `job ${id} did not ask ${body.key}; answer the question it asked`,
+            { id, key: body.key },
+          ),
+        );
       } else
         send(
           res,

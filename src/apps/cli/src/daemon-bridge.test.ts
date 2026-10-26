@@ -1679,6 +1679,18 @@ describe("jobs", { timeout: 20_000 }, () => {
       line: "Installed channel/github",
     });
 
+    // Only the question asked takes an answer: another key could be an unasked secret.
+    const other = await call(b.port, "POST", `/v1/jobs/${id}/answer`, {
+      token,
+      body: { key: "github-private-key", value: "s3cr3t-OTHER" },
+    });
+    expect(other.status).toBe(400);
+    expect(other.body).toMatchObject({
+      error: { code: "not-asked", details: { key: "github-private-key" } },
+    });
+    expect(other.text).not.toContain("s3cr3t-OTHER");
+    expect(await jobOf(b.port, token, id)).not.toHaveProperty("answeredBy");
+
     const answered = await call(b.port, "POST", `/v1/jobs/${id}/answer`, {
       token,
       body: { key: "github-events", value: ["pull_request"] },
@@ -1787,6 +1799,7 @@ describe("createJobs", () => {
     });
     const first = queued(jobs, ["agent", "add", "x", "--json"], "/p");
     await vi.waitFor(() => expect(jobs.get(first.id)?.state).toBe("done"));
+    expect(jobs.continuation(first.id, "other.key", 1)).toBe("not-asked");
     const next = jobs.continuation(first.id, "github.app", { id: 7 });
     expect(next).toEqual({
       argv: ["agent", "add", "x", "--json", '--answer=github.app={"id":7}'],
