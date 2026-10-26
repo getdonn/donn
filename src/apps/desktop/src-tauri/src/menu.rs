@@ -116,7 +116,11 @@ pub fn menu_model(
         for a in &s.agents {
             let (cwd, name) = (root(&a.project), a.name.clone());
             let at = format!("{}:{}", a.project, a.name);
-            let go = if a.state == "running" {
+            // With no daemon, `agent run` would hold the agent in the CLI's
+            // foreground until a signal: the tray offers no Run or Stop then.
+            let go = if !s.daemon {
+                Entry::Label("Start the daemon to run".into())
+            } else if a.state == "running" {
                 let stop = Action::StopAgent { cwd, name };
                 item(&format!("agent:stop:{at}"), "Stop", stop, None)
             } else {
@@ -545,6 +549,36 @@ mod tests {
         // No agents, no header.
         let none: Snapshot = read("two-projects.json");
         assert!(!labels(&model(&none, &BTreeMap::new())).contains(&"Agents"));
+    }
+
+    #[test]
+    fn no_daemon_no_run_or_stop() {
+        let mut s: Snapshot = read("no-daemon.json");
+        let up: Snapshot = read("agents.json");
+        s.agents = up.agents.clone();
+        s.agents.push(Agent {
+            name: "golf".into(),
+            project: "/fixture/repo".into(),
+            state: "running".into(),
+            sync_failed: None,
+        });
+        let m = model(&s, &BTreeMap::new());
+        let mut all = Vec::new();
+        ids(&m, &mut all);
+        for id in &all {
+            assert!(
+                !matches!(
+                    action_for(&m, id),
+                    Some(Action::RunAgent { .. } | Action::StopAgent { .. })
+                ),
+                "{id}"
+            );
+        }
+        // Each agent still opens in donn, which starts the daemon itself.
+        let alpha = submenu(&m, "alpha · created");
+        assert_eq!(labels(alpha), ["Start the daemon to run", "Open in donn"]);
+        let golf = submenu(&m, "golf · running");
+        assert_eq!(labels(golf), ["Start the daemon to run", "Open in donn"]);
     }
 
     #[test]
