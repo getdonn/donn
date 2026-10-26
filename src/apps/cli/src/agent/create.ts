@@ -28,7 +28,12 @@ import {
 } from "../context.js";
 import { CliError, errorEnvelope } from "../errors.js";
 import { fsStep, writeFileAtomic } from "../fs.js";
-import { addedLines, declareAgent, resolveEdited } from "./declare.js";
+import {
+  addedLines,
+  declareAgent,
+  resolveEdited,
+  writeDeclaration,
+} from "./declare.js";
 import {
   posixRelative,
   readManifest,
@@ -56,7 +61,8 @@ import { recordCreated } from "./registry.js";
 // materialise the template, install, edit agent.ts, write donn's files and the manifest, keep
 // build output out of Git. See docs/planning/25-agent-runner.md, section 2. The pin and the
 // staging of the template come before the compile, which needs both; nothing is written to the
-// agent's path until the reports have printed and no blocking entry stopped the create.
+// agent's path or the persona until the reports have printed and no blocking entry stopped the
+// create.
 
 const PROJECT_PERSONA = "project/persona";
 
@@ -216,7 +222,6 @@ export function leftForInspection(
 
 async function resolveAndDeclare(
   ctx: Context,
-  io: CliIo,
   name: string,
   options: CreateOptions,
 ): Promise<{
@@ -263,16 +268,13 @@ async function resolveAndDeclare(
       ...(options.path !== undefined && { path: options.path }),
     },
     {
-      dryRun: options.dryRun === true,
+      // Written by `create` once nothing can refuse the agent any more.
+      dryRun: true,
       check: async (text) => {
         result = await resolveEdited(ctx, text);
       },
     },
   );
-  if (!options.dryRun && !options.json)
-    io.stderr.write(
-      `declared agents.define.${name} in ${posixRelative(dirname(ctx.projectDir!), file)}\n`,
-    );
   return { result, edit: { file, before, after } };
 }
 
@@ -295,8 +297,8 @@ export async function create(
   }
   const root = dirname(ctx.projectDir);
 
-  // 1. Declare if needed.
-  const { result, edit } = await resolveAndDeclare(ctx, io, name, options);
+  // 1. Declare if needed: resolved with the edit now, written only once nothing refuses.
+  const { result, edit } = await resolveAndDeclare(ctx, name, options);
   printWarnings(io, result);
   const userLayer = result.ir.layers.find((ref) => ref.startsWith("user/"));
   if (userLayer !== undefined) {
@@ -405,6 +407,13 @@ export async function create(
       await compileInputs(ctx, result.ir, name, staging, version),
     );
     reportAndCheck(io, output, options);
+    if (edit) {
+      await writeDeclaration(edit);
+      if (!options.json)
+        io.stderr.write(
+          `declared agents.define.${name} in ${posixRelative(root, edit.file)}\n`,
+        );
+    }
     // Only an incomplete create (its manifest says so) is removed, and only with --force.
     if (previous !== undefined)
       await fsStep(dir, () => rm(dir, { recursive: true, force: true }));

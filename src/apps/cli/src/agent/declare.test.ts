@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CliError } from "../errors.js";
-import { addedLines, declareAgent } from "./declare.js";
+import { addedLines, declareAgent, writeDeclaration } from "./declare.js";
 
 const PERSONA = `# Project persona: comments and blank lines survive.
 apiVersion: donn/v0
@@ -128,6 +128,26 @@ describe("declareAgent", () => {
         { dryRun: false },
       ),
     ).rejects.toMatchObject({ code: "invalid-persona-file" });
+  });
+});
+
+describe("writeDeclaration", () => {
+  const agent = { template: "eve:blank", target: "local" as const };
+
+  it("writes a dry run's edit", async () => {
+    const edit = await declareAgent(file, "kody", agent, { dryRun: true });
+    expect(readFileSync(file, "utf8")).toBe(PERSONA);
+    await writeDeclaration({ file, ...edit });
+    expect(readFileSync(file, "utf8")).toBe(edit.after);
+  });
+
+  it("refuses when the file changed since it was read, writing nothing", async () => {
+    const edit = await declareAgent(file, "kody", agent, { dryRun: true });
+    writeFileSync(file, `${PERSONA}# edited meanwhile\n`);
+    const error = await writeDeclaration({ file, ...edit }).catch((e) => e);
+    expect(error).toBeInstanceOf(CliError);
+    expect(error.code).toBe("persona-changed");
+    expect(readFileSync(file, "utf8")).toBe(`${PERSONA}# edited meanwhile\n`);
   });
 });
 
