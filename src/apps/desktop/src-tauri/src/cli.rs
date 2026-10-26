@@ -3,8 +3,9 @@
 
 use std::ffi::OsString;
 use std::fmt;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -142,47 +143,94 @@ fn unreadable(message: String) -> CliFailure {
     }
 }
 
-/// Runs `<shell> -ilc LOOKUP`. The whole call is bounded by
-/// `LOCATE_TIMEOUT`: the shell is killed and reaped past it, and once the shell
-/// exits the output is collected for only a short grace, so a grandchild that
-/// inherited stdout cannot hold the app up. The reader thread is abandoned.
+/// Runs `<shell> -ilc LOOKUP`, bounded by `LOCATE_TIMEOUT`; its stdout.
 fn shell_command_v(shell: &str) -> std::io::Result<String> {
-    let mut child = Command::new(shell)
-        .args(["-ilc", LOOKUP])
+    let out = run_bounded(Command::new(shell).args(["-ilc", LOOKUP]), LOCATE_TIMEOUT)?;
+    Ok(out.stdout)
+}
+
+/// What `run_bounded` collected; `status` is `None` when the child was still
+/// running at the deadline (it is killed).
+struct Bounded {
+    stdout: String,
+    stderr: String,
+    status: Option<ExitStatus>,
+}
+
+/// Runs `command` (stdin null, stdout and stderr piped) for at most `timeout`:
+/// the child is killed and reaped past it, and once it exits its output is
+/// collected for only a short grace, so a grandchild that inherited a pipe
+/// cannot hold the app up. The reader threads are abandoned.
+fn run_bounded(command: &mut Command, timeout: Duration) -> std::io::Result<Bounded> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()?;
-    let mut pipe = child.stdout.take().expect("stdout is piped");
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
-    std::thread::spawn(move || {
-        let mut buf = [0u8; 4096];
-        while let Ok(n) = std::io::Read::read(&mut pipe, &mut buf) {
-            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
-                break;
+    let (tx, rx) = mpsc::channel::<(bool, Vec<u8>)>();
+    let pipes: [(bool, Box<dyn Read + Send>); 2] = [
+        (
+            false,
+            Box::new(child.stdout.take().expect("stdout is piped")),
+        ),
+        (
+            true,
+            Box::new(child.stderr.take().expect("stderr is piped")),
+        ),
+    ];
+    for (is_err, mut pipe) in pipes {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = pipe.read(&mut buf) {
+                if n == 0 || tx.send((is_err, buf[..n].to_vec())).is_err() {
+                    break;
+                }
             }
-        }
-    });
+        });
+    }
+    drop(tx);
     let start = Instant::now();
-    let mut out = Vec::new();
-    let mut exited_at: Option<Instant> = None;
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut exited: Option<(Instant, ExitStatus)> = None;
+    // Both pipes at EOF (every chunk was received before this).
+    let mut closed = false;
     loop {
         match rx.recv_timeout(Duration::from_millis(20)) {
-            Ok(chunk) => out.extend(chunk),
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Ok((false, chunk)) => out.extend(chunk),
+            Ok((true, chunk)) => err.extend(chunk),
+            Err(mpsc::RecvTimeoutError::Disconnected) => closed = true,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
-        if exited_at.is_none() && child.try_wait().ok().flatten().is_some() {
-            exited_at = Some(Instant::now());
+        if exited.is_none()
+            && let Ok(Some(status)) = child.try_wait()
+        {
+            exited = Some((Instant::now(), status));
         }
-        let grace_over = exited_at.is_some_and(|t| t.elapsed() > EXIT_GRACE);
-        if grace_over || start.elapsed() > LOCATE_TIMEOUT {
+        let done = exited.is_some_and(|(t, _)| closed || t.elapsed() > EXIT_GRACE);
+        if done || start.elapsed() > timeout {
             break;
+        }
+        if closed {
+            // Only the exit is left to wait for; `recv_timeout` no longer waits.
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
     let _ = child.kill();
     let _ = child.wait();
-    Ok(String::from_utf8_lossy(&out).into_owned())
+    Ok(Bounded {
+        stdout: String::from_utf8_lossy(&out).into_owned(),
+        stderr: String::from_utf8_lossy(&err).into_owned(),
+        status: exited.map(|(_, status)| status),
+    })
+}
+
+/// A finished call's result: stdout parsed as JSON on success, else the failure.
+fn answer(status: ExitStatus, stdout: &str, stderr: &str) -> Result<Value, CliFailure> {
+    if !status.success() {
+        return Err(failure_from(stdout, stderr));
+    }
+    serde_json::from_str(stdout).map_err(|e| unreadable(format!("donn printed no JSON: {e}")))
 }
 
 /// Just enough of semver for `major.minor.patch[-pre]`.
@@ -254,10 +302,34 @@ impl Donn {
             .output()
             .map_err(|e| unreadable(format!("could not run donn: {e}")))?;
         let stdout = String::from_utf8_lossy(&out.stdout);
-        if !out.status.success() {
-            return Err(failure_from(&stdout, &String::from_utf8_lossy(&out.stderr)));
-        }
-        serde_json::from_str(&stdout).map_err(|e| unreadable(format!("donn printed no JSON: {e}")))
+        answer(out.status, &stdout, &String::from_utf8_lossy(&out.stderr))
+    }
+
+    /// `run`, bounded by `timeout` (reads such as `donn list`; actions such as
+    /// `agent run` may take minutes and use `run`). Past it, `donn` is killed
+    /// and the call fails with `timeout`.
+    pub fn run_with_timeout(
+        &self,
+        args: &[&str],
+        cwd: &Path,
+        timeout: Duration,
+    ) -> Result<Value, CliFailure> {
+        let mut command = self.command();
+        command.args(args).arg("--json").current_dir(cwd);
+        let out = run_bounded(&mut command, timeout)
+            .map_err(|e| unreadable(format!("could not run donn: {e}")))?;
+        let Some(status) = out.status else {
+            return Err(CliFailure {
+                code: "timeout".into(),
+                message: format!(
+                    "donn {} did not answer within {} s",
+                    args.join(" "),
+                    timeout.as_secs()
+                ),
+                fix: None,
+            });
+        };
+        answer(status, &out.stdout, &out.stderr)
     }
 
     /// Starts `donn status --watch --json`: stdout piped, stdin and stderr null.
@@ -344,13 +416,30 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
     }
 
+    /// Tests that write a script and run it take this lock: on Linux, a fork in
+    /// another test thread while a script is open for writing makes its exec
+    /// fail with ETXTBSY (rust-lang/rust#114554). They are the only tests that
+    /// spawn processes, so running them one at a time closes the race.
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// An executable script in the temp dir (call under `serial`). The file is
+    /// closed when this returns.
+    fn script(name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(name);
+        std::fs::write(&path, body).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
     #[test]
     fn locate_is_bounded_when_a_grandchild_holds_stdout() {
-        use std::os::unix::fs::PermissionsExt;
-        let script = std::env::temp_dir().join("donn-cli-test-shell");
+        let _serial = serial();
         let body = "#!/bin/sh\necho /opt/x/donn\necho PATH=/opt/x:/bin\nsleep 30 &\n";
-        std::fs::write(&script, body).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let script = script("donn-cli-test-shell", body);
         let start = Instant::now();
         let found = locate(None, script.to_str().unwrap());
         assert!(start.elapsed() < Duration::from_secs(6));
@@ -358,5 +447,40 @@ mod tests {
         assert_eq!(donn.bin(), Path::new("/opt/x/donn"));
         assert_eq!(donn.path(), Some(&OsString::from("/opt/x:/bin")));
         std::fs::remove_file(&script).unwrap();
+    }
+    #[test]
+    fn run_with_timeout_answers_or_times_out() {
+        let _serial = serial();
+        let body =
+            "#!/bin/sh\n[ \"$1 $2\" = \"list --json\" ] || exit 3\necho '{\"personas\":[]}'\n";
+        let bin = script("donn-cli-test-list", body);
+        let donn = Donn::new(bin.clone(), None);
+        let tmp = std::env::temp_dir();
+        let v = donn
+            .run_with_timeout(&["list"], &tmp, Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(v, serde_json::json!({ "personas": [] }));
+
+        let body =
+            "#!/bin/sh\necho '{\"error\":{\"code\":\"store\",\"message\":\"bad\"}}'\nexit 1\n";
+        let bin = script("donn-cli-test-list", body);
+        let f = donn
+            .run_with_timeout(&["list"], &tmp, Duration::from_secs(5))
+            .unwrap_err();
+        assert_eq!((f.code.as_str(), f.message.as_str()), ("store", "bad"));
+
+        let hang = script("donn-cli-test-list-hang", "#!/bin/sh\nsleep 30\n");
+        let start = Instant::now();
+        let f = Donn::new(hang.clone(), None)
+            .run_with_timeout(&["list"], &tmp, Duration::from_millis(300))
+            .unwrap_err();
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            start.elapsed()
+        );
+        assert_eq!(f.code, "timeout", "{f:?}");
+        std::fs::remove_file(&bin).unwrap();
+        std::fs::remove_file(&hang).unwrap();
     }
 }

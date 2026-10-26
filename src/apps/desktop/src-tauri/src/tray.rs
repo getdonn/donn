@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -17,6 +18,9 @@ use crate::snapshot::{Personas, Snapshot};
 use crate::window;
 
 const TRAY: &str = "donn";
+
+/// How long one `donn list` may take: a hung one must not hold up the menu.
+const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The tray's state: the CLI once located, what is drawn, the persona lists.
 #[derive(Default)]
@@ -106,9 +110,10 @@ fn lists(
     (l.default.clone(), l.projects.clone())
 }
 
-/// `donn list` in `cwd`; a failure lists nothing (the menu says `no personas`).
+/// `donn list` in `cwd`, bounded by `LIST_TIMEOUT`; a failure or a timeout
+/// lists nothing (the menu says `no personas`).
 fn list(donn: &Donn, cwd: &Path) -> Personas {
-    donn.run(&["list"], cwd)
+    donn.run_with_timeout(&["list"], cwd, LIST_TIMEOUT)
         .ok()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default()
