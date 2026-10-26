@@ -32,6 +32,7 @@
 >   against them, and the app imports them (§4).
 > - **Templates.** The builder lists templates through a new `donn agent templates --json` (the
 >   adapter's table plus the `eve:blank` entry), so the app reads nothing outside the CLI.
+>
 > *Amended 2026-10-26:* layer 4 is designed in `28-desktop.md`: a menu-bar app that runs the
 > installed `donn` for everything (`status --watch --json` feeds the tray). Open question 1 is
 > decided there: built from source for v1; signed downloads are a later spec.

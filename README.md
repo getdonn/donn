@@ -375,9 +375,11 @@ those.
 
 `src/apps/desktop` is donn in the menu bar: the default persona and each live session's persona at
 a glance, a switcher, the created agents with run and stop, and "Open donn" for the web app in a
-window. Like the web app it has no logic of its own: it runs the installed `donn` (0.14.0 or later).
-It is built from source for now (macOS and Linux): `pnpm --filter @getdonn/desktop bundle`, then
-copy `donn.app` to `/Applications`. Prerequisites, output paths and how it finds `donn` are in
+window. Like the web app it has no logic of its own: it runs the installed `donn`, which must be the
+CLI release that ships spec 28 or later; until that release is on npm, build the CLI from this repo
+and set `DONN_BIN` (the package README has the example). It is built from source for now (macOS
+and Linux): `pnpm --filter @getdonn/desktop bundle`, then copy `donn.app` to `/Applications`.
+Prerequisites, output paths and how it finds `donn` are in
 [`src/apps/desktop/README.md`](src/apps/desktop/README.md).
 
 ## Upgrading from zzpersona

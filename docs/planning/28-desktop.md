@@ -167,8 +167,9 @@ Quit
   switch report is in the window, `17`). On failure a native dialog shows `message` and `fix`. A
   run from the tray has no shell environment, so `secret://env/…` refs fail as they do from the
   GUI (`26` §2, "Env secrets"), with the keychain fix.
-- **Icon.** A monochrome template icon; its tooltip names the default persona. It gains a dot when
-  a session is `stale` or failed to refresh, or an agent failed: the only state signal.
+- **Icon.** A monochrome template icon (on Linux a white one, see the amendments); its tooltip
+  names the default persona. It gains a dot when a session is `stale` or failed to refresh, or an
+  agent failed: the only state signal.
 - Not in the tray: creating, building, deploying or publishing; editing. Those are in the window.
 
 ## 4. The window and the lifecycle
@@ -244,12 +245,11 @@ have.
 1. **Signed downloads.** A later spec: a Developer ID certificate, notarisation in `release.yml`,
    artifacts on the GitHub Release, and then the updater. Decide when the app has users beyond the
    maintainer.
-4. **Project lines.** A project line shows its switch or the default. Showing the persona the
+2. **Project lines.** A project line shows its switch or the default. Showing the persona the
    session actually runs (`live` or `launched`) may read better.
-5. **Login Items name.** The LaunchAgent's `AssociatedBundleIdentifiers` is empty, so macOS Login
+3. **Login Items name.** The LaunchAgent's `AssociatedBundleIdentifiers` is empty, so macOS Login
    Items may not name the app.
-6. **Linux tray icon.** It is black on transparent, so it is invisible on a dark panel.
-7. **fish.** fish joins `"$PATH"` with spaces, so the PATH capture is wrong for fish users.
+4. **fish.** fish joins `"$PATH"` with spaces, so the PATH capture is wrong for fish users.
 
 ## Amendments from the build (2026-10-26)
 
@@ -262,8 +262,16 @@ have.
   line: "donn CLI did not answer --version — run donn doctor in a terminal". A broken CLI is not a
   missing one.
 - "Open donn" with the window already open only focuses it and does not sign in again. "Open in
-  donn" and a new window always sign in afresh. A stale sign-in result is dropped. A `127.0.0.1`
-  URL that is not the current bridge is never handed to the browser.
+  donn" and a new window always sign in afresh. A stale sign-in result is dropped.
+- Links: a `127.0.0.1` URL that is not the current bridge opens in the default browser (a local
+  agent's URL), unless its fragment carries a one-time code (`#t=`, a stale sign-in): that one
+  goes nowhere. A refused `donn ui` answer is reported without its URL.
+- With the daemon down, agents in the tray have no Run or Stop, only "Open in donn" (its
+  `donn ui` starts the daemon): without a daemon, `donn agent run` holds the agent in the CLI's
+  foreground until a signal. A tray `donn list` is bounded at 10 s; a timeout lists nothing.
+- The tray icon is a template image on macOS only. Linux panels do not tint it, so Linux gets a
+  white variant (`icons/tray-light*.png`).
+- `bundle.targets` is `app`, `dmg`, `appimage` and `deb` (`"all"` also built an `.rpm`).
 - macOS: a second launch from Finder arrives as Reopen and opens the window, like the
   single-instance callback.
 - `donn status --json` reports `switched.error` when `state.json` cannot be read, and still
