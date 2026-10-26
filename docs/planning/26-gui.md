@@ -177,7 +177,7 @@ of its release work (Open questions).
 | 1 `bridge` | the loopback listener, the UI token and one-time code, Host/Origin checks, the UI allowlist, jobs and their events, `/v1/open`; `donn ui` |
 | 2 `app` | `src/apps/ui`: shell, project picker, screens 1–4 |
 | 3 `agents` | screen 5, after `25`'s layer 2 |
-| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux (*deferred 2026-10-25*) |
+| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux (*deferred 2026-10-25; built 2026-10-26, see `28`*) |
 
 - **Bridge:** requests without the token, with a wrong `Host` or a foreign `Origin` are refused; a
   used one-time code fails; a command outside the allowlist is `403`; `/v1/open` outside a known

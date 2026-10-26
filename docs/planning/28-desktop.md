@@ -6,6 +6,8 @@
 > **built from source for v1**; signed and notarised downloads are a later spec. It adds two flags
 > and one field to the CLI and a menu-bar app, `src/apps/desktop` (Tauri 2), that has no logic of
 > its own: every read and every action is a `donn` command.
+> *2026-10-26: built.* `src/apps/desktop` (Tauri 2), `donn status --watch --json`,
+> `donn ui --page` and the app's `?project=`; smoked on macOS, see "Amendments from the build".
 
 ## Intent
 
@@ -242,3 +244,51 @@ have.
 1. **Signed downloads.** A later spec: a Developer ID certificate, notarisation in `release.yml`,
    artifacts on the GitHub Release, and then the updater. Decide when the app has users beyond the
    maintainer.
+4. **Project lines.** A project line shows its switch or the default. Showing the persona the
+   session actually runs (`live` or `launched`) may read better.
+5. **Login Items name.** The LaunchAgent's `AssociatedBundleIdentifiers` is empty, so macOS Login
+   Items may not name the app.
+6. **Linux tray icon.** It is black on transparent, so it is invisible on a dark panel.
+7. **fish.** fish joins `"$PATH"` with spaces, so the PATH capture is wrong for fish users.
+
+## Amendments from the build (2026-10-26)
+
+- The lookup runs `$SHELL -ilc 'command -v donn; printf "PATH=%s\n" "$PATH"'`, an interactive
+  login shell and not `-lc`, because `pnpm setup` writes PATH only to `~/.zshrc`. The app keeps
+  that PATH and sets it on every `donn` it runs: an app opened from Finder has a bare PATH, and
+  the npm or pnpm shim needs `node`. `DONN_BIN` keeps the app's own PATH. The lookup and
+  `--version` are each bounded at 5 s.
+- A CLI that does not answer `--version` (it fails, hangs or prints no version) gets its own tray
+  line: "donn CLI did not answer --version — run donn doctor in a terminal". A broken CLI is not a
+  missing one.
+- "Open donn" with the window already open only focuses it and does not sign in again. "Open in
+  donn" and a new window always sign in afresh. A stale sign-in result is dropped. A `127.0.0.1`
+  URL that is not the current bridge is never handed to the browser.
+- macOS: a second launch from Finder arrives as Reopen and opens the window, like the
+  single-instance callback.
+- `donn status --json` reports `switched.error` when `state.json` cannot be read, and still
+  exits 0.
+
+### Smoke run
+
+Run with the maintainer on macOS (arm64), 2026-10-26, on the bundle from `3b674d1`.
+
+1. Finder launch from `/Applications` against the real home and the global CLI 0.13.2: the tray
+   showed "donn CLI 0.13.2 is too old for this app — npm i -g @getdonn/cli@latest" and Quit. The
+   template icon rendered correctly in the dark menu bar. The login-shell lookup, the PATH
+   carry-over and the version gate work from Finder.
+2. Against a temporary home (a throwaway local CLI 0.14.0 and the e2e fake eve): the menu matched
+   section 3. It showed the header, the default submenu, three projects with harness lines
+   (`api (a)` and `api (b)` told apart), `bot · created`, Open donn, Start at login and Quit. The
+   dot badge showed for a stale and a refresh-failed session.
+3. A tray switch of the default and of a project: `donn status` and `state.json` agreed. A switch
+   from a terminal showed in the tray. A project with no switch showed the default.
+4. Tray Run and Stop of an agent: the daemon log showed running, then stopped 11 s later. "Open in
+   donn" opened the agent page in the right project, signed in.
+5. With the daemon stopped and the window open: the page ended and the tray showed `daemon not
+   running` and Start daemon. Start daemon reloaded the window, signed in by itself, on a new
+   bridge port.
+6. Start at login on: `~/Library/LaunchAgents/dev.getdonn.desktop.plist` (`RunAtLoad`), with no
+   clash with the daemon's `dev.getdonn.daemon.plist`. Off: the file is removed.
+7. Quit stops the app and its watch child, also when the terminal that started it closes. The
+   daemon keeps running. A second launch exits and opens the window in the running instance.
