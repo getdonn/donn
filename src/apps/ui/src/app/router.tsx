@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Placeholder } from "@/routes/placeholder";
+import { CapabilitiesRoute } from "@/routes/capabilities";
+import { SessionsRoute } from "@/routes/sessions";
 import { PersonasRoute } from "@/routes/personas";
 import { Shell } from "./shell";
 
@@ -14,24 +16,8 @@ export function createRouter() {
       children: [
         { index: true, element: <Navigate to="/projects" replace /> },
         { path: "projects", element: <PersonasRoute /> },
-        {
-          path: "sessions",
-          element: (
-            <Placeholder
-              title="Sessions"
-              about="Live sessions per harness, and switching with its report."
-            />
-          ),
-        },
-        {
-          path: "capabilities",
-          element: (
-            <Placeholder
-              title="Capabilities"
-              about="What each harness keeps and drops, and the compile reports."
-            />
-          ),
-        },
+        { path: "sessions", element: <SessionsRoute /> },
+        { path: "capabilities", element: <CapabilitiesRoute /> },
         {
           path: "registry",
           element: (

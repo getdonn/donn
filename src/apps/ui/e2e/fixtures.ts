@@ -47,6 +47,15 @@ export interface Donn {
   };
   /** A new `donn ui` URL, with a one-time code. */
   url(): string;
+  /**
+   * Registers a running session, as `donn claude|codex` does (src/apps/cli/src/session.ts): a
+   * launch record whose process is this worker, which is alive. Returns its folder.
+   */
+  session(launched: {
+    harness: "claude-code" | "codex";
+    persona: string;
+    project: string;
+  }): string;
 }
 
 function put(path: string, content: string) {
@@ -90,7 +99,7 @@ function editor(root: string, log: string) {
   return script;
 }
 
-function seed(): Omit<Donn, "cli" | "url"> {
+function seed(): Omit<Donn, "cli" | "url" | "session"> {
   // Resolved: macOS's tmpdir is a symlink, and the daemon reports real paths.
   const root = realpathSync(mkdtempSync(join(tmpdir(), "donn-ui-e2e-")));
   const home = join(root, "home");
@@ -157,8 +166,22 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
         }
         return (JSON.parse(r.stdout) as { url: string }).url;
       };
+      let sessions = 0;
+      const session: Donn["session"] = (launched) => {
+        const dir = join(seeded.home, "sessions", `e2e-${++sessions}`);
+        put(
+          join(dir, "launched.json"),
+          `${JSON.stringify({
+            ...launched,
+            source: "switch",
+            pid: process.pid,
+            startedAt: new Date().toISOString(),
+          })}\n`,
+        );
+        return dir;
+      };
       try {
-        await use({ ...seeded, cli, url });
+        await use({ ...seeded, cli, url, session });
       } finally {
         cli(["daemon", "stop"]);
         rmSync(seeded.root, { recursive: true, force: true });
