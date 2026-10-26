@@ -2,6 +2,7 @@
 //! read and every action is a `donn` command. Windows are created from Rust.
 
 pub mod cli;
+pub mod menu;
 pub mod snapshot;
 
 pub fn run() {
