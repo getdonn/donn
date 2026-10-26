@@ -4,6 +4,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -13,6 +14,9 @@ pub const MIN_CLI: (u32, u32, u32) = (0, 14, 0);
 
 /// How long a login shell may take to answer `command -v donn`.
 const LOCATE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long output may trail the shell's exit (a grandchild holding stdout).
+const EXIT_GRACE: Duration = Duration::from_millis(300);
 
 /// `donn` could not be found.
 #[derive(Debug, Clone, PartialEq)]
@@ -113,7 +117,10 @@ fn unreadable(message: String) -> CliFailure {
     }
 }
 
-/// Runs `<shell> -lc 'command -v donn'`, killing it after `LOCATE_TIMEOUT`.
+/// Runs `<shell> -lc 'command -v donn'`. The whole call is bounded by
+/// `LOCATE_TIMEOUT`: the shell is killed and reaped past it, and once the shell
+/// exits the output is collected for only a short grace, so a grandchild that
+/// inherited stdout cannot hold the app up. The reader thread is abandoned.
 fn shell_command_v(shell: &str) -> std::io::Result<String> {
     let mut child = Command::new(shell)
         .args(["-lc", "command -v donn"])
@@ -122,21 +129,35 @@ fn shell_command_v(shell: &str) -> std::io::Result<String> {
         .stderr(Stdio::null())
         .spawn()?;
     let mut pipe = child.stdout.take().expect("stdout is piped");
-    let reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        let _ = std::io::Read::read_to_string(&mut pipe, &mut text);
-        text
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        while let Ok(n) = std::io::Read::read(&mut pipe, &mut buf) {
+            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
+        }
     });
     let start = Instant::now();
-    while child.try_wait()?.is_none() {
-        if start.elapsed() > LOCATE_TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
+    let mut out = Vec::new();
+    let mut exited_at: Option<Instant> = None;
+    loop {
+        match rx.recv_timeout(Duration::from_millis(20)) {
+            Ok(chunk) => out.extend(chunk),
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        if exited_at.is_none() && child.try_wait().ok().flatten().is_some() {
+            exited_at = Some(Instant::now());
+        }
+        let grace_over = exited_at.is_some_and(|t| t.elapsed() > EXIT_GRACE);
+        if grace_over || start.elapsed() > LOCATE_TIMEOUT {
             break;
         }
-        std::thread::sleep(Duration::from_millis(20));
     }
-    Ok(reader.join().unwrap_or_default())
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
 /// Just enough of semver for `major.minor.patch[-pre]`.
@@ -259,5 +280,18 @@ mod tests {
         assert_eq!(locate(Some(path), "/bin/sh").unwrap(), file);
         assert!(locate(Some("/nonexistent/donn"), "/bin/sh").is_err());
         std::fs::remove_file(&file).unwrap();
+    }
+
+    #[test]
+    fn locate_is_bounded_when_a_grandchild_holds_stdout() {
+        use std::os::unix::fs::PermissionsExt;
+        let script = std::env::temp_dir().join("donn-cli-test-shell");
+        std::fs::write(&script, "#!/bin/sh\necho /opt/x/donn\nsleep 30 &\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let start = Instant::now();
+        let found = locate(None, script.to_str().unwrap());
+        assert!(start.elapsed() < Duration::from_secs(6));
+        assert_eq!(found.unwrap(), PathBuf::from("/opt/x/donn"));
+        std::fs::remove_file(&script).unwrap();
     }
 }
