@@ -1,3 +1,4 @@
+import { rmSync, writeFileSync } from "node:fs";
 import { expect, test } from "./fixtures";
 
 // Screens 2 and 3 over the real bridge: live sessions from `status --json` (a seeded launch
@@ -80,4 +81,44 @@ test("the matrix has a row per harness, and compile reports for the project", as
   await expect(
     page.getByRole("region", { name: "Compile report: agents-md" }),
   ).toBeVisible();
+});
+
+test("a failed switch is shown beside the buttons", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  // A persona the list offers, removed before the switch: the CLI cannot find it.
+  const ghost = `${donn.personas}/team/ghost.yaml`;
+  writeFileSync(
+    ghost,
+    "apiVersion: donn/v0\nkind: Persona\nmetadata:\n  name: ghost\n  version: 1\n",
+  );
+  await page.goto(signIn);
+  await page.getByRole("link", { name: "Sessions" }).click();
+  await page.getByRole("combobox", { name: "Switch to" }).click();
+  await page.getByRole("option", { name: "team/ghost" }).click();
+  rmSync(ghost);
+  await page.getByRole("button", { name: "Switch", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("team/ghost");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("the report says what AGENTS.md carries", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  // The CLI reports agents-md only for a project whose AGENTS.md has a donn block.
+  expect(donn.cli(["write", "--json"]).status).toBe(0);
+  await page.goto(signIn);
+  await page.getByRole("link", { name: "Sessions" }).click();
+  await page.getByRole("combobox", { name: "Switch to" }).click();
+  await page.getByRole("option", { name: "area/fintech" }).click();
+  await page.getByRole("button", { name: "Switch", exact: true }).click();
+  const report = page.getByRole("dialog", { name: "Switched to area/fintech" });
+  await expect(report).toContainText("agents-md");
+  await expect(report).toContainText(
+    "AGENTS.md carries the project persona, not this switch.",
+  );
 });

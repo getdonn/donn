@@ -35,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBridge, useProject, useRun } from "@/app/providers";
+import { CliFailure } from "@/lib/bridge";
 import { folderName } from "@/lib/projects";
 
 // Screen 2, sessions and switching (docs/planning/26-gui.md §3): the live sessions per harness
@@ -122,6 +123,8 @@ function Switcher({ project }: { project: string }) {
   const [chosen, setChosen] = useState<string>();
   const [done, setDone] = useState<{ title: string; result: SwitchOutput }>();
   const apply = useMutation({
+    // Its failure is shown beside the buttons, not as a toast.
+    meta: { quiet: true },
     mutationFn: async (persona: string | undefined) => ({
       title:
         persona === undefined ? "Switch cleared" : `Switched to ${persona}`,
@@ -164,6 +167,16 @@ function Switcher({ project }: { project: string }) {
         >
           Clear
         </Button>
+        {apply.error && (
+          <p role="alert" className="w-full text-sm text-destructive">
+            {apply.error.message}
+            {apply.error instanceof CliFailure && apply.error.fix && (
+              <span className="block text-muted-foreground">
+                {apply.error.fix}
+              </span>
+            )}
+          </p>
+        )}
         {current.data !== undefined &&
           "source" in current.data &&
           current.data.persona !== null && (
