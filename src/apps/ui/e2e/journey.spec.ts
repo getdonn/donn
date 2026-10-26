@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "./fixtures";
 
@@ -11,11 +11,16 @@ test("project, explain, switch, create an agent, run, stop", async ({
   signIn,
   donn,
 }) => {
-  // The switch is remembered for the folder, and the home is shared by the worker's tests.
+  // The switch is remembered for the folder, and the home and the project persona are shared by
+  // the worker's tests: the journey agent leaves the persona as it found it.
+  const persona = join(donn.repo, ".donn/persona.yaml");
+  const kept = readFileSync(persona, "utf8");
   try {
     await journey();
   } finally {
     donn.cli(["switch", "--clear"]);
+    donn.cli(["agent", "stop", "journey", "--json"]);
+    writeFileSync(persona, kept);
   }
 
   async function journey() {
@@ -66,9 +71,7 @@ test("project, explain, switch, create an agent, run, stop", async ({
       page.getByRole("heading", { name: "journey", level: 1 }),
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("agent-state")).toHaveText("created");
-    expect(
-      readFileSync(join(donn.repo, ".donn/persona.yaml"), "utf8"),
-    ).toContain("journey:");
+    expect(readFileSync(persona, "utf8")).toContain("journey:");
 
     // Run, then stop.
     await page.getByRole("button", { name: "Run", exact: true }).click();

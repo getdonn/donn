@@ -97,6 +97,7 @@ describe("createEventStream", () => {
     const events = createEventStream({
       base: "http://127.0.0.1:1",
       token: () => "tok",
+      maxFailures: 100,
       fetch: (async () => {
         tries++;
         throw new TypeError("Failed to fetch");
@@ -110,6 +111,57 @@ describe("createEventStream", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(waits).toEqual([500, 1000, 2000, 4000, 8000, 10000]);
     expect(tries).toBe(6);
+  });
+
+  it("five failed connections in a row: unreachable, and it stops", async () => {
+    let unreachable = 0;
+    let tries = 0;
+    const waits: number[] = [];
+    // Connects once (the daemon was up), then the port is closed.
+    const answers = [stream([": connected\n\n"])];
+    const events = createEventStream({
+      base: "http://127.0.0.1:1",
+      token: () => "tok",
+      fetch: (async () => {
+        tries++;
+        const next = answers.shift();
+        if (next !== undefined) return next;
+        throw new TypeError("Failed to fetch");
+      }) as typeof fetch,
+      sleep: async (ms) => {
+        waits.push(ms);
+        // A guard: a stream that never gives up would spin here forever.
+        if (waits.length === 20) events.close();
+      },
+      onUnreachable: () => unreachable++,
+    });
+    events.subscribe(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(unreachable).toBe(1);
+    expect(tries).toBe(6);
+    // The wait after the connection that delivered, then one before each retry.
+    expect(waits).toEqual([500, 500, 1000, 2000, 4000]);
+  });
+
+  it("a connection that opens starts the failure count over", async () => {
+    let unreachable = 0;
+    let tries = 0;
+    const events = createEventStream({
+      base: "http://127.0.0.1:1",
+      token: () => "tok",
+      fetch: (async () => {
+        tries++;
+        if (tries === 4) return stream([": connected\n\n"]);
+        if (tries === 9) events.close();
+        throw new TypeError("Failed to fetch");
+      }) as typeof fetch,
+      sleep: async () => {},
+      onUnreachable: () => unreachable++,
+    });
+    events.subscribe(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Failures 1–3, an open, failures 1–5 would end it at try 9: closed first.
+    expect(unreachable).toBe(0);
   });
 
   it("a 401 ends the session and stops", async () => {

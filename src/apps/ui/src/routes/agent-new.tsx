@@ -28,7 +28,10 @@ import { fieldGroups } from "@/lib/explain";
 // checked here only so the button says why it is off; the CLI is the authority.
 
 const NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const validName = (name: string) => name.length <= 64 && NAME.test(name);
+/** Names this app keeps for itself: `new` reads like the builder's own page. */
+const RESERVED = new Set(["new"]);
+const validName = (name: string) =>
+  name.length <= 64 && NAME.test(name) && !RESERVED.has(name);
 
 const TARGETS: { id: AgentTarget; label: string; hint: string }[] = [
   { id: "local", label: "Local", hint: "runs on this machine with eve" },
@@ -78,7 +81,9 @@ function TemplateStep({
           onChange={(event) => setName(event.target.value)}
         />
         <p className="text-xs text-muted-foreground">
-          Lowercase letters, digits and hyphens, up to 64.
+          {RESERVED.has(name)
+            ? `"${name}" is reserved: pick another name.`
+            : "Lowercase letters, digits and hyphens, up to 64."}
         </p>
       </div>
       {templates.isPending ? (
@@ -323,7 +328,7 @@ export function AgentNewRoute() {
       });
       jobOutput("agent create", await job.done);
       void queries.invalidateQueries({ queryKey: ["run"] });
-      void navigate(`/agents/${encodeURIComponent(name)}`);
+      void navigate(`/agents/a/${encodeURIComponent(name)}`);
     } catch (failure) {
       const entries =
         failure instanceof CliFailure &&

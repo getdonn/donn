@@ -257,7 +257,7 @@ donn agent add pr-bot channel/github   # eve add, its questions asked (or --answ
 donn agent templates             # the templates create takes, with their Vercel-only services
 ```
 
-Every subcommand takes `--json` and `--project <dir>`.
+Every subcommand takes `--json`, and every one but `templates` takes `--project <dir>`.
 
 **`create`.** The template is `eve:<slug>` (fetched from the eve repository at the tag the adapter
 was verified against, its commit and digest checked), `eve:blank` (`eve init`), or a path to a
@@ -346,8 +346,9 @@ and agents the persona no longer declares. The design is `docs/planning/25-agent
 
 ## The web UI
 
-`donn ui [--no-open] [--port <n>]` starts the daemon if it is not running and opens the app in your
-browser (`--no-open` prints the URL instead). It is the CLI with a face, not a second product: every
+`donn ui [--no-open] [--port <n>]` starts the daemon if it is not running (unless
+`daemon: { autoStart: false }` is set; then start it with `donn daemon start`) and opens the app in
+your browser (`--no-open` prints the URL instead). It is the CLI with a face, not a second product: every
 action runs a `donn` command. The app has five screens:
 
 - **Projects**: the layer stack in merge order and the resolved persona by field group, with
@@ -361,7 +362,10 @@ action runs a `donn` command. The app has five screens:
 
 The bridge listens on 127.0.0.1 only and signs the page in with a one-time code (valid for 60 s)
 that it trades for a bearer token. It checks every request's Host and Origin and runs only an
-allowlist of CLI commands; `daemon: { ui: false }` in `config.yaml` turns it off. Secrets never
+allowlist of CLI commands; `daemon: { ui: false }` in `config.yaml` turns it off. "Open in editor"
+uses `$VISUAL` from the daemon's environment, else the OS opener (a text editor for a file, the
+file manager for a folder); a daemon installed as a login service (`donn daemon install`) usually
+has no `$VISUAL`, so it uses the OS opener; a daemon started from your shell has your `$VISUAL`. Secrets never
 reach the page: it shows `secret://` refs and variable names, never values. A run or deploy started
 from the app has no shell, so it refuses `secret://env/...` refs: use the `keychain` provider for
 those. The desktop app (a Tauri shell around the same page) is deferred.

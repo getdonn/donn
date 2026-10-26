@@ -13,15 +13,32 @@ export type EndReason =
   | "bad-code"
   /** A request was refused with 401: the bridge closed or rotated its token. */
   | "unauthorized"
-  /** The bridge did not answer the code exchange. */
+  /** The bridge did not answer the code exchange, or the event stream could not reconnect. */
   | "unreachable"
   /** The daemon said it is stopping: its bridge goes with it. */
-  | "daemon-stopped";
+  | "daemon-stopped"
+  /** The bridge closed after ten minutes without a session. */
+  | "idle";
 
 export type SessionState =
   | { state: "starting" }
   | { state: "ready"; token: string }
   | { state: "ended"; reason: EndReason };
+
+/**
+ * The end an event on `/v1/events` means, if any: the bridge's `ui.closing { reason }`, sent
+ * before it closes its streams whatever the reason, or the daemon's `daemon.stopping`.
+ */
+export function endReasonOf(event: {
+  type: string;
+  [key: string]: unknown;
+}): EndReason | undefined {
+  if (event.type === "daemon.stopping") return "daemon-stopped";
+  if (event.type !== "ui.closing") return undefined;
+  if (event.reason === "idle") return "idle";
+  if (event.reason === "daemon-stopping") return "daemon-stopped";
+  return "unreachable";
+}
 
 export interface SessionEnv {
   fetch?: typeof fetch;

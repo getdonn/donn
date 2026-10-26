@@ -791,7 +791,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       .then(async (opened) => {
         // Opened while shutdown passed its bridge close: close this one too.
         if (stopping) {
-          await opened.close();
+          await opened.close("daemon-stopping");
           throw shuttingDown();
         }
         bridge = opened;
@@ -946,7 +946,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
       clearInterval(poll);
       // The UI's listener first: no new runs start from it.
       await opening?.catch(() => undefined);
-      await bridge?.close();
+      await bridge?.close("daemon-stopping");
       watcher?.close();
       // Finish the swap in flight: a session is never left half-swapped.
       while (inFlight || queued) await (queued ?? inFlight);

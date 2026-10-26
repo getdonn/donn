@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "./fixtures";
 
 // Screen 1 over the real bridge: the seeded project's layer stack in merge order, the resolved
@@ -122,5 +123,23 @@ test("Explain names the layer for each field group", async ({
     await expect(
       page.getByRole("dialog", { name: `Explain ${value}` }),
     ).toBeHidden();
+  }
+});
+
+test("a persona that extends a missing layer says which ref, from which layer", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  const file = join(donn.repo, ".donn/persona.yaml");
+  const kept = readFileSync(file, "utf8");
+  writeFileSync(file, kept.replace("- team/payments", "- team/ghost"));
+  try {
+    await page.goto(signIn);
+    const alert = page.getByRole("alert");
+    await expect(alert).toContainText("ref=team/ghost");
+    await expect(alert).toContainText("from=project/persona");
+  } finally {
+    writeFileSync(file, kept);
   }
 });

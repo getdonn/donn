@@ -83,6 +83,12 @@ function fromUi(io: BridgeOptions["io"]): BridgeOptions["io"] {
   };
 }
 
+/**
+ * Why the bridge closes, told to its event streams as `ui.closing` before they end, so a page
+ * still open ends its session rather than reconnect to a closed port.
+ */
+export type BridgeCloseReason = "idle" | "daemon-stopping";
+
 export interface Bridge {
   port: number;
   /** A new one-time code, good for 60 s, that `POST /v1/session` exchanges for the UI token. */
@@ -91,8 +97,12 @@ export interface Bridge {
   hold(): () => void;
   /** Whether it is closing or closed (set the moment `close()` starts): never reuse it then. */
   readonly closing: boolean;
-  /** Stop listening and cut every connection. Safe to call twice. */
-  close(): Promise<void>;
+  /**
+   * Stop listening and cut every connection, after telling the event streams why (the daemon
+   * stopping when no reason is given: it is the only caller outside the bridge). Safe to call
+   * twice; the first reason is the one told.
+   */
+  close(reason?: BridgeCloseReason): Promise<void>;
   /** Settles once the bridge has closed: by `close()` or idleness. */
   closed: Promise<void>;
 }
@@ -667,7 +677,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   let closing: Promise<void> | undefined;
   let markClosed!: () => void;
   const closed = new Promise<void>((resolve) => (markClosed = resolve));
-  const close = () =>
+  const close = (reason: BridgeCloseReason = "daemon-stopping") =>
     (closing ??= (async () => {
       clearInterval(tick);
       clearInterval(ping);
@@ -675,6 +685,8 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
       // The queued jobs end as cancelled, told to the streams before they end.
       jobs.close();
       codes.clear();
+      // Then why: the page ends its session on it instead of retrying a closed port.
+      broadcast({ type: "ui.closing", reason });
       // An open stream never ends by itself: end it, rather than cut it after the grace.
       for (const stream of streams) stream.end();
       streams.clear();
@@ -695,7 +707,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   const tick = setInterval(() => {
     if (holds > 0 || now() - last < idleMs) return;
     void options.log?.(`ui closed on 127.0.0.1:${port}: idle`);
-    void close();
+    void close("idle");
   }, options.tickMs ?? TICK_MS);
   tick.unref();
   const ping = setInterval(() => {

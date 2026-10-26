@@ -1451,6 +1451,7 @@ describe("jobs", { timeout: 20_000 }, () => {
         stdout: "",
         cancelled: true,
       },
+      { type: "ui.closing", reason: "daemon-stopping" },
     ]);
     gate.open();
     await sleep(20);
@@ -2119,6 +2120,39 @@ describe("GET /v1/events", { timeout: 20_000 }, () => {
     await b.closed;
   });
 
+  it("tells its streams why it is closing, then ends them", async () => {
+    const { bridge: b } = await bridge();
+    const token = await session(b);
+    const stream = follow(b.port, token);
+    expect(await stream.status).toBe(200);
+    await b.close("idle");
+    await stream.ended;
+    expect(stream.events().at(-1)).toEqual({
+      type: "ui.closing",
+      reason: "idle",
+    });
+    expect(stream.raw()).toMatch(/^event: ui\.closing\ndata: \{/m);
+  });
+
+  it("closing with the daemon, says the daemon is stopping before its streams end", async () => {
+    const daemon = await startTestDaemon();
+    const { port, code } = (await uiOpen(daemon)).body as {
+      port: number;
+      code: string;
+    };
+    const { token } = (
+      await call(port, "POST", "/v1/session", { body: { code } })
+    ).body as { token: string };
+    const stream = follow(port, token);
+    expect(await stream.status).toBe(200);
+    await daemon.close();
+    await stream.ended;
+    expect(stream.events().at(-1)).toEqual({
+      type: "ui.closing",
+      reason: "daemon-stopping",
+    });
+  });
+
   it("ends its streams when it closes", async () => {
     const { bridge: b } = await bridge();
     const token = await session(b);
@@ -2195,6 +2229,27 @@ describe("POST /v1/open", { timeout: 20_000 }, () => {
     ]);
     // Never a bare `open <path>`, which would launch the app, run the script, follow the link.
     expect(calls.every((c) => c.args.length === 2)).toBe(true);
+    // A folder is revealed, not opened in an editor: the answer says so.
+    expect(answers.map((a) => a.body)).toEqual([
+      { opened: realpathSync(app), revealed: true },
+      { opened: realpathSync(script) },
+      { opened: realpathSync(link) },
+      { opened: realpathSync(folder), revealed: true },
+    ]);
+  });
+
+  it("says a folder was revealed only when the OS opener shows it, not $VISUAL", async () => {
+    const folder = join(s.personas, "org");
+    const linux = await openAll([folder], { platform: "linux" });
+    expect(linux.answers[0]!.body).toEqual({
+      opened: realpathSync(folder),
+      revealed: true,
+    });
+    const visual = await openAll([folder], {
+      env: { VISUAL: "code" },
+      platform: "darwin",
+    });
+    expect(visual.answers[0]!.body).toEqual({ opened: realpathSync(folder) });
   });
 
   it("on Linux refuses an executable or a .desktop file to xdg-open", async () => {

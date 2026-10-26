@@ -1,5 +1,6 @@
 import type { AgentListOutput, StatusOutput } from "@getdonn/cli-schemas";
 import { Link } from "react-router";
+import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -67,15 +68,7 @@ function AgentTable({ project }: { project: string }) {
   const list = useRun("agent list", [], project);
   const status = useRun("status");
   if (list.isPending) return <Skeleton className="h-20 w-full" />;
-  if (list.isError)
-    return (
-      <p role="alert" className="text-sm text-destructive">
-        {list.error.message}
-        {list.error.fix && (
-          <span className="block text-muted-foreground">{list.error.fix}</span>
-        )}
-      </p>
-    );
+  if (list.isError) return <ErrorText error={list.error} />;
   if (list.data.agents.length === 0)
     return (
       <p className="text-sm text-muted-foreground">
@@ -101,7 +94,7 @@ function AgentTable({ project }: { project: string }) {
             <TableRow key={agent.name}>
               <TableCell className="font-medium">
                 <Link
-                  to={`/agents/${encodeURIComponent(agent.name)}`}
+                  to={`/agents/a/${encodeURIComponent(agent.name)}`}
                   className="underline-offset-4 hover:underline"
                 >
                   {agent.name}

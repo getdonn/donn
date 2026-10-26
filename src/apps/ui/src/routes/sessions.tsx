@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SwitchOutput } from "@getdonn/cli-schemas";
 import { useState } from "react";
+import { ErrorText } from "@/components/error-text";
 import { harnessesOf, SwitchReport } from "@/components/switch-report";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBridge, useProject, useRun } from "@/app/providers";
-import { CliFailure } from "@/lib/bridge";
 import { folderName } from "@/lib/projects";
 
 // Screen 2, sessions and switching (docs/planning/26-gui.md §3): the live sessions per harness
@@ -52,8 +52,7 @@ const STATE_LABEL: Record<string, string> = {
 function Sessions() {
   const status = useRun("status");
   if (status.isPending) return <Skeleton className="h-20 w-full" />;
-  if (status.isError)
-    return <p className="text-sm text-destructive">{status.error.message}</p>;
+  if (status.isError) return <ErrorText error={status.error} />;
   const sessions = [...status.data.sessions].sort((a, b) =>
     a.harness.localeCompare(b.harness),
   );
@@ -167,16 +166,7 @@ function Switcher({ project }: { project: string }) {
         >
           Clear
         </Button>
-        {apply.error && (
-          <p role="alert" className="w-full text-sm text-destructive">
-            {apply.error.message}
-            {apply.error instanceof CliFailure && apply.error.fix && (
-              <span className="block text-muted-foreground">
-                {apply.error.fix}
-              </span>
-            )}
-          </p>
-        )}
+        <ErrorText error={apply.error} className="w-full" />
         {current.data !== undefined &&
           "source" in current.data &&
           current.data.persona !== null && (

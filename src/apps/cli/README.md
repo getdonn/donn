@@ -45,7 +45,7 @@ to ship, `env.json` and secrets.
 ## The web UI
 
 ```sh
-donn ui              # open the app in your browser (starts the daemon if needed)
+donn ui              # open the app in your browser (starts the daemon unless daemon.autoStart is false)
 donn ui --no-open    # print the URL, with its one-time code, instead
 donn ui --port 7777  # listen on a fixed port (127.0.0.1 only)
 ```

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PublishOutput } from "@getdonn/cli-schemas";
 import { useEffect, useRef, useState } from "react";
+import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -36,36 +37,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBridge, useProject, useRun } from "@/app/providers";
-import { CliFailure } from "@/lib/bridge";
+import { jobOutput } from "@/lib/bridge";
 import { folderName } from "@/lib/projects";
 
 // Screen 4, the registry (docs/planning/26-gui.md §3): sign in through the browser (`donn login
 // <url>` as a job, the daemon opens the browser), who you are and your roles (`whoami`), `pull`
 // and `publish`. Publishing is an outward action: the `--dry-run` result is shown in a dialog
 // and nothing is stored until it is confirmed (§2). `--force` is not offered.
-
-function ErrorText({ error }: { error: unknown }) {
-  if (error === undefined || error === null) return null;
-  return (
-    <p role="alert" className="text-sm text-destructive">
-      {error instanceof Error ? error.message : String(error)}
-      {error instanceof CliFailure && error.fix && (
-        <span className="block text-muted-foreground">{error.fix}</span>
-      )}
-    </p>
-  );
-}
-
-/** The message of a failed job: the CLI's `{ error: { message } }` on stdout, else the exit. */
-function jobFailure(done: { exitCode: number | null; stdout: string }) {
-  try {
-    const body = JSON.parse(done.stdout) as { error?: { message?: string } };
-    if (typeof body.error?.message === "string") return body.error.message;
-  } catch {
-    // Not JSON: say what we know.
-  }
-  return `sign-in failed (exit ${done.exitCode ?? "cancelled"})`;
-}
 
 /** `donn login <url>` as a job: the link and code from its progress while it waits. */
 function SignIn() {
@@ -74,7 +52,7 @@ function SignIn() {
   const [url, setUrl] = useState("");
   const [lines, setLines] = useState<string[]>([]);
   const [waiting, setWaiting] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<unknown>();
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -95,11 +73,10 @@ function SignIn() {
       });
       const done = await job.done;
       if (!mounted.current) return;
-      if (done.exitCode !== 0) setError(jobFailure(done));
       void queries.invalidateQueries({ queryKey: ["run"] });
+      jobOutput("login", done);
     } catch (failure) {
-      if (mounted.current)
-        setError(failure instanceof Error ? failure.message : String(failure));
+      if (mounted.current) setError(failure);
     } finally {
       if (mounted.current) setWaiting(false);
     }
@@ -138,11 +115,7 @@ function SignIn() {
           {prompt && <code className="break-all">{prompt}</code>}
         </div>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
     </div>
   );
 }
@@ -185,9 +158,7 @@ function Pull() {
     meta: { quiet: true },
     mutationFn: async () => {
       const job = await bridge.job(["pull"]);
-      const done = await job.done;
-      if (done.exitCode !== 0) throw new Error(jobFailure(done));
-      return (JSON.parse(done.stdout) as { changes: typeof changes }).changes;
+      return jobOutput("pull", await job.done).changes;
     },
     onSuccess: (result) => {
       setChanges(result);

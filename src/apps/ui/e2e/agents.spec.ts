@@ -192,6 +192,68 @@ test("a run from the app refuses an env-provider secret with the CLI's fix", asy
   await noSecret(page);
 });
 
+test("a run from the terminal resolves the secret; the page, the jobs and the log never hold it", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  // The terminal's `donn agent run` resolves secret://env/E2E_SECRET in its own environment and
+  // hands the value to the daemon for this run only.
+  const r = donn.cli(["agent", "run", "box", "--json"]);
+  expect(r.status, r.stderr).toBe(0);
+  expect(r.stdout).not.toContain(E2E_SECRET);
+
+  // Every job the page starts, to read its view back.
+  const jobs: string[] = [];
+  page.on("response", (res) => {
+    if (res.request().method() !== "POST") return;
+    if (!/\/v1\/jobs(\/[^/]+\/answer)?$/.test(new URL(res.url()).pathname))
+      return;
+    void res
+      .json()
+      .then((body: { id?: string }) => body.id && jobs.push(body.id))
+      .catch(() => {});
+  });
+  await agentPage(page, signIn, "box");
+  await expect(page.getByTestId("agent-state")).toHaveText("running", {
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("region", { name: "Logs" })).toContainText(
+    "[START] server listening",
+  );
+  await noSecret(page);
+  // A job from the app while it runs (Run is off): its view is read back below.
+  await page.getByRole("button", { name: "Build" }).click();
+  await expect.poll(() => jobs.length).toBeGreaterThan(0);
+  const token = await page.evaluate(() =>
+    sessionStorage.getItem("donn.ui.token"),
+  );
+  const origin = new URL(page.url()).origin;
+  for (const id of jobs) {
+    let view = "";
+    await expect
+      .poll(async () => {
+        const res = await fetch(`${origin}/v1/jobs/${id}`, {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        view = await res.text();
+        return (JSON.parse(view) as { state?: string }).state;
+      })
+      .toBe("done");
+    expect(view).not.toContain(E2E_SECRET);
+  }
+
+  // Stopped from the app.
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByTestId("agent-state")).not.toHaveText("running", {
+    timeout: 15_000,
+  });
+  await noSecret(page);
+  const log = readFileSync(join(donn.home, "daemon/daemon.log"), "utf8");
+  expect(log).toContain("box");
+  expect(log).not.toContain(E2E_SECRET);
+});
+
 const pushed = (dir: string) =>
   existsSync(join(dir, ".e2e-pushed.txt"))
     ? readFileSync(join(dir, ".e2e-pushed.txt"), "utf8")

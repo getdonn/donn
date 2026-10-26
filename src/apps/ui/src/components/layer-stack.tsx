@@ -24,7 +24,10 @@ export function LayerStack({
   const bridge = useBridge();
   const open = useMutation({
     mutationFn: (path: string) => bridge.open(path),
-    onSuccess: () => toast.success("Opened in your editor"),
+    onSuccess: ({ revealed }) =>
+      toast.success(
+        revealed ? "Shown in your file manager" : "Opened in your editor",
+      ),
   });
   return (
     <ol aria-label="Layers" className="divide-y rounded-md border">

@@ -29,6 +29,9 @@ test("builds a blank local agent: review the dry run, create, land on the agent 
   const name = page.getByRole("textbox", { name: "Agent name" });
   await name.fill("Not Valid");
   await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await name.fill("new");
+  await expect(page.getByText('"new" is reserved')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
   await name.fill("helper");
   await page.getByRole("button", { name: "Next" }).click();
 

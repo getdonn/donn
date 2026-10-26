@@ -24,7 +24,8 @@ export function createRouter() {
         { path: "registry", element: <RegistryRoute /> },
         { path: "agents", element: <AgentsRoute /> },
         { path: "agents/new", element: <AgentNewRoute /> },
-        { path: "agents/:name", element: <AgentRoute /> },
+        // Under `a/`: an agent the CLI named `new` is reachable too.
+        { path: "agents/a/:name", element: <AgentRoute /> },
         { path: "*", element: <Navigate to="/projects" replace /> },
       ],
     },

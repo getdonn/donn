@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ErrorText } from "@/components/error-text";
 import { FieldGroups } from "@/components/field-groups";
 import { LayerStack } from "@/components/layer-stack";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -82,9 +83,7 @@ function PersonaOf({ project }: { project: string }) {
         )}
       </div>
       {resolved.isPending && <Skeleton className="h-24 w-full" />}
-      {resolved.isError && (
-        <p className="text-sm text-destructive">{resolved.error.message}</p>
-      )}
+      {resolved.isError && <ErrorText error={resolved.error} />}
       {resolved.data !== undefined && (
         <>
           <LayerStack

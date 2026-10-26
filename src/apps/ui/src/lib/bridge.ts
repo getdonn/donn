@@ -89,7 +89,8 @@ export interface Bridge {
     cwd?: string,
   ): Promise<CommandOutput<C>>;
   job(argv: string[], cwd?: string): Promise<JobHandle>;
-  open(path: string): Promise<{ opened: string }>;
+  /** `revealed`: a folder the OS opener showed (Finder), not opened in an editor. */
+  open(path: string): Promise<{ opened: string; revealed?: true }>;
   projects(): Promise<string[]>;
   addProject(path: string): Promise<{ path: string; projects: string[] }>;
 }
@@ -114,7 +115,7 @@ function failureOf(
   // The CLI spreads its details into the error; the bridge nests them under `details`.
   return new CliFailure(
     code,
-    message ?? code,
+    message,
     { ...rest, ...(isObject(details) ? details : {}) },
     extra,
   );
@@ -324,7 +325,10 @@ export function createBridge(options: BridgeClientOptions): Bridge {
         }),
       ),
     open: async (path) =>
-      (await request("POST", "/v1/open", { path })) as { opened: string },
+      (await request("POST", "/v1/open", { path })) as {
+        opened: string;
+        revealed?: true;
+      },
     projects: async () =>
       ((await request("GET", "/v1/projects")) as { projects: string[] })
         .projects,
