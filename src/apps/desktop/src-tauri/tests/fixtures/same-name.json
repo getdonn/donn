@@ -5,13 +5,13 @@
   "startedAt": "2026-10-26T00:00:00.000Z",
   "service": false,
   "watching": [
-    "/fixture/personas",
-    "/fixture/home/personas",
-    "/fixture/home/overrides.yaml",
-    "/fixture/home/config.yaml",
+    "/fixture/home/agents/index.json",
     "/fixture/home/cache/registry/index.json",
+    "/fixture/home/config.yaml",
+    "/fixture/home/overrides.yaml",
+    "/fixture/home/personas",
     "/fixture/home/sessions",
-    "/fixture/home/agents/index.json"
+    "/fixture/personas"
   ],
   "sessions": [
     {

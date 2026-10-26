@@ -107,11 +107,14 @@ function fakeSession(project: string, persona = "team/payments") {
 const readdirSafe = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
 
 /** A session compiled and launched for real, so an edit can make it stale. */
+let launches = 0;
 async function launch(
   project: string,
   /** What the session records as its project, when that is not the folder. */
   recorded = project,
 ): Promise<void> {
+  // Distinct start times, so the daemon's session order is not left to the random folder names.
+  const startedAt = new Date(Date.UTC(2026, 9, 21, 0, 0, launches++));
   const io = quietIo({ cwd: project, home: s.home });
   const ctx = await createContext(io);
   const build = await prepareBuild(ctx, io, {
@@ -133,7 +136,7 @@ async function launch(
       overlay: true,
       harness: "claude-code",
       project: recorded,
-      startedAt: "2026-10-21T00:00:00.000Z",
+      startedAt: startedAt.toISOString(),
       buildHash: buildHash(build.output),
       snapshot: {
         mcp: build.result.ir.mcp,
@@ -180,9 +183,11 @@ function normalise(value: unknown): unknown {
     });
   const normal = JSON.parse(
     out.replace(/sessions\/@(\d+)/g, "sessions/s$1"),
-  ) as { sessions?: SessionRow[] };
+  ) as { sessions?: SessionRow[]; watching?: string[] };
   // The daemon lists sessions by their random folder: order them by what they are.
   normal.sessions?.sort((x, y) => rank(x).localeCompare(rank(y)));
+  // The watched folders follow the session order: sort them too.
+  normal.watching?.sort();
   return normal;
 }
 
@@ -202,10 +207,23 @@ function check(name: string, value: unknown): void {
     writeFileSync(file, text);
     return;
   }
-  const stale = () => {
-    throw new Error("fixtures are stale; run with DONN_UPDATE_FIXTURES=1");
+  const stale = (detail: string) => {
+    throw new Error(
+      `${name}: fixtures are stale; run with DONN_UPDATE_FIXTURES=1\n${detail}`,
+    );
   };
-  if (!existsSync(file) || readFileSync(file, "utf8") !== text) stale();
+  if (!existsSync(file)) stale(`${file} does not exist`);
+  const old = readFileSync(file, "utf8");
+  if (old !== text) stale(firstDifference(old, text));
+}
+
+/** The first line where the fixture and the new output part. */
+function firstDifference(old: string, now: string): string {
+  const a = old.split("\n");
+  const b = now.split("\n");
+  const i = a.findIndex((line, n) => line !== b[n]);
+  const at = i === -1 ? a.length : i;
+  return `line ${at + 1}:\n- ${a[at] ?? "(end of file)"}\n+ ${b[at] ?? "(end of file)"}`;
 }
 
 const call = (daemon: Daemon, method: string, path: string, body?: unknown) =>
