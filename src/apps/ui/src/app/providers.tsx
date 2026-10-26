@@ -36,7 +36,7 @@ export const runKey = (command: CommandName, args: string[], cwd?: string) =>
 /** Which queries each daemon event makes stale, by command. */
 const STALE_ON: ReadonlyArray<[string, readonly CommandName[]]> = [
   ["session.", ["status"]],
-  ["agent.", ["status", "agent list"]],
+  ["agent.", ["status", "agent list", "agent logs"]],
 ];
 
 /** A failure as a toast: its message, and the CLI's fix under it. */

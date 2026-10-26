@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// Stands in for npm in the e2e (see README.md): the two registry reads donn makes, answered
+// with the versions the CLI's tests pin (eve 0.83.2, vercel 50.1.0); nothing else.
+
+const args = process.argv.slice(2).join(" ");
+if (args === "view eve versions --json") process.stdout.write('["0.83.2"]\n');
+else if (args === "view vercel version") process.stdout.write("50.1.0\n");
+else {
+  process.stderr.write(`e2e npm: unexpected ${args}\n`);
+  process.exit(1);
+}

@@ -191,7 +191,7 @@ export async function build(
   const images = await sandboxImages(dir);
 
   // The lock covers the check and the writes only: a sync cannot see these files half-written.
-  const { report, dockerfilePath, envPath } = await withFileLock(
+  const { report, dockerfilePath, envPath, texts } = await withFileLock(
     agentLockPath(ctx.home, root, name),
     async () => {
       const { result, agent, manifest } = await loadCreatedAgent(ctx, io, name);
@@ -230,6 +230,7 @@ export async function build(
         report: output,
         dockerfilePath: join(dir, DOCKERFILE),
         envPath: join(dir, ENV_FILE),
+        texts,
       };
     },
   );
@@ -244,6 +245,8 @@ export async function build(
           envFile: envPath,
           sandboxImages: images,
           report: report.report,
+          // What was written, for donn ui: env.json holds refs, never a secret's value.
+          contents: { dockerfile: texts[DOCKERFILE], envFile: texts[ENV_FILE] },
         },
         null,
         2,

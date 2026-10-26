@@ -148,7 +148,10 @@ export const AgentStopOutput = z.strictObject({
 });
 export type AgentStopOutput = z.infer<typeof AgentStopOutput>;
 
-/** `donn agent build --json`: the files written and the sandbox images to ship. */
+/**
+ * `donn agent build --json`: the files written (`contents` as written; `env.json` holds refs,
+ * never a secret's value) and the sandbox images to ship.
+ */
 export const AgentBuildOutput = z.strictObject({
   agent: z.string(),
   dir: z.string(),
@@ -156,6 +159,7 @@ export const AgentBuildOutput = z.strictObject({
   envFile: z.string(),
   sandboxImages: z.array(z.string()),
   report: CompileReport,
+  contents: z.strictObject({ dockerfile: z.string(), envFile: z.string() }),
 });
 export type AgentBuildOutput = z.infer<typeof AgentBuildOutput>;
 
