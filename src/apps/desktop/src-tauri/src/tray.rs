@@ -53,7 +53,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     app.manage(Tray::default());
     TrayIconBuilder::with_id(TRAY)
         .icon(icon(false))
-        .icon_as_template(true)
+        .icon_as_template(TEMPLATE)
         .tooltip("donn")
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .build(app)?;
@@ -130,7 +130,7 @@ fn show(app: &AppHandle, entries: Vec<Entry>, badge: bool, tooltip: String) {
             return;
         };
         if shown.badge != badge {
-            let _ = tray.set_icon_with_as_template(Some(icon(badge)), true);
+            let _ = tray.set_icon_with_as_template(Some(icon(badge)), TEMPLATE);
         }
         *shown = Shown { entries, badge };
         let _ = tray.set_tooltip(Some(tooltip));
@@ -147,9 +147,10 @@ fn draw(app: &AppHandle, entries: &[Entry]) {
     }
 }
 
-/// The tray icon, the template d, with the dot or without (spec 28 §3). macOS
-/// draws it 18 pt high, so the @2x image is sharp on a Retina display; Linux
-/// panels are 22 px.
+/// The tray icon, the d, with the dot or without (spec 28 §3). macOS: a
+/// template image (black, tinted to the menu bar) drawn 18 pt high, so the @2x
+/// image is sharp on a Retina display. Linux panels do not tint and are mostly
+/// dark: a white d, 22 px.
 fn icon(badge: bool) -> Image<'static> {
     #[cfg(target_os = "macos")]
     let (plain, dotted) = (
@@ -158,11 +159,14 @@ fn icon(badge: bool) -> Image<'static> {
     );
     #[cfg(not(target_os = "macos"))]
     let (plain, dotted) = (
-        tauri::include_image!("icons/tray-template.png"),
-        tauri::include_image!("icons/tray-template-badge.png"),
+        tauri::include_image!("icons/tray-light.png"),
+        tauri::include_image!("icons/tray-light-badge.png"),
     );
     if badge { dotted } else { plain }
 }
+
+/// Whether the icon is a template image: on macOS only.
+const TEMPLATE: bool = cfg!(target_os = "macos");
 
 /// The Tauri menu for the model.
 fn build(app: &AppHandle, entries: &[Entry]) -> tauri::Result<Menu<Wry>> {
@@ -355,6 +359,25 @@ mod tests {
             .join("tests/fixtures")
             .join(name);
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn linux_icons_are_white_on_transparent() {
+        let light = [
+            tauri::include_image!("icons/tray-light.png"),
+            tauri::include_image!("icons/tray-light-badge.png"),
+        ];
+        for image in light {
+            assert_eq!((image.width(), image.height()), (22, 22));
+            let px: Vec<_> = image.rgba().chunks(4).collect();
+            assert!(px.iter().any(|p| p[3] == 0), "transparent background");
+            assert!(
+                px.iter()
+                    .filter(|p| p[3] > 128)
+                    .all(|p| p[..3] == [255, 255, 255]),
+                "a white d"
+            );
+        }
     }
 
     #[test]

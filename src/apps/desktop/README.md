@@ -11,9 +11,11 @@ macOS and Linux; Windows is not supported.
 
 ## Prerequisites
 
-- The donn CLI, 0.14.0 or later: `npm i -g @getdonn/cli`. The app does not
-  bundle it; with no CLI, or an older one, the tray shows the install command
-  and Quit.
+- The donn CLI from the release that ships this app (spec 28; the app checks
+  for 0.14.0 or later): `npm i -g @getdonn/cli` once that release is on npm.
+  Until then, build the CLI from this repo and point the app at it with
+  `DONN_BIN` (see "How it finds `donn`"). The app does not bundle the CLI; with
+  no CLI, or an older one, the tray shows the install command and Quit.
 - Rust via [rustup](https://rustup.rs). The toolchain is pinned in
   `src-tauri/rust-toolchain.toml`; rustup installs it on the first build.
 - The repo's dependencies: `pnpm install` at the root (it brings
@@ -84,6 +86,10 @@ the binary from a terminal, as above, to see it).
   starts the app where it was when you turned it on, so turn it on after
   copying the app to `/Applications`. On Linux it is an XDG autostart entry.
 - Opening the app again while it runs opens or focuses the window.
+- Agents run and stop from the tray only while the daemon runs. With it
+  stopped, use Start daemon, or "Open in donn" (which starts it).
+- Links in the window to other sites, and a local agent's `127.0.0.1` URL,
+  open in your default browser.
 - A run from the tray has no shell environment, so `secret://env/...` refs
   fail as they do from the web app: use the `keychain` provider for those.
 
@@ -96,10 +102,12 @@ cd src/apps/desktop/src-tauri/icons
 sips -s format png source/app-icon.svg --out source/app-icon.png
 pnpm exec tauri icon source/app-icon.png -o <scratch dir>
 # copy 32x32, 64x64, 128x128, 128x128@2x, icon.png, icon.icns and icon.ico here
-sips -s format png source/tray-template.svg --out tray-template.png
-sips -s format png source/tray-template-badge.svg --out tray-template-badge.png
+sips -s format png source/tray-light.svg --out tray-light.png
+sips -s format png source/tray-light-badge.svg --out tray-light-badge.png
 ```
 
-The `@2x` tray images are the same SVGs with `width` and `height` set to 44.
-The tray icons are template images: black on transparent, which macOS tints
-for a light or dark menu bar.
+macOS uses `tray-template@2x.png` and `tray-template-badge@2x.png`: the
+`tray-template` SVGs with `width` and `height` set to 44, rasterized the same
+way. They are template images, black on transparent, which macOS tints for a
+light or dark menu bar. Linux panels do not tint, so Linux uses the
+`tray-light` pair: white on transparent, 22 px.
