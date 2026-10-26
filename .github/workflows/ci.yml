@@ -56,3 +56,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # pnpm appends these arguments to the script's last command (smoke).
       - run: pnpm release:smoke --node "$NODE24"
+
+  # The web app against the built CLI and a real daemon on a temporary home (src/apps/ui/e2e).
+  ui-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.0
+      - run: pnpm install --frozen-lockfile
+      # The CLI build bundles the app into dist/ui.
+      - run: pnpm turbo run build --filter=@getdonn/cli...
+      - run: pnpm --filter @getdonn/ui exec playwright install --with-deps chromium
+      - run: pnpm --filter @getdonn/ui e2e
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: src/apps/ui/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
