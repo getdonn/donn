@@ -9,6 +9,12 @@ describe("declaredEntry", () => {
       "    helper:\n      template: eve:blank\n      target: local",
     );
   });
+  it("ignores a same-named key outside agents.define, and escapes the name", () => {
+    const text =
+      "mcp:\n  servers:\n    helper:\n      url: x\nagents:\n  define:\n    other:\n      target: local\n";
+    expect(declaredEntry(text, "helper")).toBeUndefined();
+    expect(declaredEntry(text, "o.her")).toBeUndefined();
+  });
   it("is undefined for an absent name", () => {
     expect(declaredEntry(after, "nope")).toBeUndefined();
   });

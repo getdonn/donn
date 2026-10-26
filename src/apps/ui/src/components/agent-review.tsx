@@ -8,20 +8,35 @@ import { Badge } from "@/components/ui/badge";
 type AgentTarget = AgentListOutput["agents"][number]["target"];
 type Dry = Extract<AgentCreateOutput, { dryRun: true }>;
 
-/** The lines of `agents.define.<name>` in the persona text the dry run would write. */
+/**
+ * The lines of `agents.define.<name>` in the persona text the dry run would write: found under
+ * the top-level `agents:` and its `define:`, never a same-named key elsewhere.
+ */
 export function declaredEntry(after: string, name: string): string | undefined {
   const lines = after.split("\n");
-  const start = lines.findIndex((line) =>
-    new RegExp(`^\\s+${name}:`).test(line),
+  const indentOf = (line: string) => line.search(/\S/);
+  const agents = lines.findIndex((line) => /^agents:\s*$/.test(line));
+  if (agents === -1) return undefined;
+  const define = lines.findIndex(
+    (line, i) => i > agents && /^\s+define:\s*$/.test(line),
   );
-  if (start === -1) return undefined;
-  const indent = lines[start]!.search(/\S/);
-  const entry = [lines[start]!];
-  for (const line of lines.slice(start + 1)) {
-    if (line.trim() !== "" && line.search(/\S/) <= indent) break;
-    entry.push(line);
+  if (define === -1) return undefined;
+  const defineIndent = indentOf(lines[define]!);
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const entry = new RegExp(`^\\s+${escaped}:`);
+  for (let i = define + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim() === "") continue;
+    if (indentOf(line) <= defineIndent) return undefined;
+    if (!entry.test(line)) continue;
+    const out = [line];
+    for (const next of lines.slice(i + 1)) {
+      if (next.trim() !== "" && indentOf(next) <= indentOf(line)) break;
+      out.push(next);
+    }
+    return out.join("\n").trimEnd();
   }
-  return entry.join("\n").trimEnd();
+  return undefined;
 }
 
 /** Blocking entries first; the order within each is the report's own. */

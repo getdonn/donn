@@ -149,6 +149,11 @@ of its release work (Open questions).
      review: the compile report and the portability report from `donn agent create --dry-run`,
      blocking entries first, and the `agents.define` entry that will be added; (e) create, as a
      job, with eve's questions as form fields; secret questions show the variable to set instead.
+     _(2026-10-25)_ `agent create` asks no eve questions (spec 25 §2 step 8 was removed); the
+     questions come from `agent add`, on the agent page. The builder's last step says "Add channels
+     or connections from the agent page". A dry run does not fetch the template, so a blocking
+     entry from a template's own files shows only when create stops at it; the builder then
+     lists it and asks for "Accept portability" before retrying with `--accept-portability`.
    - **Agent page:** run and stop (local), build (self-host: the Dockerfile and `env.json`, names
      and refs only), deploy (Vercel, with the env names it will push), logs and live session
      events, sync, open the agent directory in the editor.
