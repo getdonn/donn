@@ -1,5 +1,4 @@
 // A minimal stdio MCP server for the Codex e2e; reports whether ZZ_TOKEN reached it (never its value).
-/* global process */
 /* eslint-disable turbo/no-undeclared-env-vars -- the variable the e2e forwards */
 import { createInterface } from "node:readline";
 

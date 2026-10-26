@@ -45,8 +45,8 @@ function grantHint(problem: { message: string; ref?: string }): string {
 
 /** Server text for a terminal: control characters (escapes, newlines, bells) dropped. */
 export function clean(text: string): string {
-  // eslint-disable-next-line no-control-regex
   return text.replace(
+    // eslint-disable-next-line no-control-regex -- control characters are what it removes
     /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,
     "",
   );

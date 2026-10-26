@@ -182,7 +182,7 @@ async function staleness(
     };
   }
   let fresh: Record<string, string>;
-  let pulled = false;
+  let pulled: boolean;
   try {
     const ctx = await context();
     pulled = ctx.config.registry !== undefined;

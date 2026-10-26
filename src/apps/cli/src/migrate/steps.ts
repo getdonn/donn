@@ -14,15 +14,7 @@ import {
   stat,
   symlink,
 } from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { isAlive } from "@getdonn/executor";
 import { API_VERSION } from "@getdonn/spec";
 import { parse as parseYaml } from "yaml";

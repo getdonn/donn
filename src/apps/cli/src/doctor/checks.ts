@@ -41,7 +41,6 @@ import { CliError, errorText } from "../errors.js";
 import { userHomeDir } from "../userhome.js";
 import { absoluteHome } from "../daemon/service.js";
 import { HARNESSES } from "../harness.js";
-import { LEGACY } from "../migrate/legacy.js";
 import {
   initOrLoginAdvice,
   initOrLoginWhat,

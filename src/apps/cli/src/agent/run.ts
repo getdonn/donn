@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { findProject } from "@getdonn/store-local";
 import type { CliIo } from "../cli.js";
 import { cliVersion } from "../commands/daemon.js";

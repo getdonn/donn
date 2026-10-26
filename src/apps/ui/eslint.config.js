@@ -1,4 +1,4 @@
-import { config } from "@getdonn/eslint-config/base";
+import { config } from "@getdonn/eslint-config/react";
 
 export default [
   ...config,

@@ -214,6 +214,7 @@ describe("donn agent sync", () => {
     const ctx = async () => projectContext(io, s.repo);
     // The first stops between its compile and its writes until the second is done, or for
     // 300 ms if the second has to wait for it.
+    // eslint-disable-next-line prefer-const -- read by the first sync's callback before it is set
     let second!: Promise<unknown>;
     const first = syncAgent(await ctx(), io, "kody", {
       onCompiled: () =>
