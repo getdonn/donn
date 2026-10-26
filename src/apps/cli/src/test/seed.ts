@@ -130,6 +130,7 @@ export async function zz(
       | "passwdHome"
       | "spawn"
       | "fetch"
+      | "ask"
     >
   >,
 ): Promise<RunResult> {
@@ -162,6 +163,8 @@ export async function zz(
     ...(options.signal && { signal: options.signal }),
     ...(options.spawn && { spawn: options.spawn }),
     ...(options.fetch && { fetch: options.fetch }),
+    // No terminal unless a test gives one: never the developer's own.
+    ask: options.ask ?? (async () => undefined),
     // No test reaches the real passwd entry unless it opts in.
     passwdHome: options.passwdHome ?? (() => NO_USER_HOME),
   });

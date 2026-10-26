@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import {
+  AgentAddOutput,
   AgentBuildOutput,
   AgentCreateOutput,
   AgentDeployOutput,
@@ -9,6 +10,7 @@ import {
   AgentRunOutput,
   AgentStopOutput,
   AgentSyncOutput,
+  AgentTemplatesOutput,
 } from "./agents.js";
 import { CapabilitiesOutput } from "./capabilities.js";
 import { DoctorOutput } from "./doctor.js";
@@ -75,6 +77,8 @@ export const COMMAND_OUTPUTS = {
   "agent build": AgentBuildOutput,
   "agent deploy": AgentDeployOutput,
   "agent logs": AgentLogsOutput,
+  "agent add": AgentAddOutput,
+  "agent templates": AgentTemplatesOutput,
 } satisfies Record<string, z.ZodType>;
 
 /** A command the UI runs, by its `COMMAND_OUTPUTS` key. */

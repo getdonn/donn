@@ -11,6 +11,7 @@ const WHY: Record<EndReason, string> = {
   unauthorized: "The daemon no longer accepts this page's session.",
   unreachable: "The daemon did not answer.",
   "daemon-stopped": "The daemon stopped.",
+  idle: "The daemon closed the UI after ten minutes without use.",
 };
 
 export function SessionEnded({ reason }: { reason: EndReason }) {

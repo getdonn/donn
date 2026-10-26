@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// Stands in for Codex in the e2e (see README.md): only the `--version` probe the adapter's
+// detection runs. Anything else fails loudly; never a real Codex.
+
+const args = process.argv.slice(2);
+if (args.length === 1 && args[0] === "--version") {
+  process.stdout.write("codex-cli 0.163.0\n");
+} else {
+  process.stderr.write(`e2e codex: unexpected ${args.join(" ")}\n`);
+  process.exit(1);
+}

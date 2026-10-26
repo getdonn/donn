@@ -155,6 +155,12 @@ const notOpenable = (path: string, why: string): Answer => ({
   }),
 });
 
+/** `$VISUAL` split on whitespace, when it names a command. */
+function visualOf(env: NodeJS.ProcessEnv): [string, ...string[]] | undefined {
+  const [command, ...flags] = (env.VISUAL ?? "").split(/\s+/).filter(Boolean);
+  return command === undefined ? undefined : [command, ...flags];
+}
+
 /**
  * The command that opens `target`: `$VISUAL` (split on whitespace) with the path last; else the
  * OS opener in a form that shows rather than runs: on macOS `open -t` (a file, in the default
@@ -171,9 +177,9 @@ function openCommand(
 ): { command: string; args: string[] } | Answer {
   if (!info.isFile() && !info.isDirectory())
     return notOpenable(path, "not a file or a folder");
-  const [visual, ...flags] = (env.VISUAL ?? "").split(/\s+/).filter(Boolean);
+  const visual = visualOf(env);
   if (visual !== undefined)
-    return { command: visual, args: [...flags, target] };
+    return { command: visual[0], args: [...visual.slice(1), target] };
   if (platform === "darwin") {
     return {
       command: "open",
@@ -261,7 +267,12 @@ export function openRoutes(options: OpenRoutesOptions) {
         };
       }
       void options.log?.(`ui opened ${target} with ${how.command}`);
-      return { status: 200, body: { opened: target } };
+      // A folder the OS opener shows (Finder, the file manager) was revealed, not edited.
+      const revealed = visualOf(io.env) === undefined && info.isDirectory();
+      return {
+        status: 200,
+        body: { opened: target, ...(revealed && { revealed: true }) },
+      };
     },
 
     async addProject(text: string): Promise<Answer> {

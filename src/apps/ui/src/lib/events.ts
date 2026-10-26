@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 // `/v1/events` (docs/planning/26-gui.md §2): the daemon's server-sent events (spec 14's
 // `session.*`, spec 25's `agent.*`, `daemon.stopping`) and the bridge's `job.*`. Read over fetch,
 // since the token is a header the native EventSource cannot send. One connection, opened for the
-// first subscriber, reconnected with backoff; a 401 means the session ended.
+// first subscriber, reconnected with backoff; a 401 means the session ended, and so do five
+// failed connections in a row (the daemon is gone). The bridge says `ui.closing` before it closes.
 
 export interface DaemonEvent {
   type: string;
@@ -27,12 +28,17 @@ export interface EventStreamOptions {
   token: () => string | undefined;
   fetch?: typeof fetch;
   onUnauthorized?: () => void;
+  /** Called once `maxFailures` connections in a row have failed; the stream then stops. */
+  onUnreachable?: () => void;
+  /** Failed connections in a row before it gives up; 5. */
+  maxFailures?: number;
   /** Test seam. */
   sleep?: (ms: number) => Promise<void>;
 }
 
 const FIRST_WAIT_MS = 500;
 const MAX_WAIT_MS = 10_000;
+const MAX_FAILURES = 5;
 
 /**
  * A feed for SSE text, chunk by chunk: each complete frame's `data` parsed as JSON and passed
@@ -135,12 +141,19 @@ export function createEventStream(options: EventStreamOptions): EventStream {
   const loop = async () => {
     running = true;
     let wait = FIRST_WAIT_MS;
+    let failures = 0;
     while (!closed && listeners.size > 0) {
       const outcome = await connect();
       if (outcome === "ended") break;
       if (closed || listeners.size === 0) break;
-      // A stream that connected starts the backoff over.
-      if (outcome === "opened") wait = FIRST_WAIT_MS;
+      // A stream that connected starts the backoff, and the count of failures, over.
+      if (outcome === "opened") {
+        wait = FIRST_WAIT_MS;
+        failures = 0;
+      } else if (++failures >= (options.maxFailures ?? MAX_FAILURES)) {
+        options.onUnreachable?.();
+        break;
+      }
       await sleep(wait);
       if (outcome === "failed") wait = Math.min(wait * 2, MAX_WAIT_MS);
     }

@@ -30,6 +30,12 @@ const FIXTURE = join(
   "../../../packages/resolver/fixtures/002-full-stack/personas",
 );
 
+/**
+ * A persona secret's value, in the daemon's environment only (`secret://env/E2E_SECRET`, the
+ * `API_TOKEN` of agents box and sky): the page must never show it.
+ */
+export const E2E_SECRET = "e2e-secret-value-7f3a91";
+
 export interface Donn {
   root: string;
   home: string;
@@ -75,12 +81,26 @@ function project(dir: string) {
     join(FIXTURE, "project/checkout-api.yaml"),
     join(dir, ".donn/persona.yaml"),
   );
-  // An agent, an MCP server naming one secret twice and a default model, for each group.
+  // Agents, one per target and a second vercel one (box and sky take a persona secret from the
+  // env provider, cloud a plain value), an MCP server naming one
+  // secret twice and a default model, for each group.
   appendFileSync(
     join(dir, ".donn/persona.yaml"),
     `agents:
   define:
     bot: { template: "eve:blank", target: local }
+    box:
+      template: "eve:blank"
+      target: self-host
+      env: { API_TOKEN: "secret://env/E2E_SECRET" }
+    cloud:
+      template: "eve:blank"
+      target: vercel
+      env: { GREETING: "hello" }
+    sky:
+      template: "eve:blank"
+      target: vercel
+      env: { API_TOKEN: "secret://env/E2E_SECRET" }
 models:
   default: anthropic/claude-opus-4.5
 mcp:
@@ -149,9 +169,11 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
       const registry = await startMockRegistry();
       const openedLog = join(seeded.root, "opened.txt");
       const env: NodeJS.ProcessEnv = {
-        // e2e/bin first: `open`/`xdg-open` record the URL instead of opening a browser, and
-        // `security`/`secret-tool` fail so a token goes to a file, never a real keychain.
+        // e2e/bin first (README.md there): `open`/`xdg-open` record the URL instead of opening
+        // a browser, `security`/`secret-tool` fail so a token goes to a file, never a real
+        // keychain, and `pnpm`, `npm`, `docker`, `git` stand in for eve, Vercel and Docker.
         PATH: [join(HERE, "bin"), process.env.PATH].join(delimiter),
+        E2E_SECRET,
         DONN_E2E_OPENED: openedLog,
         DONN_HOME: seeded.home,
         HOME: join(seeded.root, "user-home"),
@@ -168,6 +190,14 @@ export const test = base.extend<{ signIn: string }, { donn: Donn }>({
         });
         return { status: r.status, stdout: r.stdout, stderr: r.stderr };
       };
+      // Started here, not by `donn ui`'s auto-start: that waits about a second, which a cold
+      // CI runner can exceed. `daemon start` waits until the daemon answers.
+      const started = cli(["daemon", "start"]);
+      if (started.status !== 0) {
+        throw new Error(
+          `donn daemon start failed (${started.status}): ${started.stdout}${started.stderr}`,
+        );
+      }
       const url = () => {
         const r = cli(["ui", "--no-open", "--json"]);
         if (r.status !== 0) {

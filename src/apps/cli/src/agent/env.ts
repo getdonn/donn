@@ -172,6 +172,29 @@ export async function agentEnvironment(
   return { root, dir, entries, result, manifest };
 }
 
+/**
+ * A `secret-unresolved` of env-provider refs, with the fix for a command donn ui started: it has
+ * no shell environment (docs/planning/26-gui.md §2). Any other error is returned as it is.
+ */
+export function noShellFix(
+  error: unknown,
+  command: "run" | "deploy",
+  name: string,
+): unknown {
+  if (!(error instanceof CliError) || error.code !== "secret-unresolved")
+    return error;
+  const failures = (error.details["failures"] ?? []) as {
+    ref?: string;
+    type?: string;
+  }[];
+  const refs = failures.filter((f) => f.type === "env").map((f) => f.ref);
+  if (refs.length === 0) return error;
+  return new CliError(error.code, error.message, {
+    ...error.details,
+    fix: `a ${command} started from donn ui has no shell environment: use the keychain provider for ${refs.join(" and ")}, or run donn agent ${command} ${name} in a terminal`,
+  });
+}
+
 /** `secret-unresolved`, naming each failed ref's variable and its provider type. */
 function unresolved(
   failures: { ref: string; reason: string }[],

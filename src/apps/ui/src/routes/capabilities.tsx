@@ -1,4 +1,5 @@
 import type { CapabilitiesOutput, CompileOutput } from "@getdonn/cli-schemas";
+import { ErrorText } from "@/components/error-text";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -123,7 +124,12 @@ function Matrix({ harnesses }: { harnesses: Harness[] }) {
 }
 
 function Report({ harness, project }: { harness: string; project: string }) {
-  const report = useRun("compile", ["--harness", harness], project);
+  // A dry run: viewing the reports writes no build.
+  const report = useRun(
+    "compile",
+    ["--harness", harness, "--dry-run"],
+    project,
+  );
   const entries: CompileOutput["report"]["entries"] =
     report.data?.report.entries ?? [];
   return (
@@ -133,9 +139,7 @@ function Report({ harness, project }: { harness: string; project: string }) {
     >
       <h3 className="font-medium">{harness}</h3>
       {report.isPending && <Skeleton className="h-8 w-full" />}
-      {report.isError && (
-        <p className="text-sm text-destructive">{report.error.message}</p>
-      )}
+      {report.isError && <ErrorText error={report.error} />}
       {report.data && entries.length === 0 && (
         <p className="text-sm text-muted-foreground">
           Nothing dropped or approximated.
@@ -177,11 +181,7 @@ export function CapabilitiesRoute() {
         </CardHeader>
         <CardContent className="grid gap-6">
           {capabilities.isPending && <Skeleton className="h-24 w-full" />}
-          {capabilities.isError && (
-            <p className="text-sm text-destructive">
-              {capabilities.error.message}
-            </p>
-          )}
+          {capabilities.isError && <ErrorText error={capabilities.error} />}
           {capabilities.data && (
             <>
               <Summary harnesses={harnesses} />

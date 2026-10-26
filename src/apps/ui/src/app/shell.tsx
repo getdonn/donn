@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { NavLink, Outlet } from "react-router";
+import { ErrorText } from "@/components/error-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +38,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { CliFailure } from "@/lib/bridge";
 import { folderName, useProjects } from "@/lib/projects";
 import { useBridge, useProject } from "./providers";
 
@@ -74,7 +74,6 @@ function AddProjectDialog({
       onOpenChange(false);
     },
   });
-  const failure = add.error instanceof CliFailure ? add.error : undefined;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (path.trim() !== "") add.mutate(path.trim());
@@ -103,18 +102,9 @@ function AddProjectDialog({
               value={path}
               onChange={(event) => setPath(event.target.value)}
               autoFocus
-              aria-invalid={failure !== undefined}
+              aria-invalid={add.error !== null}
             />
-            {failure && (
-              <p role="alert" className="text-sm text-destructive">
-                {failure.message}
-                {failure.fix && (
-                  <span className="block text-muted-foreground">
-                    {failure.fix}
-                  </span>
-                )}
-              </p>
-            )}
+            <ErrorText error={add.error} />
           </div>
           <DialogFooter>
             <Button

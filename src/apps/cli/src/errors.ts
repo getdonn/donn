@@ -28,7 +28,8 @@ function describe(error: unknown): {
   if (error instanceof ResolveError) {
     const { code, ...details } = error.toJSON();
     const fields = Object.entries(details).map(([k, v]) => `${k}=${show(v)}`);
-    return { text: `${code}: ${fields.join(", ")}`, json: error.toJSON() };
+    const text = `${code}: ${fields.join(", ")}`;
+    return { text, json: { code, message: text, ...details } };
   }
   if (error instanceof CliError) {
     return {
@@ -52,7 +53,11 @@ function describe(error: unknown): {
   if (error instanceof SecretResolutionError) {
     return {
       text: error.message,
-      json: { code: "secrets", failures: error.failures },
+      json: {
+        code: "secrets",
+        message: error.message,
+        failures: error.failures,
+      },
     };
   }
   if (error instanceof AdapterInputError) {

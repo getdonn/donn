@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CliFailure, createBridge } from "./bridge";
+import { CliFailure, createBridge, jobOutput } from "./bridge";
 import type { DaemonEvent, EventSource } from "./events";
 
 // The typed client over the bridge (docs/planning/26-gui.md §2, §4): each run's stdout parsed
@@ -364,5 +364,60 @@ describe("job", () => {
     const handle = await bridge.job(["pull"]);
     events.reopen();
     expect(await handle.done).toEqual({ exitCode: 0, stdout: "{}" });
+  });
+});
+
+describe("jobOutput", () => {
+  const stop = {
+    agent: "bot",
+    stopped: true,
+  };
+
+  it("parses a finished job's stdout with the command's schema", () => {
+    expect(
+      jobOutput("agent stop", { exitCode: 0, stdout: JSON.stringify(stop) }),
+    ).toEqual(stop);
+  });
+
+  it("a failed job throws its error envelope as a CliFailure, fix and all", () => {
+    const stdout = JSON.stringify({
+      error: {
+        code: "target-not-runnable",
+        message: "cloud targets vercel",
+        fix: "donn agent run cloud --dev",
+      },
+    });
+    const failure = (() => {
+      try {
+        jobOutput("agent run", { exitCode: 1, stdout });
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(failure).toBeInstanceOf(CliFailure);
+    expect(failure).toMatchObject({
+      code: "target-not-runnable",
+      exitCode: 1,
+      fix: "donn agent run cloud --dev",
+    });
+  });
+
+  it("an exit the command uses for an answer is accepted when asked", () => {
+    const asked = {
+      status: "needs-prerequisite",
+      item: "channel/linked",
+      prerequisite: { kind: "command", code: "link", message: "Link it." },
+      continue: ["agent", "add", "bot", "channel/linked"],
+      fix: "run eve link",
+    };
+    const done = { exitCode: 2, stdout: JSON.stringify(asked) };
+    expect(() => jobOutput("agent add", done)).toThrow(CliFailure);
+    expect(jobOutput("agent add", done, { accept: [0, 2] })).toEqual(asked);
+  });
+
+  it("a cancelled job is a cancelled CliFailure", () => {
+    expect(() =>
+      jobOutput("pull", { exitCode: null, stdout: "", cancelled: true }),
+    ).toThrow(expect.objectContaining({ code: "cancelled" }));
   });
 });

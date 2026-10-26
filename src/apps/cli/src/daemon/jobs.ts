@@ -77,7 +77,8 @@ export interface Jobs {
    * The argv and cwd that answer a job's question: its `continue` with `--answer=<key>=<JSON>`,
    * one token, so no parser reads the value as a flag.
    * Nothing is started: the caller checks the argv as any run's, then starts it with the
-   * question's job as `parent`.
+   * question's job as `parent`. A secret question (`kind: "environment"`) has no continuation:
+   * its value never goes on a command line.
    */
   continuation(
     id: string,
@@ -87,7 +88,8 @@ export interface Jobs {
     | { argv: string[]; cwd: string | undefined }
     | "no-such-job"
     | "no-question"
-    | "answered";
+    | "answered"
+    | "secret-question";
   /** A job as `GET /v1/jobs/<id>` answers it. */
   view(job: Job): Record<string, unknown>;
   /** Cancels the queued jobs (each a `job.done` with `cancelled`) and starts none again. */
@@ -98,6 +100,32 @@ const LIMIT = 100;
 const KEEP_MS = 60 * 60_000;
 const CONCURRENCY = 4;
 const MAX_OUTPUT = 256 * 1024;
+
+/**
+ * `argv` with each answer's value hidden: `--answer=<key>=***`, and the value after a lone
+ * `--answer` as `<key>=***`. For the daemon log and a job's view.
+ */
+export function redactAnswers(argv: readonly string[]): string[] {
+  const hide = (pair: string) => {
+    const at = pair.indexOf("=");
+    return at === -1 ? "***" : `${pair.slice(0, at)}=***`;
+  };
+  return argv.map((arg, i) =>
+    arg.startsWith("--answer=")
+      ? `--answer=${hide(arg.slice("--answer=".length))}`
+      : argv[i - 1] === "--answer"
+        ? hide(arg)
+        : arg,
+  );
+}
+
+/** The variable a secret question (`kind: "environment"`) names; undefined for any other. */
+export function secretVariable(question: unknown): string | undefined {
+  if (typeof question !== "object" || question === null) return undefined;
+  const { kind, variable } = question as { kind?: unknown; variable?: unknown };
+  if (kind !== "environment") return undefined;
+  return typeof variable === "string" ? variable : "its variable";
+}
 
 /** The last `max` bytes of `text`, and whether that cut it. */
 function tail(text: string, max: number): { text: string; cut: boolean } {
@@ -240,6 +268,8 @@ export function createJobs(options: JobsOptions): Jobs {
       if (job === undefined) return "no-such-job";
       if (job.question === undefined) return "no-question";
       if (job.answeredBy !== undefined) return "answered";
+      if (secretVariable(job.question.question) !== undefined)
+        return "secret-question";
       return {
         argv: [
           ...job.question.continue,
@@ -251,7 +281,7 @@ export function createJobs(options: JobsOptions): Jobs {
     view(job) {
       return {
         id: job.id,
-        argv: job.argv,
+        argv: redactAnswers(job.argv),
         ...(job.cwd !== undefined && { cwd: job.cwd }),
         state: job.state,
         ...(job.parent !== undefined && { parent: job.parent }),

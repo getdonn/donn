@@ -253,9 +253,11 @@ donn agent env pr-bot            # names and secret refs; --resolve prints value
 donn agent exec pr-bot -- <cmd>  # a command in the agent's folder with its env resolved
 donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile and env.json
 donn agent deploy pr-bot         # vercel: eve link, env push after confirming, eve deploy
+donn agent add pr-bot channel/github   # eve add, its questions asked (or --answer key=<JSON>)
+donn agent templates             # the templates create takes, with their Vercel-only services
 ```
 
-Every subcommand takes `--json` and `--project <dir>`.
+Every subcommand takes `--json`, and every one but `templates` takes `--project <dir>`.
 
 **`create`.** The template is `eve:<slug>` (fetched from the eve repository at the tag the adapter
 was verified against, its commit and digest checked), `eve:blank` (`eve init`), or a path to a
@@ -269,6 +271,12 @@ created agent it reaches and restarts a running one; without it, `build` and `de
 agent whose donn files are older than its persona (`agent-stale`: `donn agent sync` first), and a
 foreground `run` warns. Secret values never go in the agent's
 files: `create`, `sync` and `build` write `secret://` refs and env names only.
+
+**`add`.** `donn agent add <name> <item>` runs the agent's own `eve add <item> --non-interactive`.
+eve's setup questions are asked on a terminal; elsewhere (and with `--json`) `add` exits 2 with
+the question and the command that continues it, `--answer key=<JSON>` added. A secret question is
+never answered on a command line: donn names the variable eve reads, to set before running it
+again. eve's `eve link` prerequisite is run for a vercel agent and shown as a step for the others.
 
 **`local`** is for trying and developing an agent. `run` builds it and starts `eve start` on
 `127.0.0.1` with a free port, `NODE_ENV=production`, secrets resolved into its environment and a
@@ -335,6 +343,32 @@ the variable and its ref.
 inside the range this donn compiles for, Docker reachable (`local`, `self-host`), the gateway
 answering, `agent.ts` still spreading `donn`, donn's files present, the Vercel CLI (`vercel`),
 and agents the persona no longer declares. The design is `docs/planning/25-agent-runner.md`.
+
+## The web UI
+
+`donn ui [--no-open] [--port <n>]` starts the daemon if it is not running (unless
+`daemon: { autoStart: false }` is set; then start it with `donn daemon start`) and opens the app in
+your browser (`--no-open` prints the URL instead). It is the CLI with a face, not a second product: every
+action runs a `donn` command. The app has five screens:
+
+- **Projects**: the layer stack in merge order and the resolved persona by field group, with
+  "Explain" on any value (which layer set it, what it overrode, what locks it) and "Open in editor".
+- **Sessions**: live `donn claude` and `donn codex` sessions, and a persona switch with the
+  per-harness report.
+- **Capabilities**: what each harness carries, with the compile reports for the project.
+- **Registry**: sign in to a registry, pull and publish layers.
+- **Agents**: the agents a project declares, their state, run, stop, logs, build and deploy, and a
+  builder for new ones (template, persona, target, then a dry run to review).
+
+The bridge listens on 127.0.0.1 only and signs the page in with a one-time code (valid for 60 s)
+that it trades for a bearer token. It checks every request's Host and Origin and runs only an
+allowlist of CLI commands; `daemon: { ui: false }` in `config.yaml` turns it off. "Open in editor"
+uses `$VISUAL` from the daemon's environment, else the OS opener (a text editor for a file, the
+file manager for a folder); a daemon installed as a login service (`donn daemon install`) usually
+has no `$VISUAL`, so it uses the OS opener; a daemon started from your shell has your `$VISUAL`. Secrets never
+reach the page: it shows `secret://` refs and variable names, never values. A run or deploy started
+from the app has no shell, so it refuses `secret://env/...` refs: use the `keychain` provider for
+those. The desktop app (a Tauri shell around the same page) is deferred.
 
 ## Upgrading from zzpersona
 

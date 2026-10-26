@@ -24,7 +24,7 @@ import {
   useDaemonEvents,
   type EventStream,
 } from "@/lib/events";
-import type { Session } from "@/lib/session";
+import { endReasonOf, type Session } from "@/lib/session";
 
 // What every screen shares: the bridge client, the event stream, TanStack Query (one query per
 // `run`, refetched when a daemon event says its answer changed) and the picked project.
@@ -36,7 +36,7 @@ export const runKey = (command: CommandName, args: string[], cwd?: string) =>
 /** Which queries each daemon event makes stale, by command. */
 const STALE_ON: ReadonlyArray<[string, readonly CommandName[]]> = [
   ["session.", ["status"]],
-  ["agent.", ["status", "agent list"]],
+  ["agent.", ["status", "agent list", "agent logs"]],
 ];
 
 /** A failure as a toast: its message, and the CLI's fix under it. */
@@ -113,13 +113,14 @@ function ProjectProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Refetches what a daemon event made stale; a stopping daemon ends the session. */
+/** Refetches what a daemon event made stale; a closing bridge or daemon ends the session. */
 function Invalidation({ session }: { session: Session }) {
   const queries = useQueryClient();
   useDaemonEvents(
     () => true,
     (event) => {
-      if (event.type === "daemon.stopping") session.end("daemon-stopped");
+      const ended = endReasonOf(event);
+      if (ended !== undefined) return session.end(ended);
       for (const [prefix, commands] of STALE_ON) {
         if (!event.type.startsWith(prefix)) continue;
         for (const command of commands)
@@ -146,6 +147,7 @@ export function createClients(session: Session): AppClients {
     base: window.location.origin,
     token,
     onUnauthorized: end,
+    onUnreachable: () => session.end("unreachable"),
   });
   const bridge = createBridge({ token, onUnauthorized: end, events });
   const queries = new QueryClient({

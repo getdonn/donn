@@ -85,7 +85,7 @@ this machine), `self-host` (a Node server and a container image the user operate
 | `donn agent run <name> [--dev]` | `local`: §4 |
 | `donn agent stop <name>` | Stops a local run |
 | `donn agent build <name>` | `self-host`: §4 |
-| `donn agent deploy <name> [--yes]` | `vercel`: §4 |
+| `donn agent deploy <name> [--yes] [--dry-run]` | `vercel`: §4 (`--dry-run` added 2026-10-25 for the GUI, `26` §2) |
 | `donn agent env <name> [--resolve] [--format dotenv\|json]` | The env the agent needs: names and refs, or with `--resolve` the values (§5) |
 | `donn agent exec <name> -- <command>…` | Runs a command with the agent's env resolved (§5) |
 | `donn agent logs <name> [--follow]` | A local run's log; with `--follow`, eve's session events as they arrive |

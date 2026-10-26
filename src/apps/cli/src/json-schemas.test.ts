@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
 import {
+  AgentAddOutput,
   AgentBuildOutput,
   AgentCreateOutput,
   AgentDeployOutput,
@@ -19,6 +20,7 @@ import {
   AgentRunOutput,
   AgentStopOutput,
   AgentSyncOutput,
+  AgentTemplatesOutput,
   COMMAND_OUTPUTS,
   CapabilitiesOutput,
   CompileOutput,
@@ -52,6 +54,12 @@ import {
   SECRETS,
   START_LINES,
 } from "./test/created-agent.js";
+import {
+  COMPLETED,
+  INPUT_REQUIRED,
+  PREREQUISITE,
+  SECRET_PREREQUISITE,
+} from "./test/eve-add/recordings.js";
 import { fakeEve, type FakeEve } from "./test/fake-eve.js";
 import {
   installedProbe,
@@ -599,6 +607,38 @@ describe("agent commands", () => {
     });
   });
 
+  it("templates", async () => {
+    const r = await zz(["agent", "templates", "--json"], here());
+    expect(r.code, r.stderr).toBe(0);
+    parses("agent templates", r.stdout);
+    expect(AgentTemplatesOutput).toBe(COMMAND_OUTPUTS["agent templates"]);
+  });
+
+  describe("add", () => {
+    beforeEach(async () => {
+      agentProject(s);
+      await createAgent(s);
+    });
+
+    it("needs-answer (a question and a secret), needs-prerequisite, completed", async () => {
+      for (const [lines, exitCode, status] of [
+        [INPUT_REQUIRED, 2, "needs-answer"],
+        [SECRET_PREREQUISITE, 2, "needs-answer"],
+        [PREREQUISITE, 2, "needs-prerequisite"],
+        [COMPLETED, 0, "completed"],
+      ] as const) {
+        const spawn = fakeEve({
+          replies: [{ eve: ["add"], lines: [...lines], exitCode }],
+        });
+        const r = await agent(["add", "kody", "channel/github"], { spawn });
+        expect(r.code, r.stdout).toBe(exitCode);
+        const out = parses("agent add", r.stdout) as { status: string };
+        expect(out.status).toBe(status);
+      }
+      expect(AgentAddOutput).toBe(COMMAND_OUTPUTS["agent add"]);
+    });
+  });
+
   describe("build and deploy", () => {
     const put = (path: string, text: string) => {
       mkdirSync(dirname(path), { recursive: true });
@@ -672,6 +712,13 @@ describe("agent commands", () => {
         args[4] === "GREETING"
           ? { exitCode: 1, stdout: "", stderr: "already exists" }
           : { exitCode: 0, stdout: "", stderr: "" };
+      const plan = await agent(["deploy", "kody", "--dry-run"], {
+        spawn,
+        runInput,
+      });
+      expect(plan.code, plan.stderr).toBe(0);
+      expect(JSON.parse(plan.stdout)).toMatchObject({ dryRun: true });
+      parses("agent deploy", plan.stdout);
       const first = await agent(["deploy", "kody", "--yes"], {
         spawn,
         runInput,
@@ -729,6 +776,8 @@ describe("the error envelope", () => {
     "agent build": ["agent", "build", "nobody"],
     "agent deploy": ["agent", "deploy", "nobody"],
     "agent logs": ["agent", "logs", "nobody"],
+    "agent add": ["agent", "add", "nobody", "channel/github"],
+    "agent templates": null,
   };
 
   const BROKEN = new Set([
@@ -753,8 +802,24 @@ describe("the error envelope", () => {
       expect(r.code, `${r.stdout}${r.stderr}`).not.toBe(0);
       const error = errorOf(r.stdout).error;
       expect(error.code).toMatch(/^[a-z][a-z0-9-]*$/);
+      expect(error.message).not.toBe("");
     });
   }
+
+  it("a resolver error carries a message naming the ref and the layer", async () => {
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace("- team/payments", "- team/ghost"),
+    );
+    const r = await zz(["resolve", "--json"], here());
+    expect(r.code).not.toBe(0);
+    expect(errorOf(r.stdout).error).toMatchObject({
+      code: "missing-ref",
+      message: "missing-ref: ref=team/ghost, from=project/persona",
+      ref: "team/ghost",
+    });
+  });
 
   it("keeps whatever details come with the code and message", () => {
     const parsed = ErrorEnvelope.parse({
@@ -762,7 +827,8 @@ describe("the error envelope", () => {
     });
     expect(parsed.error).toMatchObject({ fix: "do it", names: ["a"], n: 1 });
     expect(() => ErrorEnvelope.parse({ error: { message: "m" } })).toThrow();
-    expect(() => ErrorEnvelope.parse({ error: { code: "x" } })).not.toThrow();
+    // Every envelope carries a message (errors.ts gives a resolver error its text form).
+    expect(() => ErrorEnvelope.parse({ error: { code: "x" } })).toThrow();
   });
 });
 
@@ -795,6 +861,8 @@ describe("the table", () => {
         "agent build",
         "agent deploy",
         "agent logs",
+        "agent add",
+        "agent templates",
       ].sort(),
     );
     for (const key of Object.keys(COMMAND_OUTPUTS)) {

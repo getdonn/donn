@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router";
-import { Placeholder } from "@/routes/placeholder";
+import { AgentRoute } from "@/routes/agent";
+import { AgentNewRoute } from "@/routes/agent-new";
+import { AgentsRoute } from "@/routes/agents";
 import { CapabilitiesRoute } from "@/routes/capabilities";
 import { SessionsRoute } from "@/routes/sessions";
 import { RegistryRoute } from "@/routes/registry";
@@ -20,15 +22,10 @@ export function createRouter() {
         { path: "sessions", element: <SessionsRoute /> },
         { path: "capabilities", element: <CapabilitiesRoute /> },
         { path: "registry", element: <RegistryRoute /> },
-        {
-          path: "agents",
-          element: (
-            <Placeholder
-              title="Agents"
-              about="Declared and created agents, and the builder."
-            />
-          ),
-        },
+        { path: "agents", element: <AgentsRoute /> },
+        { path: "agents/new", element: <AgentNewRoute /> },
+        // Under `a/`: an agent the CLI named `new` is reachable too.
+        { path: "agents/a/:name", element: <AgentRoute /> },
         { path: "*", element: <Navigate to="/projects" replace /> },
       ],
     },

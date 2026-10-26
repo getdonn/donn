@@ -93,7 +93,7 @@ of its release work (Open questions).
   | `GET /` and static assets | The app |
   | `POST /v1/run` | `{ argv, cwd }` → the CLI in process with `--json`; the same handler as `POST /run` (spec 15) with the UI allowlist below |
   | `POST /v1/jobs` | The same, for long operations (`agent create`, `build`, `deploy`, `pull`): returns a job id |
-  | `GET /v1/events` | The daemon's server-sent events (spec 14) plus `job.progress`, `job.question`, `job.done` and the `agent.*` events of `25` |
+  | `GET /v1/events` | The daemon's server-sent events (spec 14) plus `job.progress`, `job.question`, `job.done` and the `agent.*` events of `25`; *(amended 2026-10-25, final review)* and last, before the bridge closes its streams for any reason, `ui.closing { reason: "idle" \| "daemon-stopping" }`, on which the app ends its session (it also ends after five failed reconnects) |
   | `POST /v1/jobs/<id>/answer` | Answers a `job.question` (`25` §6) |
   | `POST /v1/open` | `{ path }` → the user's editor (`$VISUAL`, else the OS default; *amended 2026-10-25*, see below); the path must be inside a known personas root or the project |
 
@@ -106,8 +106,14 @@ of its release work (Open questions).
 - **Outward actions confirm in the UI.** `publish`, `agent deploy` and the env push it does are
   sent with the CLI's own confirmation flag only after a dialog that shows what the CLI would have
   prompted. The CLI is unchanged: it already prompts for these on a TTY.
+  *(Amended 2026-10-25, layer 3 review:)* a deploy always confirms in the app, even when the CLI
+  would not prompt (already linked, nothing new to set): the dialog comes from `donn agent deploy
+  <name> --dry-run --json` (`linked`, `project`, the `names` it would set, `firstDeploy`), which
+  links, sets, resolves and deploys nothing; confirming sends `deploy --yes` as a job.
 - **Env secrets** *(added 2026-10-25)*. A run the bridge starts carries no caller environment:
-  a `secret://env/…` ref fails `secret-unresolved` with a fix naming the keychain provider. The
+  a `secret://env/…` ref fails `secret-unresolved` with a fix naming the keychain provider (and
+  so does a deploy the bridge starts, *amended 2026-10-25*: its env push resolves no env-provider
+  ref either). The
   socket's `POST /agents/run` accepts `{ env: { <ref>: <value> } }` from a terminal `donn agent
   run`, which resolves env-provider refs in its own environment first; the daemon uses those
   values for that run only and never logs or stores them.
@@ -143,6 +149,11 @@ of its release work (Open questions).
      review: the compile report and the portability report from `donn agent create --dry-run`,
      blocking entries first, and the `agents.define` entry that will be added; (e) create, as a
      job, with eve's questions as form fields; secret questions show the variable to set instead.
+     _(2026-10-25)_ `agent create` asks no eve questions (spec 25 §2 step 8 was removed); the
+     questions come from `agent add`, on the agent page. The builder's last step says "Add channels
+     or connections from the agent page". A dry run does not fetch the template, so a blocking
+     entry from a template's own files shows only when create stops at it; the builder then
+     lists it and asks for "Accept portability" before retrying with `--accept-portability`.
    - **Agent page:** run and stop (local), build (self-host: the Dockerfile and `env.json`, names
      and refs only), deploy (Vercel, with the env names it will push), logs and live session
      events, sync, open the agent directory in the editor.

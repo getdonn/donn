@@ -94,3 +94,30 @@ test("a stale token shows the ended screen", async ({ page, donn }) => {
     "no longer accepts",
   );
 });
+
+test("a stopped daemon ends the session: the ended screen, no retrying", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  await page.goto(signIn);
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  try {
+    const stopped = donn.cli(["daemon", "stop"]);
+    expect(stopped.status, stopped.stderr).toBe(0);
+    const ended = page.getByTestId("session-ended");
+    await expect(ended).toContainText("run donn ui again");
+    await expect(ended).toContainText("The daemon stopped.");
+    // Ended: the page asks for no more events.
+    let asked = 0;
+    page.on("request", (req) => {
+      if (req.url().endsWith("/v1/events")) asked++;
+    });
+    await page.waitForTimeout(1_500);
+    expect(asked).toBe(0);
+  } finally {
+    // The worker's later tests need it.
+    const started = donn.cli(["daemon", "start"]);
+    expect(started.status, started.stderr).toBe(0);
+  }
+});

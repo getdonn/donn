@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createSession, TOKEN_KEY } from "./session";
+import { createSession, endReasonOf, TOKEN_KEY } from "./session";
 
 // The sign-in: `donn ui` opens `/#t=<one-time code>`; the page trades the code for the UI token
 // once, keeps the token in sessionStorage and drops the fragment. Runs in jsdom: the real
@@ -144,5 +144,24 @@ describe("createSession", () => {
     unsubscribe();
     session.end("unauthorized");
     expect(seen).toEqual(["ended"]);
+  });
+});
+
+describe("endReasonOf", () => {
+  it("ends the session when the bridge says it is closing, with its reason", () => {
+    expect(endReasonOf({ type: "ui.closing", reason: "idle" })).toBe("idle");
+    expect(endReasonOf({ type: "ui.closing", reason: "daemon-stopping" })).toBe(
+      "daemon-stopped",
+    );
+    // A reason this app does not know yet still ends it.
+    expect(endReasonOf({ type: "ui.closing", reason: "later" })).toBe(
+      "unreachable",
+    );
+    expect(endReasonOf({ type: "daemon.stopping" })).toBe("daemon-stopped");
+  });
+
+  it("leaves it open on any other event", () => {
+    expect(endReasonOf({ type: "session.added" })).toBeUndefined();
+    expect(endReasonOf({ type: "job.done", id: "j" })).toBeUndefined();
   });
 });

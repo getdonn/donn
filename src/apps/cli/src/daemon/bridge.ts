@@ -9,6 +9,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ANSWER_KEY } from "../agent/questions.js";
 import { CliError } from "../errors.js";
 import {
   knownProjects,
@@ -19,7 +20,7 @@ import {
   type Opener,
 } from "./bridge-open.js";
 import { failure, readBody, runRequest, sameToken } from "./http.js";
-import { createJobs, type JobEvent } from "./jobs.js";
+import { createJobs, secretVariable, type JobEvent } from "./jobs.js";
 import type { runInProcess } from "./run.js";
 import { uiAllowed } from "./ui-allow.js";
 
@@ -63,21 +64,30 @@ export interface BridgeOptions {
 }
 
 /**
- * The daemon's io with its agents marked as run from donn ui: such a run has no shell
- * environment, so an env-provider ref fails rather than resolve in the daemon's (spec 26 §2).
- * Set in process only: nothing a request or a terminal sends can mark or unmark a run.
+ * The daemon's io marked as donn ui's (`fromUi`, and its agent runs' origin): an agent run or
+ * deploy it starts has no shell environment, so an env-provider ref fails rather than resolve in
+ * the daemon's (spec 26 §2). Set in process only: nothing a request or a terminal sends can mark
+ * or unmark a run.
  */
 function fromUi(io: BridgeOptions["io"]): BridgeOptions["io"] {
   const agents = io.agents;
-  if (agents === undefined) return io;
   return {
     ...io,
-    agents: {
-      ...agents,
-      run: (project, name) => agents.run(project, name, { origin: "ui" }),
-    },
+    fromUi: true,
+    ...(agents !== undefined && {
+      agents: {
+        ...agents,
+        run: (project, name) => agents.run(project, name, { origin: "ui" }),
+      },
+    }),
   };
 }
+
+/**
+ * Why the bridge closes, told to its event streams as `ui.closing` before they end, so a page
+ * still open ends its session rather than reconnect to a closed port.
+ */
+export type BridgeCloseReason = "idle" | "daemon-stopping";
 
 export interface Bridge {
   port: number;
@@ -87,8 +97,12 @@ export interface Bridge {
   hold(): () => void;
   /** Whether it is closing or closed (set the moment `close()` starts): never reuse it then. */
   readonly closing: boolean;
-  /** Stop listening and cut every connection. Safe to call twice. */
-  close(): Promise<void>;
+  /**
+   * Stop listening and cut every connection, after telling the event streams why (the daemon
+   * stopping when no reason is given: it is the only caller outside the bridge). Safe to call
+   * twice; the first reason is the one told.
+   */
+  close(reason?: BridgeCloseReason): Promise<void>;
   /** Settles once the bridge has closed: by `close()` or idleness. */
   closed: Promise<void>;
 }
@@ -139,12 +153,6 @@ function send(
   });
   res.end(`${JSON.stringify(body)}\n`);
 }
-
-/**
- * A question's key: `[a-z][a-z0-9-]*` parts, any case, joined by `.` (spec 25 §6's example key
- * is `github.app`). Nothing a flag parser or eve could read as more than a key.
- */
-const ANSWER_KEY = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/i;
 
 /** `{ key, value }` (`/v1/jobs/<id>/answer`), or why not. */
 function answerRequest(text: string): string | { key: string; value: unknown } {
@@ -473,7 +481,23 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
       const next = jobs.continuation(id, body.key, body.value);
       if (typeof next !== "string") return next;
       if (next === "no-such-job") noSuchJob(res, id);
-      else
+      else if (next === "secret-question") {
+        // 25 §6: a secret is never answered on a command line; eve reads its variable.
+        const variable = secretVariable(jobs.get(id)?.question?.question);
+        send(
+          res,
+          400,
+          failure(
+            "secret-question",
+            `job ${id} asks for a secret: set ${variable} where eve runs, never as an answer`,
+            {
+              id,
+              variable,
+              fix: `a job runs eve in the daemon's environment: set ${variable} there and start the job again, or run the same donn agent add in a terminal with ${variable} set`,
+            },
+          ),
+        );
+      } else
         send(
           res,
           409,
@@ -653,7 +677,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   let closing: Promise<void> | undefined;
   let markClosed!: () => void;
   const closed = new Promise<void>((resolve) => (markClosed = resolve));
-  const close = () =>
+  const close = (reason: BridgeCloseReason = "daemon-stopping") =>
     (closing ??= (async () => {
       clearInterval(tick);
       clearInterval(ping);
@@ -661,6 +685,8 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
       // The queued jobs end as cancelled, told to the streams before they end.
       jobs.close();
       codes.clear();
+      // Then why: the page ends its session on it instead of retrying a closed port.
+      broadcast({ type: "ui.closing", reason });
       // An open stream never ends by itself: end it, rather than cut it after the grace.
       for (const stream of streams) stream.end();
       streams.clear();
@@ -681,7 +707,7 @@ export async function openBridge(options: BridgeOptions): Promise<Bridge> {
   const tick = setInterval(() => {
     if (holds > 0 || now() - last < idleMs) return;
     void options.log?.(`ui closed on 127.0.0.1:${port}: idle`);
-    void close();
+    void close("idle");
   }, options.tickMs ?? TICK_MS);
   tick.unref();
   const ping = setInterval(() => {

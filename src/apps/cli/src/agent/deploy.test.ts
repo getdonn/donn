@@ -233,6 +233,63 @@ describe("donn agent deploy", () => {
     expect(pushed).toEqual([]);
   });
 
+  it("--dry-run reports what a deploy would do and does nothing outward", async () => {
+    await create();
+    const { pushed, runInput } = pushing();
+    const spawn = eve();
+    const r = await zz(
+      ["agent", "deploy", "kody", "--project", s.repo, "--dry-run", "--json"],
+      {
+        cwd: s.root,
+        home: s.home,
+        // No secret values: resolving any would fail.
+        env: {},
+        probe: agentProbe(),
+        spawn,
+        runInput,
+      },
+    );
+    expect(r.code, r.stdout).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      agent: "kody",
+      dryRun: true,
+      linked: false,
+      project: "kody",
+      names: ["API_TOKEN", "DONN_SECRET_1", "GREETING"],
+      firstDeploy: true,
+    });
+    expect(pushed).toEqual([]);
+    expect(spawn.calls.map((c) => c.args.join(" "))).toEqual([
+      "exec vercel --version",
+    ]);
+    expect(existsSync(join(agentDir(), ".vercel"))).toBe(false);
+  });
+
+  it("--dry-run after a deploy: linked, not a first deploy, nothing new to set", async () => {
+    await create();
+    await deploy(["--yes"], eve(), pushing().runInput);
+    writeFileSync(
+      join(agentDir(), ".vercel/project.json"),
+      `${JSON.stringify({ projectId: "prj_1", projectName: "kody-prod" })}\n`,
+    );
+    const { pushed, runInput } = pushing();
+    const spawn = eve();
+    const r = await deploy(["--dry-run", "--json"], spawn, runInput);
+    expect(r.code, r.stdout).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      agent: "kody",
+      dryRun: true,
+      linked: true,
+      project: "kody-prod",
+      names: [],
+      firstDeploy: false,
+    });
+    expect(pushed).toEqual([]);
+    expect(spawn.calls.map((c) => c.args.join(" "))).toEqual([
+      "exec vercel --version",
+    ]);
+  });
+
   it("no terminal and no --yes fails with confirmation-required", async () => {
     await create();
     const { runInput } = pushing();

@@ -89,7 +89,8 @@ export interface Bridge {
     cwd?: string,
   ): Promise<CommandOutput<C>>;
   job(argv: string[], cwd?: string): Promise<JobHandle>;
-  open(path: string): Promise<{ opened: string }>;
+  /** `revealed`: a folder the OS opener showed (Finder), not opened in an editor. */
+  open(path: string): Promise<{ opened: string; revealed?: true }>;
   projects(): Promise<string[]>;
   addProject(path: string): Promise<{ path: string; projects: string[] }>;
 }
@@ -114,7 +115,7 @@ function failureOf(
   // The CLI spreads its details into the error; the bridge nests them under `details`.
   return new CliFailure(
     code,
-    message ?? code,
+    message,
     { ...rest, ...(isObject(details) ? details : {}) },
     extra,
   );
@@ -129,6 +130,59 @@ const lastLine = (text: string) =>
     .map((line) => line.trim())
     .filter(Boolean)
     .at(-1);
+
+/**
+ * A run's stdout as `command`'s output, or its failure. `accept`: the exit codes whose stdout is
+ * a result (0; `agent add` also prints one with 2, when it stops for an answer).
+ */
+function parse<C extends CommandName>(
+  command: C,
+  result: RunResult,
+  accept: readonly number[] = [0],
+): CommandOutput<C> {
+  let body: unknown;
+  try {
+    body = JSON.parse(result.stdout);
+  } catch {
+    body = undefined;
+  }
+  if (!accept.includes(result.exitCode)) {
+    throw (
+      failureOf(body, { exitCode: result.exitCode }) ??
+      new CliFailure(
+        "cli-failed",
+        lastLine(result.stderr) ?? `donn ${command} exited ${result.exitCode}`,
+        {},
+        { exitCode: result.exitCode },
+      )
+    );
+  }
+  const parsed = COMMAND_OUTPUTS[command].safeParse(body);
+  if (!parsed.success) {
+    throw new CliFailure(
+      "bad-output",
+      `donn ${command} printed output the app does not understand`,
+      { issues: parsed.error.issues },
+    );
+  }
+  return parsed.data as CommandOutput<C>;
+}
+
+/** A finished job's stdout as `command`'s output, or its failure (as `run` gives them). */
+export function jobOutput<C extends CommandName>(
+  command: C,
+  done: JobDone,
+  options: { accept?: readonly number[] } = {},
+): CommandOutput<C> {
+  if (done.exitCode === null) {
+    throw new CliFailure("cancelled", `donn ${command} was cancelled`);
+  }
+  return parse(
+    command,
+    { exitCode: done.exitCode, stdout: done.stdout, stderr: "" },
+    options.accept,
+  );
+}
 
 export function createBridge(options: BridgeClientOptions): Bridge {
   const base = options.base ?? window.location.origin;
@@ -172,40 +226,6 @@ export function createBridge(options: BridgeClientOptions): Bridge {
         },
       )
     );
-  };
-
-  /** A run's stdout as `command`'s output, or its failure. */
-  const parse = <C extends CommandName>(
-    command: C,
-    result: RunResult,
-  ): CommandOutput<C> => {
-    let body: unknown;
-    try {
-      body = JSON.parse(result.stdout);
-    } catch {
-      body = undefined;
-    }
-    if (result.exitCode !== 0) {
-      throw (
-        failureOf(body, { exitCode: result.exitCode }) ??
-        new CliFailure(
-          "cli-failed",
-          lastLine(result.stderr) ??
-            `donn ${command} exited ${result.exitCode}`,
-          {},
-          { exitCode: result.exitCode },
-        )
-      );
-    }
-    const parsed = COMMAND_OUTPUTS[command].safeParse(body);
-    if (!parsed.success) {
-      throw new CliFailure(
-        "bad-output",
-        `donn ${command} printed output the app does not understand`,
-        { issues: parsed.error.issues },
-      );
-    }
-    return parsed.data as CommandOutput<C>;
   };
 
   /** Follows job `id` on the event stream, from events already buffered. */
@@ -305,7 +325,10 @@ export function createBridge(options: BridgeClientOptions): Bridge {
         }),
       ),
     open: async (path) =>
-      (await request("POST", "/v1/open", { path })) as { opened: string },
+      (await request("POST", "/v1/open", { path })) as {
+        opened: string;
+        revealed?: true;
+      },
     projects: async () =>
       ((await request("GET", "/v1/projects")) as { projects: string[] })
         .projects,

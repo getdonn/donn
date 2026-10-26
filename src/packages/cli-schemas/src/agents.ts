@@ -6,8 +6,8 @@ import {
   RecreateField,
 } from "./common.js";
 
-// donn agent: list, create, sync, env, run, stop, build, deploy and logs. (`agent exec` runs
-// another program and prints that program's output; it has no schema.)
+// donn agent: list, create, sync, env, run, stop, build, deploy, logs, add and templates.
+// (`agent exec` runs another program and prints that program's output; it has no schema.)
 
 /** `donn agent list --json`: one row per agent the project persona declares. */
 export const AgentListOutput = z.strictObject({
@@ -148,7 +148,10 @@ export const AgentStopOutput = z.strictObject({
 });
 export type AgentStopOutput = z.infer<typeof AgentStopOutput>;
 
-/** `donn agent build --json`: the files written and the sandbox images to ship. */
+/**
+ * `donn agent build --json`: the files written (`contents` as written; `env.json` holds refs,
+ * never a secret's value) and the sandbox images to ship.
+ */
 export const AgentBuildOutput = z.strictObject({
   agent: z.string(),
   dir: z.string(),
@@ -156,20 +159,37 @@ export const AgentBuildOutput = z.strictObject({
   envFile: z.string(),
   sandboxImages: z.array(z.string()),
   report: CompileReport,
+  contents: z.strictObject({ dockerfile: z.string(), envFile: z.string() }),
 });
 export type AgentBuildOutput = z.infer<typeof AgentBuildOutput>;
 
 /**
- * `donn agent deploy --json`: the variable names pushed to Vercel (never values), the ones
- * already set there (`existing`, left alone), and the deployment URL when eve printed one.
+ * `donn agent deploy --json`, two shapes: the variable names pushed to Vercel (never values), the
+ * ones already set there (`existing`, left alone) and the deployment URL when eve printed one; or
+ * `--dry-run`'s plan.
  */
-export const AgentDeployOutput = z.strictObject({
-  agent: z.string(),
-  dir: z.string(),
-  pushed: z.array(z.string()),
-  existing: z.array(z.string()).optional(),
-  url: z.string().optional(),
-});
+export const AgentDeployOutput = z.union([
+  z.strictObject({
+    agent: z.string(),
+    dir: z.string(),
+    pushed: z.array(z.string()),
+    existing: z.array(z.string()).optional(),
+    url: z.string().optional(),
+  }),
+  /**
+   * `--dry-run`: what a deploy would do, none of it done and no secret resolved. `project`: the
+   * Vercel project it would link (the agent's name) or is linked to, when known; `names`: the
+   * variables it would set; `firstDeploy` when it would link a new Vercel project first.
+   */
+  z.strictObject({
+    agent: z.string(),
+    dryRun: z.literal(true),
+    linked: z.boolean(),
+    project: z.string().optional(),
+    names: z.array(z.string()),
+    firstDeploy: z.boolean(),
+  }),
+]);
 export type AgentDeployOutput = z.infer<typeof AgentDeployOutput>;
 
 /**
@@ -182,3 +202,116 @@ export const AgentLogsOutput = z.strictObject({
   lines: z.array(z.string()),
 });
 export type AgentLogsOutput = z.infer<typeof AgentLogsOutput>;
+
+/** The Vercel-only services a template's code uses (`VercelService`). */
+const VercelService = z.enum([
+  "connect",
+  "sandbox",
+  "drive",
+  "daemons",
+  "ai-gateway",
+  "github-checkout",
+]);
+
+/**
+ * `donn agent templates --json`: the adapter's templates, then `blank`. `vercelOnly` when the
+ * adapter reports a blocking portability entry at `local` or `self-host`; `inRepo` when the
+ * template is kept in eve's repository at the adapter's tag.
+ */
+export const AgentTemplatesOutput = z.strictObject({
+  templates: z.array(
+    z.strictObject({
+      slug: z.string(),
+      title: z.string(),
+      services: z.array(VercelService),
+      vercelOnly: z.boolean(),
+      inRepo: z.boolean(),
+    }),
+  ),
+});
+export type AgentTemplatesOutput = z.infer<typeof AgentTemplatesOutput>;
+
+/**
+ * One of eve's setup questions, in eve's wire shape (`setup-question-wire.ts`, eve 0.83.2). A
+ * secret is `kind: "environment"` with the `variable` eve reads it from: it is never answered on
+ * a command line, so the UI shows the variable instead of a field.
+ */
+export const AgentQuestion = z.strictObject({
+  key: z.string(),
+  message: z.string(),
+  kind: z.enum([
+    "confirm",
+    "text",
+    "environment",
+    "select",
+    "multi-select",
+    "editable-select",
+  ]),
+  required: z.boolean(),
+  options: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        label: z.string(),
+        hint: z.string().optional(),
+        disabled: z.boolean().optional(),
+        disabledReason: z.string().optional(),
+        locked: z.boolean().optional(),
+        lockedReason: z.string().optional(),
+      }),
+    )
+    .optional(),
+  /** confirm: a boolean; select: an option id; multi-select: option ids. */
+  recommended: z
+    .union([z.boolean(), z.string(), z.array(z.string())])
+    .optional(),
+  placeholder: z.string().optional(),
+  variable: z.string().optional(),
+  /** editable-select: the option that takes a typed value, answered under `editable.key`. */
+  editable: z
+    .strictObject({
+      key: z.string(),
+      optionId: z.string(),
+      label: z.string(),
+      recommended: z.string(),
+    })
+    .optional(),
+  /** Why eve refused the last answer. */
+  issue: z.strictObject({ code: z.string(), message: z.string() }).optional(),
+});
+export type AgentQuestion = z.infer<typeof AgentQuestion>;
+
+/**
+ * `donn agent add --json`, three shapes. `completed` (exit 0). `needs-answer` (exit 2): eve's
+ * question and the argv (after `donn`) that continues once `--answer=<key>=<JSON>` is added; a
+ * secret question has a `fix` naming its variable. `needs-prerequisite` (exit 2): a step for the
+ * user, such as `eve link` for an agent not on Vercel, and the argv to run after it.
+ */
+export const AgentAddOutput = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("completed"),
+    item: z.string(),
+    completedItems: z.array(z.string()).optional(),
+    deploymentRequired: z.literal(true).optional(),
+  }),
+  z.strictObject({
+    status: z.literal("needs-answer"),
+    item: z.string(),
+    question: AgentQuestion,
+    continue: z.array(z.string()),
+    fix: z.string().optional(),
+  }),
+  z.strictObject({
+    status: z.literal("needs-prerequisite"),
+    item: z.string(),
+    prerequisite: z.strictObject({
+      kind: z.string(),
+      code: z.string(),
+      message: z.string(),
+      command: z.string().optional(),
+    }),
+    continue: z.array(z.string()),
+    fix: z.string(),
+  }),
+]);
+export type AgentAddOutput = z.infer<typeof AgentAddOutput>;
