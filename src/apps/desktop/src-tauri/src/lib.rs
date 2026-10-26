@@ -1,6 +1,7 @@
 //! The donn menu-bar shell (spec 28 §2). It has no logic of its own: every
 //! read and every action is a `donn` command. Windows are created from Rust.
 
+pub mod cli;
 pub mod snapshot;
 
 pub fn run() {
