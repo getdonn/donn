@@ -802,8 +802,24 @@ describe("the error envelope", () => {
       expect(r.code, `${r.stdout}${r.stderr}`).not.toBe(0);
       const error = errorOf(r.stdout).error;
       expect(error.code).toMatch(/^[a-z][a-z0-9-]*$/);
+      expect(error.message).not.toBe("");
     });
   }
+
+  it("a resolver error carries a message naming the ref and the layer", async () => {
+    const file = join(s.repo, ".donn/persona.yaml");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace("- team/payments", "- team/ghost"),
+    );
+    const r = await zz(["resolve", "--json"], here());
+    expect(r.code).not.toBe(0);
+    expect(errorOf(r.stdout).error).toMatchObject({
+      code: "missing-ref",
+      message: "missing-ref: ref=team/ghost, from=project/persona",
+      ref: "team/ghost",
+    });
+  });
 
   it("keeps whatever details come with the code and message", () => {
     const parsed = ErrorEnvelope.parse({
@@ -811,7 +827,8 @@ describe("the error envelope", () => {
     });
     expect(parsed.error).toMatchObject({ fix: "do it", names: ["a"], n: 1 });
     expect(() => ErrorEnvelope.parse({ error: { message: "m" } })).toThrow();
-    expect(() => ErrorEnvelope.parse({ error: { code: "x" } })).not.toThrow();
+    // Every envelope carries a message (errors.ts gives a resolver error its text form).
+    expect(() => ErrorEnvelope.parse({ error: { code: "x" } })).toThrow();
   });
 });
 
