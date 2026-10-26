@@ -445,6 +445,15 @@ export async function run(
   if (options.dev) return dev(ctx, io, name);
   const control = await agentControl(io, ctx.home);
   if (control !== undefined) {
+    // Already running: nothing to resolve, so a shell without the exports can say so too.
+    const root = rootOf(projectRoot(ctx));
+    const on = (await control.list()).find(
+      (a) => a.name === name && rootOf(a.project) === root,
+    );
+    if (on !== undefined) {
+      printStarted(io, on, options, { already: true });
+      return 0;
+    }
     // Over the socket: the daemon has none of this shell's exports, so the env-provider
     // secrets go with the request (spec 26 §2). In-process (`io.agents`) there is no shell.
     const env =

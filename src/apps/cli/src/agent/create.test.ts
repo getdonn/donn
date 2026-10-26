@@ -540,6 +540,8 @@ describe("donn agent create", () => {
     expect(JSON.parse(stdout).error.code).toBe("agent-exists");
     expect(read(join(agentDir(), "mine.txt"))).toBe("keep");
     expect(spawn.calls).toEqual([]);
+    // Refused before anything is placed: the persona does not declare it either.
+    expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(PERSONA);
   });
 
   it("stops at a blocking portability entry before writing the agent", async () => {
@@ -557,6 +559,28 @@ describe("donn agent create", () => {
     expect(stdout).toBe("");
     expect(existsSync(agentDir("slack"))).toBe(false);
     expect(spawn.calls).toEqual([]);
+    expect(stderr).not.toContain("declared agents.define");
+    expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(PERSONA);
+  });
+
+  it("declares a refused agent once the blocking entry is accepted", async () => {
+    vi.spyOn(adapter, "templates").mockReturnValue([
+      row("eve-slack-agent", ["connect", "ai-gateway"]),
+    ]);
+    const args = ["slack", "--template", "eve:eve-slack-agent"];
+    const refused = await create([...args, "--target", "local"], {
+      slug: "eve-slack-agent",
+    });
+    expect(refused.code).toBe(1);
+    const { code, stderr } = await create(
+      [...args, "--target", "local", "--accept-portability"],
+      { slug: "eve-slack-agent" },
+    );
+    expect(code).toBe(0);
+    expect(stderr).toContain("declared agents.define.slack");
+    expect(read(join(s.repo, ".donn/persona.yaml"))).toMatch(
+      /agents:\n {2}define:\n {4}slack:\n/,
+    );
   });
 
   it("refuses to declare under a locked agents.define, naming the layer and writing nothing", async () => {
