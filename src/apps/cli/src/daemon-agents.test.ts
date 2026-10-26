@@ -997,6 +997,22 @@ describe("env-provider secrets of a run (spec 26 §2)", () => {
     expect(startCall()).toBeUndefined();
   });
 
+  it(
+    "a terminal without the values finds a running agent running, resolving nothing",
+    { timeout: 15_000 },
+    async () => {
+      await start({});
+      expect(
+        (await cli(["run", "kody", "--json"], fakeEve(), SHELL)).code,
+      ).toBe(0);
+      const fresh = await cli(["run", "kody", "--json"], fakeEve(), {});
+      expect(fresh.stderr).toBe("");
+      expect(fresh.code).toBe(0);
+      expect(JSON.parse(fresh.stdout)).toMatchObject({ already: true });
+      expect(starts()).toHaveLength(1);
+    },
+  );
+
   it("a deploy donn ui starts has no shell either: env-provider refs fail with the fix, nothing pushed", async () => {
     s.cleanup();
     s = seed();
