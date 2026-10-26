@@ -81,10 +81,11 @@ impl Track {
 enum Nav {
     /// The bridge: the webview loads it.
     Load,
-    /// Another `http(s)` URL, not on `127.0.0.1`: the default browser.
+    /// Another `http(s)` URL (a local agent's `127.0.0.1` one too): the
+    /// default browser.
     Browser,
-    /// Anything else (`file:`, `javascript:`, `about:`, a stale bridge URL
-    /// with its one-time code): nowhere.
+    /// Anything else (`file:`, `javascript:`, `about:`, a `127.0.0.1` URL with
+    /// a one-time code, such as a stale bridge sign-in): nowhere.
     Deny,
 }
 
@@ -107,11 +108,19 @@ pub fn agent_page(project: &str, name: &str) -> String {
 fn route(url: &Url, port: u16) -> Nav {
     if allowed_navigation(url, port) {
         Nav::Load
-    } else if matches!(url.scheme(), "http" | "https") && url.host_str() != Some("127.0.0.1") {
-        Nav::Browser
-    } else {
+    } else if !matches!(url.scheme(), "http" | "https")
+        || (url.host_str() == Some("127.0.0.1") && signs_in(url))
+    {
         Nav::Deny
+    } else {
+        Nav::Browser
     }
+}
+
+/// Whether the fragment carries a bridge one-time code (`#t=…`).
+fn signs_in(url: &Url) -> bool {
+    url.fragment()
+        .is_some_and(|f| f.split('&').any(|p| p.starts_with("t=")))
 }
 
 /// `donn ui --json`'s `{ url, port }`, when `url` is that port's bridge.
@@ -119,6 +128,16 @@ fn parse_ui(v: &Value) -> Option<(Url, u16)> {
     let port = u16::try_from(v.get("port")?.as_u64()?).ok()?;
     let url: Url = v.get("url")?.as_str()?.parse().ok()?;
     allowed_navigation(&url, port).then_some((url, port))
+}
+
+/// `parse_ui`, or the failure for its dialog. The answer carries a one-time
+/// code: a refused one is never shown, only a fixed line.
+fn bridge(v: &Value) -> Result<(Url, u16), CliFailure> {
+    parse_ui(v).ok_or_else(|| CliFailure {
+        code: "unreadable".into(),
+        message: "donn ui printed no bridge URL".into(),
+        fix: None,
+    })
 }
 
 /// Manages the window's state (at setup).
@@ -178,13 +197,7 @@ fn sign_in(app: &AppHandle, page: Option<String>, create: bool) {
         if let Some(page) = &page {
             args.extend(["--page", page]);
         }
-        let opened = donn.run(&args, &tray::home()).and_then(|v| {
-            parse_ui(&v).ok_or_else(|| CliFailure {
-                code: "unreadable".into(),
-                message: format!("donn ui printed no bridge URL: {v}"),
-                fix: None,
-            })
-        });
+        let opened = donn.run(&args, &tray::home()).and_then(|v| bridge(&v));
         let track = &app.state::<Shell>().track;
         if !track.lock().unwrap().finish(seq, opened.is_ok()) {
             return;
@@ -299,15 +312,26 @@ mod tests {
     fn routes_bridge_browser_or_nowhere() {
         assert_eq!(route(&url("http://127.0.0.1:4100/agents"), 4100), Nav::Load);
         assert_eq!(route(&url("https://example.com/"), 4100), Nav::Browser);
-        // Another port on 127.0.0.1 is a stale bridge URL (its one-time code
-        // with it): never the browser.
+        // A local agent on 127.0.0.1: the browser.
+        assert_eq!(route(&url("http://127.0.0.1:58054/"), 4100), Nav::Browser);
+        assert_eq!(route(&url("https://127.0.0.1:4100/"), 4100), Nav::Browser);
+        // A 127.0.0.1 URL with a one-time code (a stale bridge sign-in):
+        // never the browser.
         assert_eq!(route(&url("http://127.0.0.1:4101/#t=abc"), 4100), Nav::Deny);
-        assert_eq!(route(&url("https://127.0.0.1:4100/"), 4100), Nav::Deny);
+        assert_eq!(
+            route(&url("http://127.0.0.1:4101/agents#x=1&t=abc"), 4100),
+            Nav::Deny
+        );
+        assert_eq!(
+            route(&url("http://127.0.0.1:4101/#top"), 4100),
+            Nav::Browser
+        );
         assert_eq!(route(&url("file:///etc/passwd"), 4100), Nav::Deny);
         assert_eq!(route(&url("javascript:alert(1)"), 4100), Nav::Deny);
         assert_eq!(route(&url("about:blank"), 4100), Nav::Deny);
-        // Before any open the port is 0: nothing is the bridge.
-        assert_eq!(route(&url("http://127.0.0.1:4100/"), 0), Nav::Deny);
+        // Before any open the port is 0: nothing is the bridge, and a sign-in
+        // URL goes nowhere.
+        assert_eq!(route(&url("http://127.0.0.1:4100/#t=abc"), 0), Nav::Deny);
     }
 
     #[test]
@@ -328,6 +352,16 @@ mod tests {
         ] {
             assert_eq!(parse_ui(&bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn a_refused_answer_never_shows_its_code() {
+        let v = json!({ "url": "http://evil.example/#t=secret", "port": 4100 });
+        let f = bridge(&v).unwrap_err();
+        assert_eq!(f.message, "donn ui printed no bridge URL");
+        assert!(!tray::failure_text(&f).contains("secret"));
+        let ok = json!({ "url": "http://127.0.0.1:4100/#t=abc", "port": 4100 });
+        assert_eq!(bridge(&ok).unwrap().1, 4100);
     }
 
     #[test]
