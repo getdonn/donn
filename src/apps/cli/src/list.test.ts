@@ -17,21 +17,25 @@ describe("donn list", () => {
         {
           ref: "area/fintech",
           layer: "area",
+          source: "local",
           path: join(s.personas, "area/fintech.yaml"),
         },
         {
           ref: "org/base",
           layer: "org",
+          source: "local",
           path: join(s.personas, "org/base.yaml"),
         },
         {
           ref: "project/persona",
           layer: "project",
+          source: "local",
           path: join(s.repo, ".donn/persona.yaml"),
         },
         {
           ref: "team/payments",
           layer: "team",
+          source: "local",
           path: join(s.personas, "team/payments.yaml"),
         },
       ],

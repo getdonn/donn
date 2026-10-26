@@ -99,6 +99,7 @@ const LIST = {
     {
       ref: "team/payments-backend",
       layer: "team",
+      source: "local",
       path: "/p/team/payments-backend.yaml",
     },
   ],

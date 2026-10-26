@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useBridge } from "@/app/providers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { layerFile, layerKind } from "@/lib/explain";
+import { layerKind, openTarget } from "@/lib/explain";
 
 // The layers of a persona in merge order (org → area → team → project → user), each with
 // "Open in editor" (`POST /v1/open`).
@@ -12,11 +12,14 @@ export function LayerStack({
   layers,
   project,
   files,
+  published,
 }: {
   layers: string[];
   project: string;
   /** The file of each layer ref that `donn list` reported. */
   files: Record<string, string>;
+  /** The refs that resolve from the registry cache: no file to open. */
+  published: ReadonlySet<string>;
 }) {
   const bridge = useBridge();
   const open = useMutation({
@@ -26,7 +29,7 @@ export function LayerStack({
   return (
     <ol aria-label="Layers" className="divide-y rounded-md border">
       {layers.map((ref) => {
-        const file = layerFile(ref, project, files);
+        const target = openTarget(ref, project, files, published);
         return (
           <li key={ref} className="flex items-center gap-3 px-3 py-1.5">
             <Badge variant="outline">{layerKind(ref)}</Badge>
@@ -34,11 +37,11 @@ export function LayerStack({
             <Button
               variant="ghost"
               size="sm"
-              disabled={file === undefined || open.isPending}
-              title={
-                file === undefined ? "No file is known for this layer" : file
+              disabled={target.file === undefined || open.isPending}
+              title={target.file ?? target.title}
+              onClick={() =>
+                target.file !== undefined && open.mutate(target.file)
               }
-              onClick={() => file !== undefined && open.mutate(file)}
             >
               Open in editor
             </Button>

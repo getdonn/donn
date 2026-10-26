@@ -1,6 +1,13 @@
 import type { ResolveOutput } from "@getdonn/cli-schemas";
 import { describe, expect, it } from "vitest";
-import { explainValue, fieldGroups, layerFile, layerKind } from "./explain";
+import {
+  explainValue,
+  fieldGroups,
+  layerFile,
+  layerKind,
+  openTarget,
+  PUBLISHED_TITLE,
+} from "./explain";
 
 // The presentation lookups over a `resolve --json` answer: which layer set a value, what it
 // displaced, which lock covers it; the field groups; where a layer's file is.
@@ -99,6 +106,25 @@ describe("layerFile", () => {
   it("splits a ref into its kind", () => {
     expect(layerKind("org/base")).toBe("org");
     expect(layerKind("user/overrides")).toBe("user");
+  });
+});
+
+describe("openTarget", () => {
+  const listed = { "org/base": "/p/org/base.yaml" };
+
+  it("opens a local layer's file", () => {
+    expect(openTarget("org/base", "/c", listed, new Set())).toEqual({
+      file: "/p/org/base.yaml",
+    });
+  });
+
+  it("refuses a registry layer, saying to edit its source and publish", () => {
+    expect(openTarget("org/base", "/c", listed, new Set(["org/base"]))).toEqual(
+      { title: PUBLISHED_TITLE },
+    );
+    expect(PUBLISHED_TITLE).toBe(
+      "Published in the registry: edit its source and publish",
+    );
   });
 });
 

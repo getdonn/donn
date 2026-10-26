@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { LAYERS } from "@getdonn/spec";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";
+import { builtFrom } from "../registry.js";
 
 // donn list: every available persona with its layer. See docs/planning/09-mod-claude-code.md §3.
 
@@ -14,10 +15,17 @@ export async function listCommand(
   options: ListOptions,
 ): Promise<number> {
   const ctx = await createContext(io);
-  // Where each persona's file is (a registry layer's is its cache file), for "open in editor".
-  const personas = (await ctx.store.list()).sort().flatMap((ref) => {
+  const refs = (await ctx.store.list()).sort();
+  const cached = builtFrom(ctx.store, refs);
+  // A layer that resolves from the registry cache has no file to edit: its source is published.
+  // A local one's file is where the store mounts it, for "open in editor".
+  const personas = refs.map((ref) => {
+    const layer = ref.split("/")[0]!;
+    if (cached[ref] !== undefined) {
+      return { ref, layer, source: "registry" as const };
+    }
     const path = ctx.store.locate(`${ref}.yaml`)?.path;
-    return path === undefined ? [] : [{ ref, layer: ref.split("/")[0]!, path }];
+    return { ref, layer, source: "local" as const, ...(path && { path }) };
   });
   // The user overlay is no persona to pick, but it is a layer of every resolve that uses it.
   const overlayPath = ctx.store.locate("user/overrides.yaml")?.path;

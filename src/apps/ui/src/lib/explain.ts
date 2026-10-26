@@ -67,6 +67,23 @@ export function layerFile(
     : undefined;
 }
 
+export const PUBLISHED_TITLE =
+  "Published in the registry: edit its source and publish";
+
+/** What "Open in editor" does for a layer: the file to open, or why there is none. */
+export function openTarget(
+  ref: string,
+  project: string | undefined,
+  listed: Readonly<Record<string, string>>,
+  published: ReadonlySet<string>,
+): { file: string } | { file?: undefined; title: string } {
+  if (published.has(ref)) return { title: PUBLISHED_TITLE };
+  const file = layerFile(ref, project, listed);
+  return file === undefined
+    ? { title: "No file is known for this layer" }
+    : { file };
+}
+
 export interface FieldItem {
   /** The value's path, which `provenance`, `history` and the locks are keyed by. */
   path: string;

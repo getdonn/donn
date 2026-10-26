@@ -98,10 +98,11 @@ describe("persona commands", () => {
     const r = await zz(["list", "--json"], here());
     expect(r.code).toBe(0);
     const out = parses("list", r.stdout) as {
-      personas: { path: string }[];
+      personas: { path?: string }[];
     };
     expect(out.personas.length).toBeGreaterThan(0);
-    for (const persona of out.personas) expect(persona.path).toMatch(/^\//);
+    for (const persona of out.personas)
+      expect(persona.path ?? "/").toMatch(/^\//);
     expect(ListOutput).toBe(COMMAND_OUTPUTS["list"]);
   });
 
@@ -464,6 +465,14 @@ describe("registry commands", () => {
     expect(out.changes.length).toBeGreaterThan(0);
     parses("pull", (await run(["pull", "--json"])).stdout);
     expect(PullOutput).toBe(COMMAND_OUTPUTS["pull"]);
+
+    // A layer that now resolves from the registry cache has no file to edit.
+    const listed = parses("list", (await run(["list", "--json"])).stdout) as {
+      personas: { ref: string; source: string; path?: string }[];
+    };
+    const acme = listed.personas.find((p) => p.ref === "org/acme")!;
+    expect(acme.source).toBe("registry");
+    expect(acme).not.toHaveProperty("path");
   });
 });
 

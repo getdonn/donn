@@ -48,12 +48,19 @@ function PersonaOf({ project }: { project: string }) {
   // Where each layer's file is: `list` reports the personas' and the user overlay's.
   const files: Record<string, string> = {
     ...Object.fromEntries(
-      (personas.data?.personas ?? []).map(({ ref, path }) => [ref, path]),
+      (personas.data?.personas ?? []).flatMap(({ ref, path }) =>
+        path === undefined ? [] : [[ref, path]],
+      ),
     ),
     ...(personas.data?.overlay && {
       [personas.data.overlay.ref]: personas.data.overlay.path,
     }),
   };
+  const published = new Set(
+    (personas.data?.personas ?? [])
+      .filter(({ source }) => source === "registry")
+      .map(({ ref }) => ref),
+  );
   return (
     <div role="group" aria-label="Persona" className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -84,6 +91,7 @@ function PersonaOf({ project }: { project: string }) {
             layers={resolved.data.ir.layers}
             project={project}
             files={files}
+            published={published}
           />
           {resolved.data.warnings.length > 0 && (
             <Alert>
