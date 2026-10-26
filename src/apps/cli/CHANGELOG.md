@@ -1,5 +1,12 @@
 # @getdonn/cli
 
+## 0.13.1
+
+### Patch Changes
+
+- dc920f3: `donn agent create` no longer leaves `agents.define.<name>` in the project persona when it refuses the agent (a blocking portability entry, a non-empty folder, a failed eve pin or template fetch): the declaration is written only once nothing can refuse the agent, and a persona edited while the create runs is not overwritten
+- dc920f3: `donn agent run` for an agent the daemon already runs says it is already running (`already: true`) from any shell: it no longer resolves the agent's env-provider secrets first, so a terminal without those exports no longer fails with `secret-unresolved`
+
 ## 0.13.0
 
 ### Minor Changes

@@ -268,7 +268,6 @@ describe("register", () => {
     const REASON =
       "start the daemon (donn daemon start), or allow the mod to run donn";
     const STATUS = `unavailable: ${REASON}`;
-    const UNAVAILABLE = STATUS;
     const blocked = engine({ ...LAUNCHED, HOME: "/home/u" }, () => {
       throw new Error("Acme policy: no process.run");
     });

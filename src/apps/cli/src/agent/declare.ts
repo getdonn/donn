@@ -143,6 +143,23 @@ export async function declareAgent(
   return { before, after };
 }
 
+/**
+ * Writes an edit `declareAgent` made with `dryRun`, unless the file changed since it was read.
+ */
+export async function writeDeclaration(edit: {
+  file: string;
+  before: string;
+  after: string;
+}): Promise<void> {
+  if ((await readFile(edit.file, "utf8")) !== edit.before)
+    throw new CliError(
+      "persona-changed",
+      `${edit.file} changed while the agent was being created; nothing was declared`,
+      { file: edit.file, fix: "run the create again" },
+    );
+  await writeFileAtomic(edit.file, edit.after);
+}
+
 /** The store with the project persona read from `text` instead of its file. */
 function withPersonaText(store: LocalStore, text: string): LocalStore {
   return {

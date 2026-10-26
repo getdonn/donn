@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },

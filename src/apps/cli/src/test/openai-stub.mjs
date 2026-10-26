@@ -3,7 +3,6 @@
 // the text "stubbed", or first calls tool $STUB_TOOL with $STUB_ARGS when offered, and logs the
 // model, tools, tool results, Authorization and x-team per request. PORT=0 picks a free port;
 // the first line names it.
-/* global process, console */
 /* eslint-disable turbo/no-undeclared-env-vars -- the stub's own settings, from the e2e */
 import http from "node:http";
 

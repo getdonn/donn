@@ -264,6 +264,7 @@ describe.skipIf(process.env.DONN_E2E !== "1")("e2e: real eve", () => {
         .catch((e: unknown) => `(stream unavailable: ${String(e)})`);
       throw new Error(
         `${String(error)}\nsession stream:\n${stream.slice(0, 3000)}`,
+        { cause: error },
       );
     }
 

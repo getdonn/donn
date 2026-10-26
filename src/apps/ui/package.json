@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "e2e": "playwright test"
