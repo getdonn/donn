@@ -41,6 +41,7 @@ import {
 } from "@getdonn/cli-schemas";
 import { startMockRegistry } from "@getdonn/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 import { agentLogPath } from "./agent/run.js";
 import { createCli } from "./cli.js";
 import {
@@ -69,7 +70,9 @@ const covered = new Set<string>();
 
 /** Parses `stdout` as the output of `key` (and as nothing looser) and returns it. */
 function parses(key: string, stdout: string): unknown {
-  const schema = COMMAND_OUTPUTS[key];
+  const schema = (COMMAND_OUTPUTS as Record<string, z.ZodType | undefined>)[
+    key
+  ];
   expect(schema, `COMMAND_OUTPUTS has "${key}"`).toBeDefined();
   const value: unknown = JSON.parse(stdout);
   covered.add(key);

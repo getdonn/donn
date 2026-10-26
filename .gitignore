@@ -9,6 +9,8 @@ node_modules
 dist/
 coverage/
 .turbo/
+test-results/
+playwright-report/
 
 # Persona builds (may contain resolved secrets)
 .donn/build/

@@ -46,9 +46,10 @@ export * from "./sessions.js";
 /**
  * Each allowlisted command's `--json` stdout, keyed by the command path with spaces
  * (`"agent list"`). A command with several shapes is a union of them. `resolve --explain` is not
- * a key: under `--json` it prints what `resolve` does.
+ * a key: under `--json` it prints what `resolve` does. Typed per key, so the app's client
+ * infers each command's result.
  */
-export const COMMAND_OUTPUTS: Record<string, z.ZodType> = {
+export const COMMAND_OUTPUTS = {
   list: ListOutput,
   switch: SwitchOutput,
   resolve: ResolveOutput,
@@ -74,4 +75,12 @@ export const COMMAND_OUTPUTS: Record<string, z.ZodType> = {
   "agent build": AgentBuildOutput,
   "agent deploy": AgentDeployOutput,
   "agent logs": AgentLogsOutput,
-};
+} satisfies Record<string, z.ZodType>;
+
+/** A command the UI runs, by its `COMMAND_OUTPUTS` key. */
+export type CommandName = keyof typeof COMMAND_OUTPUTS;
+
+/** What `command` prints under `--json`, parsed. */
+export type CommandOutput<C extends CommandName> = z.infer<
+  (typeof COMMAND_OUTPUTS)[C]
+>;
