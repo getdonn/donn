@@ -8,9 +8,16 @@ import { Change, CompileReport, Ref } from "./common.js";
 
 // ---- the commands ------------------------------------------------------------------------
 
-/** `donn list --json`: every persona the store holds, with the layer its ref starts with. */
+/**
+ * `donn list --json`: every persona the store holds, with the layer its ref starts with and the
+ * absolute path of its file (a registry layer's is its cache file). `overlay` is the user
+ * overlay layer (`user/overrides`) and its file, present when the file exists.
+ */
 export const ListOutput = z.strictObject({
-  personas: z.array(z.strictObject({ ref: Ref, layer: z.string() })),
+  personas: z.array(
+    z.strictObject({ ref: Ref, layer: z.string(), path: z.string() }),
+  ),
+  overlay: z.strictObject({ ref: Ref, path: z.string() }).optional(),
 });
 export type ListOutput = z.infer<typeof ListOutput>;
 

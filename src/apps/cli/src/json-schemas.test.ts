@@ -97,8 +97,11 @@ describe("persona commands", () => {
   it("list", async () => {
     const r = await zz(["list", "--json"], here());
     expect(r.code).toBe(0);
-    const out = parses("list", r.stdout) as { personas: unknown[] };
+    const out = parses("list", r.stdout) as {
+      personas: { path: string }[];
+    };
     expect(out.personas.length).toBeGreaterThan(0);
+    for (const persona of out.personas) expect(persona.path).toMatch(/^\//);
     expect(ListOutput).toBe(COMMAND_OUTPUTS["list"]);
   });
 

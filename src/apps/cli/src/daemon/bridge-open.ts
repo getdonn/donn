@@ -111,7 +111,7 @@ function pathRequest(text: string): string | { path: string } {
 
 type Io = Parameters<typeof runInProcess>[0];
 
-/** The folders `/v1/open` opens inside: personas roots, known projects, created agents'. */
+/** The folders `/v1/open` opens inside (and the overlay file): personas roots, known projects, created agents'. */
 async function openRoots(home: string, io: Io): Promise<string[]> {
   // A config that cannot be read names no personas root: fewer roots, never more.
   const config = await loadConfig(home, io.env, io.passwdHome).catch(
@@ -123,6 +123,8 @@ async function openRoots(home: string, io: Io): Promise<string[]> {
   const roots = [
     ...(config.personas === undefined ? [] : [config.personas]),
     join(home, "personas"),
+    // The user overlay layer: one file, not the home around it.
+    join(home, "overrides.yaml"),
     ...agents,
   ];
   return [

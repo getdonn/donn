@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { LAYERS } from "@getdonn/spec";
 import type { CliIo } from "../cli.js";
 import { createContext } from "../context.js";
@@ -13,11 +14,21 @@ export async function listCommand(
   options: ListOptions,
 ): Promise<number> {
   const ctx = await createContext(io);
-  const personas = (await ctx.store.list())
-    .sort()
-    .map((ref) => ({ ref, layer: ref.split("/")[0]! }));
+  // Where each persona's file is (a registry layer's is its cache file), for "open in editor".
+  const personas = (await ctx.store.list()).sort().flatMap((ref) => {
+    const path = ctx.store.locate(`${ref}.yaml`)?.path;
+    return path === undefined ? [] : [{ ref, layer: ref.split("/")[0]!, path }];
+  });
+  // The user overlay is no persona to pick, but it is a layer of every resolve that uses it.
+  const overlayPath = ctx.store.locate("user/overrides.yaml")?.path;
+  const overlay =
+    overlayPath !== undefined && existsSync(overlayPath)
+      ? { ref: "user/overrides", path: overlayPath }
+      : undefined;
   if (options.json) {
-    io.stdout.write(`${JSON.stringify({ personas }, null, 2)}\n`);
+    io.stdout.write(
+      `${JSON.stringify({ personas, ...(overlay && { overlay }) }, null, 2)}\n`,
+    );
     return 0;
   }
   const lines = LAYERS.flatMap((layer) => {
