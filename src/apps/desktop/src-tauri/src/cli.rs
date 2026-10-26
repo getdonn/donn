@@ -1,6 +1,7 @@
 //! Finds and runs the installed `donn` CLI (spec 28 §2). Never through a
 //! shell; every call adds `--json` and parses stdout.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -12,7 +13,12 @@ use serde_json::Value;
 /// The oldest CLI that ships what the app reads (`status --watch`, spec 28 §1).
 pub const MIN_CLI: (u32, u32, u32) = (0, 14, 0);
 
-/// How long a login shell may take to answer `command -v donn`.
+/// What the login shell is asked: where `donn` is, and its own PATH (an app
+/// opened from Finder has a bare one, and `donn` is a Node script that needs
+/// `node` on it). A fixed string: nothing is interpolated.
+const LOOKUP: &str = r#"command -v donn; printf "PATH=%s\n" "$PATH""#;
+
+/// How long a login shell may take to answer `LOOKUP`.
 const LOCATE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How long output may trail the shell's exit (a grandchild holding stdout).
@@ -38,13 +44,14 @@ pub struct CliFailure {
     pub fix: Option<String>,
 }
 
-/// The located `donn` binary.
+/// The located `donn` binary, and the PATH it runs with (`None`: the app's).
 #[derive(Debug, Clone)]
 pub struct Donn {
     bin: PathBuf,
+    path: Option<OsString>,
 }
 
-/// The last line of `command -v` output that is an absolute path.
+/// The last line of `LOOKUP` output that is an absolute path (`PATH=…` is not).
 pub fn parse_command_v(stdout: &str) -> Option<PathBuf> {
     stdout
         .lines()
@@ -53,18 +60,32 @@ pub fn parse_command_v(stdout: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// `$DONN_BIN` if set (and a file), else the login shell's `command -v donn`.
-pub fn locate(env_bin: Option<&str>, shell: &str) -> Result<PathBuf, Missing> {
+/// The login shell's PATH: the last `PATH=` line of `LOOKUP` output.
+pub fn parse_path(stdout: &str) -> Option<OsString> {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|l| l.strip_prefix("PATH="))
+        .map(str::trim_end)
+        .filter(|p| !p.is_empty())
+        .map(OsString::from)
+}
+
+/// `$DONN_BIN` if set (and a file), run with the app's PATH; else the login
+/// shell's `command -v donn`, run with the login shell's PATH.
+pub fn locate(env_bin: Option<&str>, shell: &str) -> Result<Donn, Missing> {
     if let Some(bin) = env_bin.filter(|b| !b.is_empty()) {
         let path = PathBuf::from(bin);
         return if path.is_file() {
-            Ok(path)
+            Ok(Donn::new(path, None))
         } else {
             Err(Missing(format!("DONN_BIN is not a file: {bin}")))
         };
     }
     let out = shell_command_v(shell).map_err(|e| Missing(format!("{shell} -lc: {e}")))?;
-    parse_command_v(&out).ok_or_else(|| Missing("donn is not on the login shell's PATH".into()))
+    let bin = parse_command_v(&out)
+        .ok_or_else(|| Missing("donn is not on the login shell's PATH".into()))?;
+    Ok(Donn::new(bin, parse_path(&out)))
 }
 
 /// Whether `donn --version` output is at least `min`; prereleases count as below.
@@ -117,13 +138,13 @@ fn unreadable(message: String) -> CliFailure {
     }
 }
 
-/// Runs `<shell> -lc 'command -v donn'`. The whole call is bounded by
+/// Runs `<shell> -lc LOOKUP`. The whole call is bounded by
 /// `LOCATE_TIMEOUT`: the shell is killed and reaped past it, and once the shell
 /// exits the output is collected for only a short grace, so a grandchild that
 /// inherited stdout cannot hold the app up. The reader thread is abandoned.
 fn shell_command_v(shell: &str) -> std::io::Result<String> {
     let mut child = Command::new(shell)
-        .args(["-lc", "command -v donn"])
+        .args(["-lc", LOOKUP])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -196,14 +217,32 @@ mod semver_lite {
 }
 
 impl Donn {
-    /// Wraps a located binary.
-    pub fn new(bin: PathBuf) -> Self {
-        Donn { bin }
+    /// Wraps a located binary; `path` replaces the app's PATH for every call.
+    pub fn new(bin: PathBuf, path: Option<OsString>) -> Self {
+        Donn { bin, path }
+    }
+
+    pub fn bin(&self) -> &Path {
+        &self.bin
+    }
+
+    pub fn path(&self) -> Option<&OsString> {
+        self.path.as_ref()
+    }
+
+    /// A command for the binary, with the located PATH when there is one.
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.bin);
+        if let Some(path) = &self.path {
+            command.env("PATH", path);
+        }
+        command
     }
 
     /// Runs `donn <args> --json` in `cwd`; stdout parsed as JSON on exit 0.
     pub fn run(&self, args: &[&str], cwd: &Path) -> Result<Value, CliFailure> {
-        let out = Command::new(&self.bin)
+        let out = self
+            .command()
             .args(args)
             .arg("--json")
             .current_dir(cwd)
@@ -219,7 +258,7 @@ impl Donn {
 
     /// Starts `donn status --watch --json`: stdout piped, stdin and stderr null.
     pub fn spawn_watch(&self) -> std::io::Result<Child> {
-        Command::new(&self.bin)
+        self.command()
             .args(["status", "--watch", "--json"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -240,6 +279,24 @@ mod tests {
         );
         assert_eq!(parse_command_v(""), None);
         assert_eq!(parse_command_v("donn: not found"), None);
+        let lookup = "Last login: Mon\n/opt/homebrew/bin/donn\nPATH=/opt/homebrew/bin:/usr/bin\n";
+        assert_eq!(
+            parse_command_v(lookup),
+            Some(PathBuf::from("/opt/homebrew/bin/donn"))
+        );
+        assert_eq!(parse_command_v("PATH=/usr/bin:/bin\n"), None);
+    }
+
+    #[test]
+    fn parses_the_login_path() {
+        let out = "motd\nPATH=/old\n/opt/x/donn\nPATH=/opt/x:/usr/bin:/bin\n";
+        assert_eq!(
+            parse_path(out),
+            Some(OsString::from("/opt/x:/usr/bin:/bin"))
+        );
+        assert_eq!(parse_path("/opt/x/donn\n"), None);
+        assert_eq!(parse_path("/opt/x/donn\nPATH=\n"), None);
+        assert_eq!(parse_path("export PATH=/x\n"), None);
     }
 
     #[test]
@@ -277,7 +334,8 @@ mod tests {
         let file = std::env::temp_dir().join("donn-cli-test-bin");
         std::fs::write(&file, "").unwrap();
         let path = file.to_str().unwrap();
-        assert_eq!(locate(Some(path), "/bin/sh").unwrap(), file);
+        let donn = locate(Some(path), "/bin/sh").unwrap();
+        assert_eq!((donn.bin(), donn.path()), (file.as_path(), None));
         assert!(locate(Some("/nonexistent/donn"), "/bin/sh").is_err());
         std::fs::remove_file(&file).unwrap();
     }
@@ -286,12 +344,15 @@ mod tests {
     fn locate_is_bounded_when_a_grandchild_holds_stdout() {
         use std::os::unix::fs::PermissionsExt;
         let script = std::env::temp_dir().join("donn-cli-test-shell");
-        std::fs::write(&script, "#!/bin/sh\necho /opt/x/donn\nsleep 30 &\n").unwrap();
+        let body = "#!/bin/sh\necho /opt/x/donn\necho PATH=/opt/x:/bin\nsleep 30 &\n";
+        std::fs::write(&script, body).unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         let start = Instant::now();
         let found = locate(None, script.to_str().unwrap());
         assert!(start.elapsed() < Duration::from_secs(6));
-        assert_eq!(found.unwrap(), PathBuf::from("/opt/x/donn"));
+        let donn = found.unwrap();
+        assert_eq!(donn.bin(), Path::new("/opt/x/donn"));
+        assert_eq!(donn.path(), Some(&OsString::from("/opt/x:/bin")));
         std::fs::remove_file(&script).unwrap();
     }
 }

@@ -45,8 +45,7 @@ pub fn run() {
 fn connect(app: AppHandle) {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     match cli::locate(std::env::var("DONN_BIN").ok().as_deref(), &shell) {
-        Ok(bin) => {
-            let donn = cli::Donn::new(bin);
+        Ok(donn) => {
             tray::set_donn(&app, donn.clone());
             let handle = app.clone();
             watch::start(app, donn, move |s| tray::rebuild(&handle, &s));
