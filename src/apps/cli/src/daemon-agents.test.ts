@@ -997,6 +997,53 @@ describe("env-provider secrets of a run (spec 26 §2)", () => {
     expect(startCall()).toBeUndefined();
   });
 
+  it("a deploy donn ui starts has no shell either: env-provider refs fail with the fix, nothing pushed", async () => {
+    s.cleanup();
+    s = seed();
+    agentProject(s, "vercel");
+    await createAgent(s);
+    const daemon = await start();
+    const opened = await call(daemon, "POST", "/ui/open", {});
+    const { port, code } = opened.body as { port: number; code: string };
+    const post = (path: string, body: unknown, token?: string) =>
+      fetch(`http://127.0.0.1:${port}${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(token !== undefined && { authorization: `Bearer ${token}` }),
+        },
+        body: JSON.stringify(body),
+      }).then(async (res) => (await res.json()) as Record<string, unknown>);
+    const { token } = (await post("/v1/session", { code })) as {
+      token: string;
+    };
+    const argv = ["agent", "deploy", "kody", "--yes", "--json"];
+    const ran = await post("/v1/run", { argv, cwd: s.repo }, token);
+    expect(ran.exitCode).toBe(1);
+    expect(JSON.parse(ran.stdout as string)).toMatchObject({
+      error: {
+        code: "secret-unresolved",
+        fix: "a deploy started from donn ui has no shell environment: use the keychain provider for secret://env/API_TOKEN and secret://env/GATEWAY_KEY, or run donn agent deploy kody in a terminal",
+      },
+    });
+    // Refused before eve link or eve deploy: nothing left the machine.
+    const eveCalls = spawn.calls.map((c) => c.args.join(" "));
+    expect(
+      eveCalls.some((c) => c.includes("link") || c.includes("deploy")),
+    ).toBe(false);
+    // The dry run resolves nothing, so donn ui can show it.
+    const dry = await post(
+      "/v1/run",
+      { argv: ["agent", "deploy", "kody", "--dry-run", "--json"], cwd: s.repo },
+      token,
+    );
+    expect(dry.exitCode, dry.stdout as string).toBe(0);
+    expect(JSON.parse(dry.stdout as string)).toMatchObject({
+      dryRun: true,
+      names: ["API_TOKEN", "DONN_SECRET_1", "GREETING"],
+    });
+  });
+
   it("a run donn ui starts has no shell: env-provider refs fail with the fix", async () => {
     // Even with the values in the daemon's own env: the UI is no shell.
     const daemon = await start();

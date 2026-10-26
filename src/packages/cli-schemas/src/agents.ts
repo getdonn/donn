@@ -164,16 +164,32 @@ export const AgentBuildOutput = z.strictObject({
 export type AgentBuildOutput = z.infer<typeof AgentBuildOutput>;
 
 /**
- * `donn agent deploy --json`: the variable names pushed to Vercel (never values), the ones
- * already set there (`existing`, left alone), and the deployment URL when eve printed one.
+ * `donn agent deploy --json`, two shapes: the variable names pushed to Vercel (never values), the
+ * ones already set there (`existing`, left alone) and the deployment URL when eve printed one; or
+ * `--dry-run`'s plan.
  */
-export const AgentDeployOutput = z.strictObject({
-  agent: z.string(),
-  dir: z.string(),
-  pushed: z.array(z.string()),
-  existing: z.array(z.string()).optional(),
-  url: z.string().optional(),
-});
+export const AgentDeployOutput = z.union([
+  z.strictObject({
+    agent: z.string(),
+    dir: z.string(),
+    pushed: z.array(z.string()),
+    existing: z.array(z.string()).optional(),
+    url: z.string().optional(),
+  }),
+  /**
+   * `--dry-run`: what a deploy would do, none of it done and no secret resolved. `project`: the
+   * Vercel project it would link (the agent's name) or is linked to, when known; `names`: the
+   * variables it would set; `firstDeploy` when it would link a new Vercel project first.
+   */
+  z.strictObject({
+    agent: z.string(),
+    dryRun: z.literal(true),
+    linked: z.boolean(),
+    project: z.string().optional(),
+    names: z.array(z.string()),
+    firstDeploy: z.boolean(),
+  }),
+]);
 export type AgentDeployOutput = z.infer<typeof AgentDeployOutput>;
 
 /**

@@ -90,7 +90,7 @@ const AGENT: Readonly<Record<string, Form>> = {
   },
   sync: { switches: ["--dry-run", "--force"], values: PROJECT, args: NAMED },
   build: { switches: ["--force"], values: PROJECT, args: NAMED },
-  deploy: { switches: ["--yes"], values: PROJECT, args: NAMED },
+  deploy: { switches: ["--yes", "--dry-run"], values: PROJECT, args: NAMED },
   env: {
     values: ["--format", ...PROJECT],
     args: NAMED,

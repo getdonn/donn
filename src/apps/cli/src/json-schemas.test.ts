@@ -712,6 +712,13 @@ describe("agent commands", () => {
         args[4] === "GREETING"
           ? { exitCode: 1, stdout: "", stderr: "already exists" }
           : { exitCode: 0, stdout: "", stderr: "" };
+      const plan = await agent(["deploy", "kody", "--dry-run"], {
+        spawn,
+        runInput,
+      });
+      expect(plan.code, plan.stderr).toBe(0);
+      expect(JSON.parse(plan.stdout)).toMatchObject({ dryRun: true });
+      parses("agent deploy", plan.stdout);
       const first = await agent(["deploy", "kody", "--yes"], {
         spawn,
         runInput,

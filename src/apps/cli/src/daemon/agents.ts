@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { agentEnvironment, envInputs } from "../agent/env.js";
+import { agentEnvironment, envInputs, noShellFix } from "../agent/env.js";
 import { projectContext } from "../agent/load.js";
 import {
   agentLogPath,
@@ -75,20 +75,14 @@ function daemonSecretFix(
   name: string,
   request: RunRequest,
 ): unknown {
+  if (request.origin === "ui") return noShellFix(error, "run", name);
   if (!(error instanceof CliError) || error.code !== "secret-unresolved")
     return error;
-  const failures = (error.details["failures"] ?? []) as {
-    ref?: string;
-    type?: string;
-  }[];
-  const refs = failures.filter((f) => f.type === "env").map((f) => f.ref);
-  if (refs.length === 0) return error;
+  const failures = (error.details["failures"] ?? []) as { type?: string }[];
+  if (!failures.some((f) => f.type === "env")) return error;
   return new CliError(error.code, error.message, {
     ...error.details,
-    fix:
-      request.origin === "ui"
-        ? `a run started from donn ui has no shell environment: use the keychain provider for ${refs.join(" and ")}, or run donn agent run ${name} in a terminal`
-        : `the daemon resolves secrets in its own environment, which has no shell exports: use the keychain provider for this ref, or run \`donn agent run ${name}\` in a terminal, which passes its env-provider secrets to the daemon`,
+    fix: `the daemon resolves secrets in its own environment, which has no shell exports: use the keychain provider for this ref, or run \`donn agent run ${name}\` in a terminal, which passes its env-provider secrets to the daemon`,
   });
 }
 

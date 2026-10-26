@@ -132,6 +132,7 @@ interface DeployReview {
 }
 
 function deployed(name: string, out: AgentDeployOutput): string {
+  if ("dryRun" in out) return `${name} was not deployed (a dry run)`;
   return [
     `Deployed ${name}${out.url ? `: ${out.url}` : ""}`,
     out.pushed.length > 0 ? `set ${out.pushed.join(", ")}` : undefined,

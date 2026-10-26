@@ -106,8 +106,14 @@ of its release work (Open questions).
 - **Outward actions confirm in the UI.** `publish`, `agent deploy` and the env push it does are
   sent with the CLI's own confirmation flag only after a dialog that shows what the CLI would have
   prompted. The CLI is unchanged: it already prompts for these on a TTY.
+  *(Amended 2026-10-25, layer 3 review:)* a deploy always confirms in the app, even when the CLI
+  would not prompt (already linked, nothing new to set): the dialog comes from `donn agent deploy
+  <name> --dry-run --json` (`linked`, `project`, the `names` it would set, `firstDeploy`), which
+  links, sets, resolves and deploys nothing; confirming sends `deploy --yes` as a job.
 - **Env secrets** *(added 2026-10-25)*. A run the bridge starts carries no caller environment:
-  a `secret://env/…` ref fails `secret-unresolved` with a fix naming the keychain provider. The
+  a `secret://env/…` ref fails `secret-unresolved` with a fix naming the keychain provider (and
+  so does a deploy the bridge starts, *amended 2026-10-25*: its env push resolves no env-provider
+  ref either). The
   socket's `POST /agents/run` accepts `{ env: { <ref>: <value> } }` from a terminal `donn agent
   run`, which resolves env-provider refs in its own environment first; the daemon uses those
   values for that run only and never logs or stores them.

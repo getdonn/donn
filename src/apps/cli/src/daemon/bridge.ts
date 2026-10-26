@@ -64,19 +64,22 @@ export interface BridgeOptions {
 }
 
 /**
- * The daemon's io with its agents marked as run from donn ui: such a run has no shell
- * environment, so an env-provider ref fails rather than resolve in the daemon's (spec 26 §2).
- * Set in process only: nothing a request or a terminal sends can mark or unmark a run.
+ * The daemon's io marked as donn ui's (`fromUi`, and its agent runs' origin): an agent run or
+ * deploy it starts has no shell environment, so an env-provider ref fails rather than resolve in
+ * the daemon's (spec 26 §2). Set in process only: nothing a request or a terminal sends can mark
+ * or unmark a run.
  */
 function fromUi(io: BridgeOptions["io"]): BridgeOptions["io"] {
   const agents = io.agents;
-  if (agents === undefined) return io;
   return {
     ...io,
-    agents: {
-      ...agents,
-      run: (project, name) => agents.run(project, name, { origin: "ui" }),
-    },
+    fromUi: true,
+    ...(agents !== undefined && {
+      agents: {
+        ...agents,
+        run: (project, name) => agents.run(project, name, { origin: "ui" }),
+      },
+    }),
   };
 }
 

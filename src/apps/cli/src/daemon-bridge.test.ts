@@ -323,6 +323,7 @@ describe("uiAllowed", () => {
       ["agent", "sync", "bot", "--dry-run", "--force", "--json"],
       ["agent", "build", "bot", "--force", "--json"],
       ["agent", "deploy", "bot", "--yes", "--json"],
+      ["agent", "deploy", "bot", "--dry-run", "--json"],
       ["agent", "env", "bot", "--format", "dotenv", "--json"],
       ["agent", "run", "bot", "--json"],
       ["agent", "stop", "bot", "--json"],

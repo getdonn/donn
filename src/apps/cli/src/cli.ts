@@ -112,6 +112,11 @@ export interface CliIo {
   ask?: (prompt: string) => Promise<string | undefined>;
   /** Set inside the daemon: its running agents, so `agent run|stop|list` use them directly. */
   agents?: AgentControl;
+  /**
+   * Set in process by the bridge for the commands donn ui runs: they have no shell environment,
+   * so an env-provider secret ref fails instead of resolving in the daemon's (spec 26 §2).
+   */
+  fromUi?: true;
 }
 
 export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
@@ -632,8 +637,15 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .argument("<name>", "the agent, as in agents.define")
         .option("--yes", "set the environment variables without asking")
+        .option(
+          "--dry-run",
+          "say what a deploy would link and set, doing none of it (no secret resolved)",
+        )
         .option("--project <dir>", "the project folder (default: here)")
-        .option("--json", "print { agent, dir, pushed, url? } as JSON")
+        .option(
+          "--json",
+          "print { agent, dir, pushed, url? } (with --dry-run: { agent, dryRun, linked, project?, names, firstDeploy }) as JSON",
+        )
         .action((name: string, options) =>
           handle(options.json, () => agentDeployCommand(io, name, options)),
         );
