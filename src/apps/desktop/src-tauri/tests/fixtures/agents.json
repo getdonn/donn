@@ -1,0 +1,89 @@
+{
+  "daemon": true,
+  "version": "0.0.0",
+  "pid": 4242,
+  "startedAt": "2026-10-26T00:00:00.000Z",
+  "service": false,
+  "watching": [
+    "/fixture/personas",
+    "/fixture/home/personas",
+    "/fixture/repo/.donn",
+    "/fixture/home/overrides.yaml",
+    "/fixture/home/config.yaml",
+    "/fixture/home/cache/registry/index.json",
+    "/fixture/home/sessions",
+    "/fixture/home/agents/index.json"
+  ],
+  "sessions": [],
+  "agents": [
+    {
+      "name": "foxtrot",
+      "project": "/fixture/gone",
+      "target": "-",
+      "state": "unknown",
+      "current": false,
+      "syncFailed": "no-project-persona"
+    },
+    {
+      "name": "alpha",
+      "project": "/fixture/repo",
+      "target": "local",
+      "state": "created",
+      "current": true
+    },
+    {
+      "name": "bravo",
+      "project": "/fixture/repo",
+      "target": "local",
+      "state": "running",
+      "current": true,
+      "url": "http://127.0.0.1:61131/"
+    },
+    {
+      "name": "charlie",
+      "project": "/fixture/repo",
+      "target": "self-host",
+      "state": "built",
+      "current": true
+    },
+    {
+      "name": "delta",
+      "project": "/fixture/repo",
+      "target": "local",
+      "state": "deployed",
+      "current": true
+    },
+    {
+      "name": "echo",
+      "project": "/fixture/repo",
+      "target": "local",
+      "state": "created",
+      "current": false,
+      "syncFailed": "owned-file-edited"
+    }
+  ],
+  "syncFailed": [
+    {
+      "name": "foxtrot",
+      "project": "/fixture/gone",
+      "code": "no-project-persona"
+    },
+    {
+      "name": "echo",
+      "project": "/fixture/repo",
+      "code": "owned-file-edited"
+    }
+  ],
+  "managed": {
+    "state": "missing",
+    "findings": [
+      {
+        "state": "missing",
+        "detail": "nothing installed in /tmp/donn-no-managed-root/ClaudeCode"
+      }
+    ]
+  },
+  "switched": {
+    "projects": {}
+  }
+}

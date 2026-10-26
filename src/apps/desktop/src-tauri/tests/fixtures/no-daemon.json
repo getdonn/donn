@@ -1,0 +1,34 @@
+{
+  "daemon": false,
+  "sessions": [
+    {
+      "dir": "/fixture/home/sessions/s0",
+      "harness": "claude-code",
+      "project": "/fixture/other",
+      "launched": "org/base",
+      "startedAt": "2026-10-26T00:00:00.000Z",
+      "held": []
+    },
+    {
+      "dir": "/fixture/home/sessions/s1",
+      "harness": "claude-code",
+      "project": "/fixture/repo",
+      "launched": "team/payments",
+      "startedAt": "2026-10-26T00:00:00.000Z",
+      "held": []
+    }
+  ],
+  "agents": [],
+  "managed": {
+    "state": "missing",
+    "findings": [
+      {
+        "state": "missing",
+        "detail": "nothing installed in /tmp/donn-no-managed-root/ClaudeCode"
+      }
+    ]
+  },
+  "switched": {
+    "projects": {}
+  }
+}

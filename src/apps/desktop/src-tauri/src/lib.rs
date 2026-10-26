@@ -1,6 +1,8 @@
 //! The donn menu-bar shell (spec 28 §2). It has no logic of its own: every
 //! read and every action is a `donn` command. Windows are created from Rust.
 
+pub mod snapshot;
+
 pub fn run() {
     tauri::Builder::default()
         // First, as the plugin's docs require: a second launch lands here.
