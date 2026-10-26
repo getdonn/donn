@@ -1,5 +1,22 @@
 # @getdonn/cli
 
+## 0.13.0
+
+### Minor Changes
+
+- f4dbecd: `donn agent add <name> <item>` runs `eve add <item> --non-interactive` in a created agent, under its lock, and passes eve's setup questions on in eve's own shape (`key`, `message`, `kind`, `options`, `recommended`, `required`). On a terminal it asks them and continues; otherwise (and with `--json`) it exits 2 with `needs-answer`, the question and the command that continues it: answer with `--answer key=<JSON>` (repeatable; a value that is not JSON is taken as a string). A secret question (`kind: "environment"`) is never answered on a command line: donn names the variable eve reads and refuses `--answer` for it. For a vercel agent donn runs the `eve link` prerequisite itself; for others it exits 2 with `needs-prerequisite`. `donn agent templates` lists the templates `create` takes, each with the Vercel-only services its code uses, plus `eve:blank`. In `donn ui`, an `agent add` job's question is a `job.question` answered through `POST /v1/jobs/<id>/answer` (a secret question is refused there too), and answer values are hidden in the daemon log and in job views.
+- f0ca1db: agent run through the daemon passes the agent's env-provider secrets from your shell; a run from donn ui refuses them with a fix naming the keychain provider
+- f0ca1db: `donn ui` opens the donn app in your browser, served by a loopback bridge in the daemon: it listens on 127.0.0.1 only, signs the page in with a one-time code that expires in 60 s and a UI token, checks every request's Host and Origin, runs only an allowlist of commands, streams jobs and events, and can open a file in your editor. `--no-open` prints the URL instead and `--port` picks the port. Turn the bridge off with `daemon.ui: false` in config.yaml. The web app now ships inside `@getdonn/cli` (served from `dist/ui`), so there is nothing else to install.
+
+### Patch Changes
+
+- f4dbecd: `donn agent build --json` also prints what it wrote (`contents.dockerfile`, `contents.envFile`), so `donn ui` can show the Dockerfile and `env.json` without reading files: `env.json` names each secret by its ref, never its value
+- f4dbecd: `donn agent deploy <name> --dry-run` says what a deploy would do (whether the agent is linked, the Vercel project, the variable names it would set, whether it is a first deploy) and does none of it: nothing is linked, set, resolved or deployed. `donn ui` shows it in its confirmation before every deploy. A deploy started from `donn ui` has no shell environment, as a run started there has none: an env-provider secret ref fails with the fix to use the keychain provider or deploy from a terminal
+- f0ca1db: agent run --json no longer prints an empty exited field
+- 6037234: the daemon no longer misses an edit made just after it starts watching: once its file watchers have settled it checks every persona source once more, so a change that landed while they armed is still synced to sessions and created agents
+- f4dbecd: every --json error envelope carries a message: a resolver error (`missing-ref`, `cycle`, ...) gets its text form (`missing-ref: ref=team/x, from=project/persona`) beside its details, and a `secrets` error the text that lists its failures
+- 6037234: `donn list --json` reports each local persona's file (`path`) and where it comes from (`source`: `local` or `registry`; a layer that resolves from the registry cache has no `path`), and the user overlay (`overlay`), so the app can open every editable layer in an editor
+
 ## 0.12.0
 
 ### Minor Changes
