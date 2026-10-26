@@ -21,6 +21,7 @@ import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
 import { cliVersion } from "./commands/daemon.js";
 import { statusCommand } from "./commands/status.js";
+import { WATCH_NEEDS_JSON, watchStatus } from "./commands/status-watch.js";
 import { uiCommand } from "./commands/ui.js";
 import { codexCommand } from "./commands/codex.js";
 import { compileCommand } from "./commands/compile.js";
@@ -790,8 +791,16 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
           "Show the live sessions and whether the daemon keeps them current",
         )
         .option("--json", "print { daemon, sessions } as JSON")
+        .option(
+          "--watch",
+          "keep printing: a JSON line now and after each change (with --json)",
+        )
         .action((options) =>
-          handle(options.json, () => statusCommand(io, options)),
+          handle(options.json, () => {
+            if (!options.watch) return statusCommand(io, options);
+            if (!options.json) throw new CliError("usage", WATCH_NEEDS_JSON);
+            return watchStatus(io);
+          }),
         );
 
       program

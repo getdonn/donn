@@ -41,13 +41,24 @@ interface Gathered {
   managedLine: string[];
 }
 
-async function gather(io: CliIo): Promise<Gathered> {
+export interface SnapshotOptions {
+  /** false: the daemon is not asked (it is stopping); what status shows when none answers. */
+  daemon?: boolean;
+}
+
+async function gather(
+  io: CliIo,
+  options: SnapshotOptions = {},
+): Promise<Gathered> {
   const home = homeOf(io);
-  const client = await connectDaemon(home, {
-    version: cliVersion(),
-    warn: (message) => io.stderr.write(`${message}\n`),
-    fix: () => updateFix(io, home),
-  });
+  const client =
+    options.daemon === false
+      ? undefined
+      : await connectDaemon(home, {
+          version: cliVersion(),
+          warn: (message) => io.stderr.write(`${message}\n`),
+          fix: () => updateFix(io, home),
+        });
   const managed = await managedStatus(io);
   const managedLine = managed.line === undefined ? [] : [managed.line];
   // One line per agent created on this machine; running only when the daemon says so.
@@ -113,8 +124,11 @@ async function gather(io: CliIo): Promise<Gathered> {
 }
 
 /** The object `donn status --json` prints; the desktop shell reuses it. */
-export async function statusSnapshot(io: CliIo): Promise<StatusJson> {
-  return (await gather(io)).json;
+export async function statusSnapshot(
+  io: CliIo,
+  options: SnapshotOptions = {},
+): Promise<StatusJson> {
+  return (await gather(io, options)).json;
 }
 
 export async function statusCommand(

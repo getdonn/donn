@@ -104,8 +104,11 @@ export interface DaemonClient {
   ): Promise<{ stopped: boolean; leftovers?: number; exited?: number }>;
   /** `POST /ui/open`: the loopback bridge's port and a one-time sign-in code (spec 26 §1). */
   openUi(port?: number): Promise<{ port: number; code: string }>;
-  /** Follow `GET /events`; returns a function that stops following. */
-  events(on: (e: DaemonEvent) => void): () => void;
+  /**
+   * Follow `GET /events`; returns a function that stops following. `onEnd` is called once when
+   * the stream ends or fails (a daemon gone without `daemon.stopping`), never after a stop.
+   */
+  events(on: (e: DaemonEvent) => void, onEnd?: () => void): () => void;
 }
 
 const PROBE_TIMEOUT_MS = 500;
@@ -307,7 +310,13 @@ export async function connectDaemon(
         CALL_TIMEOUT_MS,
         port === undefined ? {} : { port },
       )) as { port: number; code: string },
-    events: (on) => {
+    events: (on, onEnd) => {
+      let ended = false;
+      const end = () => {
+        if (ended) return;
+        ended = true;
+        onEnd?.();
+      };
       const req = request(
         {
           socketPath: probe.socket,
@@ -333,11 +342,17 @@ export async function connectDaemon(
               if (data) on(JSON.parse(data) as DaemonEvent);
             }
           });
+          res.on("error", () => {});
+          res.on("close", end);
         },
       );
-      req.on("error", () => {});
+      req.on("error", end);
+      req.on("close", end);
       req.end();
-      return () => req.destroy();
+      return () => {
+        ended = true;
+        req.destroy();
+      };
     },
   };
 }
