@@ -32,6 +32,10 @@
 >   against them, and the app imports them (§4).
 > - **Templates.** The builder lists templates through a new `donn agent templates --json` (the
 >   adapter's table plus the `eve:blank` entry), so the app reads nothing outside the CLI.
+>
+> *Amended 2026-10-26:* layer 4 is designed in `28-desktop.md`: a menu-bar app that runs the
+> installed `donn` for everything (`status --watch --json` feeds the tray). Open question 1 is
+> decided there: built from source for v1; signed downloads are a later spec.
 
 ## Intent
 
@@ -174,7 +178,7 @@ of its release work (Open questions).
 | 1 `bridge` | the loopback listener, the UI token and one-time code, Host/Origin checks, the UI allowlist, jobs and their events, `/v1/open`; `donn ui` |
 | 2 `app` | `src/apps/ui`: shell, project picker, screens 1–4 |
 | 3 `agents` | screen 5, after `25`'s layer 2 |
-| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux (*deferred 2026-10-25*) |
+| 4 `desktop` | `src/apps/desktop`: Tauri shell, tray, packaging for macOS and Linux (*deferred 2026-10-25; built 2026-10-26, see `28`*) |
 
 - **Bridge:** requests without the token, with a wrong `Host` or a foreign `Origin` are refused; a
   used one-time code fails; a command outside the allowlist is `403`; `/v1/open` outside a known

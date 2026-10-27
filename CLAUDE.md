@@ -50,6 +50,7 @@ overrides them.
 25. `docs/planning/25-agent-runner.md` — `donn agent create|sync|run|build|deploy|env|exec`; local, self-host and Vercel targets; secrets; driving the project-local eve CLI; a GitHub Actions spike
 26. `docs/planning/26-gui.md` — the GUI: one React app served by the daemon (`donn ui`) and a Tauri desktop shell, the loopback bridge, the screens, the agent builder
 27. `docs/planning/27-first-publish.md` — the first npm publish: 13 runtime packages public under Apache-2.0, `getdonn/donn` public, trusted publishing with provenance from a tag-triggered `release.yml`, a Verdaccio rehearsal, release 0.14.0
+28. `docs/planning/28-desktop.md` — the desktop app (layer 4 of `26`): a Tauri menu-bar app that runs the installed `donn` for everything, `donn status --watch --json` for the tray, `donn ui --page`; built from source in v1
 
 ## Key decisions already made (don't relitigate without reading the doc that made them)
 
@@ -88,7 +89,7 @@ spec, the resolver and the capability matrix) and spec 24 is built (`AgentAdapte
 package with the next release); _(2026-10-25)_ spec 25 is built (`donn agent
 create|list|sync|env|exec|run|stop|logs|build|deploy`, the daemon keeping created agents current,
 the agent lines in `doctor` and `status`, a real-eve e2e under `DONN_E2E=1`; spike findings in
-`spikes/eve-runner/`); _(2026-10-25)_ spec 26's layers 1–3 are built: the loopback bridge in the daemon, `donn ui`, and the web app (served from `@getdonn/cli`'s `dist/ui`) with every screen and the agent builder, covered by a Playwright suite (`src/apps/ui/e2e`, CI job `ui-e2e`); the desktop shell (layer 4) is deferred.
+`spikes/eve-runner/`); _(2026-10-25)_ spec 26's layers 1–3 are built: the loopback bridge in the daemon, `donn ui`, and the web app (served from `@getdonn/cli`'s `dist/ui`) with every screen and the agent builder, covered by a Playwright suite (`src/apps/ui/e2e`, CI job `ui-e2e`); the desktop shell (layer 4) was deferred; _(2026-10-26)_ spec 28 (the desktop app, layer 4 of 26) is built: `src/apps/desktop` (a Tauri 2 menu-bar app, built from source), `donn status --watch --json`, `donn ui --page` and the app's `?project=`.
 
 ## Conventions (once code exists)
 

@@ -101,8 +101,8 @@ runs it with approval `never`; the sandbox still applies.)
 
 ```sh
 donn daemon start    # a background process, per DONN_HOME
-donn status          # the sessions it knows of, and whether each is current
-donn ui              # the app in your browser, served by the daemon (--no-open, --port)
+donn status          # the sessions it knows of, and whether each is current (--watch --json streams snapshots)
+donn ui              # the app in your browser, served by the daemon (--no-open, --port, --page <route>)
 donn daemon stop
 ```
 
@@ -347,7 +347,7 @@ and agents the persona no longer declares. The design is `docs/planning/25-agent
 
 ## The web UI
 
-`donn ui [--no-open] [--port <n>]` starts the daemon if it is not running (unless
+`donn ui [--no-open] [--port <n>] [--page <route>]` starts the daemon if it is not running (unless
 `daemon: { autoStart: false }` is set; then start it with `donn daemon start`) and opens the app in
 your browser (`--no-open` prints the URL instead). It is the CLI with a face, not a second product: every
 action runs a `donn` command. The app has five screens:
@@ -369,7 +369,18 @@ file manager for a folder); a daemon installed as a login service (`donn daemon 
 has no `$VISUAL`, so it uses the OS opener; a daemon started from your shell has your `$VISUAL`. Secrets never
 reach the page: it shows `secret://` refs and variable names, never values. A run or deploy started
 from the app has no shell, so it refuses `secret://env/...` refs: use the `keychain` provider for
-those. The desktop app (a Tauri shell around the same page) is deferred.
+those.
+
+## Desktop app
+
+`src/apps/desktop` is donn in the menu bar: the default persona and each live session's persona at
+a glance, a switcher, the created agents with run and stop, and "Open donn" for the web app in a
+window. Like the web app it has no logic of its own: it runs the installed `donn`, which must be the
+CLI release that ships spec 28 or later; until that release is on npm, build the CLI from this repo
+and set `DONN_BIN` (the package README has the example). It is built from source for now (macOS
+and Linux): `pnpm --filter @getdonn/desktop bundle`, then copy `donn.app` to `/Applications`.
+Prerequisites, output paths and how it finds `donn` are in
+[`src/apps/desktop/README.md`](src/apps/desktop/README.md).
 
 ## Upgrading from zzpersona
 

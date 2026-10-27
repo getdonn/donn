@@ -1,5 +1,11 @@
 # @getdonn/cli
 
+## 0.14.0
+
+### Minor Changes
+
+- f830bc2: `donn status --watch --json` streams status snapshots; `status --json` reports `switched`; `donn ui --page` opens an app route; the app takes `?project=`.
+
 ## 0.13.2
 
 ### Patch Changes
