@@ -64,8 +64,8 @@ pub fn run() {
 /// or old CLI is all the tray shows, and nothing is watched (spec 28 §2).
 fn connect(app: AppHandle) {
     match usable_cli() {
-        Ok(donn) => {
-            tray::set_donn(&app, donn.clone());
+        Ok((donn, version)) => {
+            tray::set_donn(&app, donn.clone(), version);
             let handle = app.clone();
             watch::start(app, donn, move |s| {
                 tray::rebuild(&handle, &s);
@@ -76,9 +76,9 @@ fn connect(app: AppHandle) {
     }
 }
 
-/// The located CLI when `donn --version` is at least `MIN_CLI`. Why it is
-/// not goes to stderr (the menu has only the fix).
-fn usable_cli() -> Result<cli::Donn, CliProblem> {
+/// The located CLI and its version when `donn --version` is at least
+/// `MIN_CLI`. Why it is not goes to stderr (the menu has only the fix).
+fn usable_cli() -> Result<(cli::Donn, String), CliProblem> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let donn = cli::locate(std::env::var("DONN_BIN").ok().as_deref(), &shell).map_err(|e| {
         eprintln!("donn: CLI not found: {e}");
@@ -98,7 +98,7 @@ fn usable_cli() -> Result<cli::Donn, CliProblem> {
             eprintln!("donn: CLI {version} at {bin} is older than the app needs");
             Err(problem)
         }
-        None => Ok(donn),
+        None => Ok((donn, version)),
     }
 }
 

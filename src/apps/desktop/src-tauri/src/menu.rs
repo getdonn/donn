@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::cli::CliProblem;
+use crate::cli::{self, CliProblem};
 use crate::snapshot::{Personas, Session, Snapshot};
 
 /// What a menu item does.
@@ -41,7 +41,8 @@ pub enum Entry {
     },
 }
 
-/// The tray's menu. `project_personas` holds each project's `donn list`,
+/// The tray's menu. `cli_version` is `donn --version`'s output, to tell an
+/// outdated daemon (spec 28 open question 5). `project_personas` holds each project's `donn list`,
 /// keyed by a session's `project` exactly as the snapshot gives it; a session
 /// project and a `switched.projects` key match when `canon` (the tray passes
 /// realpath) of each has the same project root. A project's line names what its
@@ -50,6 +51,7 @@ pub fn menu_model(
     s: &Snapshot,
     default_personas: &Personas,
     project_personas: &BTreeMap<String, Personas>,
+    cli_version: Option<&str>,
     canon: impl Fn(&str) -> String,
     login: bool,
 ) -> Vec<Entry> {
@@ -59,6 +61,11 @@ pub fn menu_model(
             Some(v) => format!("donn {v} · daemon running"),
             None => "donn · daemon running".into(),
         }));
+        if let Some((daemon, cli)) = outdated(s, cli_version) {
+            m.push(Entry::Label(format!(
+                "daemon {daemon} is older than the CLI {cli} — donn daemon install"
+            )));
+        }
     } else {
         m.push(Entry::Label("donn · daemon not running".into()));
         m.push(item(
@@ -228,13 +235,21 @@ pub fn action_args(a: &Action) -> (Vec<String>, Option<PathBuf>) {
     }
 }
 
-/// The icon's dot (spec 28 §3): a session `stale` or failed to refresh, or an
-/// agent whose sync failed.
-pub fn badge(s: &Snapshot) -> bool {
+/// The icon's dot (spec 28 §3): a session `stale` or failed to refresh, an
+/// agent whose sync failed, or a daemon older than the CLI.
+pub fn badge(s: &Snapshot, cli_version: Option<&str>) -> bool {
     s.sessions
         .iter()
         .any(|x| matches!(x.state.as_deref(), Some("stale" | "refresh-failed")))
         || s.agents.iter().any(|a| a.sync_failed.is_some())
+        || outdated(s, cli_version).is_some()
+}
+
+/// The daemon's and the CLI's versions, trimmed, when the daemon's is older:
+/// a service started before an upgrade runs the old code until reinstalled.
+fn outdated<'a>(s: &'a Snapshot, cli_version: Option<&'a str>) -> Option<(&'a str, &'a str)> {
+    let (daemon, cli) = (s.version.as_deref()?.trim(), cli_version?.trim());
+    (s.daemon && cli::older(daemon, cli)).then_some((daemon, cli))
 }
 
 /// The projects with a session, keyed by canonical root.
@@ -364,7 +379,7 @@ mod tests {
     }
 
     fn model(s: &Snapshot, projects: &BTreeMap<String, Personas>) -> Vec<Entry> {
-        menu_model(s, &personas(), projects, |p| p.to_string(), false)
+        menu_model(s, &personas(), projects, None, |p| p.to_string(), false)
     }
 
     fn label(e: &Entry) -> &str {
@@ -587,7 +602,7 @@ mod tests {
         let mut s: Snapshot = read("two-projects.json");
         s.sessions[0].project = Some("/link/repo/.donn".into());
         let canon = |p: &str| p.replace("/link/", "/fixture/");
-        let m = menu_model(&s, &personas(), &BTreeMap::new(), canon, false);
+        let m = menu_model(&s, &personas(), &BTreeMap::new(), None, canon, false);
         let switched = Entry::Label("switched: team/payments".into());
         assert_eq!(submenu(&m, "repo ·")[0], switched);
         // Identity canon: the link does not match the switch.
@@ -760,7 +775,7 @@ mod tests {
     #[test]
     fn footer_and_login() {
         let s: Snapshot = read("two-projects.json");
-        let m = menu_model(&s, &personas(), &BTreeMap::new(), |p| p.into(), true);
+        let m = menu_model(&s, &personas(), &BTreeMap::new(), None, |p| p.into(), true);
         assert_eq!(
             labels(&m[m.len() - 4..]),
             ["─", "Open donn", "Start at login", "Quit"]
@@ -869,17 +884,78 @@ mod tests {
     #[test]
     fn badge_on_stale_or_sync_failed() {
         let stale: Snapshot = read("two-projects.json");
-        assert!(badge(&stale));
+        assert!(badge(&stale, None));
         let agents: Snapshot = read("agents.json");
-        assert!(badge(&agents));
+        assert!(badge(&agents, None));
 
         let mut quiet: Snapshot = read("same-name.json");
-        assert!(!badge(&quiet));
+        assert!(!badge(&quiet, None));
         quiet.sessions[1].state = Some("refresh-failed".into());
-        assert!(badge(&quiet));
+        assert!(badge(&quiet, None));
         quiet.sessions[1].state = Some("refreshed".into());
-        assert!(!badge(&quiet));
-        assert!(!badge(&read("no-daemon.json")));
+        assert!(!badge(&quiet, None));
+        assert!(!badge(&read("no-daemon.json"), None));
+    }
+
+    #[test]
+    fn outdated_daemon_line_and_badge() {
+        let line = |s: &Snapshot, cli: Option<&str>| {
+            let m = menu_model(s, &personas(), &BTreeMap::new(), cli, |p| p.into(), false);
+            m.iter().find_map(|e| match e {
+                Entry::Label(l) if l.starts_with("daemon ") => Some(l.clone()),
+                _ => None,
+            })
+        };
+        // The fixture's daemon reports 0.0.0.
+        let mut s: Snapshot = read("same-name.json");
+        let m = menu_model(
+            &s,
+            &personas(),
+            &BTreeMap::new(),
+            Some("0.14.0"),
+            |p| p.into(),
+            false,
+        );
+        assert_eq!(
+            labels(&m[..3]),
+            [
+                "donn 0.0.0 · daemon running",
+                "daemon 0.0.0 is older than the CLI 0.14.0 — donn daemon install",
+                "Default persona: none"
+            ]
+        );
+        assert!(matches!(m[1], Entry::Label(_)), "a disabled line");
+        assert!(badge(&s, Some("0.14.0")));
+        // `--version` output as the shell read it: trimmed, `v` kept as printed.
+        assert_eq!(
+            line(&s, Some(" v0.14.0\n")).as_deref(),
+            Some("daemon 0.0.0 is older than the CLI v0.14.0 — donn daemon install")
+        );
+
+        // A prerelease counts lower than its release.
+        s.version = Some("0.14.0-next.1".into());
+        assert!(line(&s, Some("0.14.0")).is_some());
+        assert!(badge(&s, Some("0.14.0")));
+
+        // Same, newer, or unknown on either side: nothing.
+        for (daemon, cli) in [
+            (Some("0.14.0"), Some("0.14.0")),
+            (Some("0.15.0"), Some("0.14.0")),
+            (Some("0.14.0"), Some("0.14.0-next.1")),
+            (Some("0.0.0"), None),
+            (Some("0.0.0"), Some("garbage")),
+            (Some("garbage"), Some("0.14.0")),
+            (None, Some("0.14.0")),
+        ] {
+            s.version = daemon.map(Into::into);
+            assert_eq!(line(&s, cli), None, "{daemon:?} {cli:?}");
+            assert!(!badge(&s, cli), "{daemon:?} {cli:?}");
+        }
+
+        // No daemon: no version to compare.
+        let down: Snapshot = read("no-daemon.json");
+        assert_eq!(line(&down, Some("0.14.0")), None);
+        assert!(!badge(&down, Some("0.14.0")));
     }
 
     #[test]

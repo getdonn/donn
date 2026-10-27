@@ -106,24 +106,31 @@ pub fn locate(env_bin: Option<&str>, shell: &str) -> Result<Donn, Missing> {
     Ok(Donn::new(bin, parse_path(&out)))
 }
 
+/// A version as `donn --version` or the daemon prints it (`v` and spaces allowed).
+fn parse_version(text: &str) -> Option<semver_lite::V> {
+    text.trim().trim_start_matches('v').parse().ok()
+}
+
 /// Whether `donn --version` output is at least `min`; prereleases count as below.
 pub fn version_ok(version_output: &str, min: (u32, u32, u32)) -> bool {
-    let Some(v) = version_output
-        .trim()
-        .trim_start_matches('v')
-        .parse::<semver_lite::V>()
-        .ok()
-    else {
-        return false;
-    };
-    !v.pre && (v.major, v.minor, v.patch) >= min
+    parse_version(version_output).is_some_and(|v| !v.pre && (v.major, v.minor, v.patch) >= min)
+}
+
+/// Whether version `a` is older than `b` (the daemon's against the CLI's): a
+/// prerelease counts lower than its release, and two prereleases of one
+/// release as equal. Either one unreadable: not older.
+pub fn older(a: &str, b: &str) -> bool {
+    match (parse_version(a), parse_version(b)) {
+        (Some(a), Some(b)) => a.order() < b.order(),
+        _ => false,
+    }
 }
 
 /// The version gate on `donn --version` output: `None` when it is new enough,
 /// `Broken` when it is no version at all.
 pub fn version_problem(version_output: &str) -> Option<CliProblem> {
     let v = version_output.trim();
-    if v.trim_start_matches('v').parse::<semver_lite::V>().is_err() {
+    if parse_version(v).is_none() {
         return Some(CliProblem::Broken);
     }
     (!version_ok(v, MIN_CLI)).then(|| CliProblem::TooOld(v.into()))
@@ -265,6 +272,13 @@ mod semver_lite {
         pub minor: u32,
         pub patch: u32,
         pub pre: bool,
+    }
+
+    impl V {
+        /// For ordering: a prerelease sorts below its release.
+        pub fn order(&self) -> (u32, u32, u32, bool) {
+            (self.major, self.minor, self.patch, !self.pre)
+        }
     }
 
     impl FromStr for V {
@@ -446,6 +460,24 @@ mod tests {
         assert!(version_ok("1.0.0", min));
         assert!(!version_ok("garbage", min));
         assert!(!version_ok("", min));
+    }
+
+    #[test]
+    fn older_orders_versions() {
+        assert!(older("0.11.0", "0.14.0"));
+        assert!(older("0.13.9", "0.14.0"));
+        assert!(older("v0.14.0", " 0.14.1\n"));
+        assert!(!older("0.14.0", "0.14.0"));
+        assert!(!older("1.0.0", "0.14.0"));
+        // A prerelease counts lower than its release, and above the one before.
+        assert!(older("0.14.0-next.1", "0.14.0"));
+        assert!(!older("0.14.0", "0.14.0-next.1"));
+        assert!(older("0.13.2", "0.14.0-next.1"));
+        // Two prereleases of one release are not told apart.
+        assert!(!older("0.14.0-next.1", "0.14.0-next.2"));
+        // No version: never older.
+        assert!(!older("garbage", "0.14.0"));
+        assert!(!older("0.14.0", ""));
     }
 
     #[test]

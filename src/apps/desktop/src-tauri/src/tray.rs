@@ -25,10 +25,12 @@ const TRAY: &str = "donn";
 /// How long one `donn list` may take: a hung one must not hold up the menu.
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The tray's state: the CLI once located, what is drawn, the persona lists.
+/// The tray's state: the CLI once located and its `--version`, what is drawn,
+/// the persona lists.
 #[derive(Default)]
 struct Tray {
     donn: Mutex<Option<Donn>>,
+    cli_version: Mutex<Option<String>>,
     shown: Mutex<Shown>,
     lists: Mutex<Lists>,
 }
@@ -61,9 +63,12 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The CLI was found: actions and lists run it.
-pub fn set_donn(app: &AppHandle, donn: Donn) {
-    *app.state::<Tray>().donn.lock().unwrap() = Some(donn);
+/// The CLI was found: actions and lists run it; its version (`--version`
+/// output) tells an outdated daemon.
+pub fn set_donn(app: &AppHandle, donn: Donn, version: String) {
+    let state = app.state::<Tray>();
+    *state.donn.lock().unwrap() = Some(donn);
+    *state.cli_version.lock().unwrap() = Some(version);
 }
 
 /// The located CLI, once `set_donn` has run.
@@ -83,8 +88,10 @@ pub fn rebuild(app: &AppHandle, s: &Snapshot) {
         return;
     };
     let (default, projects) = lists(&state.lists, &donn, s);
-    let entries = menu_model(s, &default, &projects, canon, login(app));
-    show(app, entries, badge(s), tooltip(s));
+    let version = state.cli_version.lock().unwrap().clone();
+    let version = version.as_deref();
+    let entries = menu_model(s, &default, &projects, version, canon, login(app));
+    show(app, entries, badge(s, version), tooltip(s));
 }
 
 /// The persona lists, run again only when the sessions' projects or states change.
