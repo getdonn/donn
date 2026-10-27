@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::cli::CliProblem;
-use crate::snapshot::{Personas, Snapshot};
+use crate::snapshot::{Personas, Session, Snapshot};
 
 /// What a menu item does.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +44,8 @@ pub enum Entry {
 /// The tray's menu. `project_personas` holds each project's `donn list`,
 /// keyed by a session's `project` exactly as the snapshot gives it; a session
 /// project and a `switched.projects` key match when `canon` (the tray passes
-/// realpath) of each has the same project root. `login`: start at login is on.
+/// realpath) of each has the same project root. A project's line names what its
+/// sessions run; its submenu ticks its switch. `login`: start at login is on.
 pub fn menu_model(
     s: &Snapshot,
     default_personas: &Personas,
@@ -89,21 +90,26 @@ pub fn menu_model(
             .iter()
             .find(|(k, _)| root(&canon(k)) == *key)
             .map(|(_, r)| r.as_str());
-        let persona = switch.or(default).unwrap_or(NO_PERSONA);
         let listed = p.given.iter().find_map(|g| project_personas.get(*g));
         let cwd = root(p.given[0]);
+        // What the next launch gets, when it differs from what runs now.
+        let mut entries = vec![Entry::Label(format!(
+            "switched: {}",
+            switch.unwrap_or("default")
+        ))];
+        entries.extend(choices(
+            &format!("project:{}", key.display()),
+            listed,
+            switch,
+            |r| Action::SwitchProject {
+                cwd: cwd.clone(),
+                r#ref: r.into(),
+            },
+            Action::ClearProject { cwd: cwd.clone() },
+        ));
         m.push(Entry::Submenu {
-            label: format!("{} · {persona}", folder(key, &projects)),
-            entries: choices(
-                &format!("project:{}", key.display()),
-                listed,
-                switch,
-                |r| Action::SwitchProject {
-                    cwd: cwd.clone(),
-                    r#ref: r.into(),
-                },
-                Action::ClearProject { cwd: cwd.clone() },
-            ),
+            label: format!("{} · {}", folder(key, &projects), joined(&p.personas)),
+            entries,
         });
         let harnesses: Vec<_> = p.harnesses.iter().copied().collect();
         m.push(Entry::Label(harnesses.join(", ")));
@@ -223,14 +229,23 @@ pub fn badge(s: &Snapshot) -> bool {
         || s.agents.iter().any(|a| a.sync_failed.is_some())
 }
 
-/// A project line's persona when it has no switch and there is no default.
-const NO_PERSONA: &str = "no persona";
-
 /// The projects with a session, keyed by canonical root.
 struct Project<'a> {
     /// The session `project` strings, as the snapshot gives them.
     given: Vec<&'a str>,
     harnesses: BTreeSet<&'a str>,
+    /// What its sessions run (`running`).
+    personas: BTreeSet<&'a str>,
+}
+
+/// The persona a session runs: the one swapped in live, else the launched one.
+fn running(x: &Session) -> &str {
+    x.live.as_deref().unwrap_or(&x.launched)
+}
+
+/// Personas for a line: distinct and sorted (a `BTreeSet`), joined.
+fn joined(personas: &BTreeSet<&str>) -> String {
+    personas.iter().copied().collect::<Vec<_>>().join(", ")
 }
 
 fn projects<'a>(
@@ -245,11 +260,13 @@ fn projects<'a>(
         let p = out.entry(root(&canon(given))).or_insert(Project {
             given: Vec::new(),
             harnesses: BTreeSet::new(),
+            personas: BTreeSet::new(),
         });
         if !p.given.contains(&given) {
             p.given.push(given);
         }
         p.harnesses.insert(&x.harness);
+        p.personas.insert(running(x));
     }
     out
 }
@@ -322,7 +339,7 @@ fn item(id: &str, label: &str, action: Action, checked: Option<bool>) -> Entry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::snapshot::{Agent, Session};
+    use crate::snapshot::Agent;
     use serde::Deserialize;
     use std::path::Path;
 
@@ -447,18 +464,58 @@ mod tests {
     }
 
     #[test]
-    fn project_uses_switch_then_default() {
+    fn project_shows_what_its_sessions_run() {
         let s: Snapshot = read("two-projects.json");
         let m = model(&s, &BTreeMap::new());
-        // `repo` has a switch (keyed by its `.donn`); `repo2` falls back to the default.
-        assert!(labels(&m).contains(&"repo · team/payments"));
-        assert!(labels(&m).contains(&"repo2 · org/base"));
+        // `launched` when nothing was swapped in live; the switch does not count.
+        assert!(labels(&m).contains(&"repo · project/persona"));
+        assert!(labels(&m).contains(&"repo2 · project/persona"));
 
-        // No switch, no default.
+        // `live` over `launched`.
+        let live: Snapshot = read("live.json");
+        let m = model(&live, &BTreeMap::new());
+        assert!(labels(&m).contains(&"repo · org/base"));
+
+        // No daemon: still what each session launched.
         let none: Snapshot = read("no-daemon.json");
         let m = model(&none, &BTreeMap::new());
-        assert!(labels(&m).contains(&"repo · no persona"));
-        assert!(labels(&m).contains(&"other · no persona"));
+        assert!(labels(&m).contains(&"repo · team/payments"));
+        assert!(labels(&m).contains(&"other · org/base"));
+    }
+
+    #[test]
+    fn project_lists_mixed_personas_distinct_and_sorted() {
+        let mut s: Snapshot = read("live.json");
+        s.sessions
+            .push(session("/fixture/repo", "codex", "current"));
+        let mut swapped = session("/fixture/repo", "claude-code", "current");
+        swapped.live = Some("team/payments".into());
+        s.sessions.push(swapped);
+        s.sessions
+            .push(session("/fixture/repo", "codex", "current"));
+        let m = model(&s, &BTreeMap::new());
+        assert!(
+            labels(&m).contains(&"repo · org/base, team/payments"),
+            "{:?}",
+            labels(&m)
+        );
+    }
+
+    #[test]
+    fn project_submenu_names_its_switch() {
+        let s: Snapshot = read("two-projects.json");
+        let m = model(&s, &BTreeMap::new());
+        let repo = submenu(&m, "repo ·");
+        assert_eq!(repo[0], Entry::Label("switched: team/payments".into()));
+        let repo2 = submenu(&m, "repo2 ·");
+        assert_eq!(repo2[0], Entry::Label("switched: default".into()));
+        // No default either: still `default`, the persona a launch would use.
+        let none: Snapshot = read("no-daemon.json");
+        let m = model(&none, &BTreeMap::new());
+        assert_eq!(
+            submenu(&m, "repo ·")[0],
+            Entry::Label("switched: default".into())
+        );
     }
 
     #[test]
@@ -467,10 +524,14 @@ mod tests {
         s.sessions[0].project = Some("/link/repo/.donn".into());
         let canon = |p: &str| p.replace("/link/", "/fixture/");
         let m = menu_model(&s, &personas(), &BTreeMap::new(), canon, false);
-        assert!(labels(&m).contains(&"repo · team/payments"));
+        let switched = Entry::Label("switched: team/payments".into());
+        assert_eq!(submenu(&m, "repo ·")[0], switched);
         // Identity canon: the link does not match the switch.
         let m = model(&s, &BTreeMap::new());
-        assert!(labels(&m).contains(&"repo · org/base"));
+        assert_eq!(
+            submenu(&m, "repo ·")[0],
+            Entry::Label("switched: default".into())
+        );
     }
 
     #[test]
@@ -485,7 +546,14 @@ mod tests {
         let api = submenu(&m, "api (a)");
         assert_eq!(
             labels(api),
-            ["area/fintech", "org/base", "team/payments", "─", "Clear"]
+            [
+                "switched: org/base",
+                "area/fintech",
+                "org/base",
+                "team/payments",
+                "─",
+                "Clear"
+            ]
         );
         assert_eq!(
             item(api, "team/payments"),
@@ -508,7 +576,10 @@ mod tests {
         // listed yet, no switch to clear.
         let two: Snapshot = read("two-projects.json");
         let m = model(&two, &BTreeMap::new());
-        assert_eq!(labels(submenu(&m, "repo2 ·")), ["no personas"]);
+        assert_eq!(
+            labels(submenu(&m, "repo2 ·")),
+            ["switched: default", "no personas"]
+        );
     }
 
     #[test]
@@ -521,7 +592,7 @@ mod tests {
         let m = model(&s, &BTreeMap::new());
         let at = labels(&m)
             .iter()
-            .position(|l| *l == "repo · team/payments")
+            .position(|l| *l == "repo · org/base, project/persona")
             .unwrap();
         assert_eq!(m[at + 1], Entry::Label("claude-code, codex".into()));
         // One line per project, not per session.
@@ -618,8 +689,8 @@ mod tests {
     fn disambiguates_same_named_projects() {
         let s: Snapshot = read("same-name.json");
         let m = model(&s, &BTreeMap::new());
-        assert!(labels(&m).contains(&"api (a) · no persona"));
-        assert!(labels(&m).contains(&"api (b) · no persona"));
+        assert!(labels(&m).contains(&"api (a) · project/persona"));
+        assert!(labels(&m).contains(&"api (b) · project/persona"));
     }
 
     #[test]
