@@ -80,6 +80,15 @@ pub fn menu_model(
             Action::ClearDefault,
         ),
     });
+    // Sessions outside a project: one line and no submenu, as the default
+    // persona above is their switch.
+    let loose: Vec<&Session> = s.sessions.iter().filter(|x| x.project.is_none()).collect();
+    if !loose.is_empty() {
+        let personas: BTreeSet<&str> = loose.iter().map(|x| running(x)).collect();
+        let harnesses: BTreeSet<&str> = loose.iter().map(|x| x.harness.as_str()).collect();
+        m.push(Entry::Label(format!("no project · {}", joined(&personas))));
+        m.push(Entry::Label(joined(&harnesses)));
+    }
     m.push(Entry::Separator);
 
     let projects = projects(s, &canon);
@@ -111,8 +120,7 @@ pub fn menu_model(
             label: format!("{} · {}", folder(key, &projects), joined(&p.personas)),
             entries,
         });
-        let harnesses: Vec<_> = p.harnesses.iter().copied().collect();
-        m.push(Entry::Label(harnesses.join(", ")));
+        m.push(Entry::Label(joined(&p.harnesses)));
     }
     if !projects.is_empty() {
         m.push(Entry::Separator);
@@ -243,7 +251,7 @@ fn running(x: &Session) -> &str {
     x.live.as_deref().unwrap_or(&x.launched)
 }
 
-/// Personas for a line: distinct and sorted (a `BTreeSet`), joined.
+/// Personas or harnesses for a line: distinct and sorted (a set), joined.
 fn joined(personas: &BTreeSet<&str>) -> String {
     personas.iter().copied().collect::<Vec<_>>().join(", ")
 }
@@ -516,6 +524,62 @@ mod tests {
             submenu(&m, "repo ·")[0],
             Entry::Label("switched: default".into())
         );
+    }
+
+    #[test]
+    fn sessions_outside_a_project_follow_the_default() {
+        let s: Snapshot = read("no-project.json");
+        let m = model(&s, &BTreeMap::new());
+        let at = labels(&m)
+            .iter()
+            .position(|l| l.starts_with("Default persona:"))
+            .unwrap();
+        assert_eq!(
+            labels(&m[at + 1..at + 5]),
+            [
+                "no project · org/base",
+                "claude-code",
+                "─",
+                "repo · project/persona"
+            ]
+        );
+        assert!(matches!(m[at + 1], Entry::Label(_)), "no submenu");
+        assert!(matches!(m[at + 2], Entry::Label(_)));
+
+        // One line for all of them: personas and harnesses distinct and sorted.
+        let mut mixed = s.clone();
+        let mut codex = session("-", "codex", "current");
+        codex.project = None;
+        codex.live = Some("team/payments".into());
+        mixed.sessions.push(codex.clone());
+        codex.live = None;
+        mixed.sessions.push(codex);
+        let m = model(&mixed, &BTreeMap::new());
+        assert_eq!(
+            labels(&m[at + 1..at + 3]),
+            ["no project · org/base, team/payments", "claude-code, codex"]
+        );
+        assert_eq!(
+            labels(&m)
+                .iter()
+                .filter(|l| l.starts_with("no project"))
+                .count(),
+            1
+        );
+
+        // Only sessions outside a project: the line, then the separator.
+        let mut alone = s.clone();
+        alone.sessions.retain(|x| x.project.is_none());
+        let m = model(&alone, &BTreeMap::new());
+        assert_eq!(
+            labels(&m[at + 1..at + 4]),
+            ["no project · org/base", "claude-code", "─"]
+        );
+
+        // None: no line.
+        let two: Snapshot = read("two-projects.json");
+        let m = model(&two, &BTreeMap::new());
+        assert!(!labels(&m).iter().any(|l| l.starts_with("no project")));
     }
 
     #[test]
