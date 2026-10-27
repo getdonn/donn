@@ -69,6 +69,7 @@ fn connect(app: AppHandle) {
     match usable_cli() {
         Ok((donn, version)) => {
             tray::set_donn(&app, donn.clone(), version);
+            tray::start_list_timer(&app);
             let handle = app.clone();
             watch::start(app, donn, move |s| {
                 tray::rebuild(&handle, &s);
