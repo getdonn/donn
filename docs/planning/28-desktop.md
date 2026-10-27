@@ -250,6 +250,15 @@ have.
 3. **Login Items name.** The LaunchAgent's `AssociatedBundleIdentifiers` is empty, so macOS Login
    Items may not name the app.
 4. **fish.** fish joins `"$PATH"` with spaces, so the PATH capture is wrong for fish users.
+5. **An outdated daemon.** *(Added 2026-10-27, after 0.18.0.)* The header reads `donn <version> ·
+   daemon running` with the daemon's version and says nothing when it is older than the CLI,
+   which `donn status` reports (`daemon runs 0.11.0, CLI is 0.14.0; donn daemon install`). A
+   service started before an upgrade keeps the old code until it is reinstalled. The tray could
+   show that line, with its fix, under the header.
+6. **Sessions outside a project.** *(Added 2026-10-27.)* The tray lists only projects with a
+   running session, so a session started outside a project (`project` absent, `-` in `donn
+   status`) does not appear at all. It could get its own line under the default persona, which is
+   the persona such a session uses.
 
 ## Amendments from the build (2026-10-26)
 
