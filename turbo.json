@@ -8,7 +8,12 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "env": ["DONN_E2E", "DONN_E2E_*", "DONN_RELEASE_SMOKE"]
+      "env": [
+        "DONN_E2E",
+        "DONN_E2E_*",
+        "DONN_RELEASE_SMOKE",
+        "DONN_UPDATE_FIXTURES"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

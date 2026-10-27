@@ -1,0 +1,26 @@
+{
+  "personas": [
+    {
+      "ref": "area/fintech",
+      "layer": "area",
+      "source": "local",
+      "path": "/fixture/personas/area/fintech.yaml"
+    },
+    {
+      "ref": "org/base",
+      "layer": "org",
+      "source": "local",
+      "path": "/fixture/personas/org/base.yaml"
+    },
+    {
+      "ref": "team/payments",
+      "layer": "team",
+      "source": "local",
+      "path": "/fixture/personas/team/payments.yaml"
+    }
+  ],
+  "overlay": {
+    "ref": "user/overrides",
+    "path": "/fixture/home/overrides.yaml"
+  }
+}

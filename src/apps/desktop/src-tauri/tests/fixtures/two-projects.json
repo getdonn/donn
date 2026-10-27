@@ -1,0 +1,59 @@
+{
+  "daemon": true,
+  "version": "0.0.0",
+  "pid": 4242,
+  "startedAt": "2026-10-26T00:00:00.000Z",
+  "service": false,
+  "watching": [
+    "/fixture/home/agents/index.json",
+    "/fixture/home/cache/registry/index.json",
+    "/fixture/home/config.yaml",
+    "/fixture/home/overrides.yaml",
+    "/fixture/home/personas",
+    "/fixture/home/sessions",
+    "/fixture/personas",
+    "/fixture/repo/.donn",
+    "/fixture/repo2/.donn"
+  ],
+  "sessions": [
+    {
+      "dir": "/fixture/home/sessions/s0",
+      "harness": "claude-code",
+      "project": "/fixture/repo",
+      "launched": "project/persona",
+      "live": "project/persona",
+      "startedAt": "2026-10-26T00:00:00.000Z",
+      "held": [
+        "permissions"
+      ],
+      "state": "stale",
+      "at": "2026-10-26T00:00:00.000Z"
+    },
+    {
+      "dir": "/fixture/home/sessions/s1",
+      "harness": "claude-code",
+      "project": "/fixture/repo2",
+      "launched": "project/persona",
+      "startedAt": "2026-10-26T00:00:00.000Z",
+      "held": [],
+      "state": "current"
+    }
+  ],
+  "agents": [],
+  "syncFailed": [],
+  "managed": {
+    "state": "missing",
+    "findings": [
+      {
+        "state": "missing",
+        "detail": "nothing installed in /tmp/donn-no-managed-root/ClaudeCode"
+      }
+    ]
+  },
+  "switched": {
+    "default": "org/base",
+    "projects": {
+      "/fixture/repo/.donn": "team/payments"
+    }
+  }
+}

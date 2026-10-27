@@ -83,3 +83,81 @@ jobs:
           path: src/apps/ui/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Whether the desktop job runs: on a pull request, only when it touches the
+  # shell, the CLI the shell drives, or this workflow (spec 28 §5); on a push,
+  # always.
+  desktop-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A pull request checks out its merge commit; the first parent is the base.
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(src/apps/desktop/|src/apps/cli/|\.github/workflows/ci\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The menu-bar app (src/apps/desktop): rustfmt, clippy, cargo test and a
+  # release build without bundling. Rust comes from rust-toolchain.toml.
+  desktop:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Linux libraries Tauri needs
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Install the pinned Rust
+        working-directory: src/apps/desktop/src-tauri
+        run: |
+          rustup toolchain install
+          rustc --version
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src/apps/desktop/src-tauri/target/
+          key: desktop-${{ runner.os }}-${{ hashFiles('src/apps/desktop/src-tauri/Cargo.lock', 'src/apps/desktop/src-tauri/rust-toolchain.toml') }}
+          restore-keys: desktop-${{ runner.os }}-
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @getdonn/desktop rs:check
+      - run: pnpm --filter @getdonn/desktop rs:test
+      - run: pnpm --filter @getdonn/desktop exec tauri build --no-bundle
