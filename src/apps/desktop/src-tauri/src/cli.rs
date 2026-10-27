@@ -26,6 +26,9 @@ const LOOKUP: &str = r#"command -v donn; printf "PATH=%s\n" "$PATH""#;
 /// How long a login shell may take to answer `LOOKUP`.
 const LOCATE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long `donn --version` may take.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// How long output may trail the shell's exit (a grandchild holding stdout).
 const EXIT_GRACE: Duration = Duration::from_millis(300);
 
@@ -40,6 +43,16 @@ impl fmt::Display for Missing {
 }
 
 impl std::error::Error for Missing {}
+
+/// Why the app cannot use the CLI (spec 28 §2): the tray shows only this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliProblem {
+    NotFound,
+    /// `donn --version` printed this, below `MIN_CLI`.
+    TooOld(String),
+    /// `donn --version` failed, hung or printed nothing.
+    Broken,
+}
 
 /// A failed CLI call: the CLI's `{ error }` envelope, or `unreadable`.
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +117,16 @@ pub fn version_ok(version_output: &str, min: (u32, u32, u32)) -> bool {
         return false;
     };
     !v.pre && (v.major, v.minor, v.patch) >= min
+}
+
+/// The version gate on `donn --version` output: `None` when it is new enough,
+/// `Broken` when it is no version at all.
+pub fn version_problem(version_output: &str) -> Option<CliProblem> {
+    let v = version_output.trim();
+    if v.trim_start_matches('v').parse::<semver_lite::V>().is_err() {
+        return Some(CliProblem::Broken);
+    }
+    (!version_ok(v, MIN_CLI)).then(|| CliProblem::TooOld(v.into()))
 }
 
 /// The failure for a non-zero exit: the CLI's envelope from stdout, then stderr.
@@ -332,6 +355,26 @@ impl Donn {
         answer(status, &out.stdout, &out.stderr)
     }
 
+    /// `donn --version`'s trimmed stdout (no `--json`: it would print an
+    /// object), bounded by `VERSION_TIMEOUT`. An error says why there is none.
+    pub fn version(&self) -> Result<String, String> {
+        let bin = self.bin.display();
+        let out = run_bounded(self.command().arg("--version"), VERSION_TIMEOUT)
+            .map_err(|e| format!("could not run {bin}: {e}"))?;
+        let Some(status) = out.status else {
+            let secs = VERSION_TIMEOUT.as_secs();
+            return Err(format!("{bin} did not answer --version within {secs} s"));
+        };
+        if !status.success() {
+            return Err(format!("{bin} --version ({status}): {}", out.stderr.trim()));
+        }
+        let version = out.stdout.trim();
+        if version.is_empty() {
+            return Err(format!("{bin} --version printed nothing"));
+        }
+        Ok(version.to_owned())
+    }
+
     /// Starts `donn status --watch --json`: stdout piped, stdin and stderr null.
     pub fn spawn_watch(&self) -> std::io::Result<Child> {
         self.command()
@@ -403,6 +446,52 @@ mod tests {
         assert!(version_ok("1.0.0", min));
         assert!(!version_ok("garbage", min));
         assert!(!version_ok("", min));
+    }
+
+    #[test]
+    fn version_problem_names_the_old_version() {
+        assert_eq!(version_problem("0.14.0\n"), None);
+        assert_eq!(
+            version_problem("0.13.2\n"),
+            Some(CliProblem::TooOld("0.13.2".into()))
+        );
+        assert_eq!(
+            version_problem(" 0.14.0-next.1 "),
+            Some(CliProblem::TooOld("0.14.0-next.1".into()))
+        );
+        assert_eq!(version_problem("donn 0.14.0"), Some(CliProblem::Broken));
+        assert_eq!(version_problem("garbage"), Some(CliProblem::Broken));
+    }
+
+    #[test]
+    fn version_runs_the_binary_with_the_located_path() {
+        let _serial = serial();
+        let body = "#!/bin/sh\n[ \"$1\" = --version ] && [ \"$#\" = 1 ] || exit 3\necho \"0.14.2 $PATH\"\n";
+        let bin = script("donn-cli-test-version", body);
+        let donn = Donn::new(bin.clone(), Some("/opt/x:/usr/bin:/bin".into()));
+        assert_eq!(donn.version().unwrap(), "0.14.2 /opt/x:/usr/bin:/bin");
+
+        std::fs::write(&bin, "#!/bin/sh\necho nope >&2\nexit 1\n").unwrap();
+        assert!(donn.version().unwrap_err().contains("nope"));
+        std::fs::write(&bin, "#!/bin/sh\n").unwrap();
+        assert!(donn.version().is_err(), "no output is no version");
+        std::fs::remove_file(&bin).unwrap();
+        assert!(donn.version().is_err());
+    }
+
+    #[test]
+    fn version_is_bounded_when_donn_hangs() {
+        let _serial = serial();
+        let bin = script("donn-cli-test-version-hang", "#!/bin/sh\nsleep 30\n");
+        let start = Instant::now();
+        let err = Donn::new(bin.clone(), None).version().unwrap_err();
+        assert!(
+            start.elapsed() < Duration::from_secs(6),
+            "{:?}",
+            start.elapsed()
+        );
+        assert!(err.contains("did not answer"), "{err}");
+        std::fs::remove_file(&bin).unwrap();
     }
 
     #[test]

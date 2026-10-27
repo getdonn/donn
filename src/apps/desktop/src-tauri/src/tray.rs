@@ -10,10 +10,13 @@ use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
-use crate::cli::{CliFailure, Donn};
-use crate::menu::{self, Action, Entry, action_args, action_for, badge, menu_model};
+use crate::cli::{CliFailure, CliProblem, Donn};
+use crate::menu::{
+    self, Action, Entry, action_args, action_for, badge, cli_problem_menu, menu_model,
+};
 use crate::snapshot::{Personas, Snapshot};
 use crate::window;
 
@@ -48,14 +51,12 @@ struct Lists {
 /// Adds the tray with `donn · connecting…` and Quit until a snapshot arrives.
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     app.manage(Tray::default());
-    let mut tray = TrayIconBuilder::with_id(TRAY)
+    TrayIconBuilder::with_id(TRAY)
+        .icon(icon(false))
+        .icon_as_template(TEMPLATE)
         .tooltip("donn")
-        .icon_as_template(true)
-        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
-    if let Some(icon) = icon(app, false) {
-        tray = tray.icon(icon);
-    }
-    tray.build(app)?;
+        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
+        .build(app)?;
     show(app, notice("donn · connecting…"), false, "donn".into());
     Ok(())
 }
@@ -70,9 +71,9 @@ pub fn donn(app: &AppHandle) -> Option<Donn> {
     app.try_state::<Tray>()?.donn.lock().unwrap().clone()
 }
 
-/// No CLI: one disabled line and Quit.
-pub fn cli_missing(app: &AppHandle) {
-    show(app, notice("donn CLI not found"), false, "donn".into());
+/// A missing or old CLI: its line and Quit, nothing else (spec 28 §2).
+pub fn cli_problem(app: &AppHandle, problem: &CliProblem) {
+    show(app, cli_problem_menu(problem), false, "donn".into());
 }
 
 /// Draws a snapshot. Runs on the watch thread: the lists may run `donn list`.
@@ -82,7 +83,7 @@ pub fn rebuild(app: &AppHandle, s: &Snapshot) {
         return;
     };
     let (default, projects) = lists(&state.lists, &donn, s);
-    let entries = menu_model(s, &default, &projects, canon, false);
+    let entries = menu_model(s, &default, &projects, canon, login(app));
     show(app, entries, badge(s), tooltip(s));
 }
 
@@ -129,7 +130,7 @@ fn show(app: &AppHandle, entries: Vec<Entry>, badge: bool, tooltip: String) {
             return;
         };
         if shown.badge != badge {
-            let _ = tray.set_icon_with_as_template(icon(&handle, badge), true);
+            let _ = tray.set_icon_with_as_template(Some(icon(badge)), TEMPLATE);
         }
         *shown = Shown { entries, badge };
         let _ = tray.set_tooltip(Some(tooltip));
@@ -146,13 +147,26 @@ fn draw(app: &AppHandle, entries: &[Entry]) {
     }
 }
 
-/// The tray icon with the dot or without. Both are the app icon until the
-/// template icons land (spec 28 §5); only the two images change then.
-fn icon(app: &AppHandle, badge: bool) -> Option<Image<'static>> {
-    let plain = app.default_window_icon()?.clone().to_owned();
-    let dotted = plain.clone();
-    Some(if badge { dotted } else { plain })
+/// The tray icon, the d, with the dot or without (spec 28 §3). macOS: a
+/// template image (black, tinted to the menu bar) drawn 18 pt high, so the @2x
+/// image is sharp on a Retina display. Linux panels do not tint and are mostly
+/// dark: a white d, 22 px.
+fn icon(badge: bool) -> Image<'static> {
+    #[cfg(target_os = "macos")]
+    let (plain, dotted) = (
+        tauri::include_image!("icons/tray-template@2x.png"),
+        tauri::include_image!("icons/tray-template-badge@2x.png"),
+    );
+    #[cfg(not(target_os = "macos"))]
+    let (plain, dotted) = (
+        tauri::include_image!("icons/tray-light.png"),
+        tauri::include_image!("icons/tray-light-badge.png"),
+    );
+    if badge { dotted } else { plain }
 }
+
+/// Whether the icon is a template image: on macOS only.
+const TEMPLATE: bool = cfg!(target_os = "macos");
 
 /// The Tauri menu for the model.
 fn build(app: &AppHandle, entries: &[Entry]) -> tauri::Result<Menu<Wry>> {
@@ -216,10 +230,32 @@ fn on_menu(app: &AppHandle, id: &str) {
         Some(Action::OpenAgent { project, name }) => {
             window::open(app, Some(window::agent_page(&project, &name)));
         }
-        // Start at login is not built yet (spec 28 §4).
-        Some(Action::ToggleLogin) => {}
+        Some(Action::ToggleLogin) => toggle_login(app),
         Some(action) => run(app, &action),
     }
+}
+
+/// Whether start at login is on: the autostart plugin's answer, off on error.
+fn login(app: &AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+/// Start at login on or off (spec 28 §4; quick: one LaunchAgent file), then
+/// the check drawn from what the plugin says, so a failure leaves it as it was.
+fn toggle_login(app: &AppHandle) {
+    let autolaunch = app.autolaunch();
+    let result = if login(app) {
+        autolaunch.disable()
+    } else {
+        autolaunch.enable()
+    };
+    if let Err(e) = result {
+        alert(app, format!("Could not change start at login: {e}"));
+    }
+    let state = app.state::<Tray>();
+    let mut shown = state.shown.lock().unwrap();
+    menu::set_checked(&mut shown.entries, "login", login(app));
+    draw(app, &shown.entries);
 }
 
 /// Runs an action's `donn` call on its own thread; a failure is a dialog.
@@ -323,6 +359,25 @@ mod tests {
             .join("tests/fixtures")
             .join(name);
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn linux_icons_are_white_on_transparent() {
+        let light = [
+            tauri::include_image!("icons/tray-light.png"),
+            tauri::include_image!("icons/tray-light-badge.png"),
+        ];
+        for image in light {
+            assert_eq!((image.width(), image.height()), (22, 22));
+            let px: Vec<_> = image.rgba().chunks(4).collect();
+            assert!(px.iter().any(|p| p[3] == 0), "transparent background");
+            assert!(
+                px.iter()
+                    .filter(|p| p[3] > 128)
+                    .all(|p| p[..3] == [255, 255, 255]),
+                "a white d"
+            );
+        }
     }
 
     #[test]

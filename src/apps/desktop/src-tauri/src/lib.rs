@@ -9,7 +9,10 @@ pub mod tray;
 pub mod watch;
 pub mod window;
 
-use tauri::{AppHandle, RunEvent};
+use tauri::plugin::TauriPlugin;
+use tauri::{AppHandle, RunEvent, Wry};
+
+use crate::cli::CliProblem;
 
 pub fn run() {
     tauri::Builder::default()
@@ -18,6 +21,8 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             window::open(app, None);
         }))
+        // Start at login, off until toggled from the tray (spec 28 §4).
+        .plugin(autostart())
         .plugin(tauri_plugin_dialog::init())
         // Links are opened from Rust; no script is injected into the bridge's
         // pages, which have no IPC anyway (spec 28 §4).
@@ -55,10 +60,10 @@ pub fn run() {
         });
 }
 
-/// Finds `donn` and follows `status --watch`; without it, the tray says so.
+/// Finds `donn`, checks its version and follows `status --watch`; a missing
+/// or old CLI is all the tray shows, and nothing is watched (spec 28 §2).
 fn connect(app: AppHandle) {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-    match cli::locate(std::env::var("DONN_BIN").ok().as_deref(), &shell) {
+    match usable_cli() {
         Ok(donn) => {
             tray::set_donn(&app, donn.clone());
             let handle = app.clone();
@@ -67,8 +72,45 @@ fn connect(app: AppHandle) {
                 window::on_snapshot(&handle, &s);
             });
         }
-        Err(_) => tray::cli_missing(&app),
+        Err(problem) => tray::cli_problem(&app, &problem),
     }
+}
+
+/// The located CLI when `donn --version` is at least `MIN_CLI`. Why it is
+/// not goes to stderr (the menu has only the fix).
+fn usable_cli() -> Result<cli::Donn, CliProblem> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+    let donn = cli::locate(std::env::var("DONN_BIN").ok().as_deref(), &shell).map_err(|e| {
+        eprintln!("donn: CLI not found: {e}");
+        CliProblem::NotFound
+    })?;
+    let version = donn.version().map_err(|e| {
+        eprintln!("donn: CLI not usable: {e}");
+        CliProblem::Broken
+    })?;
+    let bin = donn.bin().display();
+    match cli::version_problem(&version) {
+        Some(CliProblem::Broken) => {
+            eprintln!("donn: CLI not usable: {bin} --version printed {version:?}");
+            Err(CliProblem::Broken)
+        }
+        Some(problem) => {
+            eprintln!("donn: CLI {version} at {bin} is older than the app needs");
+            Err(problem)
+        }
+        None => Ok(donn),
+    }
+}
+
+/// The autostart plugin: a LaunchAgent on macOS (`~/Library/LaunchAgents/
+/// dev.getdonn.desktop.plist`), an XDG autostart entry on Linux.
+fn autostart() -> TauriPlugin<Wry> {
+    let builder = tauri_plugin_autostart::Builder::new();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent)
+        .app_name("dev.getdonn.desktop");
+    builder.build()
 }
 
 /// SIGTERM, SIGINT and SIGHUP exit through the event loop, so `RunEvent::Exit`

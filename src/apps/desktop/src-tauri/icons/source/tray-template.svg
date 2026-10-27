@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <!-- The tray's template icon: the d, black on transparent (spec 28 §3). -->
+  <g fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round">
+    <circle cx="9.6" cy="13.7" r="4.6"/>
+    <path d="M14.2 3.4 V14.5"/>
+  </g>
+</svg>

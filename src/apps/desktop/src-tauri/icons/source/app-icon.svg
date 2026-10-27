@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- donn's app icon: a lowercase d on an indigo rounded square (spec 28 §3). -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5B54E8"/>
+      <stop offset="1" stop-color="#2E2A85"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#body)"/>
+  <g fill="none" stroke="#fff" stroke-width="88" stroke-linecap="round">
+    <circle cx="512" cy="606" r="150"/>
+    <path d="M662 272 V650"/>
+  </g>
+</svg>

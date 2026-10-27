@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::cli::CliProblem;
 use crate::snapshot::{Personas, Snapshot};
 
 /// What a menu item does.
@@ -151,6 +152,38 @@ pub fn menu_model(
     ));
     m.push(item("quit", "Quit", Action::Quit, None));
     m
+}
+
+/// The whole menu when the CLI cannot be used (spec 28 §2): one disabled line
+/// with the install, update or diagnose command, and Quit.
+pub fn cli_problem_menu(problem: &CliProblem) -> Vec<Entry> {
+    let line = match problem {
+        CliProblem::NotFound => "donn CLI not found — npm i -g @getdonn/cli".into(),
+        CliProblem::Broken => {
+            "donn CLI did not answer --version — run donn doctor in a terminal".into()
+        }
+        CliProblem::TooOld(v) => {
+            format!("donn CLI {v} is too old for this app — npm i -g @getdonn/cli@latest")
+        }
+    };
+    vec![
+        Entry::Label(line),
+        Entry::Separator,
+        item("quit", "Quit", Action::Quit, None),
+    ]
+}
+
+/// Sets the check of the item with this id (start at login, after a toggle).
+pub fn set_checked(entries: &mut [Entry], id: &str, on: bool) {
+    for e in entries {
+        match e {
+            Entry::Item { id: i, checked, .. } if i == id && checked.is_some() => {
+                *checked = Some(on)
+            }
+            Entry::Submenu { entries, .. } => set_checked(entries, id, on),
+            _ => {}
+        }
+    }
 }
 
 /// The action of the item with this id, if the menu has one.
@@ -605,6 +638,53 @@ mod tests {
         assert_eq!(item(&m, "Quit").0, &Action::Quit);
         let m = model(&s, &BTreeMap::new());
         assert_eq!(item(&m, "Start at login").1, Some(false));
+    }
+
+    #[test]
+    fn cli_problem_menus() {
+        let m = cli_problem_menu(&CliProblem::NotFound);
+        assert_eq!(
+            labels(&m),
+            ["donn CLI not found — npm i -g @getdonn/cli", "─", "Quit"]
+        );
+        assert!(matches!(m[0], Entry::Label(_)), "the line is disabled");
+        assert_eq!(item(&m, "Quit").0, &Action::Quit);
+
+        let m = cli_problem_menu(&CliProblem::TooOld("0.13.2".into()));
+        assert_eq!(
+            labels(&m),
+            [
+                "donn CLI 0.13.2 is too old for this app — npm i -g @getdonn/cli@latest",
+                "─",
+                "Quit"
+            ]
+        );
+        assert!(matches!(m[0], Entry::Label(_)));
+        assert_eq!(action_for(&m, "quit"), Some(Action::Quit));
+
+        let m = cli_problem_menu(&CliProblem::Broken);
+        assert_eq!(
+            labels(&m),
+            [
+                "donn CLI did not answer --version — run donn doctor in a terminal",
+                "─",
+                "Quit"
+            ]
+        );
+        assert!(matches!(m[0], Entry::Label(_)));
+    }
+
+    #[test]
+    fn set_checked_ticks_one_item() {
+        let s: Snapshot = read("two-projects.json");
+        let mut m = model(&s, &BTreeMap::new());
+        let before = m.clone();
+        set_checked(&mut m, "login", true);
+        assert_eq!(item(&m, "Start at login").1, Some(true));
+        set_checked(&mut m, "login", false);
+        assert_eq!(m, before, "only the login item changed");
+        set_checked(&mut m, "nope", true);
+        assert_eq!(m, before);
     }
 
     #[test]
