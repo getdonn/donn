@@ -110,6 +110,40 @@ describe("donn ui", { timeout: 20_000 }, () => {
     expect(r.stdout).toMatch(/60 s/);
   });
 
+  it("--page deep-links to an app route, keeping its query", async () => {
+    await daemon(builtApp());
+    const r = await run([
+      "--no-open",
+      "--json",
+      "--page",
+      "/agents/a/smoke?project=%2Fr",
+    ]);
+    expect(r.code).toBe(0);
+    const { url, port } = JSON.parse(r.stdout) as { url: string; port: number };
+    expect(url).toMatch(
+      new RegExp(
+        `^http://127\\.0\\.0\\.1:${port}/agents/a/smoke\\?project=%2Fr#t=[A-Za-z0-9_-]{43}$`,
+      ),
+    );
+    const text = await run(["--no-open", "--page", "/agents"]);
+    expect(text.stdout).toMatch(/:\d+\/agents#t=[A-Za-z0-9_-]{43}/);
+  });
+
+  it.each(["agents", "//evil.example/x", "/a#b"])(
+    "refuses --page %s",
+    async (page) => {
+      await daemon(builtApp());
+      const r = await run(["--no-open", "--json", "--page", page]);
+      expect(r.code).not.toBe(0);
+      expect(JSON.parse(r.stderr + r.stdout)).toMatchObject({
+        error: {
+          code: "usage",
+          message: "--page must start with one / and contain no #",
+        },
+      });
+    },
+  );
+
   it("honours --port", async () => {
     await daemon(builtApp());
     const probe = JSON.parse((await run(["--no-open", "--json"])).stdout) as {

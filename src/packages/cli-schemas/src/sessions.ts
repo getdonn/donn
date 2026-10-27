@@ -36,6 +36,13 @@ const ManagedStatus = z.union([
   }),
 ]);
 
+/** `state.json`: the default and each project's switch, keyed by its `.donn` real path. */
+const Switched = z.strictObject({
+  default: z.string().optional(),
+  projects: z.record(z.string(), z.string()),
+  error: z.string().optional(),
+});
+
 /**
  * `donn status --json`, two shapes: with the daemon running (`daemon: true`, its own status and
  * its sessions with their refresh `state`), or without it (`daemon: false`, the sessions the
@@ -68,12 +75,14 @@ export const StatusOutput = z.union([
       .optional(),
     agents: z.array(CreatedAgent),
     managed: ManagedStatus,
+    switched: Switched,
   }),
   z.strictObject({
     daemon: z.literal(false),
     sessions: z.array(z.strictObject(SessionBase)),
     agents: z.array(CreatedAgent),
     managed: ManagedStatus,
+    switched: Switched,
   }),
 ]);
 export type StatusOutput = z.infer<typeof StatusOutput>;

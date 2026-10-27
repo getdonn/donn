@@ -90,8 +90,34 @@ export function useProject(): ProjectState {
   return state;
 }
 
+/**
+ * The project a deep link names (`?project=`, docs/planning/28-desktop.md §1): kept as the
+ * picker keeps a pick, then dropped from the address bar. The path, other params and the
+ * fragment stay: the sign-in code is spent from the fragment afterwards.
+ */
+function projectFromLink(): string | undefined {
+  const url = new URL(window.location.href);
+  const linked = url.searchParams.get("project");
+  if (linked === null) return undefined;
+  url.searchParams.delete("project");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+  if (linked === "") return undefined;
+  try {
+    sessionStorage.setItem(PROJECT_KEY, linked);
+  } catch {
+    // Not kept: the pick lasts for this page.
+  }
+  return linked;
+}
+
 function ProjectProvider({ children }: { children: ReactNode }) {
   const [project, setProject] = useState<string | undefined>(() => {
+    const linked = projectFromLink();
+    if (linked !== undefined) return linked;
     try {
       return sessionStorage.getItem(PROJECT_KEY) ?? undefined;
     } catch {

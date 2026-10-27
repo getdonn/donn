@@ -121,3 +121,33 @@ test("a stopped daemon ends the session: the ended screen, no retrying", async (
     expect(started.status, started.stderr).toBe(0);
   }
 });
+
+test("?project= picks that project and leaves the address bar", async ({
+  page,
+  signIn,
+  donn,
+}) => {
+  const base = new URL(signIn);
+  await page.goto(
+    `${base.origin}/agents?project=${encodeURIComponent(donn.other)}${base.hash}`,
+  );
+  await expect(page.getByRole("button", { name: "Project" })).toHaveText(
+    /other-service/,
+  );
+  await expect(page).toHaveURL(/\/agents$/);
+  expect(page.url()).not.toContain("project=");
+});
+
+test("an agent page opens from a deep link", async ({ page, donn }) => {
+  const created = donn.cli(["agent", "create", "bot", "--json"]);
+  // Already created by an earlier test in this worker is fine.
+  expect(created.status === 0 || created.stderr.includes("exists")).toBe(true);
+  const base = new URL(donn.url());
+  await page.goto(
+    `${base.origin}/agents/a/bot?project=${encodeURIComponent(donn.repo)}${base.hash}`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "bot", level: 1 }),
+  ).toBeVisible();
+  expect(page.url()).not.toContain("project=");
+});

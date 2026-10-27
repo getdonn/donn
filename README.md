@@ -101,8 +101,8 @@ runs it with approval `never`; the sandbox still applies.)
 
 ```sh
 donn daemon start    # a background process, per DONN_HOME
-donn status          # the sessions it knows of, and whether each is current
-donn ui              # the app in your browser, served by the daemon (--no-open, --port)
+donn status          # the sessions it knows of, and whether each is current (--watch --json streams snapshots)
+donn ui              # the app in your browser, served by the daemon (--no-open, --port, --page <route>)
 donn daemon stop
 ```
 
@@ -347,7 +347,7 @@ and agents the persona no longer declares. The design is `docs/planning/25-agent
 
 ## The web UI
 
-`donn ui [--no-open] [--port <n>]` starts the daemon if it is not running (unless
+`donn ui [--no-open] [--port <n>] [--page <route>]` starts the daemon if it is not running (unless
 `daemon: { autoStart: false }` is set; then start it with `donn daemon start`) and opens the app in
 your browser (`--no-open` prints the URL instead). It is the CLI with a face, not a second product: every
 action runs a `donn` command. The app has five screens:
