@@ -14,6 +14,9 @@ use tauri::{AppHandle, RunEvent, Wry};
 
 use crate::cli::CliProblem;
 
+/// The bundle identifier (`tauri.conf.json`), also the LaunchAgent's name.
+pub(crate) const APP_ID: &str = "dev.getdonn.desktop";
+
 pub fn run() {
     tauri::Builder::default()
         // First, as the plugin's docs require: a second launch lands here and
@@ -109,7 +112,7 @@ fn autostart() -> TauriPlugin<Wry> {
     #[cfg(target_os = "macos")]
     let builder = builder
         .macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent)
-        .app_name("dev.getdonn.desktop");
+        .app_name(APP_ID);
     builder.build()
 }
 

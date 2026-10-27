@@ -254,7 +254,7 @@ fn toggle_login(app: &AppHandle) {
     let result = if login(app) {
         autolaunch.disable()
     } else {
-        autolaunch.enable()
+        autolaunch.enable().inspect(|()| name_login_item())
     };
     if let Err(e) = result {
         alert(app, format!("Could not change start at login: {e}"));
@@ -263,6 +263,65 @@ fn toggle_login(app: &AppHandle) {
     let mut shown = state.shown.lock().unwrap();
     menu::set_checked(&mut shown.entries, "login", login(app));
     draw(app, &shown.entries);
+}
+
+/// macOS: names the app in the LaunchAgent the plugin just wrote, so Login
+/// Items shows donn (spec 28 open question 3). The plugin writes an empty
+/// `AssociatedBundleIdentifiers` and cannot set it. A failure only goes to
+/// stderr: start at login works without it.
+fn name_login_item() {
+    #[cfg(target_os = "macos")]
+    {
+        let file = home()
+            .join("Library/LaunchAgents")
+            .join(format!("{}.plist", crate::APP_ID));
+        let rewrite = || -> std::io::Result<()> {
+            let text = std::fs::read_to_string(&file)?;
+            match with_bundle_id(&text, crate::APP_ID) {
+                Some(named) if named != text => {
+                    // Written aside and renamed: launchd never reads half a file.
+                    let tmp = file.with_extension("plist.tmp");
+                    std::fs::write(&tmp, named)?;
+                    std::fs::rename(&tmp, &file)
+                }
+                Some(_) => Ok(()),
+                None => Err(std::io::Error::other(
+                    "no AssociatedBundleIdentifiers array",
+                )),
+            }
+        };
+        if let Err(e) = rewrite() {
+            eprintln!(
+                "donn: could not name the login item in {}: {e}",
+                file.display()
+            );
+        }
+    }
+}
+
+/// The LaunchAgent plist with `AssociatedBundleIdentifiers` set to `[id]`;
+/// `None` when the key is not followed by one array.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn with_bundle_id(plist: &str, id: &str) -> Option<String> {
+    const KEY: &str = "<key>AssociatedBundleIdentifiers</key>";
+    let after = plist.find(KEY)? + KEY.len();
+    let start = after + plist[after..].len() - plist[after..].trim_start().len();
+    let tail = &plist[start..];
+    let len = if tail.starts_with("<array/>") {
+        "<array/>".len()
+    } else {
+        let inner = tail.strip_prefix("<array>")?;
+        let close = inner.find("</array>")?;
+        if inner[..close].contains("<array") {
+            return None;
+        }
+        "<array>".len() + close + "</array>".len()
+    };
+    Some(format!(
+        "{}<array><string>{id}</string></array>{}",
+        &plist[..start],
+        &tail[len..]
+    ))
 }
 
 /// Runs an action's `donn` call on its own thread; a failure is a dialog.
@@ -422,6 +481,60 @@ mod tests {
         );
         assert_eq!(home_from(Some(String::new())), PathBuf::from("/"));
         assert_eq!(home_from(None), PathBuf::from("/"));
+    }
+
+    /// The LaunchAgent as tauri-plugin-autostart 2.7.0 (auto-launch 0.6.0) writes it.
+    const PLUGIN_PLIST: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+  <dict>
+  <key>Label</key>
+  <string>dev.getdonn.desktop</string>
+  <key>AssociatedBundleIdentifiers</key>
+  <array></array>
+  <key>ProgramArguments</key>
+  <array><string>/Applications/donn.app/Contents/MacOS/donn-desktop</string></array>
+  <key>RunAtLoad</key>
+  <true/>
+  </dict>
+</plist>";
+
+    #[test]
+    fn login_item_names_the_app() {
+        let id = "dev.getdonn.desktop";
+        let named = with_bundle_id(PLUGIN_PLIST, id).unwrap();
+        assert_eq!(
+            named,
+            PLUGIN_PLIST.replace(
+                "<key>AssociatedBundleIdentifiers</key>\n  <array></array>",
+                "<key>AssociatedBundleIdentifiers</key>\n  \
+                 <array><string>dev.getdonn.desktop</string></array>",
+            )
+        );
+        assert!(named.contains("<array><string>/Applications/donn.app/"));
+        // Again: no change.
+        assert_eq!(with_bundle_id(&named, id).unwrap(), named);
+        // An empty `<array/>`, and another id, are replaced the same way.
+        let short = PLUGIN_PLIST.replace("<array></array>", "<array/>");
+        assert_eq!(with_bundle_id(&short, id).unwrap(), named);
+        let other = PLUGIN_PLIST.replace("<array></array>", "<array><string>x.y</string></array>");
+        assert_eq!(with_bundle_id(&other, id).unwrap(), named);
+        // Not the plugin's shape: left alone.
+        assert_eq!(with_bundle_id("<plist><dict/></plist>", id), None);
+        let open = PLUGIN_PLIST.replace("<array></array>", "<array>");
+        assert_eq!(with_bundle_id(&open, id), None, "an unclosed array");
+        let cut = &open[..open.find("<key>ProgramArguments").unwrap()];
+        assert_eq!(with_bundle_id(cut, id), None);
+        let odd = PLUGIN_PLIST.replace("<array></array>", "<string>x</string>");
+        assert_eq!(with_bundle_id(&odd, id), None);
+    }
+
+    #[test]
+    fn app_id_is_the_bundle_identifier() {
+        let conf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let conf: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(conf).unwrap()).unwrap();
+        assert_eq!(conf["identifier"], crate::APP_ID);
     }
 
     #[test]
