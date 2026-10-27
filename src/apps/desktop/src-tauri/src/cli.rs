@@ -21,7 +21,10 @@ pub const MIN_CLI: (u32, u32, u32) = (0, 14, 0);
 /// Asked of an interactive login shell (`-ilc`): `pnpm setup` and nvm put
 /// their PATH lines in `~/.zshrc`, which a plain login shell does not read.
 /// Its noise is skipped by the parsers; `LOCATE_TIMEOUT` bounds a hang.
-const LOOKUP: &str = r#"command -v donn; printf "PATH=%s\n" "$PATH""#;
+///
+/// PATH comes from `env`, not `"$PATH"`: fish joins that list with spaces,
+/// while the exported PATH is colon-joined in every shell.
+const LOOKUP: &str = "command -v donn; /usr/bin/env | /usr/bin/grep '^PATH='";
 
 /// How long a login shell may take to answer `LOOKUP`.
 const LOCATE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -430,6 +433,37 @@ mod tests {
         assert_eq!(parse_path("/opt/x/donn\n"), None);
         assert_eq!(parse_path("/opt/x/donn\nPATH=\n"), None);
         assert_eq!(parse_path("export PATH=/x\n"), None);
+        // fish: its greeting, and `env`'s other lines around PATH.
+        let fish = "Welcome to fish, the friendly interactive shell\n\
+                    /opt/x/donn\nPATH=/opt/x:/usr/bin:/bin\n";
+        assert_eq!(
+            parse_path(fish),
+            Some(OsString::from("/opt/x:/usr/bin:/bin"))
+        );
+        assert_eq!(parse_command_v(fish), Some(PathBuf::from("/opt/x/donn")));
+    }
+
+    #[test]
+    fn lookup_prints_the_exported_path() {
+        // fish joins `"$PATH"` with spaces; the exported PATH is colon-joined
+        // in every shell, so the lookup reads it from `env`.
+        assert!(!LOOKUP.contains("$PATH"), "{LOOKUP}");
+        let _serial = serial();
+        let dir = std::env::temp_dir().join("donn-cli-test-lookup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let donn = script("donn-cli-test-lookup/donn", "#!/bin/sh\n");
+        let path = format!("{}:/usr/bin:/bin", dir.display());
+        let out = Command::new("/bin/sh")
+            .args(["-c", LOOKUP])
+            .env_clear()
+            .env("PATH", &path)
+            .env("HOME", &dir)
+            .output()
+            .unwrap();
+        let out = String::from_utf8(out.stdout).unwrap();
+        assert_eq!(parse_command_v(&out), Some(donn.clone()), "{out}");
+        assert_eq!(parse_path(&out), Some(OsString::from(&path)), "{out}");
+        std::fs::remove_file(&donn).unwrap();
     }
 
     #[test]
