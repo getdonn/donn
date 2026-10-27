@@ -291,9 +291,12 @@ change.
 - **Sessions outside a project** (no `project`) share one disabled line, `no project ·
   <persona(s)>`, with the same live-else-launched rule and their harnesses beneath. It sits right
   after the default persona submenu, which is their switch, so it has no submenu.
-- **fish.** The login shell is now asked `command -v donn; /usr/bin/env | /usr/bin/grep
-  '^PATH='`, still a fixed string. fish joins `"$PATH"` with spaces, but the exported PATH is
-  colon-joined in every shell. The app still takes the last `PATH=` line.
+- **fish.** The login shell is now asked `command -v donn; printf 'PATH='; printenv PATH`, still
+  a fixed string. fish joins `"$PATH"` with spaces, but the exported PATH is colon-joined in every
+  shell. `printf` is a builtin in sh, bash, zsh and fish, and `printenv` is found on the login
+  shell's own PATH: no fixed `/usr/bin/grep` (NixOS, Guix and Debian 11 or older without usrmerge
+  have none), and no `env` output, where a multi-line value can hold a line starting `PATH=`. The
+  app still takes the last `PATH=` line.
 - **Login Items name.** tauri-plugin-autostart 2.7.0 (auto-launch 0.6.0) writes
   `AssociatedBundleIdentifiers` as an empty array and has no setting for it. After `enable()` the
   shell rewrites that array in `~/Library/LaunchAgents/dev.getdonn.desktop.plist` to

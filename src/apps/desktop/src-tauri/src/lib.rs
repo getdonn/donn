@@ -15,6 +15,8 @@ use tauri::{AppHandle, RunEvent, Wry};
 use crate::cli::CliProblem;
 
 /// The bundle identifier (`tauri.conf.json`), also the LaunchAgent's name.
+/// Used on macOS only, and checked by a test on every OS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) const APP_ID: &str = "dev.getdonn.desktop";
 
 pub fn run() {

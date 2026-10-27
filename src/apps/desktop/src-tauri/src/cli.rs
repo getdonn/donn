@@ -22,9 +22,11 @@ pub const MIN_CLI: (u32, u32, u32) = (0, 14, 0);
 /// their PATH lines in `~/.zshrc`, which a plain login shell does not read.
 /// Its noise is skipped by the parsers; `LOCATE_TIMEOUT` bounds a hang.
 ///
-/// PATH comes from `env`, not `"$PATH"`: fish joins that list with spaces,
-/// while the exported PATH is colon-joined in every shell.
-const LOOKUP: &str = "command -v donn; /usr/bin/env | /usr/bin/grep '^PATH='";
+/// PATH comes from `printenv`, not `"$PATH"`: fish joins that list with
+/// spaces, while the exported PATH is colon-joined in every shell. `printf`
+/// is a builtin in sh, bash, zsh and fish; `printenv` is found on the login
+/// shell's own PATH (no fixed `/usr/bin` path: NixOS has none).
+const LOOKUP: &str = "command -v donn; printf 'PATH='; printenv PATH";
 
 /// How long a login shell may take to answer `LOOKUP`.
 const LOCATE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -446,8 +448,9 @@ mod tests {
     #[test]
     fn lookup_prints_the_exported_path() {
         // fish joins `"$PATH"` with spaces; the exported PATH is colon-joined
-        // in every shell, so the lookup reads it from `env`.
+        // in every shell, so the lookup prints it with `printenv`.
         assert!(!LOOKUP.contains("$PATH"), "{LOOKUP}");
+        assert!(!LOOKUP.contains("/usr/bin/"), "found on PATH: {LOOKUP}");
         let _serial = serial();
         let dir = std::env::temp_dir().join("donn-cli-test-lookup");
         std::fs::create_dir_all(&dir).unwrap();
