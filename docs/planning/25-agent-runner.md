@@ -205,6 +205,9 @@ A failure after step 4 leaves the directory for inspection and says so; `donn ag
 
 **`local`** is for trying an agent and developing it, not for serving webhooks: GitHub cannot
 reach `localhost`.
+*Revised 2026-10-28:* a `local` agent can serve webhooks while it is developed, behind a tunnel
+the user runs; its port is kept per machine across runs and restarts. See "Amendment: a sticky
+port for local agents" at the end.
 
 - `donn agent run <name>` builds (`eve build`) and starts (`eve start --port <free port>`) the
   agent as a child of the daemon, with its env resolved (§5). The local Workflow world and a
@@ -412,3 +415,65 @@ Windows (the daemon service is macOS and Linux today).
    layers 2–4 are planned from its findings rather than from the unverified production path.
 
 - 2026-10-25 (final review of 24, deferred here): a path template's Vercel services are unknown, so consider reporting `portability-unknown` for it as for an unknown slug; a template's own `experimental` or `modelContextWindowTokens` in `agent.ts` is replaced by the `...donn` spread (an advisory needs `agent.ts` knowledge); a `requiredEnv` output field would let `donn agent env` and `doctor` list the env a compile needs without parsing `env.ts`.
+
+## Amendment: a sticky port for local agents (2026-10-28)
+
+The kody smoke (stage 2, §8) ran a `local` agent behind a cloudflared tunnel for a GitHub App.
+Every start used `--port 0`, so each run and each restart after a sync moved the agent, and the
+tunnel and the App's webhook URL pointed at nothing (finding 4). The maintainer's decisions: a
+`local` agent may serve webhooks behind a tunnel the user runs; donn does not run the tunnel; the
+port is per machine and sticky by default; a taken port is refused, never moved.
+
+**Where it lives.** Each created agent's entry in `~/.donn/agents/agents.json` (the index `create`
+writes) gains an optional `port`, an integer from 1024 to 65535. The index is written atomically
+under its lock, as before. A stored value that is not such an integer reads as no port; the rest
+of the index still loads. The persona never holds a port:
+it is a choice about one machine, and two projects on it could otherwise ask for the same one.
+*Rejected:* a port derived from a hash of the project and name (collisions, and `--port` needs
+storage anyway); a file in the agent's folder (it follows a checkout, not the machine).
+
+**How a start picks it.** Every start of a `local` agent (the daemon's run, its restart after a
+sync, a foreground run, `--dev`) takes the port from, in order: `--port` given now; the stored
+port; a free one (bind `127.0.0.1:0`, read the port, close). It then binds `127.0.0.1:<port>`
+briefly to check that it is free, stores it, and runs `eve start --host 127.0.0.1 --port <port>`
+(or `eve dev --port <port>`). A port is stored only once that check passes, so a taken port given
+with `--port` is never kept. donn never moves a stored port on its own; only `--port` changes it.
+The agent still listens on `127.0.0.1` only: the tunnel is the one public way in. A restart
+already stops the old process before starting the new one (§3), so it finds its port free.
+
+**Commands and the daemon.**
+
+- `donn agent run <name> --port <n>` (daemon, foreground or `--dev`). No other command takes it;
+  `create` picks no port, the first run does.
+- `POST /agents/run` takes an optional `port`, carried on `RunRequest` and checked like the flag.
+  The GUI's Run sends none, so it uses the stored port (or picks and stores one on a first run).
+- A daemon older than this ignores `port`: the CLI compares the port of the URL it reports with
+  the one asked for and, when they differ, warns that the daemon is too old for `--port` and to
+  run `donn daemon install` again.
+- `agent list --json` rows and `status --json` agent lines gain an optional `port`: the stored
+  one, also when the agent is not running, so a tunnel can be set up before the first start.
+  `url` stays the running agent's. On a run that picked a new port, `run` adds a line: `port <n>
+  is kept for <name>; a tunnel can point at it`.
+
+**Errors** (`CliError`, with the usual `--json` envelope):
+
+| Code | When | Fix |
+|---|---|---|
+| `invalid-port` | `--port` is not an integer from 1024 to 65535 | — |
+| `port-in-use` | the check finds the port bound, or `eve start` exits with `EADDRINUSE` before it listens | `donn agent run <name> --port <other>` |
+| `port-local-only` | `--port` for a `self-host` or `vercel` agent | — |
+| `agent-running` | `--port` differs from the port of the running agent | `donn agent stop <name>` |
+
+A restart after a sync that meets `port-in-use` is a failed sync with that code: the agent stays
+stopped, and `status` shows it as it shows other failed syncs (`syncFailed`).
+
+**Tests.** Real `127.0.0.1` sockets in the test process stand in for a taken port; no real home.
+The port picker and check; the index's `port` (stored, read back, a bad value ignored); `startAgent`'s arguments and the `EADDRINUSE` mapping; `--dev` passing `--port`; the
+daemon (a first run stores a port, later runs and a sync restart reuse it, `--port` replaces it, a
+taken port is never stored, `agent-running`, a restart's `port-in-use` as a sync failure); the CLI
+(flag checks, `port-local-only`, the old-daemon warning, `port` in `agent list --json` and `status
+--json` against `cli-schemas`). Real eve (`DONN_E2E=1`): run, stop, run again on the same port.
+Smoke before the final review: kody behind a tunnel, restarted by a sync, still receives the
+webhook with no URL change.
+
+**Release.** `@getdonn/cli` minor (`--port`), `@getdonn/cli-schemas` minor (`port`).
