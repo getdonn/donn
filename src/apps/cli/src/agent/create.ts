@@ -454,7 +454,9 @@ export async function create(
       io.stdout.write(
         `would create ${shown}: eve ${version}, template ${agent.template}, target ${agent.target}\n` +
           `  donn files: ${Object.keys(files).join(", ")}\n` +
-          "  (a dry run does not fetch the template; its own files can change the reports)\n",
+          (stagedVendor
+            ? "  (the template was staged to check it and nothing was written; its own files can change the reports)\n"
+            : "  (a dry run does not fetch the template; its own files can change the reports)\n"),
       );
       return 0;
     }
@@ -484,10 +486,16 @@ export async function create(
       let undo: (() => Promise<void>) | undefined;
       let added = false;
       if (stagedVendor) {
-        added = !(stagedVendor.name in (await readVendored(ctx.projectDir!)));
-        await commitVendor(ctx.projectDir!, stagedVendor, {
+        added = !Object.hasOwn(
+          await readVendored(ctx.projectDir!),
+          stagedVendor.name,
+        );
+        const changes = await commitVendor(ctx.projectDir!, stagedVendor, {
           now: io.now ?? Date.now,
+          io,
+          sameSource: true,
           fixes: {
+            otherSource: `--template-name <another-name>, or donn agent vendor ${stagedVendor.source} --name ${stagedVendor.name} to replace it`,
             nameTaken:
               "--template-name <another-name>, or move the folder away",
             localEdits: `donn agent vendor ${stagedVendor.source} --name ${stagedVendor.name} --force`,
@@ -497,7 +505,9 @@ export async function create(
           undo = () => removeVendored(ctx.projectDir!, stagedVendor.name);
         if (!options.json)
           io.stderr.write(
-            `vendored ${stagedVendor.source} into ${vendoredPath(stagedVendor)}\n`,
+            added
+              ? `vendored ${stagedVendor.source} into ${vendoredPath(stagedVendor)}\n`
+              : `refreshed ${stagedVendor.name}: ${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed\n`,
           );
       }
       if (edit) {

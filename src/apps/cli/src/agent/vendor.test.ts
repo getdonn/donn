@@ -1,15 +1,18 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { nodeProbe } from "@getdonn/executor";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { quietIo, seed, zz, type Seeded } from "../test/seed.js";
@@ -249,6 +252,72 @@ describe("stageVendor from a folder", () => {
     put("tpl/package.json", JSON.stringify({ devDependencies: { eve: "1" } }));
     put("tpl/agent/a.ts", "x");
     expect((await stage(dirSource("tpl"))).files).toContain("agent/a.ts");
+  });
+
+  it("refuses a link that points outside the template", async () => {
+    putTemplate("tpl");
+    put("shared/x.ts", "export {};\n");
+    symlinkSync("../../shared/x.ts", join(root, "tpl/agent/x.ts"));
+    const error = await stage(dirSource("tpl")).catch((e) => e);
+    expect(error).toMatchObject({ code: "vendor-link-outside" });
+    expect(error.message).toContain("agent/x.ts");
+    expect(existsSync(stagingBase) ? readdirSync(stagingBase) : []).toEqual([]);
+    rmSync(join(root, "tpl/agent/x.ts"));
+    symlinkSync(join(root, "shared/x.ts"), join(root, "tpl/agent/x.ts"));
+    await expect(stage(dirSource("tpl"))).rejects.toMatchObject({
+      code: "vendor-link-outside",
+    });
+  });
+
+  it("keeps a link that points inside the template", async () => {
+    putTemplate("tpl");
+    put("tpl/lib/x.ts", "export {};\n");
+    symlinkSync("../lib/x.ts", join(root, "tpl/agent/x.ts"));
+    const result = await stage(dirSource("tpl"));
+    expect(result.files).toContain("agent/x.ts");
+    expect(lstatSync(join(result.dir, "agent/x.ts")).isSymbolicLink()).toBe(
+      true,
+    );
+  });
+
+  it("ignores .DS_Store in the source and in the digest", async () => {
+    putTemplate("tpl");
+    put("tpl/.DS_Store", "junk");
+    put("tpl/agent/.DS_Store", "junk");
+    const result = await stage(dirSource("tpl"));
+    expect(result.files).toEqual(["agent/a.ts", "package.json"]);
+    put(`${basename(result.dir)}/.DS_Store`, "x");
+    writeFileSync(join(result.dir, ".DS_Store"), "junk");
+    expect(await vendorDigest(result.dir)).toBe(result.digest);
+  });
+
+  it("checks for an eve template before reading the folder", async () => {
+    put("broad/notes.txt", "n");
+    put("broad/secret/key", "k");
+    // Walking this would throw EACCES, so the refusal must come first.
+    chmodSync(join(root, "broad/secret"), 0o000);
+    try {
+      await expect(stage(dirSource("broad"))).rejects.toMatchObject({
+        code: "vendor-not-eve-template",
+      });
+    } finally {
+      chmodSync(join(root, "broad/secret"), 0o755);
+    }
+    expect(existsSync(stagingBase) ? readdirSync(stagingBase) : []).toEqual([]);
+  });
+
+  it("records a folder under the home folder as ~/", async () => {
+    putTemplate("home/tpl");
+    const withIo = io();
+    const result = await stage(
+      { kind: "dir", dir: join(home, "tpl"), given: join(home, "tpl") },
+      {},
+      withIo,
+    );
+    expect(result.source).toBe("~/tpl");
+    putTemplate("elsewhere");
+    const other = await stage(dirSource("elsewhere"));
+    expect(other.source).toBe("elsewhere");
   });
 
   it("refuses a missing folder", async () => {
@@ -512,5 +581,33 @@ describe("donn agent vendor", () => {
     expect(readdirSync(templates()).sort()).toEqual(["sources.json", "tpl"]);
     const again = await vendor([tpl()]);
     expect(again.code, again.stdout + again.stderr).toBe(0);
+  });
+
+  it("a .DS_Store in the vendored copy is not a local edit", async () => {
+    writeTpl(tpl());
+    await vendor([tpl()]);
+    writeFileSync(join(templates(), "tpl/.DS_Store"), "junk");
+    mkdirSync(join(templates(), "tpl/agent"), { recursive: true });
+    writeFileSync(join(templates(), "tpl/agent/.DS_Store"), "junk");
+    const r = await vendor([tpl()]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+  });
+
+  it("does not take Object.prototype names for recorded templates", async () => {
+    writeTpl(tpl());
+    const r = await vendor([tpl(), "--name", "constructor"], false);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("vendored constructor into");
+    expect(r.stdout).not.toContain("refreshed");
+    expect(Object.hasOwn(sources().templates, "constructor")).toBe(true);
+  });
+
+  it("re-points a recorded template to a different source", async () => {
+    writeTpl(tpl("a/x"));
+    writeTpl(tpl("b/x"), { "agent/b.ts": "export {};\n" });
+    await vendor([tpl("a/x")]);
+    const r = await vendor([tpl("b/x")]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(sources().templates.x.source).toBe(tpl("b/x"));
   });
 });

@@ -1,9 +1,11 @@
 import { realpathSync } from "node:fs";
 import {
   cp,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   rename,
   rm,
   rmdir,
@@ -11,12 +13,21 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { AgentTemplate, Id } from "@getdonn/spec";
 import { z } from "zod";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { fsStep } from "../fs.js";
+import { userHomeDir } from "../userhome.js";
 import { templateDigest } from "./digest.js";
 import { listFiles, notTemplate, sha256 } from "./files.js";
 import type { TarFile } from "./tar.js";
@@ -118,13 +129,22 @@ async function digestOf(dir: string, files: string[]): Promise<string> {
   return templateDigest(map);
 }
 
-/** The files `stageVendor` keeps, digested: for comparing a vendored folder with its record. */
-export async function vendorDigest(dir: string): Promise<string> {
-  const files = (await listFiles(dir, notTemplate)).filter(
-    (path) => !notTemplate(path),
-  );
+/** Not template content: what `notTemplate` leaves out, and Finder's `.DS_Store` anywhere. */
+const skipped = (path: string) =>
+  notTemplate(path) || basename(path) === ".DS_Store";
+
+/**
+ * The files `stageVendor` keeps, digested: for comparing a vendored folder with its record. With
+ * `io`, a folder inside a git checkout is listed as staging lists a source (its ignore rules).
+ */
+export async function vendorDigest(dir: string, io?: CliIo): Promise<string> {
+  const files =
+    io === undefined ? await walkFiles(dir) : await sourceFiles(io, dir);
   return digestOf(dir, files);
 }
+
+const walkFiles = async (dir: string) =>
+  (await listFiles(dir, skipped)).filter((path) => !skipped(path));
 
 /** Runs git in `dir`; an exit code of 127 (no git) is the caller's to read. */
 const gitProbe = (io: CliIo, dir: string, args: string[]) =>
@@ -161,14 +181,14 @@ async function sourceFiles(io: CliIo, dir: string): Promise<string[]> {
     }
     const files: string[] = [];
     for (const path of new Set(listed.stdout.split("\0"))) {
-      if (path === "" || notTemplate(path)) continue;
+      if (path === "" || skipped(path)) continue;
       // Tracked but deleted, a submodule, or a linked folder: not a file to copy.
       const target = await stat(join(dir, path)).catch(() => undefined);
       if (target?.isFile()) files.push(path);
     }
     return files.sort();
   }
-  return (await listFiles(dir, notTemplate)).filter((p) => !notTemplate(p));
+  return walkFiles(dir);
 }
 
 /** The first line of git's stderr, with every URL's credentials removed. */
@@ -176,6 +196,27 @@ const firstLine = (stderr: string) =>
   (stderr.split("\n").find((l) => l.trim() !== "") ?? "no output")
     .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s'"]*@/gi, "$1")
     .trim();
+
+/** A link in the copy must point inside the source; one that leaves it would dangle. */
+async function assertLinkInside(from: string, path: string): Promise<void> {
+  const file = join(from, path);
+  if (!(await lstat(file)).isSymbolicLink()) return;
+  const target = await readlink(file);
+  if (
+    isAbsolute(target) ||
+    !within(resolve(dirname(file), target), resolve(from))
+  ) {
+    throw new CliError(
+      "vendor-link-outside",
+      `${path} is a link to ${target}, which is outside the template`,
+      {
+        path,
+        target,
+        fix: "replace the link with the file, or vendor the folder it points into",
+      },
+    );
+  }
+}
 
 async function checkEve(dir: string, given: string): Promise<void> {
   const refuse = (why: string) =>
@@ -201,6 +242,20 @@ async function checkEve(dir: string, given: string): Promise<void> {
     throw refuse("package.json does not list eve");
   if (!(await stat(join(dir, "agent")).catch(() => undefined))?.isDirectory())
     throw refuse("no agent/ folder");
+}
+
+/** A folder under the home folder is recorded as `~/…`, so the committed record has no user name. */
+function recordedSource(
+  source: VendorSource,
+  given: string,
+  io: CliIo,
+): string {
+  if (source.kind !== "dir") return given;
+  const home = userHomeDir(io.env, io.passwdHome);
+  if (home === "" || !isAbsolute(home) || !within(source.dir, home))
+    return given;
+  const rel = relative(home, source.dir);
+  return rel === "" ? "~" : `~/${rel.split(sep).join("/")}`;
 }
 
 /**
@@ -240,13 +295,13 @@ export async function stageVendor(
     } else {
       from = fetched!;
       const url = source.url;
-      const step = async (args: string[]) => {
+      const step = async (label: string, args: string[]) => {
         const result = await git(io, from, args);
         if (result.exitCode !== 0) {
           const line = firstLine(result.stderr);
           throw new CliError(
             "vendor-fetch-failed",
-            `git ${args[0]} exited ${result.exitCode} for ${redactUrl(url)}: ${line}`,
+            `git ${label} exited ${result.exitCode} for ${redactUrl(url)}: ${line}`,
             {
               source: given,
               exitCode: result.exitCode,
@@ -257,8 +312,8 @@ export async function stageVendor(
         }
         return result;
       };
-      await step(["init", "--quiet"]);
-      await step([
+      await step("init", ["init", "--quiet"]);
+      await step("fetch", [
         "fetch",
         "--quiet",
         "--depth",
@@ -267,7 +322,7 @@ export async function stageVendor(
         url,
         ...(source.ref === undefined ? [] : [source.ref]),
       ]);
-      await step([
+      await step("checkout", [
         "-c",
         "advice.detachedHead=false",
         "checkout",
@@ -275,7 +330,10 @@ export async function stageVendor(
         "FETCH_HEAD",
       ]);
     }
+    // Before anything is listed or copied: a mistyped broad folder is refused untouched.
+    await checkEve(from, given);
     const files = await sourceFiles(io, from);
+    for (const path of files) await assertLinkInside(from, path);
     for (const path of files) {
       const to = join(dir, path);
       await fsStep(to, async () => {
@@ -298,7 +356,7 @@ export async function stageVendor(
     return {
       name,
       dir,
-      source: given,
+      source: recordedSource(source, given, io),
       ...(source.kind === "git" &&
         source.ref !== undefined && { ref: source.ref }),
       ...(commit !== undefined && { commit }),
@@ -373,10 +431,7 @@ export async function readVendored(
 /** `sha256:<hex>` by path, for the files a template keeps. */
 async function hashesOf(dir: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const files = (await listFiles(dir, notTemplate)).filter(
-    (path) => !notTemplate(path),
-  );
-  for (const path of files)
+  for (const path of await walkFiles(dir))
     out.set(path, sha256(await readFile(join(dir, path))));
   return out;
 }
@@ -398,8 +453,12 @@ export async function commitVendor(
   options: {
     force?: boolean;
     now: () => number;
-    /** The hints for the two refusals, for a caller whose flags differ from `vendor`'s. */
-    fixes?: { nameTaken?: string; localEdits?: string };
+    /** The hints for the refusals, for a caller whose flags differ from `vendor`'s. */
+    fixes?: { nameTaken?: string; localEdits?: string; otherSource?: string };
+    /** Refuse to replace a recorded template that came from a different source. */
+    sameSource?: boolean;
+    /** Lists a copy inside a git checkout by its ignore rules, as staging does. */
+    io?: CliIo;
     /** A test seam for the final move of the record into place. */
     rename?: typeof rename;
   },
@@ -408,7 +467,9 @@ export async function commitVendor(
   const target = join(templates, staged.name);
   const shown = `.donn/${TEMPLATES}/${staged.name}`;
   const records = await readVendored(donnDir);
-  const record = records[staged.name];
+  const record = Object.hasOwn(records, staged.name)
+    ? records[staged.name]
+    : undefined;
   const present = await exists(target);
   if (present && record === undefined) {
     throw new CliError(
@@ -424,10 +485,28 @@ export async function commitVendor(
     );
   }
   if (
+    options.sameSource &&
+    record !== undefined &&
+    record.source !== staged.source
+  ) {
+    throw new CliError(
+      "vendor-name-taken",
+      `${shown} was vendored from ${record.source}, not ${staged.source}; another agent may be declared on it`,
+      {
+        name: staged.name,
+        path: target,
+        source: record.source,
+        fix:
+          options.fixes?.otherSource ??
+          `--name <another-name>, or donn agent vendor ${staged.source} --name ${staged.name} to replace it`,
+      },
+    );
+  }
+  if (
     present &&
     record !== undefined &&
     !options.force &&
-    (await vendorDigest(target)) !== record.digest
+    (await vendorDigest(target, options.io)) !== record.digest
   ) {
     throw new CliError(
       "vendor-local-edits",

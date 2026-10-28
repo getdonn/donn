@@ -657,6 +657,59 @@ describe("donn agent create", () => {
       );
     });
 
+    it("refuses a different source for a name already vendored", async () => {
+      const first = outside();
+      const second = outside("other/kody-tpl");
+      writeFileSync(join(second, "agent/extra.ts"), "export {};\n");
+      const one = await create(["kody", "--template", first, ...flags], {
+        probe: plain,
+      });
+      expect(one.code, one.stderr).toBe(0);
+      const before = read(join(s.repo, ".donn/persona.yaml"));
+      const { code, stdout } = await create(
+        ["kody2", "--template", second, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      const error = JSON.parse(stdout).error;
+      expect(error.code).toBe("vendor-name-taken");
+      expect(error.message).toContain(first);
+      expect(error.fix).toBe(
+        "--template-name <another-name>, or donn agent vendor " +
+          `${second} --name kody-tpl to replace it`,
+      );
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(before);
+      expect(existsSync(join(vendored(), "kody-tpl/agent/extra.ts"))).toBe(
+        false,
+      );
+      const record = JSON.parse(read(join(vendored(), "sources.json")));
+      expect(record.templates["kody-tpl"].source).toBe(first);
+      expect(existsSync(agentDir("kody2"))).toBe(false);
+    });
+
+    it("says refreshed when the same source is vendored again", async () => {
+      const tpl = outside();
+      await create(["kody", "--template", tpl, ...flags], { probe: plain });
+      const { code, stderr } = await create(
+        ["kody2", "--template", tpl, ...flags],
+        { probe: plain },
+      );
+      expect(code, stderr).toBe(0);
+      expect(stderr).toContain(
+        "refreshed kody-tpl: 0 added, 0 changed, 0 removed",
+      );
+    });
+
+    it("a dry run says the template was staged, not that it was not fetched", async () => {
+      const tpl = outside();
+      const { stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--dry-run"],
+        { probe: plain },
+      );
+      expect(stdout).not.toContain("does not fetch");
+      expect(stdout).toContain("staged to check it");
+    });
+
     it("names create's flags in the vendor-name-taken hint", async () => {
       const tpl = outside();
       mkdirSync(join(vendored(), "kody-tpl"), { recursive: true });

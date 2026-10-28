@@ -221,13 +221,14 @@ export async function agentVendorCommand(
   }
   assertNotInside(source, root, agentPaths);
   const name = options.name ?? defaultTemplateName(source);
-  const refreshing = name in (await readVendored(donnDir));
+  const refreshing = Object.hasOwn(await readVendored(donnDir), name);
   const staged = await stageVendor(io, source, { name });
   let changes;
   try {
     changes = await commitVendor(donnDir, staged, {
       ...(options.force !== undefined && { force: options.force }),
       now: io.now ?? Date.now,
+      io,
     });
   } finally {
     await rm(staged.dir, { recursive: true, force: true });
