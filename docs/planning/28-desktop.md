@@ -244,10 +244,13 @@ have.
 
 1. **Signed downloads.** A later spec: a Developer ID certificate, notarisation in `release.yml`,
    artifacts on the GitHub Release, and then the updater. Decide when the app has users beyond the
-   maintainer.
+   maintainer. *(2026-10-27)* Signing also names the app in Login Items: macOS honours the
+   LaunchAgent's `AssociatedBundleIdentifiers` only for an app with a Team ID (see the polish
+   amendment).
 
 *Amended 2026-10-27 (polish):* questions 2 to 6 (project lines, the Login Items name, fish, an
 outdated daemon, sessions outside a project) are closed by the polish pass; see the amendments.
+The Login Items name takes effect only with signing, so it continues under question 1.
 
 ## Amendments from the build (2026-10-26)
 
@@ -303,8 +306,11 @@ change.
   `["dev.getdonn.desktop"]`. It edits the plugin's XML with a pure, tested function, writes the
   file aside and renames it. A plist of another shape is left alone, and a failure goes only to
   stderr, since start at login works without it. A plist written by an earlier build is fixed
-  the next time start at login is turned on. Whether Login Items then names an ad-hoc-signed
-  app is for the next smoke run.
+  the next time start at login is turned on. *Smoke 2026-10-27:* the plist carries the
+  identifier, yet Login Items still lists `donn-desktop` with a generic icon: macOS uses the key
+  only for an app with a Team ID, and a from-source build is signed ad hoc. The rewrite stays and
+  takes effect once the app is signed (question 1). The plugin's AppleScript launcher would name
+  the app now, at the cost of an Automation permission prompt; not taken.
 - **The persona lists** (`donn list`) also run again when `switched.default` changes, when the
   daemon comes back (down to up), and every 60 s while the app runs. Each run is still bounded at
   10 s. The existing triggers stay: the sessions' projects or states change. The 60 s timer
