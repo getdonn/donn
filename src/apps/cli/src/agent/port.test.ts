@@ -47,6 +47,16 @@ describe("parsePort", () => {
     expect(parsePort("1024")).toBe(1024);
     expect(parsePort("65535")).toBe(65535);
   });
+  it("invalid-port carries no fix", () => {
+    try {
+      parsePort("80");
+      expect.unreachable();
+    } catch (error) {
+      expect(
+        (error as { details?: { fix?: string } }).details?.fix,
+      ).toBeUndefined();
+    }
+  });
   it("isPort checks the same range", () => {
     expect(isPort(8787)).toBe(true);
     expect(isPort(80)).toBe(false);
@@ -101,5 +111,29 @@ describe("choosePort", () => {
       code: "port-in-use",
     });
     expect(await storedPort(home, "/r", "a")).toBe(stored);
+  });
+  it("a first pick skips a port another agent stores", async () => {
+    const other = await freePort();
+    await recordPort(home, "/r", "b", other);
+    const free = await freePort();
+    const queue = [other, other, free];
+    const next = await choosePort(home, "/r", "a", undefined, async () =>
+      queue.shift()!,
+    );
+    expect(next).toEqual({ port: free, picked: true });
+    expect(await storedPort(home, "/r", "a")).toBe(free);
+  });
+  it("a first pick gives up after bounded tries with port-in-use", async () => {
+    const other = await freePort();
+    await recordPort(home, "/r", "b", other);
+    let tries = 0;
+    await expect(
+      choosePort(home, "/r", "a", undefined, async () => {
+        tries += 1;
+        return other;
+      }),
+    ).rejects.toMatchObject({ code: "port-in-use" });
+    expect(tries).toBe(20);
+    expect(await storedPort(home, "/r", "a")).toBeUndefined();
   });
 });

@@ -690,6 +690,19 @@ describe("donn agent run --port and the sticky port", () => {
     ]);
   });
 
+  it("--dev says so when it picks a port for the first time", async () => {
+    await setup();
+    const spawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await go(["run", "kody", "--dev"], spawn);
+    const port = (await stored())!;
+    expect(r.stdout).toContain(keptNote(port, "kody"));
+    const again = await go(
+      ["run", "kody", "--dev"],
+      fakeEve({ replies: [{ eve: ["dev"] }] }),
+    );
+    expect(again.stdout).not.toContain("is kept for");
+  });
+
   it("--port is refused for a self-host agent", async () => {
     await setup("self-host");
     const spawn = serving();

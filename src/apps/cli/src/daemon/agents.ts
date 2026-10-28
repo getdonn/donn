@@ -2,10 +2,9 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { agentEnvironment, envInputs, noShellFix } from "../agent/env.js";
 import { projectContext } from "../agent/load.js";
-import { choosePort } from "../agent/port.js";
 import {
   agentLogPath,
-  assertPortTarget,
+  localPort,
   rootOf,
   runEnvironment,
   startAgent,
@@ -133,6 +132,18 @@ const info = (a: RunningAgent): AgentInfo => ({
   token: a.token,
 });
 
+/** A run asking for another port than the agent already has cannot move it. */
+function sameStartPort(agent: RunningAgent, request: RunRequest): void {
+  if (request.port === undefined) return;
+  const current = Number(new URL(agent.url).port);
+  if (current === request.port) return;
+  throw new CliError(
+    "agent-running",
+    `${agent.name} is running on port ${current}; stop it to change its port`,
+    { port: current, fix: `donn agent stop ${agent.name}` },
+  );
+}
+
 export function agentRunner(options: AgentRunnerOptions): AgentRunner {
   const { io, emit, log } = options;
   const running = new Map<string, Entry>();
@@ -170,11 +181,13 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     });
     // Only a `local` agent keeps a port; a self-host one stays on eve's own.
     const target = created.result.ir.agents[name]?.target ?? "local";
-    assertPortTarget(name, target, request.port);
-    const chosen =
-      target === "local"
-        ? await choosePort(options.home, root, name, request.port)
-        : undefined;
+    const chosen = await localPort(
+      options.home,
+      root,
+      name,
+      target,
+      request.port,
+    );
     const path = agentLogPath(options.home, root, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const agentLog = createLog(path, options.now);
@@ -184,7 +197,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       project: root,
       redact: secrets,
       buildEnv: plain,
-      ...(chosen && { port: chosen.port }),
+      ...(chosen.port !== undefined && { port: chosen.port }),
       onLine: (line) => void (last = agentLog(line)),
     });
     return { agent, flushed: () => last, inputs };
@@ -223,10 +236,15 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     const root = rootOf(project);
     const k = key(root, name);
     const on = running.get(k);
-    if (on !== undefined) return { agent: info(on.agent), already: true };
+    if (on !== undefined) {
+      sameStartPort(on.agent, request);
+      return { agent: info(on.agent), already: true };
+    }
     const pending = starting.get(k);
     if (pending !== undefined) {
-      return { agent: info((await pending).agent), already: true };
+      const { agent } = await pending;
+      sameStartPort(agent, request);
+      return { agent: info(agent), already: true };
     }
     const started = launch(root, name, request, restart);
     starting.set(k, started);
@@ -234,6 +252,8 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       const { agent, flushed, inputs } = await started;
       const entry: Entry = { agent, flushed, inputs, request, stopping: false };
       running.set(k, entry);
+      // A port taken meanwhile is over once the agent runs again.
+      if (failures.get(k)?.code === "port-in-use") failures.delete(k);
       watch(k, entry);
       await log(`agent ${name} in ${root} running at ${agent.url}`);
       emit({

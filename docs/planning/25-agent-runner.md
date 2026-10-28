@@ -438,6 +438,9 @@ port; a free one (bind `127.0.0.1:0`, read the port, close). It then binds `127.
 briefly to check that it is free, stores it, and runs `eve start --host 127.0.0.1 --port <port>`
 (or `eve dev --port <port>`). A port is stored only once that check passes, so a taken port given
 with `--port` is never kept. donn never moves a stored port on its own; only `--port` changes it.
+*Amended 2026-10-28 (final review):* a first pick skips any port another created agent has stored,
+even while that agent is stopped (the OS could hand it out again); it retries up to 20 times, then
+`port-in-use`.
 The agent still listens on `127.0.0.1` only: the tunnel is the one public way in. A restart
 already stops the old process before starting the new one (§3), so it finds its port free.
 
@@ -466,6 +469,12 @@ already stops the old process before starting the new one (§3), so it finds its
 
 A restart after a sync that meets `port-in-use` is a failed sync with that code: the agent stays
 stopped, and `status` shows it as it shows other failed syncs (`syncFailed`).
+
+*From the final review (2026-10-28):* `run --dev` is refused with `agent-running` (fix: `donn agent
+stop <name>`) while the daemon runs that agent, since `eve dev` beside it would take or move its
+port. The daemon itself enforces `agent-running` when a run asks for a different `port` than a
+running or still-starting agent has, not only the CLI. A `port-in-use` sync failure is cleared when
+the agent next starts.
 
 **Tests.** Real `127.0.0.1` sockets in the test process stand in for a taken port; no real home.
 The port picker and check; the index's `port` (stored, read back, a bad value ignored); `startAgent`'s arguments and the `EADDRINUSE` mapping; `--dev` passing `--port`; the

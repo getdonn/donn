@@ -410,6 +410,22 @@ export function assertPortTarget(
   );
 }
 
+/**
+ * The port a start of `name` runs on: only a `local` agent keeps one (`--port`, else the stored
+ * one, else a fresh pick); the others keep eve's own and get `--port` refused.
+ */
+export async function localPort(
+  home: string,
+  root: string,
+  name: string,
+  target: string,
+  port?: number,
+): Promise<{ port?: number; picked: boolean }> {
+  assertPortTarget(name, target, port);
+  if (target !== "local") return { picked: false };
+  return choosePort(home, root, name, port);
+}
+
 /** The note printed when donn picked a port for the first time. */
 export const keptNote = (port: number, name: string): string =>
   `port ${port} is kept for ${name}; a tunnel can point at it`;
@@ -534,7 +550,7 @@ export async function run(
     });
     printStarted(io, agent, options, { already });
     const listening = Number(new URL(agent.url).port);
-    if (options.port !== undefined && listening !== options.port)
+    if (!already && options.port !== undefined && listening !== options.port)
       io.stderr.write(
         "warning: the daemon ignored --port (it runs an older donn); run donn daemon install again\n",
       );
@@ -566,11 +582,7 @@ async function foreground(
     agent: created,
   } = await runEnvironment(ctx, io, name, { start: true });
   const target = created.result.ir.agents[name]?.target ?? "local";
-  assertPortTarget(name, target, options.port);
-  const chosen =
-    target === "local"
-      ? await choosePort(ctx.home, root, name, options.port)
-      : undefined;
+  const chosen = await localPort(ctx.home, root, name, target, options.port);
   // Not refused: a local run is how one tries an edit out, but it runs the files as they are.
   if (!(await isSynced(ctx, created, name)))
     io.stderr.write(`warning: ${staleText(name)}\n`);
@@ -587,7 +599,7 @@ async function foreground(
         project: root,
         redact: secrets,
         buildEnv: plain,
-        ...(chosen && { port: chosen.port }),
+        ...(chosen.port !== undefined && { port: chosen.port }),
         signal: abort.signal,
         // Under --json, stdout carries only the JSON.
         onLine: (line, stream) =>
@@ -596,9 +608,9 @@ async function foreground(
           ),
       });
       printStarted(io, agent, options, { foreground: true });
-      if (chosen?.picked)
+      if (chosen.picked)
         (options.json ? io.stderr : io.stdout).write(
-          `${keptNote(chosen.port, name)}\n`,
+          `${keptNote(chosen.port!, name)}\n`,
         );
       if (abort.signal.aborted) void agent.stop();
       const code = await agent.exited;
@@ -623,17 +635,35 @@ async function dev(
     start: false,
   });
   const target = agent.result.ir.agents[name]?.target ?? "local";
-  assertPortTarget(name, target, options.port);
-  const chosen =
-    target === "local"
-      ? await choosePort(ctx.home, root, name, options.port)
-      : undefined;
+  // The daemon's own run of this agent holds its port: --dev beside it would break the tunnel.
+  const control = await agentControl(io, ctx.home);
+  const on = (await control?.list())?.find(
+    (a) => a.name === name && rootOf(a.project) === root,
+  );
+  if (on !== undefined) {
+    const current = Number(new URL(on.url).port);
+    throw new CliError(
+      "agent-running",
+      `${name} is running under the daemon on port ${current}; stop it to run it with --dev`,
+      { port: current, fix: `donn agent stop ${name}` },
+    );
+  }
+  const chosen = await localPort(ctx.home, root, name, target, options.port);
+  if (chosen.picked)
+    (options.json ? io.stderr : io.stdout).write(
+      `${keptNote(chosen.port!, name)}\n`,
+    );
   const pm = await packageManager(dir);
   // The model route is proved under eve dev with development, not production (spec 24 §2).
   const env = { ...eveEnv(io.env, values), NODE_ENV: "development" };
   const child = (io.spawn ?? nodeSpawn)(
     pm,
-    ["exec", "eve", "dev", ...(chosen ? ["--port", String(chosen.port)] : [])],
+    [
+      "exec",
+      "eve",
+      "dev",
+      ...(chosen.port !== undefined ? ["--port", String(chosen.port)] : []),
+    ],
     {
       cwd: dir,
       env,

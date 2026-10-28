@@ -1320,7 +1320,70 @@ describe("a sticky port through the daemon", () => {
       code: "port-in-use",
     });
     expect(starts()).toHaveLength(1);
+    // Freed, and the agent run again: the failure is over.
+    await Promise.all(
+      servers.splice(0).map((v) => new Promise((r) => v.close(r))),
+    );
+    await runner.run(s.repo, "kody");
+    expect(starts()).toHaveLength(2);
+    expect(runner.syncFailures()).toEqual([]);
     await runner.closeAll();
+  });
+
+  it("--port while a start of the same agent is pending is agent-running", async () => {
+    const runner = agentRunner({
+      home: s.home,
+      io: {
+        ...quietIo({ cwd: s.root, home: s.home, env: SECRETS }),
+        spawn,
+        probe,
+      },
+      emit: (e) => events.push(e),
+      log: async () => {},
+      now: Date.now,
+    });
+    const port = await listen(false);
+    const first = runner.run(s.repo, "kody");
+    await expect(runner.run(s.repo, "kody", { port })).rejects.toMatchObject({
+      code: "agent-running",
+      details: { fix: "donn agent stop kody" },
+    });
+    await first;
+    expect(starts()).toHaveLength(1);
+    await runner.closeAll();
+  });
+
+  it("a socket run with another port to a running agent is agent-running", async () => {
+    const daemon = await start();
+    await call(daemon, "POST", "/agents/run", body());
+    const port = await listen(false);
+    const ran = await call(daemon, "POST", "/agents/run", body({ port }));
+    expect(ran.status).toBe(400);
+    expect(ran.body).toMatchObject({
+      error: {
+        code: "agent-running",
+        details: { port: 61131, fix: "donn agent stop kody" },
+      },
+    });
+    expect(starts()).toHaveLength(1);
+  });
+
+  it("--dev next to a daemon-run agent is refused and spawns nothing", async () => {
+    await start();
+    await cli(["run", "kody", "--json"]);
+    const before = await stored();
+    const devSpawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await cli(["run", "kody", "--dev", "--json"], devSpawn);
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout || r.stderr).error).toMatchObject({
+      code: "agent-running",
+      message:
+        "kody is running under the daemon on port 61131; stop it to run it with --dev",
+      port: 61131,
+      fix: "donn agent stop kody",
+    });
+    expect(devSpawn.calls).toHaveLength(0);
+    expect(await stored()).toBe(before);
   });
 
   it("a different --port while running is agent-running", async () => {
