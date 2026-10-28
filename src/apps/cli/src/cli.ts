@@ -539,7 +539,11 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .argument("<name>", "the agent, as in agents.define")
         .option(
           "--template <template>",
-          "eve:<slug>, eve:blank or a path; declares the agent when the persona does not",
+          "eve:<slug>, eve:blank, a path, or a folder or git URL outside the project (vendored); declares the agent when the persona does not",
+        )
+        .option(
+          "--template-name <name>",
+          "the name a vendored --template is kept under (default: from the source)",
         )
         .addOption(
           new Option("--target <target>", "where the agent runs").choices([

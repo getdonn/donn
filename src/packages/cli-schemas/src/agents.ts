@@ -47,10 +47,17 @@ const Portability = z.strictObject({
   blocking: z.boolean(),
 });
 
+/** The template `create --template <source>` vendors (or, with `--dry-run`, would). */
+const VendoredTemplate = z.strictObject({
+  name: z.string(),
+  path: z.string(),
+  source: z.string(),
+});
+
 /**
  * `donn agent create --json`, two shapes: `--dry-run` (`dryRun: true`; the files donn would
  * own, without the template's; `declared` when the agent had to be declared in the persona) and
- * the created agent. `files` maps an agent-folder path to its `sha256:` digest.
+ * the created agent; `vendored` when `--template` named a source outside the project. `files` maps an agent-folder path to its `sha256:` digest.
  */
 export const AgentCreateOutput = z.union([
   z.strictObject({
@@ -64,6 +71,7 @@ export const AgentCreateOutput = z.union([
     declared: z
       .strictObject({ file: z.string(), after: z.string() })
       .optional(),
+    vendored: VendoredTemplate.optional(),
   }),
   z.strictObject({
     agent: z.string(),
@@ -72,6 +80,7 @@ export const AgentCreateOutput = z.union([
     files: z.record(z.string(), z.string()),
     report: CompileReport,
     portability: z.array(Portability),
+    vendored: VendoredTemplate.optional(),
   }),
 ]);
 export type AgentCreateOutput = z.infer<typeof AgentCreateOutput>;

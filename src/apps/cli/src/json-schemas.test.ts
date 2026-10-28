@@ -518,6 +518,34 @@ describe("agent commands", () => {
     expect(AgentCreateOutput).toBe(COMMAND_OUTPUTS["agent create"]);
   });
 
+  it("create --template <outside folder>, with the vendored template in it", async () => {
+    agentProject(s);
+    const tpl = join(s.root, "outside-tpl");
+    mkdirSync(join(tpl, "agent"), { recursive: true });
+    writeFileSync(join(tpl, "package.json"), '{"dependencies":{"eve":"1"}}');
+    writeFileSync(
+      join(tpl, "agent/agent.ts"),
+      'import { defineAgent } from "eve";\nexport default defineAgent({ model: "openai/gpt-6-luna-fast" });\n',
+    );
+    const args = ["create", "tpl", "--template", tpl, "--target", "local"];
+    const dry = await agent([...args, "--dry-run"], {
+      probe: nodeProbe(),
+      spawn: installingEve(),
+    });
+    expect(dry.code, dry.stderr).toBe(0);
+    expect(parses("agent create", dry.stdout)).toMatchObject({
+      vendored: { name: "outside-tpl" },
+    });
+    const created = await agent(args, {
+      probe: nodeProbe(),
+      spawn: installingEve(),
+    });
+    expect(created.code, created.stdout).toBe(0);
+    expect(parses("agent create", created.stdout)).toMatchObject({
+      vendored: { path: ".donn/templates/outside-tpl" },
+    });
+  });
+
   describe("on a created agent", () => {
     beforeEach(async () => {
       agentProject(s);

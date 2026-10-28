@@ -6,12 +6,13 @@ import {
   readFile,
   rename,
   rm,
+  rmdir,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { Id } from "@getdonn/spec";
+import { AgentTemplate, Id } from "@getdonn/spec";
 import { z } from "zod";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
@@ -79,6 +80,28 @@ export interface StagedVendor {
   digest: string;
   /** Sorted POSIX paths. */
   files: string[];
+}
+
+/** A vendored template's name: lowercase letters, digits and single dashes. */
+export function assertTemplateName(name: string, flag = "--name"): void {
+  if (!Id.safeParse(name).success) {
+    throw new CliError(
+      "invalid-template-name",
+      `${JSON.stringify(name)} is not a template name: use lowercase letters, digits and single dashes`,
+      { name, fix: `${flag} <lowercase-kebab-case>` },
+    );
+  }
+}
+
+/**
+ * Whether `create --template` names something to vendor: not `eve:...` and not a relative path
+ * inside the persona folder, so an absolute, `~/` or `..` path, or a git URL.
+ */
+export function isVendorSource(template: string): boolean {
+  if (template.startsWith("eve:")) return false;
+  if (template === "~" || template.startsWith("~/")) return true;
+  if (parseVendorSource(template, "/", "/").kind === "git") return true;
+  return !AgentTemplate.safeParse(template).success;
 }
 
 const executable = (mode: number) => (mode & 0o111 ? 0o755 : 0o644);
@@ -191,13 +214,7 @@ export async function stageVendor(
   options: { name?: string; stagingBase?: string } = {},
 ): Promise<StagedVendor> {
   const name = options.name ?? defaultTemplateName(source);
-  if (!Id.safeParse(name).success) {
-    throw new CliError(
-      "invalid-template-name",
-      `${JSON.stringify(name)} is not a template name: use lowercase letters, digits and single dashes`,
-      { name, fix: "--name <lowercase-kebab-case>" },
-    );
-  }
+  assertTemplateName(name);
   const given = redactUrl(source.given);
   const base = options.stagingBase ?? tmpdir();
   await mkdir(base, { recursive: true });
@@ -473,6 +490,29 @@ export async function commitVendor(
     changed: changed.sort(),
     removed: removed.sort(),
   };
+}
+
+/**
+ * Takes a template `commitVendor` just added back out: its folder and its record (and the
+ * record file and folder when nothing else is left). For undoing a create that failed after.
+ */
+export async function removeVendored(
+  donnDir: string,
+  name: string,
+): Promise<void> {
+  const templates = join(donnDir, TEMPLATES);
+  await rm(join(templates, name), { recursive: true, force: true });
+  const { [name]: _gone, ...rest } = await readVendored(donnDir);
+  const file = join(templates, SOURCES);
+  if (Object.keys(rest).length > 0) {
+    await writeFile(
+      file,
+      `${JSON.stringify({ version: 1, templates: rest }, null, 2)}\n`,
+    );
+    return;
+  }
+  await rm(file, { force: true });
+  await rmdir(templates).catch(() => undefined);
 }
 
 const realOrSelf = (path: string) => {
