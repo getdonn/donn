@@ -1,15 +1,19 @@
 import type { ReportEntry } from "@getdonn/adapter-sdk";
 import type { ResolvedPersona } from "@getdonn/spec";
-import { patchSubagentTs, subagentFile } from "./agent-ts.js";
+import { patchSubagentTs, subagentEntry, subagentFile } from "./agent-ts.js";
 import { EveCompileError } from "./errors.js";
 
 // Subagents and the gateway. eve gives a declared subagent nothing of the root's, its model
 // included, so with `models.gateway` each `agent/subagents/<name>/agent.ts` spreads its entry of
-// `donnSubagent` (from `lib/donn/config.ts`) last, and the CLI makes that edit as it does
-// agent.ts's. `targets.eve.subagents.<name>.model` picks another model of the same gateway.
-// Without a gateway nothing changes. See docs/planning/24-adapter-eve.md, section 2.
+// `donnSubagent` (from `lib/donn/config.ts`) last, and the CLI makes that edit once, as it does
+// agent.ts's. A file donn edited that no longer routes is the user's choice and is reported.
+// `targets.eve.subagents.<name>.model` picks another model of the same gateway. Without a
+// gateway nothing changes. See docs/planning/24-adapter-eve.md, section 2.
 
 const SUBAGENT_TS = /^agent\/subagents\/([^/]+)\/agent\.ts$/;
+/** Any agent module under a `subagents/` folder: nested, from an extension, or not `.ts`. */
+const ANY_SUBAGENT =
+  /(?:^|\/)subagents\/[^/]+\/agent\.(?:ts|mts|cts|js|mjs|cjs)$/;
 
 /** The subagents whose `agent.ts` is among `paths`, by name, sorted. */
 export function subagentNames(paths: Iterable<string>): string[] {
@@ -97,36 +101,73 @@ function overrides(
 }
 
 /**
- * The `donnSubagent` entries and report entries for the subagents in `texts` (agent-directory
- * path to text). With a gateway every subagent is routed, and one whose `agent.ts` the edit
- * refuses is `agent-ts-unrecognised`, naming the file. Without one, only a subagent an earlier
- * gateway's edit left spreading its entry gets one, an empty one, so it keeps building.
+ * The `donnSubagent` entries and report entries for the subagents in `project.texts`
+ * (agent-directory path to text). With a gateway every subagent gets an entry. One whose
+ * `agent.ts` the edit refuses, or whose spread a later `model` overrides, is
+ * `agent-ts-unrecognised`, naming the file, unless donn edited it before (`project.edited`): then
+ * the user changed it, and it is reported as bypassing the gateway, as is one that no longer
+ * spreads its entry. Any other agent module under a `subagents/` folder (nested, from an
+ * extension, not `.ts`) is reported as not routed. Without a gateway, a subagent an earlier
+ * gateway's edit may still read gets an empty entry, so it keeps building.
  */
 export function subagentPlan(
   ir: ResolvedPersona,
   defaultModel: { id: string; path: string },
-  texts: Record<string, string>,
+  project: {
+    texts?: Record<string, string>;
+    edited?: string[];
+    existing: string[];
+  },
 ): { subagents: SubagentEntry[]; entries: ReportEntry[] } {
+  const texts = project.texts ?? {};
+  const edited = new Set(project.edited ?? []);
   const names = subagentNames(Object.keys(texts));
   const { models, entries } = overrides(ir, new Set(names));
   const subagents: SubagentEntry[] = [];
   const routed: ReportEntry[] = [];
   for (const name of names) {
-    const text = texts[subagentFile(name)]!;
+    const file = subagentFile(name);
+    const text = texts[file]!;
     const result = patchSubagentTs(text, name);
     if (ir.models.gateway === undefined) {
-      if (result.ok && result.text === text)
+      // An empty entry wherever an earlier gateway's edit may still read it.
+      if (edited.has(file) || (result.ok && result.spread !== "missing"))
         subagents.push({ name, routed: false });
+      continue;
+    }
+    const model = models.get(name);
+    subagents.push({ name, routed: true, ...(model && { model }) });
+    const path =
+      model === undefined
+        ? defaultModel.path
+        : `targets.eve.subagents.${name}.model`;
+    const why = !result.ok
+      ? "is no longer a file donn can edit"
+      : result.spread === "shadowed"
+        ? "spreads its donnSubagent entry before a model or modelContextWindowTokens that overrides it"
+        : result.spread === "missing" && edited.has(file)
+          ? "no longer spreads its donnSubagent entry"
+          : undefined;
+    if (why !== undefined && edited.has(file)) {
+      routed.push({
+        path,
+        outcome: "dropped",
+        reason: `subagent ${name} ${why}, so its model bypasses the gateway; put \`...${subagentEntry(name)}\` last in ${file} to route it`,
+      });
       continue;
     }
     if (!result.ok) {
       throw new EveCompileError(
         "agent-ts-unrecognised",
-        `${subagentFile(name)}: ${result.hint}`,
+        `${file}: ${result.hint}`,
       );
     }
-    const model = models.get(name);
-    subagents.push({ name, routed: true, ...(model && { model }) });
+    if (result.spread === "shadowed") {
+      throw new EveCompileError(
+        "agent-ts-unrecognised",
+        `${file}: \`...${subagentEntry(name)}\` is followed by a model or modelContextWindowTokens property, which overrides the gateway's; put the spread last`,
+      );
+    }
     const id = model ?? defaultModel.id;
     const own = result.model;
     routed.push({
@@ -140,6 +181,16 @@ export function subagentPlan(
           ? `subagent ${name}, which sets no model, gets the gateway's ${id}`
           : `subagent ${name}'s own model ${own.kind === "literal" ? `${own.id} ` : ""}is replaced by the gateway's ${id}`,
     });
+  }
+  if (ir.models.gateway !== undefined) {
+    for (const path of [...project.existing].sort()) {
+      if (!ANY_SUBAGENT.test(path) || SUBAGENT_TS.test(path)) continue;
+      routed.push({
+        path: defaultModel.path,
+        outcome: "advisory",
+        reason: `${path} is not routed through the gateway; donn edits top-level agent/subagents/<name>/agent.ts only`,
+      });
+    }
   }
   return { subagents, entries: [...routed, ...entries] };
 }

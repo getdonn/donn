@@ -242,7 +242,7 @@ export function compile(
   const subagents = subagentPlan(
     ir,
     { id: modelId(ir, input.agent), path: modelPath(ir, input.agent) },
-    input.project.texts ?? {},
+    input.project,
   );
   const config = configFile(ir, input.agent, secrets, subagents.subagents);
   entries.push(

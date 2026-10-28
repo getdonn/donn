@@ -258,6 +258,26 @@ describe("patchSubagentTs", () => {
     expect(result.hint).toContain("agent/subagents/researcher/agent.ts");
   });
 
+  it("says where the spread stood: missing, then last", () => {
+    expect(sub(kody).spread).toBe("missing");
+    expect(sub(sub(kody).text).spread).toBe("last");
+  });
+
+  it("leaves a spread that a later model or window overrides, as shadowed", () => {
+    for (const key of ['model: "openai/x"', "modelContextWindowTokens: 1"]) {
+      const source = `import { defineAgent } from "eve";\n${SUB_IMPORT}\nexport default defineAgent({ description: "d", ...donnSubagent.researcher, ${key} });\n`;
+      const result = sub(source);
+      expect(result.spread).toBe("shadowed");
+      expect(result.text).toBe(source);
+    }
+    // Any other key after the spread is fine.
+    expect(
+      sub(
+        `import { defineAgent } from "eve";\n${SUB_IMPORT}\nexport default defineAgent({ ...donnSubagent.researcher, tool: false });\n`,
+      ).spread,
+    ).toBe("last");
+  });
+
   it("refuses another donnSubagent binding", () => {
     const result = patchSubagentTs(
       'import { defineAgent } from "eve";\nconst donnSubagent = {};\nexport default defineAgent({ description: "d" });\n',

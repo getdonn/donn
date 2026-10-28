@@ -37,6 +37,7 @@ const gateway: ResolvedPersona["models"] = {
 function input(
   patch: Partial<ResolvedPersona> = {},
   subagents: Record<string, string> = { researcher: RESEARCHER },
+  project: { edited?: string[]; existing?: string[] } = {},
 ): AgentCompileInput {
   const texts = Object.fromEntries(
     Object.entries(subagents).map(([name, text]) => [
@@ -66,8 +67,9 @@ function input(
     project: {
       hasSandbox: false,
       hasRouteAuth: false,
-      existing: Object.keys(texts),
+      existing: [...Object.keys(texts), ...(project.existing ?? [])],
       texts,
+      ...(project.edited && { edited: project.edited }),
     },
   };
 }
@@ -242,6 +244,97 @@ describe("subagents with a gateway", () => {
     expect((error as Error).message).toContain(
       'import { donnSubagent } from "../../lib/donn/config";',
     );
+  });
+});
+
+describe("a subagent the user changed after donn's edit", () => {
+  const FILE = "agent/subagents/researcher/agent.ts";
+  const IMPORT = 'import { donnSubagent } from "../../lib/donn/config";';
+  const shadowed = `import { defineAgent } from "eve";\n${IMPORT}\nexport default defineAgent({\n  description: "d",\n  ...donnSubagent.researcher,\n  model: "openai/x",\n});\n`;
+  const bypass = (why: string) => ({
+    path: "models.default",
+    outcome: "dropped",
+    reason: `subagent researcher ${why}, so its model bypasses the gateway; put \`...donnSubagent.researcher\` last in ${FILE} to route it`,
+  });
+
+  it("a spread a later model overrides is refused when donn has not edited the file", () => {
+    expect(() => adapter.compile(input({}, { researcher: shadowed }))).toThrow(
+      /agent-ts-unrecognised: agent\/subagents\/researcher\/agent\.ts: .*model or modelContextWindowTokens/,
+    );
+  });
+
+  it("is reported, never refused or replaced, when donn edited it", () => {
+    const out = adapter.compile(
+      input({}, { researcher: shadowed }, { edited: [FILE] }),
+    );
+    expect(about(out, "subagent researcher")).toEqual([
+      bypass(
+        "spreads its donnSubagent entry before a model or modelContextWindowTokens that overrides it",
+      ),
+    ]);
+  });
+
+  it("a removed spread is reported when donn edited the file", () => {
+    const out = adapter.compile(
+      input({}, { researcher: RESEARCHER }, { edited: [FILE] }),
+    );
+    expect(about(out, "subagent researcher")).toEqual([
+      bypass("no longer spreads its donnSubagent entry"),
+    ]);
+  });
+
+  it("a file the edit no longer recognises is reported, not refused, when donn edited it", () => {
+    const out = adapter.compile(
+      input(
+        {},
+        { researcher: "export default defineDynamic({});\n" },
+        { edited: [FILE] },
+      ),
+    );
+    expect(about(out, "subagent researcher")).toEqual([
+      bypass("is no longer a file donn can edit"),
+    ]);
+  });
+});
+
+describe("subagents donn does not edit", () => {
+  it("reports each nested or other agent file under subagents/, with a gateway", () => {
+    const out = adapter.compile(
+      input({}, undefined, {
+        existing: [
+          "agent/subagents/researcher/subagents/checker/agent.ts",
+          "agent/subagents/scout/agent.js",
+          "agent/extensions/crm/subagents/reviewer/agent.ts",
+          "agent/subagents/researcher/instructions.md",
+        ],
+      }),
+    );
+    expect(
+      out.report.entries.filter((e) => e.reason.includes("donn edits")),
+    ).toEqual(
+      [
+        "agent/extensions/crm/subagents/reviewer/agent.ts",
+        "agent/subagents/researcher/subagents/checker/agent.ts",
+        "agent/subagents/scout/agent.js",
+      ].map((path) => ({
+        path: "models.default",
+        outcome: "advisory",
+        reason: `${path} is not routed through the gateway; donn edits top-level agent/subagents/<name>/agent.ts only`,
+      })),
+    );
+  });
+
+  it("says nothing of them without a gateway", () => {
+    const out = adapter.compile(
+      input(
+        { models: { default: "anthropic/claude-sonnet-5" }, targets: {} },
+        undefined,
+        { existing: ["agent/subagents/a/subagents/b/agent.ts"] },
+      ),
+    );
+    expect(
+      out.report.entries.filter((e) => e.reason.includes("donn edits")),
+    ).toEqual([]);
   });
 });
 

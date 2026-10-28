@@ -19,9 +19,18 @@ export type AgentTsResult =
 export type SubagentModel =
   { kind: "literal"; id: string } | { kind: "expression" } | { kind: "none" };
 
+/**
+ * Where the subagent's file stood before the edit: spreading its entry last, not spreading it,
+ * or spreading it before a `model` or `modelContextWindowTokens` property that overrides it.
+ */
+export type SubagentSpread = "last" | "missing" | "shadowed";
+
 export type SubagentTsResult =
-  | { ok: true; text: string; model: SubagentModel }
+  | { ok: true; text: string; model: SubagentModel; spread: SubagentSpread }
   | { ok: false; code: "agent-ts-unrecognised"; hint: string };
+
+/** The keys of a subagent's entry: written after its spread, they win over the gateway's. */
+const ENTRY_KEYS = new Set(["model", "modelContextWindowTokens"]);
 
 /** The agent-directory path of subagent `name`'s `agent.ts`. */
 export const subagentFile = (name: string) =>
@@ -183,7 +192,9 @@ export function patchAgentTs(source: string): AgentTsResult {
  * Edit subagent `name`'s `agent/subagents/<name>/agent.ts`: import `donnSubagent` and spread its
  * entry last, so a gateway's model wins; the subagent's own `model` stays (it is the model when
  * there is no gateway) and is returned. The same refusals as patchAgentTs, with the subagent's
- * lines in the hint. A file that already imports and spreads its entry comes back unchanged.
+ * lines in the hint. A file that already imports and spreads its entry comes back unchanged; so
+ * does one whose spread a later `model` or `modelContextWindowTokens` overrides (`shadowed`),
+ * which the caller reports or refuses: adding a second spread would hide the user's choice.
  */
 export function patchSubagentTs(
   source: string,
@@ -205,7 +216,9 @@ function modelOf(models: Node[]): SubagentModel {
 function patch(
   source: string,
   want: Patch,
-): Refusal | { ok: true; text: string; model: SubagentModel } {
+):
+  | Refusal
+  | { ok: true; text: string; model: SubagentModel; spread: SubagentSpread } {
   const refuse = (why: string) => refusal(want, why);
   let program: Node;
   try {
@@ -294,20 +307,27 @@ function patch(
     );
 
   const props = (object["properties"] as Node[]) ?? [];
-  const hasSpread = props.some((p) => {
+  const at = props.findLastIndex((p) => {
     const argument = p.type === "SpreadElement" && child(p, "argument");
     return argument ? want.isSpread(argument) : false;
   });
-  const own = props.filter(
-    (p) =>
-      (p.type === "ObjectProperty" || p.type === "ObjectMethod") &&
-      keyName(p) === "model",
-  );
+  const hasSpread = at !== -1;
+  const isProperty = (p: Node) =>
+    p.type === "ObjectProperty" || p.type === "ObjectMethod";
+  const own = props.filter((p) => isProperty(p) && keyName(p) === "model");
   const model = modelOf(own);
-  // A subagent keeps its model; only the root's literal model goes.
+  // A subagent keeps its model, so its spread must come after it; only the root's model goes.
+  const shadowed =
+    !want.dropModel &&
+    hasSpread &&
+    props
+      .slice(at + 1)
+      .some((p) => isProperty(p) && ENTRY_KEYS.has(keyName(p) ?? ""));
+  if (shadowed) return { ok: true, text: source, model, spread: "shadowed" };
+  const spread: SubagentSpread = hasSpread ? "last" : "missing";
   const models = want.dropModel ? own : [];
   if (hasImport && hasSpread && models.length === 0)
-    return { ok: true, text: source, model };
+    return { ok: true, text: source, model, spread };
 
   const nl = source.includes("\r\n") ? "\r\n" : "\n";
   const edits: Edit[] = [];
@@ -417,5 +437,5 @@ function patch(
     text = text.slice(0, edit.start) + edit.text + text.slice(edit.end);
     floor = edit.start;
   }
-  return { ok: true, text, model };
+  return { ok: true, text, model, spread };
 }

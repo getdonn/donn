@@ -61,6 +61,12 @@ export interface AgentCompileInput {
      * model through the gateway. Absent means none.
      */
     texts?: Record<string, string>;
+    /**
+     * Template-owned files donn already edited once (the manifest's `edits`). A listed file that
+     * no longer carries donn's edit is the user's choice: the compile reports it rather than
+     * refusing it, and the CLI does not edit it again. Absent means none.
+     */
+    edited?: string[];
   };
 }
 
