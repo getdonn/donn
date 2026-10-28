@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/ui",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "The donn web app the daemon serves (donn ui)",
   "license": "Apache-2.0",

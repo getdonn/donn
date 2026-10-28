@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/cli",
-  "version": "0.14.1",
+  "version": "0.15.0",
   "description": "The donn command line",
   "license": "Apache-2.0",
   "repository": {
