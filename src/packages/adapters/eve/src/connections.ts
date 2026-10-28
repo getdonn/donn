@@ -140,13 +140,14 @@ export function unknownTargetEntries(
   const targets = ir.targets.eve ?? {};
   const entries: ReportEntry[] = [];
   for (const key of Object.keys(targets).sort()) {
-    if (key === "contextWindow") continue;
+    // `subagents` is read, and reported, with the subagents (subagents.ts).
+    if (key === "contextWindow" || key === "subagents") continue;
     if (key !== "connections") {
       entries.push({
         path: `targets.eve.${key}`,
         outcome: "dropped",
         reason:
-          "unknown targets.eve key; the eve adapter reads contextWindow and connections",
+          "unknown targets.eve key; the eve adapter reads contextWindow, connections and subagents",
       });
       continue;
     }

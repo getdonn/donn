@@ -253,6 +253,18 @@ function providerType(
 }
 
 /**
+ * The agent's plain values, for `eve build`: it evaluates the agent's modules, which may read
+ * them at load. Never a secret nor a run-time entry (the route token).
+ */
+export function plainEnv(entries: EnvEntry[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const e of entries)
+    if (e.source === "plain" && e.value !== undefined && e.name !== ROUTE_TOKEN)
+      env[e.name] = e.value;
+  return env;
+}
+
+/**
  * A digest of what an agent's env is made from: each entry's name, source and ref, and a plain
  * entry's value. Never a secret's value nor a run-time one (the route token), resolved or not,
  * so it changes only when the persona's inputs do.

@@ -54,6 +54,10 @@
 >   template declares a setup step (decided by the maintainer).
 > - Template digests (open question 1) and the GitHub Actions answer (§4: yes, with glue) are in
 >   the findings.
+> *Amended 2026-10-27 (kody smoke):* `eve build` gets the agent's plain env values (§5); a
+> template that reads one at module load (kody's `RESEND_FROM_ADDRESS`) failed to build without
+> them. With a gateway, `create` and `sync` also edit each subagent's `agent.ts` (§2 step 6, §3;
+> `24` §2).
 
 ## Intent
 
@@ -158,6 +162,10 @@ this machine), `self-host` (a Node server and a container image the user operate
    recording both in the manifest as edits to a template-owned file. The first install is not
    frozen: the re-pin makes the template's lockfile stale.
 6. **Edit `agent.ts`** once (`24` §2) and write donn's files and the manifest.
+   *Amended 2026-10-27 (kody smoke):* with `models.gateway`, also each subagent's
+   `agent/subagents/<name>/agent.ts` (`24` §2, "Subagents"), each recorded in the manifest's
+   `edits` as `agent/agent.ts` is. The compile reads those files (`project.texts`), so a subagent
+   the edit refuses stops step 2, before anything is written.
 7. **Ignore what must not be committed:** `.env*`, `.output/`, `.vercel/`, `node_modules/` and
    (*2026-10-25*) `.eve/`, eve's build and local-world state, in
    the agent's `.gitignore` (added to the template's, never replacing it).
@@ -174,6 +182,14 @@ A failure after step 4 leaves the directory for inspection and says so; `donn ag
 ## 3. `sync` and the daemon
 
 - `donn agent sync <name>` recompiles and rewrites donn's files (`24` §4).
+  *Amended 2026-10-27 (kody smoke):* with a gateway it also edits a subagent's `agent.ts` that
+  is not in the manifest's `edits` and does not spread its `donnSubagent` entry yet (a subagent
+  added after `create`, or a gateway added later), the one template-owned file a sync touches,
+  and only to add the import and the spread; it is added to `edits` and listed as written, so a
+  running agent restarts. Until then `list` marks the agent stale and `build`, `deploy` and `run`
+  treat it so. A file already in `edits` is never edited again: the report and `donn doctor` say
+  when it no longer routes (`24` §2). `eve build` also never inherits `DONN_SECRET_<n>` or
+  `DONN_ROUTE_TOKEN` from the caller's environment (a shell from `donn agent exec`).
 - **The daemon keeps created agents current.** It watches the persona sources of every project
   with a created agent, as it watches them for live sessions (spec 14), and syncs on a change.
   A sync that stops (`owned-file-edited`) becomes an `agent.sync-failed` event and a `donn
@@ -293,6 +309,13 @@ Workflow world's database variable for `self-host`).
 - `donn agent env <name> --resolve` prints values, for the user to pipe where they choose. Without
   `--resolve` it prints names and refs only.
 - A ref that cannot be resolved stops `run`, `exec` and `deploy`, naming the variable and the ref.
+- *Amended 2026-10-27 (kody smoke):* `eve build` evaluates the agent's modules, and a template
+  may read an env value at load (kody's `agent/instructions.ts` reads `RESEND_FROM_ADDRESS`).
+  `run` (in the foreground and in the daemon) and `build` therefore run `eve build` with the
+  agent's **plain** values, the entries `donn agent env` lists with `source: "plain"`; never a
+  secret's value, never `DONN_ROUTE_TOKEN` or another run-time entry. A secret a module reads at
+  load still fails the build: make it plain, or read it per request. `create` runs no `eve
+  build` (only `eve init` for `eve:blank` and the install), so nothing changes there.
 
 ## 6. Driving the eve CLI
 

@@ -59,7 +59,23 @@ export async function runTool(
   return { exitCode, tail };
 }
 
-/** Runs `<pm> exec eve <args>` in `dir`; a non-zero exit is returned, not thrown. */
+/**
+ * `env` without donn's run-time names (`DONN_SECRET_<n>`, `DONN_ROUTE_TOKEN`): a shell from
+ * `donn agent exec` carries them, and `eve build` must never see a secret.
+ */
+export function withoutRunEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([name]) =>
+        !/^DONN_SECRET_\d+$/.test(name) && name !== "DONN_ROUTE_TOKEN",
+    ),
+  );
+}
+
+/**
+ * Runs `<pm> exec eve <args>` in `dir`; a non-zero exit is returned, not thrown. `eve build`
+ * inherits the environment without donn's run-time names (withoutRunEnv).
+ */
 export async function runEve(
   io: CliIo,
   dir: string,
@@ -67,8 +83,9 @@ export async function runEve(
   options: { env: Record<string, string>; onProgress?: (line: string) => void },
 ): Promise<{ exitCode: number; tail: string[] }> {
   const pm = await packageManager(dir);
+  const base = args[0] === "build" ? withoutRunEnv(io.env) : io.env;
   return runTool(io, dir, pm, ["exec", "eve", ...args], {
-    env: eveEnv(io.env, options.env),
+    env: eveEnv(base, options.env),
     ...(options.onProgress && { onProgress: options.onProgress }),
   });
 }

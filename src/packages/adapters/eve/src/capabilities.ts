@@ -42,7 +42,7 @@ export function capabilities(): CapabilityMatrix {
       "targets.eve": {
         ...native,
         caveat:
-          "contextWindow sets modelContextWindowTokens; unknown keys are reported",
+          "contextWindow sets modelContextWindowTokens; subagents.<name>.model picks a subagent's gateway model; unknown keys are reported",
       },
       ...Object.fromEntries(
         HOOK_EVENTS.map((event) => [

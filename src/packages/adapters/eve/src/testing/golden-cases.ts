@@ -20,7 +20,21 @@ export interface GoldenCase {
   hasSandbox?: boolean;
   hasRouteAuth?: boolean;
   world?: "local" | "postgres";
+  /** Subagent `agent.ts` texts by name, as `project.texts`. */
+  subagents?: Record<string, string>;
 }
+
+const researcher = (model = '\n  model: "openai/gpt-5.6-terra",') =>
+  `import { defineAgent } from "eve";\n\nexport default defineAgent({\n  description: "Research a topic.",${model}\n  tool: false,\n});\n`;
+const patchedSummarizer = `import { defineAgent } from "eve";
+import { donnSubagent } from "../../lib/donn/config";
+
+export default defineAgent({
+  description: "Summarize.",
+  model: "anthropic/claude-haiku-5",
+  ...donnSubagent.summarizer,
+});
+`;
 
 const claude = { default: "anthropic/claude-sonnet-5" };
 
@@ -180,6 +194,54 @@ export const goldenCases: GoldenCase[] = [
     hasRouteAuth: true,
   },
   { name: "vercel-no-channel", ir: { models: claude }, target: "vercel" },
+  {
+    name: "subagents-gateway",
+    ir: {
+      models: {
+        gateway: {
+          type: "openai-compatible",
+          baseURL: "http://localhost:4000/v1",
+          apiKey: "secret://keychain/litellm",
+        },
+        default: "claude-sonnet-5-5",
+      },
+      targets: { eve: { contextWindow: 200000 } },
+    },
+    subagents: { researcher: researcher(), "code-reviewer": researcher("") },
+  },
+  {
+    name: "subagents-override",
+    ir: {
+      models: {
+        gateway: {
+          type: "anthropic",
+          baseURL: "https://anthropic.corp",
+          apiKey: "secret://vault/anthropic/key",
+        },
+        default: "anthropic/claude-sonnet-5",
+      },
+      targets: {
+        eve: {
+          contextWindow: 200000,
+          subagents: {
+            researcher: { model: "anthropic/claude-haiku-5" },
+            ghost: { model: "anthropic/claude-haiku-5" },
+          },
+        },
+      },
+    },
+    subagents: { researcher: researcher(), summarizer: patchedSummarizer },
+  },
+  {
+    name: "subagents-no-gateway",
+    ir: {
+      models: claude,
+      targets: {
+        eve: { subagents: { researcher: { model: "anthropic/x" } } },
+      },
+    },
+    subagents: { researcher: researcher(), summarizer: patchedSummarizer },
+  },
 ];
 
 export function goldenInput(c: GoldenCase): AgentCompileInput {
@@ -206,6 +268,14 @@ export function goldenInput(c: GoldenCase): AgentCompileInput {
       hasSandbox: c.hasSandbox ?? false,
       hasRouteAuth: c.hasRouteAuth ?? false,
       existing: [],
+      ...(c.subagents && {
+        texts: Object.fromEntries(
+          Object.entries(c.subagents).map(([name, text]) => [
+            `agent/subagents/${name}/agent.ts`,
+            text,
+          ]),
+        ),
+      }),
     },
   };
 }

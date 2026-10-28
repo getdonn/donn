@@ -25,7 +25,10 @@ export interface TemplateFacts {
   connect: ConnectProvider[];
   /** The Vercel sandbox uses a domain allow-list or credential transform (Docker has neither). */
   sandboxNetworkPolicy: boolean;
-  /** Subagents (`agent/subagents/*`) name their own AI Gateway models; only the top agent.ts is patched. */
+  /**
+   * Subagents (`agent/subagents/*`) name their own AI Gateway models: routed through
+   * `models.gateway` when there is one (see subagents.ts), otherwise they call the AI Gateway.
+   */
   subagentModels: boolean;
   /** `agent.ts` carries `modelOptions.providerOptions.anthropic`, which only Anthropic models read. */
   anthropicModelOptions: boolean;
@@ -152,7 +155,8 @@ const ROWS: Row[] = [
       ...none(),
       // ai-gateway: agent/agent.ts and the four subagents/*/agent.ts name gateway strings
       //   ("anthropic/claude-opus-5", "spacexai/grok-4.7", "moonshotai/kimi-k3",
-      //   "openai/gpt-5.6-sol"); only the top-level model is replaced by lib/donn/config.ts.
+      //   "openai/gpt-5.6-sol"); lib/donn/config.ts replaces the top-level model, and with
+      //   models.gateway each subagent's through its donnSubagent entry.
       services: ["ai-gateway"],
       subagentModels: true,
     },

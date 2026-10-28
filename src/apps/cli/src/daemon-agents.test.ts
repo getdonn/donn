@@ -129,6 +129,10 @@ describe("the daemon's agents", () => {
     expect(child.env.VITEST).toBeUndefined();
     expect(child.env.EVE_DEV).toBeUndefined();
     expect(child.env.DONN_ROUTE_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    const build = spawn.calls.find((c) => c.args.includes("build"))!;
+    expect(build.env.GREETING).toBe("hello");
+    for (const name of ["DONN_SECRET_1", "DONN_ROUTE_TOKEN"])
+      expect(build.env[name]).toBeUndefined();
 
     const listed = await call(daemon, "GET", "/agents");
     expect(listed.body).toEqual({

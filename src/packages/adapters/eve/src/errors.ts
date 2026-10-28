@@ -2,6 +2,7 @@ import { AdapterInputError } from "@getdonn/adapter-sdk";
 
 /** The compile error codes of docs/planning/24-adapter-eve.md that this adapter raises. */
 export type EveErrorCode =
+  | "agent-ts-unrecognised"
   | "context-window-required"
   | "env-collision"
   | "framework-version"

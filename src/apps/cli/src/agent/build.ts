@@ -5,7 +5,7 @@ import { printReport } from "../build.js";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { fsStep, withFileLock, writeFileAtomic } from "../fs.js";
-import { agentEnvironment, type EnvEntry } from "./env.js";
+import { agentEnvironment, plainEnv, type EnvEntry } from "./env.js";
 import { runEve } from "./eve.js";
 import {
   checkDeploy,
@@ -175,9 +175,9 @@ export async function build(
   await assertSynced(ctx, env, name);
   await assertDocker(io);
 
-  // The build evaluates the agent without its run-time env, so it gets no secret.
+  // The build evaluates the agent without its run-time env: its plain values, never a secret.
   const built = await runEve(io, dir, ["build"], {
-    env: {},
+    env: plainEnv(entries),
     onProgress: (line) =>
       (options.json ? io.stderr : io.stdout).write(`${line}\n`),
   });
