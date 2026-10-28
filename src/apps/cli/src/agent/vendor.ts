@@ -103,8 +103,13 @@ export async function vendorDigest(dir: string): Promise<string> {
   return digestOf(dir, files);
 }
 
+/** Runs git in `dir`; an exit code of 127 (no git) is the caller's to read. */
+const gitProbe = (io: CliIo, dir: string, args: string[]) =>
+  io.probe.run("git", ["-C", dir, ...args]);
+
+/** Runs git in `dir`, refusing when it is not installed. */
 const git = async (io: CliIo, dir: string, args: string[]) => {
-  const result = await io.probe.run("git", ["-C", dir, ...args]);
+  const result = await gitProbe(io, dir, args);
   if (result.exitCode === 127) {
     throw new CliError("git-not-installed", "git is not installed", {
       fix: "install git",
@@ -115,7 +120,8 @@ const git = async (io: CliIo, dir: string, args: string[]) => {
 
 /** The files to copy from `dir`: its own ignore rules when it is a git checkout. */
 async function sourceFiles(io: CliIo, dir: string): Promise<string[]> {
-  const top = await git(io, dir, ["rev-parse", "--show-toplevel"]);
+  // Without git installed a folder is just a folder, not a checkout.
+  const top = await gitProbe(io, dir, ["rev-parse", "--show-toplevel"]);
   if (top.exitCode === 0) {
     const listed = await git(io, dir, [
       "ls-files",
@@ -260,10 +266,15 @@ export async function stageVendor(
         await cp(join(from, path), to, { verbatimSymlinks: true });
       });
     }
-    const head = await git(io, from, ["rev-parse", "HEAD"]);
+    const head = await gitProbe(io, from, ["rev-parse", "HEAD"]);
     if (head.exitCode === 0) commit = head.stdout.trim();
     if (source.kind === "dir" && commit !== undefined) {
-      const status = await git(io, from, ["status", "--porcelain", "--", "."]);
+      const status = await gitProbe(io, from, [
+        "status",
+        "--porcelain",
+        "--",
+        ".",
+      ]);
       dirty = status.exitCode === 0 && status.stdout.trim() !== "";
     }
     await checkEve(dir, given);

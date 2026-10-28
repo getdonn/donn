@@ -134,6 +134,22 @@ describe("parseVendorSource", () => {
 });
 
 describe("stageVendor from a folder", () => {
+  it("stages a plain folder without git", async () => {
+    putTemplate("tpl");
+    const noGit = {
+      ...io(),
+      probe: {
+        ...nodeProbe(),
+        run: async () => ({ exitCode: 127, stdout: "", stderr: "" }),
+      },
+    };
+    const result = await stage(dirSource("tpl"), {}, noGit);
+    expect(result.files).toEqual(["agent/a.ts", "package.json"]);
+    expect(result).not.toHaveProperty("commit");
+    expect(result).not.toHaveProperty("dirty");
+    rmSync(result.dir, { recursive: true, force: true });
+  });
+
   it("expands ~/", async () => {
     putTemplate("home/tpl");
     const withIo = io();
