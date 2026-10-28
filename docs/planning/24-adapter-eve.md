@@ -257,12 +257,29 @@ researcher called `openai/gpt-5.6-terra` past the gateway. With `models.gateway`
   model is not a string literal; "which sets no model, gets …" when there is none), at the path
   that chose the model.
 - A subagent `agent.ts` the edit does not recognise (a `defineDynamic` export, two calls, …) is
-  the compile error `agent-ts-unrecognised`, naming the file and the two lines to add by hand.
+  the compile error `agent-ts-unrecognised`, naming the file and the two lines to add by hand. So
+  is one whose spread a later `model` or `modelContextWindowTokens` property overrides: the spread
+  counts only when it is last among those keys.
+- **A file donn edited is never edited again** (`AgentCompileInput.project.edited`, the manifest's
+  `edits`). One the user changed back (spread removed, overridden, or no longer recognisable) is
+  their choice: the compile reports it `dropped` ("… so its model bypasses the gateway; put
+  `...donnSubagent.<name>` last in … to route it"), never refuses it, and `donn doctor` warns on
+  the agent's `subagents` line, as it does for `agent.ts`.
+- Any other agent module under a `subagents/` folder in `project.existing` (a nested subagent, one
+  in an `agent/extensions/<name>/` directory, an `agent.js`) gets an advisory, "… is not routed
+  through the gateway; donn edits top-level agent/subagents/<name>/agent.ts only". A subagent from
+  an installed extension package is not in `existing` and is not reported.
 - Without a gateway nothing changes: no edit, no entry, no `donnSubagent`; an override is
   reported dropped. A subagent an earlier gateway's edit left spreading its entry gets an empty
   one (`{}`), so it builds on its own model.
 - Only `agent/subagents/<name>/agent.ts` is read: nested subagents and `defineWorkspaceAgent`
   peers (remote, no model) are not edited.
+- **Known gaps** (review, 2026-10-27): with a gateway every subagent shares the agent's model unless
+  `targets.eve.subagents.<name>.model` says otherwise (llm-council's four members collapse onto
+  one, and its portability text does not point at the override yet); a re-routed subagent's
+  provider-specific `modelOptions` get no advisory (the root's do); a symlinked subagent folder is
+  not read or reported; a run started by the daemon does not check staleness, so a subagent still
+  waiting for its edit runs past the gateway until a sync.
 
 **`lib/donn/config.ts`** exports `{ model, modelContextWindowTokens?, experimental? }`:
 
@@ -401,8 +418,10 @@ template uses its gallery slug, and `agentTs` can be `created`.
 - `agentTs` is `patched` (the template's file, edited once) or `created` (§2).
 - *Amended 2026-10-27:* a subagent's `agent.ts` edited for the gateway (§2 "Subagents") is
   listed in `edits`, as `agent/agent.ts` is, never in `files`. `create` edits each subagent once;
-  `sync` edits one that does not spread its entry yet (a subagent added later, a gateway added
-  later), the one template-owned edit a regeneration makes (`25` §3).
+  `sync` edits one not in `edits` that does not spread its entry yet (a subagent added later, a
+  gateway added later), the one template-owned edit a regeneration makes (`25` §3). A sync records
+  donn's files in the manifest before it edits a subagent, so a failed edit never leaves them
+  looking hand-edited.
 - The manifest holds no secrets and no resolved values beyond what is already in the files.
 
 ## 5. The portability report

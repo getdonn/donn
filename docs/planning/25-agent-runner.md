@@ -183,10 +183,13 @@ A failure after step 4 leaves the directory for inspection and says so; `donn ag
 
 - `donn agent sync <name>` recompiles and rewrites donn's files (`24` §4).
   *Amended 2026-10-27 (kody smoke):* with a gateway it also edits a subagent's `agent.ts` that
-  does not spread its `donnSubagent` entry yet (a subagent added after `create`, or a gateway
-  added later), the one template-owned file a sync touches, and only to add the import and the
-  spread; it is added to `edits` and listed as written, so a running agent restarts. Until then
-  `list` marks the agent stale and `build`, `deploy` and `run` treat it so.
+  is not in the manifest's `edits` and does not spread its `donnSubagent` entry yet (a subagent
+  added after `create`, or a gateway added later), the one template-owned file a sync touches,
+  and only to add the import and the spread; it is added to `edits` and listed as written, so a
+  running agent restarts. Until then `list` marks the agent stale and `build`, `deploy` and `run`
+  treat it so. A file already in `edits` is never edited again: the report and `donn doctor` say
+  when it no longer routes (`24` §2). `eve build` also never inherits `DONN_SECRET_<n>` or
+  `DONN_ROUTE_TOKEN` from the caller's environment (a shell from `donn agent exec`).
 - **The daemon keeps created agents current.** It watches the persona sources of every project
   with a created agent, as it watches them for live sessions (spec 14), and syncs on a change.
   A sync that stops (`owned-file-edited`) becomes an `agent.sync-failed` event and a `donn
