@@ -593,6 +593,23 @@ describe("donn agent vendor", () => {
     expect(r.code, r.stdout + r.stderr).toBe(0);
   });
 
+  it.each([["lib/\n"], [".donn/templates\n"], ["lib/\n*.log\n.donn/\n"]])(
+    "the project's ignore rules (%j) do not make a refresh a local edit",
+    async (ignore) => {
+      git(s.repo, "init", "-q");
+      writeFileSync(join(s.repo, ".gitignore"), ignore);
+      writeTpl(tpl(), { "agent/lib/x.ts": "export {};\n", "run.log": "l" });
+      expect((await vendor([tpl()])).code).toBe(0);
+      const r = await vendor([tpl()]);
+      expect(r.code, r.stdout + r.stderr).toBe(0);
+      expect(JSON.parse(r.stdout)).toMatchObject({
+        added: [],
+        changed: [],
+        removed: [],
+      });
+    },
+  );
+
   it("does not take Object.prototype names for recorded templates", async () => {
     writeTpl(tpl());
     const r = await vendor([tpl(), "--name", "constructor"], false);

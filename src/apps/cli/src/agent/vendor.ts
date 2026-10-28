@@ -134,13 +134,12 @@ const skipped = (path: string) =>
   notTemplate(path) || basename(path) === ".DS_Store";
 
 /**
- * The files `stageVendor` keeps, digested: for comparing a vendored folder with its record. With
- * `io`, a folder inside a git checkout is listed as staging lists a source (its ignore rules).
+ * The files `stageVendor` keeps, digested: for comparing a vendored folder with its record. The
+ * folder is walked, not listed by git: it sits inside the project's checkout, whose ignore rules
+ * must not decide what counts as the copy.
  */
-export async function vendorDigest(dir: string, io?: CliIo): Promise<string> {
-  const files =
-    io === undefined ? await walkFiles(dir) : await sourceFiles(io, dir);
-  return digestOf(dir, files);
+export async function vendorDigest(dir: string): Promise<string> {
+  return digestOf(dir, await walkFiles(dir));
 }
 
 const walkFiles = async (dir: string) =>
@@ -506,7 +505,7 @@ export async function commitVendor(
     present &&
     record !== undefined &&
     !options.force &&
-    (await vendorDigest(target, options.io)) !== record.digest
+    (await vendorDigest(target)) !== record.digest
   ) {
     throw new CliError(
       "vendor-local-edits",
