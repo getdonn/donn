@@ -7,9 +7,11 @@ import type { ResolvedPersona } from "@getdonn/spec";
 import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
 import { listFiles, notTemplate, readManifest } from "./files.js";
+import { subagentTexts } from "./subagents.js";
 
 // What an agent compile needs besides the IR: the text of every file the IR references, and the
-// facts of the agent directory (the template's own paths, its sandbox and route auth). Shared by
+// facts of the agent directory (the template's own paths, its sandbox and route auth, its
+// subagents' agent.ts). Shared by
 // `create` (against the staged template) and `sync` (against the agent directory).
 // See docs/planning/24-adapter-eve.md, section 1.
 
@@ -32,16 +34,27 @@ export async function compileInputs(
   dir: string,
   frameworkVersion: string,
 ): Promise<AgentCompileInput> {
-  return inputsFor(ctx, ir, agent, frameworkVersion, await existingPaths(dir));
+  return inputsFor(
+    ctx,
+    ir,
+    agent,
+    frameworkVersion,
+    await existingPaths(dir),
+    await subagentTexts(dir),
+  );
 }
 
-/** The compile input for an agent directory holding `existing` (none, for a dry run). */
+/**
+ * The compile input for an agent directory holding `existing` and the template-owned `texts`
+ * the compile reads (none, for a dry run).
+ */
 export async function inputsFor(
   ctx: Context,
   ir: ResolvedPersona,
   agent: string,
   frameworkVersion: string,
   existing: string[],
+  projectTexts: Record<string, string> = {},
 ): Promise<AgentCompileInput> {
   const texts: Record<string, string> = {};
   for (const fragment of ir.instructions) {
@@ -68,6 +81,7 @@ export async function inputsFor(
       hasSandbox: existing.some((path) => SANDBOX.test(path)),
       hasRouteAuth: existing.some((path) => ROUTE_AUTH.test(path)),
       existing,
+      texts: projectTexts,
     },
   };
 }
