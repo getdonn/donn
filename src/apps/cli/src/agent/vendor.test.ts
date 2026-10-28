@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -11,10 +12,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { nodeProbe } from "@getdonn/executor";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { quietIo } from "../test/seed.js";
+import { quietIo, seed, zz, type Seeded } from "../test/seed.js";
+import { AgentVendorOutput } from "@getdonn/cli-schemas";
 import {
   defaultTemplateName,
   parseVendorSource,
+  readVendored,
   redactUrl,
   stageVendor,
   vendorDigest,
@@ -331,5 +334,133 @@ describe("stageVendor from git", () => {
       stage({ kind: "git", url, given: url }, {}, missing),
     ).rejects.toMatchObject({ code: "git-not-installed" });
     expect(existsSync(stagingBase) ? readdirSync(stagingBase) : []).toEqual([]);
+  });
+});
+
+describe("donn agent vendor", () => {
+  let s: Seeded;
+  beforeEach(() => {
+    s = seed();
+  });
+  afterEach(() => s.cleanup());
+
+  const tpl = (name = "tpl") => join(s.root, name);
+  const writeTpl = (dir: string, files: Record<string, string> = {}) => {
+    const all = {
+      "package.json": JSON.stringify({ dependencies: { eve: "1" } }),
+      "agent/a.ts": "export {};\n",
+      ...files,
+    };
+    for (const [path, text] of Object.entries(all)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+  };
+  const vendor = (args: string[], json = true) =>
+    zz(["agent", "vendor", ...args, ...(json ? ["--json"] : [])], {
+      cwd: s.repo,
+      home: s.home,
+      probe: nodeProbe(),
+      now: () => Date.UTC(2026, 9, 28),
+    });
+  const templates = () => join(s.repo, ".donn/templates");
+  const sources = () =>
+    JSON.parse(readFileSync(join(templates(), "sources.json"), "utf8"));
+
+  it("vendors and records a template", async () => {
+    writeTpl(tpl());
+    const r = await vendor([tpl()]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    const out = AgentVendorOutput.parse(JSON.parse(r.stdout));
+    expect(out.template).toMatchObject({
+      name: "tpl",
+      path: ".donn/templates/tpl",
+    });
+    expect(out.added).toEqual(["agent/a.ts", "package.json"]);
+    expect(existsSync(join(templates(), "tpl/package.json"))).toBe(true);
+    const file = sources();
+    expect(file.version).toBe(1);
+    expect(file.templates.tpl).toMatchObject({
+      digest: out.template.digest,
+      vendoredAt: "2026-10-28T00:00:00.000Z",
+    });
+    expect(readdirSync(templates()).sort()).toEqual(["sources.json", "tpl"]);
+    const text = await vendor([tpl("tpl")], false);
+    expect(text.stdout).toContain(
+      "refreshed tpl: 0 added, 0 changed, 0 removed",
+    );
+    expect(text.stdout).toContain("only agents created from now on");
+  });
+
+  it("refreshes a recorded template and reports the changes", async () => {
+    writeTpl(tpl(), { "old.txt": "o" });
+    await vendor([tpl()]);
+    rmSync(join(tpl(), "old.txt"));
+    writeFileSync(join(tpl(), "agent/a.ts"), "export const x = 1;\n");
+    writeFileSync(join(tpl(), "new.txt"), "n");
+    const r = await vendor([tpl()]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out).toMatchObject({
+      added: ["new.txt"],
+      changed: ["agent/a.ts"],
+      removed: ["old.txt"],
+    });
+    expect(existsSync(join(templates(), "tpl/old.txt"))).toBe(false);
+    expect(readdirSync(templates()).sort()).toEqual(["sources.json", "tpl"]);
+  });
+
+  it("refuses to refresh an edited copy, and --force refreshes it", async () => {
+    writeTpl(tpl());
+    await vendor([tpl()]);
+    const edited = join(templates(), "tpl/agent/a.ts");
+    writeFileSync(edited, "// mine\n");
+    const r = await vendor([tpl()]);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error).toMatchObject({
+      code: "vendor-local-edits",
+      fix: "--force",
+    });
+    expect(readFileSync(edited, "utf8")).toBe("// mine\n");
+    const forced = await vendor([tpl(), "--force"]);
+    expect(forced.code, forced.stdout + forced.stderr).toBe(0);
+    expect(JSON.parse(forced.stdout).changed).toEqual(["agent/a.ts"]);
+    expect(readFileSync(edited, "utf8")).toBe("export {};\n");
+  });
+
+  it("never replaces a folder it did not vendor", async () => {
+    writeTpl(tpl("x"));
+    mkdirSync(join(templates(), "x"), { recursive: true });
+    writeFileSync(join(templates(), "x/mine.txt"), "m");
+    const r = await vendor([tpl("x")]);
+    expect(JSON.parse(r.stdout).error.code).toBe("vendor-name-taken");
+    expect(readdirSync(join(templates(), "x"))).toEqual(["mine.txt"]);
+  });
+
+  it("refuses a source inside the project's templates", async () => {
+    writeTpl(join(templates(), "mine"));
+    const r = await vendor([join(templates(), "mine"), "--name", "copy"]);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).error.code).toBe("vendor-source-inside");
+  });
+
+  it("leaves .donn/templates as it was when staging fails", async () => {
+    mkdirSync(tpl(), { recursive: true });
+    writeFileSync(join(tpl(), "package.json"), "{}");
+    const r = await vendor([tpl()]);
+    expect(JSON.parse(r.stdout).error.code).toBe("vendor-not-eve-template");
+    expect(existsSync(templates())).toBe(false);
+  });
+
+  it("names an unreadable record file", async () => {
+    mkdirSync(templates(), { recursive: true });
+    writeFileSync(join(templates(), "sources.json"), "{nope");
+    await expect(readVendored(join(s.repo, ".donn"))).rejects.toMatchObject({
+      code: "invalid-vendor-record",
+    });
+    writeFileSync(join(templates(), "sources.json"), '{"version":2}');
+    await expect(readVendored(join(s.repo, ".donn"))).rejects.toThrow(
+      /sources\.json/,
+    );
   });
 });

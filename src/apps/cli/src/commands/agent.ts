@@ -1,14 +1,29 @@
+import { rm } from "node:fs/promises";
 import { add, type AddOptions } from "../agent/add.js";
 import { build, type BuildOptions } from "../agent/build.js";
 import { deploy, type DeployOptions } from "../agent/deploy.js";
 import { create, type CreateOptions } from "../agent/create.js";
 import { agentEnv, exec, formatDotenv } from "../agent/env.js";
-import { projectContext } from "../agent/load.js";
+import {
+  locateAgent,
+  noProjectPersona,
+  projectContext,
+  resolveProject,
+} from "../agent/load.js";
 import { agentStates, formatRows } from "../agent/list.js";
 import { logs, run, stop, type RunOptions } from "../agent/run.js";
 import { sync, type SyncOptions } from "../agent/sync.js";
 import { templateRows } from "../agent/template.js";
+import {
+  assertNotInside,
+  commitVendor,
+  defaultTemplateName,
+  parseVendorSource,
+  readVendored,
+  stageVendor,
+} from "../agent/vendor.js";
 import type { CliIo } from "../cli.js";
+import { userHomeDir } from "../userhome.js";
 
 // donn agent: build, run and deploy agents on a persona. See docs/planning/25-agent-runner.md.
 
@@ -158,5 +173,62 @@ export async function agentTemplatesCommand(
       `eve:${t.slug}  ${t.title}${tags.length > 0 ? `  (${tags.join("; ")})` : ""}\n`,
     );
   }
+  return 0;
+}
+
+/** `donn agent vendor`: copy a template into `.donn/templates/<name>` and record its source. */
+export async function agentVendorCommand(
+  io: CliIo,
+  given: string,
+  options: { name?: string; force?: boolean; project?: string; json?: boolean },
+): Promise<number> {
+  const ctx = await projectContext(io, options.project);
+  const project = await resolveProject(ctx);
+  if (project === undefined) throw noProjectPersona();
+  const { root, result } = project;
+  const donnDir = ctx.projectDir!;
+  const source = parseVendorSource(
+    given,
+    io.cwd,
+    userHomeDir(io.env, io.passwdHome),
+  );
+  const agentPaths: string[] = [];
+  for (const [name, agent] of Object.entries(result.ir.agents)) {
+    agentPaths.push((await locateAgent(ctx, root, name, agent)).dir);
+  }
+  assertNotInside(source, root, agentPaths);
+  const name = options.name ?? defaultTemplateName(source);
+  const refreshing = name in (await readVendored(donnDir));
+  const staged = await stageVendor(io, source, { name });
+  let changes;
+  try {
+    changes = await commitVendor(donnDir, staged, {
+      ...(options.force !== undefined && { force: options.force }),
+      now: io.now ?? Date.now,
+    });
+  } finally {
+    await rm(staged.dir, { recursive: true, force: true });
+  }
+  const path = `.donn/templates/${staged.name}`;
+  if (options.json) {
+    const template = {
+      name: staged.name,
+      path,
+      source: staged.source,
+      ...(staged.ref !== undefined && { ref: staged.ref }),
+      ...(staged.commit !== undefined && { commit: staged.commit }),
+      digest: staged.digest,
+    };
+    io.stdout.write(`${JSON.stringify({ template, ...changes }, null, 2)}\n`);
+    return 0;
+  }
+  io.stdout.write(
+    refreshing
+      ? `refreshed ${staged.name}: ${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed\n`
+      : `vendored ${staged.name} into ${path} (${staged.files.length} files)\n`,
+  );
+  io.stdout.write(
+    "agents created from it before keep their files; only agents created from now on get this copy\n",
+  );
   return 0;
 }

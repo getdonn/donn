@@ -234,6 +234,25 @@ export const AgentTemplatesOutput = z.strictObject({
 export type AgentTemplatesOutput = z.infer<typeof AgentTemplatesOutput>;
 
 /**
+ * `donn agent vendor --json`: the template copied into `.donn/templates/<name>` and what a
+ * refresh changed in it (every file is `added` the first time).
+ */
+export const AgentVendorOutput = z.strictObject({
+  template: z.strictObject({
+    name: z.string(),
+    path: z.string(),
+    source: z.string(),
+    ref: z.string().optional(),
+    commit: z.string().optional(),
+    digest: z.string(),
+  }),
+  added: z.array(z.string()),
+  changed: z.array(z.string()),
+  removed: z.array(z.string()),
+});
+export type AgentVendorOutput = z.infer<typeof AgentVendorOutput>;
+
+/**
  * One of eve's setup questions, in eve's wire shape (`setup-question-wire.ts`, eve 0.83.2). A
  * secret is `kind: "environment"` with the `variable` eve reads it from: it is never answered on
  * a command line, so the UI shows the variable instead of a field.

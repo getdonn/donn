@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
+import { nodeProbe } from "@getdonn/executor";
 import {
   AgentAddOutput,
   AgentBuildOutput,
@@ -21,6 +22,7 @@ import {
   AgentStopOutput,
   AgentSyncOutput,
   AgentTemplatesOutput,
+  AgentVendorOutput,
   COMMAND_OUTPUTS,
   CapabilitiesOutput,
   CompileOutput,
@@ -638,6 +640,20 @@ describe("agent commands", () => {
     expect(AgentTemplatesOutput).toBe(COMMAND_OUTPUTS["agent templates"]);
   });
 
+  it("vendor", async () => {
+    const tpl = join(s.root, "tpl");
+    mkdirSync(join(tpl, "agent"), { recursive: true });
+    writeFileSync(join(tpl, "package.json"), '{"dependencies":{"eve":"1"}}');
+    writeFileSync(join(tpl, "agent/a.ts"), "export {};\n");
+    const r = await zz(
+      ["agent", "vendor", tpl, "--json"],
+      here({ probe: nodeProbe() }),
+    );
+    expect(r.code, r.stderr).toBe(0);
+    parses("agent vendor", r.stdout);
+    expect(AgentVendorOutput).toBe(COMMAND_OUTPUTS["agent vendor"]);
+  });
+
   describe("add", () => {
     beforeEach(async () => {
       agentProject(s);
@@ -802,6 +818,7 @@ describe("the error envelope", () => {
     "agent logs": ["agent", "logs", "nobody"],
     "agent add": ["agent", "add", "nobody", "channel/github"],
     "agent templates": null,
+    "agent vendor": ["agent", "vendor", "/no/such/folder"],
   };
 
   const BROKEN = new Set([
@@ -887,6 +904,7 @@ describe("the table", () => {
         "agent logs",
         "agent add",
         "agent templates",
+        "agent vendor",
       ].sort(),
     );
     for (const key of Object.keys(COMMAND_OUTPUTS)) {

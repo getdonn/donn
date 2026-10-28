@@ -17,6 +17,7 @@ import {
   agentStopCommand,
   agentSyncCommand,
   agentTemplatesCommand,
+  agentVendorCommand,
 } from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
@@ -600,6 +601,20 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .option("--json", "print { templates } as JSON")
         .action((options) =>
           handle(options.json, () => agentTemplatesCommand(io, options)),
+        );
+
+      agent
+        .command("vendor")
+        .description(
+          "Copy an eve template from a folder or git URL into .donn/templates and record its source",
+        )
+        .argument("<source>", "a folder, or a git URL with an optional #<ref>")
+        .option("--name <name>", "the template's name (default: from source)")
+        .option("--force", "refresh a copy that was edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { template, added, changed, removed } as JSON")
+        .action((source: string, options) =>
+          handle(options.json, () => agentVendorCommand(io, source, options)),
         );
 
       agent

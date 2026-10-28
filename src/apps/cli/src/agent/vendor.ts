@@ -1,18 +1,29 @@
-import { cp, mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Id } from "@getdonn/spec";
+import { z } from "zod";
 import type { CliIo } from "../cli.js";
 import { CliError } from "../errors.js";
 import { fsStep } from "../fs.js";
 import { templateDigest } from "./digest.js";
-import { listFiles, notTemplate } from "./files.js";
+import { listFiles, notTemplate, sha256 } from "./files.js";
 import type { TarFile } from "./tar.js";
 
-// `donn agent vendor`, first half: read a template source (a folder or a git URL), stage the
-// copy in a temporary folder, check it is an eve template and digest it. Moving it into
-// `.donn/templates/<name>` and the record come later. See docs/planning/25-agent-runner.md,
-// "Amendment: vendoring a template".
+// `donn agent vendor`: read a template source (a folder or a git URL), stage the copy in a
+// temporary folder, check it is an eve template and digest it; then move it into
+// `.donn/templates/<name>` and record where it came from in `.donn/templates/sources.json`.
+// See docs/planning/25-agent-runner.md, "Amendment: vendoring a template".
 
 export type VendorSource =
   | { kind: "dir"; dir: string; given: string }
@@ -273,5 +284,216 @@ export async function stageVendor(
   } finally {
     if (fetched !== undefined)
       await rm(fetched, { recursive: true, force: true });
+  }
+}
+
+export const VendorRecord = z.object({
+  source: z.string(),
+  ref: z.string().optional(),
+  commit: z.string().optional(),
+  dirty: z.boolean().optional(),
+  digest: z.string(),
+  vendoredAt: z.string(),
+});
+export type VendorRecord = z.infer<typeof VendorRecord>;
+
+const SourcesFile = z.object({
+  version: z.literal(1),
+  templates: z.record(z.string(), VendorRecord),
+});
+
+const TEMPLATES = "templates";
+const SOURCES = "sources.json";
+
+/** The vendored templates' records; an absent file is no records. */
+export async function readVendored(
+  donnDir: string,
+): Promise<Record<string, VendorRecord>> {
+  const file = join(donnDir, TEMPLATES, SOURCES);
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
+  }
+  const invalid = (why: string) =>
+    new CliError(
+      "invalid-vendor-record",
+      `${file} is not a vendor record file: ${why}`,
+      {
+        path: file,
+        fix: "fix or delete the file; a template without a record is not refreshed",
+      },
+    );
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw invalid("it is not JSON");
+  }
+  const parsed = SourcesFile.safeParse(json);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    throw invalid(
+      `${issue?.path.join(".") || "the file"}: ${issue?.message ?? "invalid"}`,
+    );
+  }
+  return parsed.data.templates;
+}
+
+/** `sha256:<hex>` by path, for the files a template keeps. */
+async function hashesOf(dir: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const files = (await listFiles(dir, notTemplate)).filter(
+    (path) => !notTemplate(path),
+  );
+  for (const path of files)
+    out.set(path, sha256(await readFile(join(dir, path))));
+  return out;
+}
+
+const exists = async (path: string) =>
+  (await stat(path).catch(() => undefined)) !== undefined;
+
+const suffix = () => `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Moves the staged copy to `.donn/templates/<name>` (a recorded folder is replaced) and records
+ * it. A folder without a record is never touched, and a recorded one that was edited by hand
+ * only with `force`. The copy is made beside its destination first, so a failure leaves the old
+ * folder in place.
+ */
+export async function commitVendor(
+  donnDir: string,
+  staged: StagedVendor,
+  options: { force?: boolean; now: () => number },
+): Promise<{ added: string[]; changed: string[]; removed: string[] }> {
+  const templates = join(donnDir, TEMPLATES);
+  const target = join(templates, staged.name);
+  const shown = `.donn/${TEMPLATES}/${staged.name}`;
+  const records = await readVendored(donnDir);
+  const record = records[staged.name];
+  const present = await exists(target);
+  if (present && record === undefined) {
+    throw new CliError(
+      "vendor-name-taken",
+      `${shown} exists and was not vendored by donn; vendor refreshes only its own copies`,
+      {
+        name: staged.name,
+        path: target,
+        fix: "--name <another-name>, or move the folder away",
+      },
+    );
+  }
+  if (
+    present &&
+    record !== undefined &&
+    !options.force &&
+    (await vendorDigest(target)) !== record.digest
+  ) {
+    throw new CliError(
+      "vendor-local-edits",
+      `${shown} was edited since it was vendored; refreshing it would lose the edits`,
+      { name: staged.name, path: target, fix: "--force" },
+    );
+  }
+
+  const before = present ? await hashesOf(target) : new Map<string, string>();
+  const after = await hashesOf(staged.dir);
+  const added = [...after.keys()].filter((p) => !before.has(p));
+  const changed = [...after.keys()].filter(
+    (p) => before.has(p) && before.get(p) !== after.get(p),
+  );
+  const removed = [...before.keys()].filter((p) => !after.has(p));
+
+  await mkdir(templates, { recursive: true });
+  const incoming = join(templates, `.${staged.name}.new-${suffix()}`);
+  const aside = join(templates, `.${staged.name}.old-${suffix()}`);
+  try {
+    await cp(staged.dir, incoming, { recursive: true, verbatimSymlinks: true });
+    if (present) await rename(target, aside);
+    try {
+      await rename(incoming, target);
+    } catch (error) {
+      if (present) await rename(aside, target);
+      throw error;
+    }
+  } finally {
+    await rm(incoming, { recursive: true, force: true });
+  }
+  await rm(aside, { recursive: true, force: true });
+
+  const next: Record<string, VendorRecord> = {
+    ...records,
+    [staged.name]: {
+      source: staged.source,
+      ...(staged.ref !== undefined && { ref: staged.ref }),
+      ...(staged.commit !== undefined && { commit: staged.commit }),
+      ...(staged.dirty !== undefined && { dirty: staged.dirty }),
+      digest: staged.digest,
+      vendoredAt: new Date(options.now()).toISOString(),
+    },
+  };
+  const sorted = Object.fromEntries(
+    Object.entries(next).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
+  const file = join(templates, SOURCES);
+  const temp = `${file}.${suffix()}`;
+  await writeFile(
+    temp,
+    `${JSON.stringify({ version: 1, templates: sorted }, null, 2)}\n`,
+  );
+  await rename(temp, file);
+  return {
+    added: added.sort(),
+    changed: changed.sort(),
+    removed: removed.sort(),
+  };
+}
+
+const realOrSelf = (path: string) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+};
+
+const within = (inner: string, outer: string) => {
+  const rel = relative(outer, inner);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
+
+/**
+ * A folder source under the project's `.donn/templates` or in an agent's folder would copy a
+ * template into itself (or an agent's files into a template); a git source is never inside.
+ */
+export function assertNotInside(
+  source: VendorSource,
+  projectRoot: string,
+  agentPaths: string[],
+): void {
+  if (source.kind !== "dir") return;
+  const dir = realOrSelf(source.dir);
+  const places = [
+    {
+      path: join(projectRoot, ".donn", TEMPLATES),
+      what: "the project's templates",
+    },
+    ...agentPaths.map((path) => ({ path, what: "an agent's folder" })),
+  ];
+  for (const { path, what } of places) {
+    if (within(dir, realOrSelf(path))) {
+      throw new CliError(
+        "vendor-source-inside",
+        `${source.given} is inside ${what} (${path}); vendor a template from outside the project's own copies`,
+        {
+          source: source.given,
+          path,
+          fix: "vendor from the template's own folder or git URL",
+        },
+      );
+    }
   }
 }
