@@ -20,6 +20,7 @@ import {
 import { connect } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
+import { isPort } from "../agent/port.js";
 import { listCreated, type CreatedAgent } from "../agent/registry.js";
 import type { Spawn } from "../agent/spawn.js";
 import { isAlive, nodeProbe } from "@getdonn/executor";
@@ -314,25 +315,34 @@ const MAX_ENV_BYTES = 64 * 1024;
  * `{ project, name, env? }` from `POST /agents/run|stop`'s body, or the reason it is not one.
  * `env` (run only) maps `secret://` refs to values; a reason never quotes a value.
  */
-function agentRequest(
-  text: string,
-): { project: string; name: string; env?: Record<string, string> } | string {
+function agentRequest(text: string):
+  | {
+      project: string;
+      name: string;
+      env?: Record<string, string>;
+      port?: number;
+    }
+  | string {
   let body: unknown;
   try {
     body = JSON.parse(text);
   } catch {
     return "the body is not JSON";
   }
-  const { project, name, env } = (body ?? {}) as {
+  const { project, name, env, port } = (body ?? {}) as {
     project?: unknown;
     name?: unknown;
     env?: unknown;
+    port?: unknown;
   };
   if (typeof project !== "string" || !isAbsolute(project))
     return "project must be an absolute path";
   if (typeof name !== "string" || name === "")
     return "name must be an agent's name";
-  if (env === undefined) return { project, name };
+  if (port !== undefined && !isPort(port))
+    return "port must be an integer from 1024 to 65535";
+  const kept = port === undefined ? {} : { port };
+  if (env === undefined) return { project, name, ...kept };
   if (typeof env !== "object" || env === null || Array.isArray(env))
     return "env must map secret:// refs to values";
   const pairs = Object.entries(env);
@@ -350,7 +360,7 @@ function agentRequest(
     0,
   );
   if (bytes > MAX_ENV_BYTES) return "env is over 64 KiB";
-  return { project, name, env: env as Record<string, string> };
+  return { project, name, env: env as Record<string, string>, ...kept };
 }
 
 /** `{ port? }` from `POST /ui/open`'s body (empty is `{}`), or the reason it is not one. */
@@ -905,11 +915,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             res,
             200,
             route === "POST /agents/run"
-              ? await agents.run(
-                  target.project,
-                  target.name,
-                  target.env && { env: target.env },
-                )
+              ? await agents.run(target.project, target.name, {
+                  ...(target.env && { env: target.env }),
+                  ...(target.port !== undefined && { port: target.port }),
+                })
               : {
                   agent: target.name,
                   ...(await agents.stop(target.project, target.name)),

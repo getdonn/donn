@@ -18,7 +18,7 @@ import {
 import { eveEnv, packageManager, runEve } from "./eve.js";
 import { projectContext, projectRoot } from "./load.js";
 import { choosePort } from "./port.js";
-import { agentStatePath } from "./registry.js";
+import { agentStatePath, storedPort } from "./registry.js";
 import { isSynced, staleText } from "./sync.js";
 import { nodeSpawn } from "./spawn.js";
 
@@ -373,7 +373,7 @@ export async function agentControl(
   return {
     list: () => client.agents(),
     run: (project, name, request) =>
-      client.runAgent(project, name, request?.env),
+      client.runAgent(project, name, request?.env, request?.port),
     stop: (project, name) => client.stopAgent(project, name),
   };
 }
@@ -494,15 +494,32 @@ export async function run(
   if (options.dev) return dev(ctx, io, name, options);
   const control = await agentControl(io, ctx.home);
   if (control !== undefined) {
+    // --port is for local agents, whether or not one runs: the persona says which this is.
+    if (options.port !== undefined) {
+      const created = await agentEnvironment(ctx, io, name, { resolve: false });
+      assertPortTarget(
+        name,
+        created.result.ir.agents[name]?.target ?? "local",
+        options.port,
+      );
+    }
     // Already running: nothing to resolve, so a shell without the exports can say so too.
     const root = rootOf(projectRoot(ctx));
     const on = (await control.list()).find(
       (a) => a.name === name && rootOf(a.project) === root,
     );
     if (on !== undefined) {
+      const current = Number(new URL(on.url).port);
+      if (options.port !== undefined && options.port !== current)
+        throw new CliError(
+          "agent-running",
+          `${name} is running on port ${current}; stop it to change its port`,
+          { port: current, fix: `donn agent stop ${name}` },
+        );
       printStarted(io, on, options, { already: true });
       return 0;
     }
+    const before = await storedPort(ctx.home, root, name);
     // Over the socket: the daemon has none of this shell's exports, so the env-provider
     // secrets go with the request (spec 26 §2). In-process (`io.agents`) there is no shell.
     const env =
@@ -511,12 +528,23 @@ export async function run(
             assertRunnable(name, target),
           )
         : {};
-    const { agent, already } = await control.run(
-      projectRoot(ctx),
-      name,
-      Object.keys(env).length > 0 ? { env } : {},
-    );
+    const { agent, already } = await control.run(projectRoot(ctx), name, {
+      ...(Object.keys(env).length > 0 && { env }),
+      ...(options.port !== undefined && { port: options.port }),
+    });
     printStarted(io, agent, options, { already });
+    const listening = Number(new URL(agent.url).port);
+    if (options.port !== undefined && listening !== options.port)
+      io.stderr.write(
+        "warning: the daemon ignored --port (it runs an older donn); run donn daemon install again\n",
+      );
+    else if (before === undefined && options.port === undefined && !already) {
+      const after = await storedPort(ctx.home, root, name);
+      if (after !== undefined)
+        (options.json ? io.stderr : io.stdout).write(
+          `${keptNote(after, name)}\n`,
+        );
+    }
     return 0;
   }
   return foreground(ctx, io, name, options);
