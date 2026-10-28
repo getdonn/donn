@@ -37,7 +37,8 @@
       "target": "local",
       "state": "running",
       "current": true,
-      "url": "http://127.0.0.1:61131/"
+      "url": "http://127.0.0.1:61131/",
+      "port": 51228
     },
     {
       "name": "charlie",

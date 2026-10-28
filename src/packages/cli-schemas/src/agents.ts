@@ -23,6 +23,8 @@ export const AgentListOutput = z.strictObject({
       recreate: RecreateField.optional(),
       /** Where a running agent listens. */
       url: z.string().optional(),
+      /** The port stored for a local agent, whether or not it runs. */
+      port: z.number().int().optional(),
     }),
   ),
 });
