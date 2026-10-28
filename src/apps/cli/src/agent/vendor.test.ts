@@ -17,6 +17,7 @@ import { AgentVendorOutput } from "@getdonn/cli-schemas";
 import {
   defaultTemplateName,
   parseVendorSource,
+  commitVendor,
   readVendored,
   redactUrl,
   stageVendor,
@@ -478,5 +479,38 @@ describe("donn agent vendor", () => {
     await expect(readVendored(join(s.repo, ".donn"))).rejects.toThrow(
       /sources\.json/,
     );
+  });
+
+  it("keeps the old copy and record when the record cannot be written", async () => {
+    writeTpl(tpl());
+    await vendor([tpl()]);
+    const record = readFileSync(join(templates(), "sources.json"), "utf8");
+    writeFileSync(join(tpl(), "agent/a.ts"), "export const x = 1;\n");
+    const staged = await stageVendor(
+      io(),
+      { kind: "dir", dir: tpl(), given: "tpl" },
+      {
+        name: "tpl",
+        stagingBase,
+      },
+    );
+    await expect(
+      commitVendor(join(s.repo, ".donn"), staged, {
+        now: () => 0,
+        rename: async () => {
+          throw new Error("disk full");
+        },
+      }),
+    ).rejects.toThrow("disk full");
+    rmSync(staged.dir, { recursive: true, force: true });
+    expect(readFileSync(join(templates(), "tpl/agent/a.ts"), "utf8")).toBe(
+      "export {};\n",
+    );
+    expect(readFileSync(join(templates(), "sources.json"), "utf8")).toBe(
+      record,
+    );
+    expect(readdirSync(templates()).sort()).toEqual(["sources.json", "tpl"]);
+    const again = await vendor([tpl()]);
+    expect(again.code, again.stdout + again.stderr).toBe(0);
   });
 });

@@ -378,7 +378,12 @@ const suffix = () => `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 export async function commitVendor(
   donnDir: string,
   staged: StagedVendor,
-  options: { force?: boolean; now: () => number },
+  options: {
+    force?: boolean;
+    now: () => number;
+    /** A test seam for the final move of the record into place. */
+    rename?: typeof rename;
+  },
 ): Promise<{ added: string[]; changed: string[]; removed: string[] }> {
   const templates = join(donnDir, TEMPLATES);
   const target = join(templates, staged.name);
@@ -418,23 +423,6 @@ export async function commitVendor(
   );
   const removed = [...before.keys()].filter((p) => !after.has(p));
 
-  await mkdir(templates, { recursive: true });
-  const incoming = join(templates, `.${staged.name}.new-${suffix()}`);
-  const aside = join(templates, `.${staged.name}.old-${suffix()}`);
-  try {
-    await cp(staged.dir, incoming, { recursive: true, verbatimSymlinks: true });
-    if (present) await rename(target, aside);
-    try {
-      await rename(incoming, target);
-    } catch (error) {
-      if (present) await rename(aside, target);
-      throw error;
-    }
-  } finally {
-    await rm(incoming, { recursive: true, force: true });
-  }
-  await rm(aside, { recursive: true, force: true });
-
   const next: Record<string, VendorRecord> = {
     ...records,
     [staged.name]: {
@@ -451,11 +439,35 @@ export async function commitVendor(
   );
   const file = join(templates, SOURCES);
   const temp = `${file}.${suffix()}`;
-  await writeFile(
-    temp,
-    `${JSON.stringify({ version: 1, templates: sorted }, null, 2)}\n`,
-  );
-  await rename(temp, file);
+  const move = options.rename ?? rename;
+
+  // Everything is made ready first; the record is the last thing to change, and a failure
+  // before it puts the old folder back.
+  await mkdir(templates, { recursive: true });
+  const incoming = join(templates, `.${staged.name}.new-${suffix()}`);
+  const aside = join(templates, `.${staged.name}.old-${suffix()}`);
+  let moved = false;
+  try {
+    await cp(staged.dir, incoming, { recursive: true, verbatimSymlinks: true });
+    await writeFile(
+      temp,
+      `${JSON.stringify({ version: 1, templates: sorted }, null, 2)}\n`,
+    );
+    if (present) await rename(target, aside);
+    try {
+      await rename(incoming, target);
+      moved = true;
+      await move(temp, file);
+    } catch (error) {
+      if (moved) await rename(target, incoming);
+      if (present) await rename(aside, target);
+      throw error;
+    }
+  } finally {
+    await rm(incoming, { recursive: true, force: true });
+    await rm(temp, { force: true });
+  }
+  await rm(aside, { recursive: true, force: true });
   return {
     added: added.sort(),
     changed: changed.sort(),
