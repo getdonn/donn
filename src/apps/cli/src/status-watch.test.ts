@@ -1,12 +1,12 @@
 import { StatusOutput } from "@getdonn/cli-schemas";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, watch, writeFileSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliIo } from "./cli.js";
 import { cliVersion } from "./commands/daemon.js";
 import type { StatusJson } from "./commands/status.js";
-import { watchStatus } from "./commands/status-watch.js";
+import { watchStatus, type WatchOptions } from "./commands/status-watch.js";
 import { connectDaemon, type DaemonEvent } from "./daemon/client.js";
 import { daemonPaths } from "./daemon/paths.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
@@ -71,7 +71,7 @@ function session(name: string) {
 }
 
 /** `watchStatus` with its lines collected; aborted after the test. */
-function watching(stdout?: CliIo["stdout"], timing = TIMING) {
+function watching(stdout?: CliIo["stdout"], timing: WatchOptions = TIMING) {
   const lines: StatusJson[] = [];
   const abort = new AbortController();
   const spawnDaemon = vi.fn(async () => {});
@@ -107,7 +107,7 @@ function watching(stdout?: CliIo["stdout"], timing = TIMING) {
       { timeout: 3_000, interval: 10 },
     );
   /** Resolves once no line has come for `ms`. */
-  const quiet = async (ms = timing.debounceMs * 4 + 100) => {
+  const quiet = async (ms = (timing.debounceMs ?? 250) * 4 + 100) => {
     for (let count = -1; count !== lines.length;) {
       count = lines.length;
       await new Promise((r) => setTimeout(r, ms));
@@ -147,9 +147,11 @@ describe("donn status --watch", () => {
     const daemon = await start();
     const w = watching();
     expect((await w.next(any)).sessions).toEqual([]);
+    // Counted before the change: its line can come while the refresh is still being awaited.
+    const from = w.lines.length;
     session("a");
     await daemon.refresh();
-    const line = await w.next((l) => l.sessions.length === 1);
+    const line = await w.next((l) => l.sessions.length === 1, from);
     expect(line.sessions[0]).toMatchObject({ launched: "team/payments" });
     StatusOutput.parse(line);
   });
@@ -158,14 +160,33 @@ describe("donn status --watch", () => {
     await start();
     const w = watching();
     await w.next(any);
+    const from = w.lines.length;
     const r = await zz(["switch", "team/payments", "--default"], {
       cwd: s.root,
       home: s.home,
     });
     expect(r.code).toBe(0);
-    const line = await w.next((l) => l.switched.default !== undefined);
+    const line = await w.next((l) => l.switched.default !== undefined, from);
     expect(line.switched.default).toBe("team/payments");
     StatusOutput.parse(line);
+  });
+
+  it("reads state.json again once its watcher is live", async () => {
+    // FSEvents arms a watch late: a switch made just after the first line can go unreported.
+    // A watcher that never reports stands in for it.
+    await start();
+    const deaf = vi.fn((dir: string) => watch(dir, () => {}));
+    const w = watching(undefined, { ...TIMING, settleMs: 300, watch: deaf });
+    await w.next(any);
+    const from = w.lines.length;
+    await writeState(s.home, {
+      version: 1,
+      default: "team/payments",
+      projects: {},
+    });
+    const line = await w.next((l) => l.switched.default !== undefined, from);
+    expect(line.switched.default).toBe("team/payments");
+    expect(deaf).toHaveBeenCalledWith(s.home, expect.any(Function));
   });
 
   it("debounces bursts and skips repeats", async () => {
