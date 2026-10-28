@@ -424,7 +424,7 @@ tunnel and the App's webhook URL pointed at nothing (finding 4). The maintainer'
 `local` agent may serve webhooks behind a tunnel the user runs; donn does not run the tunnel; the
 port is per machine and sticky by default; a taken port is refused, never moved.
 
-**Where it lives.** Each created agent's entry in `~/.donn/agents/agents.json` (the index `create`
+**Where it lives.** Each created agent's entry in `~/.donn/agents/index.json` (the index `create`
 writes) gains an optional `port`, an integer from 1024 to 65535. The index is written atomically
 under its lock, as before. A stored value that is not such an integer reads as no port; the rest
 of the index still loads. The persona never holds a port:
