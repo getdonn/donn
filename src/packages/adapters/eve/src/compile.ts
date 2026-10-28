@@ -22,7 +22,14 @@ import {
   ROUTE_TOKEN_ENV,
 } from "./channel.js";
 import { assertNoSlotCollisions } from "./collisions.js";
-import { configFile, CONFIG_FILE, SANDBOX_FILE, SANDBOX_TS } from "./config.js";
+import {
+  configFile,
+  CONFIG_FILE,
+  modelId,
+  modelPath,
+  SANDBOX_FILE,
+  SANDBOX_TS,
+} from "./config.js";
 import { connectionFiles, unknownTargetEntries } from "./connections.js";
 import { ENV_FILE, envFile, isWholeRef, SecretNames } from "./env.js";
 import { EveCompileError } from "./errors.js";
@@ -33,6 +40,7 @@ import {
   unknownTemplateEntry,
 } from "./portability.js";
 import { connectionName, skillName } from "./names.js";
+import { subagentPlan } from "./subagents.js";
 
 // A persona as the files of an eve agent's own slots. See docs/planning/24-adapter-eve.md,
 // sections 2 and 3. Secrets are numbered in one fixed walk (see SecretNames in env.ts): the
@@ -231,9 +239,15 @@ export function compile(
 
   const secrets = new SecretNames();
   const agent = ir.agents[input.agent]!;
-  const config = configFile(ir, input.agent, secrets);
+  const subagents = subagentPlan(
+    ir,
+    { id: modelId(ir, input.agent), path: modelPath(ir, input.agent) },
+    input.project.texts ?? {},
+  );
+  const config = configFile(ir, input.agent, secrets, subagents.subagents);
   entries.push(
     ...config.entries,
+    ...subagents.entries,
     ...unknownTargetEntries(ir, connections.names),
   );
   files[CONFIG_FILE] = { content: config.content };
@@ -316,6 +330,7 @@ export function compile(
       template,
       agent.target,
       input.project.hasRouteAuth,
+      ir.models.gateway !== undefined,
     ),
   };
 }

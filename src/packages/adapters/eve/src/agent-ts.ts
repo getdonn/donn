@@ -1,16 +1,37 @@
 import { parse } from "@babel/parser";
 
 // The one-time edit to a template's `agent.ts`: import `donn` and spread it as the last property
-// of the `defineAgent({...})` call, dropping a literal `model`. See
-// docs/planning/24-adapter-eve.md, section 2. The edit is by source spans, never a re-print, so
-// everything outside the edited spans is byte-identical. The parser only locates; it never prints.
+// of the `defineAgent({...})` call, dropping a literal `model`. With a gateway, each subagent's
+// `agent/subagents/<name>/agent.ts` gets the same edit with its `donnSubagent` entry, keeping its
+// own `model` for when there is no gateway. See docs/planning/24-adapter-eve.md, section 2. The
+// edit is by source spans, never a re-print, so everything outside the edited spans is
+// byte-identical. The parser only locates; it never prints.
 
 const IMPORT_LINE = 'import { donn } from "./lib/donn/config";';
 const CONFIG_SOURCE = "./lib/donn/config";
+const SUBAGENT_CONFIG_SOURCE = "../../lib/donn/config";
 
 export type AgentTsResult =
   | { ok: true; text: string }
   | { ok: false; code: "agent-ts-unrecognised"; hint: string };
+
+/** A subagent's own `model`: a string literal, another expression, or none. */
+export type SubagentModel =
+  { kind: "literal"; id: string } | { kind: "expression" } | { kind: "none" };
+
+export type SubagentTsResult =
+  | { ok: true; text: string; model: SubagentModel }
+  | { ok: false; code: "agent-ts-unrecognised"; hint: string };
+
+/** The agent-directory path of subagent `name`'s `agent.ts`. */
+export const subagentFile = (name: string) =>
+  `agent/subagents/${name}/agent.ts`;
+
+/** `donnSubagent.<name>`, or `donnSubagent["<name>"]` for a name that is not an identifier. */
+export const subagentEntry = (name: string) =>
+  /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
+    ? `donnSubagent.${name}`
+    : `donnSubagent[${JSON.stringify(name)}]`;
 
 /** A file `donn agent create` writes when the template has no `agent.ts`. */
 export function createdAgentTs(): string {
@@ -55,11 +76,63 @@ interface Edit {
   text: string;
 }
 
-const refuse = (why: string): AgentTsResult => ({
+/** What one edit adds: the import, the binding it brings, the spread, and whether `model` goes. */
+interface Patch {
+  /** Where the hint says to add the lines. */
+  file: string;
+  binding: string;
+  source: string;
+  /** The spread's argument: `donn`, or `donnSubagent.<name>`. */
+  spread: string;
+  isSpread: (argument: Node) => boolean;
+  dropModel: boolean;
+}
+
+const importLine = (edit: Patch) =>
+  `import { ${edit.binding} } from "${edit.source}";`;
+
+type Refusal = Extract<AgentTsResult, { ok: false }>;
+
+const refusal = (edit: Patch, why: string): Refusal => ({
   ok: false,
   code: "agent-ts-unrecognised",
-  hint: `${why}. Add \`${IMPORT_LINE}\` to agent.ts and put \`...donn\` as the last property of the defineAgent({...}) call, removing any \`model\` property`,
+  hint: `${why}. Add \`${importLine(edit)}\` to ${edit.file} and put \`...${edit.spread}\` as the last property of the defineAgent({...}) call${edit.dropModel ? ", removing any `model` property" : ""}`,
 });
+
+const ROOT: Patch = {
+  file: "agent.ts",
+  binding: "donn",
+  source: CONFIG_SOURCE,
+  spread: "donn",
+  isSpread: (argument) =>
+    argument.type === "Identifier" && str(argument, "name") === "donn",
+  dropModel: true,
+};
+
+function subagentPatch(name: string): Patch {
+  return {
+    file: subagentFile(name),
+    binding: "donnSubagent",
+    source: SUBAGENT_CONFIG_SOURCE,
+    spread: subagentEntry(name),
+    // `donnSubagent.<name>` or `donnSubagent["<name>"]`, either way round.
+    isSpread: (argument) => {
+      if (argument.type !== "MemberExpression") return false;
+      const object = child(argument, "object");
+      const property = child(argument, "property");
+      if (
+        object?.type !== "Identifier" ||
+        str(object, "name") !== "donnSubagent"
+      )
+        return false;
+      if (!property) return false;
+      return argument["computed"] === true
+        ? property.type === "StringLiteral" && str(property, "value") === name
+        : property.type === "Identifier" && str(property, "name") === name;
+    },
+    dropModel: false,
+  };
+}
 
 /** The name of a property key, if it is a plain identifier or string. */
 function keyName(prop: Node): string | undefined {
@@ -102,6 +175,38 @@ const lineEnd = (source: string, at: number) => {
  * spreads `donn` comes back unchanged.
  */
 export function patchAgentTs(source: string): AgentTsResult {
+  const result = patch(source, ROOT);
+  return result.ok ? { ok: true, text: result.text } : result;
+}
+
+/**
+ * Edit subagent `name`'s `agent/subagents/<name>/agent.ts`: import `donnSubagent` and spread its
+ * entry last, so a gateway's model wins; the subagent's own `model` stays (it is the model when
+ * there is no gateway) and is returned. The same refusals as patchAgentTs, with the subagent's
+ * lines in the hint. A file that already imports and spreads its entry comes back unchanged.
+ */
+export function patchSubagentTs(
+  source: string,
+  name: string,
+): SubagentTsResult {
+  return patch(source, subagentPatch(name));
+}
+
+/** The literal `model` of an object's properties, if any. */
+function modelOf(models: Node[]): SubagentModel {
+  const last = models.at(-1);
+  if (last === undefined) return { kind: "none" };
+  const value = child(last, "value");
+  if (last.type === "ObjectProperty" && value?.type === "StringLiteral")
+    return { kind: "literal", id: str(value, "value")! };
+  return { kind: "expression" };
+}
+
+function patch(
+  source: string,
+  want: Patch,
+): Refusal | { ok: true; text: string; model: SubagentModel } {
+  const refuse = (why: string) => refusal(want, why);
   let program: Node;
   try {
     const file = parse(source, {
@@ -157,16 +262,16 @@ export function patchAgentTs(source: string): AgentTsResult {
   if (args.length !== 1 || object?.type !== "ObjectExpression")
     return refuse("the defineAgent argument is not a single object literal");
 
-  // Is `donn` already imported (from the config), and is any other `donn` binding in the way?
+  // Is the binding already imported (from the config), and is any other one of its name in the way?
   let hasImport = false;
   let conflict = false;
   for (const decl of imports) {
     for (const spec of (decl["specifiers"] as Node[]) ?? []) {
-      if (str(child(spec, "local") ?? spec, "name") !== "donn") continue;
+      if (str(child(spec, "local") ?? spec, "name") !== want.binding) continue;
       const proper =
-        child(decl, "source")?.["value"] === CONFIG_SOURCE &&
+        child(decl, "source")?.["value"] === want.source &&
         spec.type === "ImportSpecifier" &&
-        str(child(spec, "imported") ?? spec, "name") === "donn" &&
+        str(child(spec, "imported") ?? spec, "name") === want.binding &&
         decl["importKind"] !== "type";
       if (proper) hasImport = true;
       else conflict = true;
@@ -179,27 +284,30 @@ export function patchAgentTs(source: string): AgentTsResult {
       node.type === "ClassDeclaration"
     ) {
       const id = child(node, "id");
-      if (id?.type === "Identifier" && str(id, "name") === "donn")
+      if (id?.type === "Identifier" && str(id, "name") === want.binding)
         conflict = true;
     }
   });
   if (conflict)
-    return refuse("agent.ts already has a different `donn` binding");
+    return refuse(
+      `agent.ts already has a different \`${want.binding}\` binding`,
+    );
 
   const props = (object["properties"] as Node[]) ?? [];
-  const hasSpread = props.some(
-    (p) =>
-      p.type === "SpreadElement" &&
-      child(p, "argument")?.type === "Identifier" &&
-      str(child(p, "argument")!, "name") === "donn",
-  );
-  const models = props.filter(
+  const hasSpread = props.some((p) => {
+    const argument = p.type === "SpreadElement" && child(p, "argument");
+    return argument ? want.isSpread(argument) : false;
+  });
+  const own = props.filter(
     (p) =>
       (p.type === "ObjectProperty" || p.type === "ObjectMethod") &&
       keyName(p) === "model",
   );
+  const model = modelOf(own);
+  // A subagent keeps its model; only the root's literal model goes.
+  const models = want.dropModel ? own : [];
   if (hasImport && hasSpread && models.length === 0)
-    return { ok: true, text: source };
+    return { ok: true, text: source, model };
 
   const nl = source.includes("\r\n") ? "\r\n" : "\n";
   const edits: Edit[] = [];
@@ -238,14 +346,18 @@ export function patchAgentTs(source: string): AgentTsResult {
       const [first, ...rest] = models;
       edits.length = 0;
       edits.push(
-        { start: first!.start, end: first!.end, text: "...donn" },
+        { start: first!.start, end: first!.end, text: `...${want.spread}` },
         ...rest.map(removal),
       );
     } else if (kept.length === 0) {
       const inner = source.slice(open, object.end - 1);
       if (/^\s*$/.test(inner))
-        edits.push({ start: open, end: object.end - 1, text: " ...donn " });
-      else edits.push({ start: open, end: open, text: " ...donn " });
+        edits.push({
+          start: open,
+          end: object.end - 1,
+          text: ` ...${want.spread} `,
+        });
+      else edits.push({ start: open, end: open, text: ` ...${want.spread} ` });
     } else {
       const lastKept = kept[kept.length - 1]!;
       const comma = commaAfter(source, lastKept.end);
@@ -266,13 +378,20 @@ export function patchAgentTs(source: string): AgentTsResult {
           source.slice(after, lineEnd(source, after)),
         )![0];
         const at = after + rest.length;
-        edits.push({ start: at, end: at, text: `${nl}${indent}...donn,` });
+        edits.push({
+          start: at,
+          end: at,
+          text: `${nl}${indent}...${want.spread},`,
+        });
       } else {
         const trailing = comma !== -1 && lastKept === props[props.length - 1];
         edits.push({
           start: after,
           end: after,
-          text: comma === -1 || !trailing ? " ...donn" : " ...donn,",
+          text:
+            comma === -1 || !trailing
+              ? ` ...${want.spread}`
+              : ` ...${want.spread},`,
         });
       }
       // Pushed after the spread: edits at one offset apply in order, so the comma lands first.
@@ -286,7 +405,7 @@ export function patchAgentTs(source: string): AgentTsResult {
     edits.push({
       start: lastImport.end,
       end: lastImport.end,
-      text: `${nl}${IMPORT_LINE}`,
+      text: `${nl}${importLine(want)}`,
     });
   }
 
@@ -298,5 +417,5 @@ export function patchAgentTs(source: string): AgentTsResult {
     text = text.slice(0, edit.start) + edit.text + text.slice(edit.end);
     floor = edit.start;
   }
-  return { ok: true, text };
+  return { ok: true, text, model };
 }

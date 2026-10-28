@@ -79,4 +79,4 @@ Notes:
 4. Harness permission rules do not map to eve; eve's tool allow-lists per connection are a later mapping
 5. eve hooks are TypeScript modules; author them in the agent's hooks/
 6. Managed policy is harness enforcement; eve has no managed surface
-7. contextWindow sets modelContextWindowTokens; unknown keys are reported
+7. contextWindow sets modelContextWindowTokens; subagents.<name>.model picks a subagent's gateway model; unknown keys are reported

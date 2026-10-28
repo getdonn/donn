@@ -55,6 +55,12 @@ export interface AgentCompileInput {
     hasRouteAuth: boolean;
     /** Agent-directory paths not in the manifest (template- or user-owned), for collisions. */
     existing: string[];
+    /**
+     * Text of the template-owned files whose content changes the output, by agent-directory
+     * path. For eve: every `agent/subagents/<name>/agent.ts`, read to route each subagent's
+     * model through the gateway. Absent means none.
+     */
+    texts?: Record<string, string>;
   };
 }
 

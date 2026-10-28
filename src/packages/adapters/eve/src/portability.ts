@@ -71,6 +71,7 @@ export function portabilityFor(
     Partial<Omit<TemplateFacts, "services">>,
   target: Target,
   hasRouteAuth = false,
+  hasGateway = false,
 ): PortabilityEntry[] {
   if (target === "vercel") return [];
   const has = (s: TemplateFacts["services"][number]) =>
@@ -111,10 +112,16 @@ export function portabilityFor(
       "The template's model string is replaced by lib/donn/config.ts",
       false,
     );
-  if (facts.subagentModels)
+  if (facts.subagentModels && hasGateway)
     add(
       "ai-gateway",
-      "This template's subagents call the Vercel AI Gateway directly (agent/subagents/*/agent.ts): set AI_GATEWAY_API_KEY, or point each subagent's model at your gateway",
+      "The template's subagents' models are replaced by the gateway's (each agent/subagents/<name>/agent.ts spreads its donnSubagent entry)",
+      false,
+    );
+  else if (facts.subagentModels)
+    add(
+      "ai-gateway",
+      "This template's subagents call the Vercel AI Gateway directly (agent/subagents/*/agent.ts): set AI_GATEWAY_API_KEY, or set models.gateway so donn routes them through it",
       true,
       ["AI_GATEWAY_API_KEY"],
     );
@@ -150,12 +157,13 @@ export function portability(
   template: string,
   target: Target,
   hasRouteAuth = false,
+  hasGateway = false,
 ): PortabilityEntry[] {
   const slug = eveSlug(template);
   const facts = (slug !== undefined && templateFacts(slug)) || {
     services: [],
   };
-  return portabilityFor(facts, target, hasRouteAuth);
+  return portabilityFor(facts, target, hasRouteAuth, hasGateway);
 }
 
 /**

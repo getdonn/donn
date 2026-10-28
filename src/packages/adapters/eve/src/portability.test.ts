@@ -149,6 +149,21 @@ describe("portability", () => {
       });
     });
 
+    it(`llm-council's subagents go through a configured gateway at ${target}`, () => {
+      const entries = find(
+        portability("eve:eve-llm-council-template", target, false, true),
+        "ai-gateway",
+      );
+      expect(entries).toHaveLength(2);
+      expect(entries[1]).toEqual({
+        target,
+        service: "ai-gateway",
+        blocking: false,
+        instead:
+          "The template's subagents' models are replaced by the gateway's (each agent/subagents/<name>/agent.ts spreads its donnSubagent entry)",
+      });
+    });
+
     it(`personal-agent's GitHub is per-user Connect OAuth at ${target}`, () => {
       const entries = find(
         portability("eve:personal-agent-template", target),
