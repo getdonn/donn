@@ -4,6 +4,7 @@ import type { Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeEve } from "../test/fake-eve.js";
 import { seed, zz, type Seeded } from "../test/seed.js";
+import { plainEnv } from "./env.js";
 
 // `donn agent env` and `donn agent exec` against a temp project and a path template.
 // See docs/planning/25-agent-runner.md, sections 1 and 5.
@@ -286,5 +287,40 @@ describe("donn agent exec", () => {
     const r = await run(["exec", "kody"]);
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain("nothing to run");
+  });
+});
+
+describe("plainEnv", () => {
+  it("keeps plain values only: no secret, no run-time entry, no DONN_ROUTE_TOKEN", () => {
+    expect(
+      plainEnv([
+        {
+          name: "API_TOKEN",
+          source: "secret",
+          ref: "secret://env/API_TOKEN",
+          value: "tok-SECRET",
+          why: "persona-secret",
+        },
+        { name: "DONN_ROUTE_TOKEN", source: "runtime", why: "route-auth" },
+        // An agent that sets its own token as a plain value: never in the build either.
+        {
+          name: "DONN_ROUTE_TOKEN",
+          source: "plain",
+          value: "mine",
+          why: "template-variable",
+        },
+        {
+          name: "WORKFLOW_POSTGRES_URL",
+          source: "runtime",
+          why: "world-database",
+        },
+        {
+          name: "GREETING",
+          source: "plain",
+          value: "hello",
+          why: "template-variable",
+        },
+      ]),
+    ).toEqual({ GREETING: "hello" });
   });
 });

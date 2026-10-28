@@ -448,7 +448,7 @@ export async function create(
     await install(io, dir, progress);
     // 6. Edit agent.ts once, and with a gateway each subagent's; write donn's files.
     const agentTs = await editAgentTs(dir);
-    edits.push("agent/agent.ts", ...(await editSubagents(dir, result.ir)));
+    edits.push("agent/agent.ts", ...(await editSubagents(dir, result.ir, [])));
     const files = await writeAgentFiles(dir, output, undefined, {
       force: false,
       store: ctx.store,

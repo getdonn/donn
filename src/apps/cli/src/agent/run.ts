@@ -63,7 +63,7 @@ export interface StartOptions {
   /** Values (resolved secrets) replaced by `***` in every line passed on. */
   redact?: string[];
   /** The agent's plain values, for `eve build` (see plainEnv); never a secret. */
-  buildEnv?: Record<string, string>;
+  buildEnv: Record<string, string>;
   /** Stops a start still waiting for eve to listen. */
   signal?: AbortSignal;
   startTimeoutMs?: number;
@@ -153,7 +153,7 @@ export async function startAgent(
   // The build evaluates the agent without its run-time env: its plain values, never a secret.
   const pm = await packageManager(dir);
   const build = await runEve(io, dir, ["build"], {
-    env: options.buildEnv ?? {},
+    env: options.buildEnv,
     onProgress: (line) => pass(line, "stdout"),
   });
   if (build.exitCode !== 0) {

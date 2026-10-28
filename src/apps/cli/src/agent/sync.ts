@@ -75,7 +75,7 @@ export async function upToDate(
   const { planned } = await recompile(ctx, result, name, dir, manifest);
   return (
     sameFiles(planned.files, manifest.files) &&
-    (await pendingSubagentEdits(dir, result.ir)).length === 0
+    (await pendingSubagentEdits(dir, result.ir, manifest.edits)).length === 0
   );
 }
 
@@ -102,7 +102,7 @@ export async function isSynced(
 
 /** What `build`, `deploy` and a foreground `run` say of an agent older than its persona. */
 export const staleText = (name: string) =>
-  `${name}'s donn files are older than its persona; \`donn agent sync ${name}\` brings them up to date`;
+  `${name}'s donn files are older than its persona, or a subagent waits for its gateway edit; \`donn agent sync ${name}\` brings them up to date`;
 
 /** Refuses an agent whose donn files are older than its persona: they would ship as they are. */
 export async function assertSynced(
@@ -162,17 +162,22 @@ async function syncLocked(
   // A dry run stops where the real sync would; with --force it reports the overwrites.
   const edited = await checkOwned(dir, manifest, options.force === true);
   // Subagent edits count as written: a running agent restarts on them as on donn's files.
-  let subagents = (await pendingSubagentEdits(dir, result.ir)).map(
-    (p) => p.path,
-  );
+  let subagents = (
+    await pendingSubagentEdits(dir, result.ir, manifest.edits)
+  ).map((p) => p.path);
   if (options.dryRun !== true) {
     const files = await writeAgentFiles(dir, output, manifest, {
       force: options.force === true,
       store: ctx.store,
     });
-    subagents = await editSubagents(dir, result.ir);
-    const edits = [...new Set([...manifest.edits, ...subagents])].sort();
-    await writeManifest(dir, { ...manifest, files, edits });
+    // Recorded before the subagent edits: one that fails must not leave donn's new files
+    // unrecorded, which every later sync would read as hand edits.
+    await writeManifest(dir, { ...manifest, files });
+    subagents = await editSubagents(dir, result.ir, manifest.edits);
+    if (subagents.length > 0) {
+      const edits = [...new Set([...manifest.edits, ...subagents])].sort();
+      await writeManifest(dir, { ...manifest, files, edits });
+    }
   }
   return {
     root,

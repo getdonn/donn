@@ -6,7 +6,12 @@ import type {
 import type { ResolvedPersona } from "@getdonn/spec";
 import type { Context } from "../context.js";
 import { CliError } from "../errors.js";
-import { listFiles, notTemplate, readManifest } from "./files.js";
+import {
+  listFiles,
+  notTemplate,
+  readManifest,
+  type Manifest,
+} from "./files.js";
 import { subagentTexts } from "./subagents.js";
 
 // What an agent compile needs besides the IR: the text of every file the IR references, and the
@@ -21,8 +26,11 @@ const SANDBOX = new RegExp(`^agent/(?:sandbox\\.${MODULE}$|sandbox/)`);
 const ROUTE_AUTH = new RegExp(`^agent/channels/(?:eve\\.${MODULE}$|eve/)`);
 
 /** Paths under `dir` a compile must not collide with: everything not donn's, not built, not installed. */
-async function existingPaths(dir: string): Promise<string[]> {
-  const owned = new Set(Object.keys((await readManifest(dir))?.files ?? {}));
+async function existingPaths(
+  dir: string,
+  manifest: Manifest | undefined,
+): Promise<string[]> {
+  const owned = new Set(Object.keys(manifest?.files ?? {}));
   const files = await listFiles(dir, notTemplate);
   return files.filter((path) => !owned.has(path) && !notTemplate(path));
 }
@@ -34,19 +42,20 @@ export async function compileInputs(
   dir: string,
   frameworkVersion: string,
 ): Promise<AgentCompileInput> {
+  const manifest = await readManifest(dir);
   return inputsFor(
     ctx,
     ir,
     agent,
     frameworkVersion,
-    await existingPaths(dir),
-    await subagentTexts(dir),
+    await existingPaths(dir, manifest),
+    { texts: await subagentTexts(dir), edited: manifest?.edits ?? [] },
   );
 }
 
 /**
- * The compile input for an agent directory holding `existing` and the template-owned `texts`
- * the compile reads (none, for a dry run).
+ * The compile input for an agent directory holding `existing`, the template-owned `texts` the
+ * compile reads and the files donn `edited` once (none, for a dry run).
  */
 export async function inputsFor(
   ctx: Context,
@@ -54,7 +63,10 @@ export async function inputsFor(
   agent: string,
   frameworkVersion: string,
   existing: string[],
-  projectTexts: Record<string, string> = {},
+  project: { texts: Record<string, string>; edited: string[] } = {
+    texts: {},
+    edited: [],
+  },
 ): Promise<AgentCompileInput> {
   const texts: Record<string, string> = {};
   for (const fragment of ir.instructions) {
@@ -81,7 +93,8 @@ export async function inputsFor(
       hasSandbox: existing.some((path) => SANDBOX.test(path)),
       hasRouteAuth: existing.some((path) => ROUTE_AUTH.test(path)),
       existing,
-      texts: projectTexts,
+      texts: project.texts,
+      edited: project.edited,
     },
   };
 }

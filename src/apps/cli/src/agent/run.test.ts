@@ -63,7 +63,7 @@ describe("startAgent", () => {
     probe,
     spawn,
   });
-  const options = { name: "kody", project: "/p" };
+  const options = { name: "kody", project: "/p", buildEnv: {} };
 
   it("builds, then starts eve detached on 127.0.0.1 and reads the URL", async () => {
     const spawn = serving();
@@ -104,6 +104,25 @@ describe("startAgent", () => {
     expect(start.env.DONN_ROUTE_TOKEN).toBe(agent.token);
     expect(agent).toMatchObject({ name: "kody", project: "/p" });
     expect(agent.pid).toBeGreaterThan(0);
+    await agent.stop();
+  });
+
+  it("builds without donn's run-time names from an agent exec shell", async () => {
+    const spawn = serving();
+    const agent = await startAgent(
+      io(spawn, agentProbe(), {
+        PATH: "/usr/bin",
+        DONN_SECRET_1: "sk-gw-SECRET",
+        DONN_ROUTE_TOKEN: "old-token",
+      }),
+      dir,
+      {},
+      options,
+    );
+    const build = spawn.calls[0]!;
+    expect(build.env.PATH).toBe("/usr/bin");
+    expect(build.env.DONN_SECRET_1).toBeUndefined();
+    expect(build.env.DONN_ROUTE_TOKEN).toBeUndefined();
     await agent.stop();
   });
 
@@ -415,7 +434,7 @@ describe("donn agent run|stop|logs without a daemon", () => {
     process.emit("SIGINT");
     const r = await pending;
     expect(r.stderr).toContain(
-      "warning: kody's donn files are older than its persona; `donn agent sync kody` brings them up to date",
+      "warning: kody's donn files are older than its persona, or a subagent waits for its gateway edit; `donn agent sync kody` brings them up to date",
     );
   });
 

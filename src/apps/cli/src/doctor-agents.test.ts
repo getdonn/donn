@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Probe } from "@getdonn/adapter-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -191,6 +191,25 @@ describe("donn doctor: created agents", () => {
     const { byId } = await doctor();
     expect(byId["agent:kody:agent-ts"]).toMatchObject({ status: "error" });
     expect(byId["agent:kody:agent-ts"]!.fix).toContain("...donn");
+  });
+
+  it("warns when a subagent donn edited no longer spreads donnSubagent last", async () => {
+    agentProject(s);
+    const sub = ".donn/templates/kody/agent/subagents/researcher/agent.ts";
+    mkdirSync(dirname(join(s.repo, sub)), { recursive: true });
+    const plain =
+      'import { defineAgent } from "eve";\nexport default defineAgent({ description: "d", model: "openai/x" });\n';
+    writeFileSync(join(s.repo, sub), plain);
+    await createAgent(s);
+    expect((await doctor()).byId["agent:kody:subagents"]).toMatchObject({
+      status: "ok",
+    });
+    write("agent/subagents/researcher/agent.ts", plain);
+    const { byId } = await doctor();
+    expect(byId["agent:kody:subagents"]).toMatchObject({ status: "warn" });
+    expect(byId["agent:kody:subagents"]!.message).toContain(
+      "agents/kody/agent/subagents/researcher/agent.ts no longer spreads donnSubagent last",
+    );
   });
 
   it("errors when agent.ts is not one donn recognises", async () => {

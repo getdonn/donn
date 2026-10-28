@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -406,6 +407,48 @@ export default defineAgent({
     expect(readFileSync(join(dir(), SUB), "utf8")).toBe(RESEARCHER);
     expect(config()).not.toContain("donnSubagent");
     expect(manifest().edits).not.toContain(SUB);
+  });
+
+  it("never edits again a subagent the user un-edited; the report says it bypasses the gateway", async () => {
+    template(SUB, RESEARCHER);
+    await create();
+    writeFileSync(join(dir(), SUB), RESEARCHER);
+    const r = await run(["sync", "kody", "--json"]);
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.written).toEqual([]);
+    expect(out.report.entries).toContainEqual(
+      expect.objectContaining({
+        outcome: "dropped",
+        reason: expect.stringContaining(
+          "subagent researcher no longer spreads its donnSubagent entry, so its model bypasses the gateway",
+        ),
+      }),
+    );
+    expect(readFileSync(join(dir(), SUB), "utf8")).toBe(RESEARCHER);
+    expect(manifest().edits).toContain(SUB);
+  });
+
+  it("a subagent edit that fails leaves the manifest matching donn's files", async () => {
+    await create();
+    addSkill();
+    const sub = join(dir(), "agent/subagents/researcher");
+    mkdirSync(sub, { recursive: true });
+    writeFileSync(join(sub, "agent.ts"), RESEARCHER);
+    chmodSync(sub, 0o555);
+    try {
+      const failed = await run(["sync", "kody"]);
+      expect(failed.code).not.toBe(0);
+    } finally {
+      chmodSync(sub, 0o755);
+    }
+    // donn's new files are recorded: the next sync sees no hand edit and finishes the job.
+    expect(Object.keys(manifest().files)).toContain(SKILL_FILE);
+    const again = await run(["sync", "kody", "--json"]);
+    expect(again.stderr).not.toContain("owned-file-edited");
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.stdout).written).toEqual([SUB]);
+    expect(manifest().edits).toContain(SUB);
   });
 
   it("a gateway removed later keeps an edited subagent building on its own model", async () => {
