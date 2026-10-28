@@ -151,7 +151,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     restart: boolean,
   ) => {
     const ctx = await projectContext(io, project);
-    const { root, dir, values, secrets, inputs } = await runEnvironment(
+    const { root, dir, values, secrets, plain, inputs } = await runEnvironment(
       ctx,
       io,
       name,
@@ -167,6 +167,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       name,
       project: root,
       redact: secrets,
+      buildEnv: plain,
       onLine: (line) => void (last = agentLog(line)),
     });
     return { agent, flushed: () => last, inputs };

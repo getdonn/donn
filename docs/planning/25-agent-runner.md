@@ -54,6 +54,9 @@
 >   template declares a setup step (decided by the maintainer).
 > - Template digests (open question 1) and the GitHub Actions answer (§4: yes, with glue) are in
 >   the findings.
+> *Amended 2026-10-27 (kody smoke):* `eve build` gets the agent's plain env values (§5); a
+> template that reads one at module load (kody's `RESEND_FROM_ADDRESS`) failed to build without
+> them.
 
 ## Intent
 
@@ -293,6 +296,13 @@ Workflow world's database variable for `self-host`).
 - `donn agent env <name> --resolve` prints values, for the user to pipe where they choose. Without
   `--resolve` it prints names and refs only.
 - A ref that cannot be resolved stops `run`, `exec` and `deploy`, naming the variable and the ref.
+- *Amended 2026-10-27 (kody smoke):* `eve build` evaluates the agent's modules, and a template
+  may read an env value at load (kody's `agent/instructions.ts` reads `RESEND_FROM_ADDRESS`).
+  `run` (in the foreground and in the daemon) and `build` therefore run `eve build` with the
+  agent's **plain** values, the entries `donn agent env` lists with `source: "plain"`; never a
+  secret's value, never `DONN_ROUTE_TOKEN` or another run-time entry. A secret a module reads at
+  load still fails the build: make it plain, or read it per request. `create` runs no `eve
+  build` (only `eve init` for `eve:blank` and the install), so nothing changes there.
 
 ## 6. Driving the eve CLI
 
