@@ -66,6 +66,31 @@ function commandFor(platform: string): string {
   return platform === "darwin" ? "security" : "secret-tool";
 }
 
+/**
+ * The value from `security find-generic-password -g`, which prints it on stderr as
+ * `password: "<text>"` when it is printable ASCII without a quote or backslash, else as
+ * `password: 0x<HEX>  "<escaped>"`. `-w` prints the bare hex in that case, which cannot be told
+ * from a value that is itself hex: a PEM key came out as hex.
+ */
+function passwordFrom(stderr: string): string {
+  const line = stderr.split("\n").find((l) => l.startsWith("password:"));
+  if (line === undefined) throw new Error("security printed no password line");
+  const rest = line.slice("password:".length).trim();
+  const hex = /^0x([0-9A-Fa-f]*)(?:\s|$)/.exec(rest);
+  if (hex) {
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(
+        Buffer.from(hex[1]!, "hex"),
+      );
+    } catch {
+      throw new Error("the keychain value is not UTF-8 text");
+    }
+  }
+  return rest.startsWith('"') && rest.endsWith('"') && rest.length >= 2
+    ? rest.slice(1, -1)
+    : rest;
+}
+
 /** The stored value, or undefined when there is no such item. */
 export async function getKeychainItem(
   ctx: KeychainContext,
@@ -75,10 +100,14 @@ export async function getKeychainItem(
   const command = commandFor(ctx.platform);
   const args =
     ctx.platform === "darwin"
-      ? ["find-generic-password", "-s", service, "-a", account, "-w"]
+      ? ["find-generic-password", "-s", service, "-a", account, "-g"]
       : ["lookup", "service", service, "account", account];
   const result = await ctx.run(command, args);
-  if (result.exitCode === 0) return result.stdout.replace(/\n$/, "");
+  if (result.exitCode === 0) {
+    return ctx.platform === "darwin"
+      ? passwordFrom(result.stderr)
+      : result.stdout.replace(/\n$/, "");
+  }
   // secret-tool exits 1 for "not found" and for real failures (no D-Bus, a locked keyring):
   // only a quiet exit 1 means the item is missing.
   if (isMissing(ctx.platform, result)) {
