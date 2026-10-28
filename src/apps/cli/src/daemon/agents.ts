@@ -4,6 +4,7 @@ import { agentEnvironment, envInputs, noShellFix } from "../agent/env.js";
 import { projectContext } from "../agent/load.js";
 import {
   agentLogPath,
+  localPort,
   rootOf,
   runEnvironment,
   startAgent,
@@ -131,6 +132,18 @@ const info = (a: RunningAgent): AgentInfo => ({
   token: a.token,
 });
 
+/** A run asking for another port than the agent already has cannot move it. */
+function sameStartPort(agent: RunningAgent, request: RunRequest): void {
+  if (request.port === undefined) return;
+  const current = Number(new URL(agent.url).port);
+  if (current === request.port) return;
+  throw new CliError(
+    "agent-running",
+    `${agent.name} is running on port ${current}; stop it to change its port`,
+    { port: current, fix: `donn agent stop ${agent.name}` },
+  );
+}
+
 export function agentRunner(options: AgentRunnerOptions): AgentRunner {
   const { io, emit, log } = options;
   const running = new Map<string, Entry>();
@@ -151,14 +164,30 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     restart: boolean,
   ) => {
     const ctx = await projectContext(io, project);
-    const { root, dir, values, secrets, plain, inputs } = await runEnvironment(
-      ctx,
-      io,
-      name,
-      { start: true, request, restart },
-    ).catch((error: unknown) => {
+    const {
+      root,
+      dir,
+      values,
+      secrets,
+      plain,
+      inputs,
+      agent: created,
+    } = await runEnvironment(ctx, io, name, {
+      start: true,
+      request,
+      restart,
+    }).catch((error: unknown) => {
       throw daemonSecretFix(error, name, request);
     });
+    // Only a `local` agent keeps a port; a self-host one stays on eve's own.
+    const target = created.result.ir.agents[name]?.target ?? "local";
+    const chosen = await localPort(
+      options.home,
+      root,
+      name,
+      target,
+      request.port,
+    );
     const path = agentLogPath(options.home, root, name);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const agentLog = createLog(path, options.now);
@@ -168,6 +197,7 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       project: root,
       redact: secrets,
       buildEnv: plain,
+      ...(chosen.port !== undefined && { port: chosen.port }),
       onLine: (line) => void (last = agentLog(line)),
     });
     return { agent, flushed: () => last, inputs };
@@ -206,10 +236,15 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
     const root = rootOf(project);
     const k = key(root, name);
     const on = running.get(k);
-    if (on !== undefined) return { agent: info(on.agent), already: true };
+    if (on !== undefined) {
+      sameStartPort(on.agent, request);
+      return { agent: info(on.agent), already: true };
+    }
     const pending = starting.get(k);
     if (pending !== undefined) {
-      return { agent: info((await pending).agent), already: true };
+      const { agent } = await pending;
+      sameStartPort(agent, request);
+      return { agent: info(agent), already: true };
     }
     const started = launch(root, name, request, restart);
     starting.set(k, started);
@@ -217,6 +252,8 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       const { agent, flushed, inputs } = await started;
       const entry: Entry = { agent, flushed, inputs, request, stopping: false };
       running.set(k, entry);
+      // A port taken meanwhile is over once the agent runs again.
+      if (failures.get(k)?.code === "port-in-use") failures.delete(k);
       watch(k, entry);
       await log(`agent ${name} in ${root} running at ${agent.url}`);
       emit({
@@ -316,7 +353,16 @@ export function agentRunner(options: AgentRunnerOptions): AgentRunner {
       if (!stopped || closing) return;
       await log(`agent ${name} in ${project} restarting after a sync`);
       // With what it was started with: a terminal's env values, or donn ui's lack of them.
-      await begin(project, name, entry.request, true).catch(() => undefined);
+      await begin(project, name, entry.request, true).catch(
+        async (error: unknown) => {
+          // A port taken meanwhile is not moved: the agent stays down until it is free.
+          if (errorEnvelope(error)?.code !== "port-in-use") return;
+          const code = "port-in-use";
+          failures.set(k, { name, project, code });
+          await log(`agent ${name} in ${project} sync failed: ${code}`);
+          emit({ type: "agent.sync-failed", name, project, code });
+        },
+      );
     });
 
   const syncOnce = async (project: string, name: string) => {

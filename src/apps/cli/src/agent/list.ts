@@ -30,6 +30,8 @@ export interface AgentRow {
   recreate?: RecreateField;
   /** Where a running agent listens. */
   url?: string;
+  /** The port stored for a local agent, whether or not it runs. */
+  port?: number;
 }
 
 /**
@@ -45,6 +47,7 @@ export async function agentStates(
   if (project === undefined) return [];
   const { root, result } = project;
   const live: AgentStatus[] = running ?? (await runningAgents(io, ctx.home));
+  const created = await listCreated(ctx.home).catch(() => []);
   const rows: AgentRow[] = [];
   for (const name of Object.keys(result.ir.agents).sort()) {
     const agent = result.ir.agents[name]!;
@@ -73,6 +76,10 @@ export async function agentStates(
       if (field !== undefined) row.recreate = field;
       else row.current = await isCurrent(ctx, result, name, dir, manifest);
     }
+    const port = created.find(
+      (c) => c.project === root && c.name === name,
+    )?.port;
+    if (port !== undefined) row.port = port;
     rows.push(row);
   }
   return rows;
@@ -130,6 +137,8 @@ export interface CreatedRow {
   state: AgentRow["state"] | "unknown";
   current: boolean;
   url?: string;
+  /** The port stored for it, whether or not it runs. */
+  port?: number;
   /** Set when the persona changed what a sync cannot rewrite. */
   recreate?: RecreateField;
   /** The code the daemon's last sync of it stopped with. */
@@ -150,9 +159,8 @@ export async function createdAgentRows(
   const projects = [...new Set(created.map((c) => c.project))].sort();
   const rows: CreatedRow[] = [];
   for (const project of projects) {
-    const names = created
-      .filter((c) => c.project === project)
-      .map((c) => c.name);
+    const entries = created.filter((c) => c.project === project);
+    const names = entries.map((c) => c.name);
     let states: AgentRow[] | undefined;
     try {
       states = await agentStates(
@@ -168,6 +176,7 @@ export async function createdAgentRows(
       const failed = syncFailed.find(
         (f) => f.project === project && f.name === name,
       );
+      const port = row?.port ?? entries.find((c) => c.name === name)?.port;
       rows.push({
         ...(row === undefined || row.state === "available"
           ? { name, project, target: "-", state: "unknown", current: false }
@@ -180,6 +189,7 @@ export async function createdAgentRows(
               ...(row.url !== undefined && { url: row.url }),
               ...(row.recreate !== undefined && { recreate: row.recreate }),
             }),
+        ...(port !== undefined && { port }),
         ...(failed !== undefined && { syncFailed: failed.code }),
       });
     }

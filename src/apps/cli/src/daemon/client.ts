@@ -96,6 +96,8 @@ export interface DaemonClient {
     name: string,
     /** The agent's env-provider secrets, by ref (spec 26 §2); never logged by the daemon. */
     env?: Record<string, string>,
+    /** Keep a local agent on this port (an older daemon ignores it). */
+    port?: number,
   ): Promise<{ agent: AgentInfo; already: boolean }>;
   /** `POST /agents/stop`. */
   stopAgent(
@@ -292,11 +294,12 @@ export async function connectDaemon(
           agents: AgentInfo[];
         }
       ).agents,
-    runAgent: async (project, name, env) =>
+    runAgent: async (project, name, env, port) =>
       (await call("POST", "/agents/run", AGENT_RUN_TIMEOUT_MS, {
         project,
         name,
         ...(env !== undefined && { env }),
+        ...(port !== undefined && { port }),
       })) as { agent: AgentInfo; already: boolean },
     stopAgent: async (project, name) =>
       (await call("POST", "/agents/stop", AGENT_STOP_TIMEOUT_MS, {

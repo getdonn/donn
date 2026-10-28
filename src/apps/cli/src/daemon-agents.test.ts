@@ -5,9 +5,11 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { createServer, type Server } from "node:net";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { agentLogPath } from "./agent/run.js";
+import { storedPort } from "./agent/registry.js";
+import { agentLogPath, keptNote, run } from "./agent/run.js";
 import { agentRunner, serial } from "./daemon/agents.js";
 import { cliVersion } from "./commands/daemon.js";
 import {
@@ -806,7 +808,10 @@ describe("donn agent run|stop|list and status through the daemon", () => {
     await start();
     const cliSpawn = fakeEve();
     const ran = await cli(["run", "kody", "--json"], cliSpawn);
-    expect(ran.stderr).toBe("");
+    // Only the first-run port note, which --json sends to stderr.
+    expect(ran.stderr).toBe(
+      `${keptNote((await storedPort(s.home, s.repo, "kody"))!, "kody")}\n`,
+    );
     expect(ran.code).toBe(0);
     expect(cliSpawn.calls).toHaveLength(0);
     expect(JSON.parse(ran.stdout).agent).toMatchObject({
@@ -915,7 +920,10 @@ describe("env-provider secrets of a run (spec 26 §2)", () => {
       });
       const daemon = await start({});
       const ran = await cli(["run", "kody", "--json"], fakeEve(), SHELL);
-      expect(ran.stderr).toBe("");
+      // Under --json the first-run port note goes to stderr, and nothing else.
+      expect(ran.stderr).toBe(
+        `${keptNote((await storedPort(s.home, s.repo, "kody"))!, "kody")}\n`,
+      );
       expect(ran.code).toBe(0);
       expect(startCall()!.env.API_TOKEN).toBe("tok-SHELLONLY");
       expect(Object.values(startCall()!.env)).toContain("sk-gw-SHELLONLY");
@@ -1194,5 +1202,275 @@ describe("allowedRun for agent", () => {
     ]) {
       expect(allowedRun(argv), argv.join(" ")).toBe(false);
     }
+  });
+});
+
+describe("a sticky port through the daemon", () => {
+  const servers: Server[] = [];
+  afterEach(async () => {
+    await Promise.all(
+      servers.splice(0).map((v) => new Promise((r) => v.close(r))),
+    );
+  });
+  /** A free port, and one that is taken until the test ends. */
+  const listen = async (keep: boolean) => {
+    const server = createServer();
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as { port: number }).port;
+    if (keep) servers.push(server);
+    else await new Promise((r) => server.close(r));
+    return port;
+  };
+  const starts = () => spawn.calls.filter((c) => c.args.includes("start"));
+  const portOf = (i: number) => {
+    const args = starts()[i]!.args;
+    return Number(args[args.indexOf("--port") + 1]);
+  };
+  const body = (extra: object = {}) => ({
+    project: s.repo,
+    name: "kody",
+    ...extra,
+  });
+  const stored = () => storedPort(s.home, s.repo, "kody");
+
+  it("a first daemon run stores a port and a second run reuses it", async () => {
+    const daemon = await start();
+    await call(daemon, "POST", "/agents/run", body());
+    const port = portOf(0);
+    expect(port).toBeGreaterThanOrEqual(1024);
+    expect(await stored()).toBe(port);
+    await call(daemon, "POST", "/agents/stop", body());
+    await call(daemon, "POST", "/agents/run", body());
+    expect(portOf(1)).toBe(port);
+  });
+
+  it("a restart after a sync keeps the port", async () => {
+    const runner = agentRunner({
+      home: s.home,
+      io: {
+        ...quietIo({ cwd: s.root, home: s.home, env: SECRETS }),
+        spawn,
+        probe,
+      },
+      emit: (e) => events.push(e),
+      log: async () => {},
+      now: Date.now,
+      syncAgent: async () => ({ written: ["x"], removed: [] }),
+    });
+    await runner.run(s.repo, "kody");
+    await runner.sync(s.repo, "kody");
+    await vi.waitFor(() => expect(starts()).toHaveLength(2));
+    expect(portOf(0)).toBeGreaterThanOrEqual(1024);
+    expect(portOf(1)).toBe(portOf(0));
+    await runner.closeAll();
+  });
+
+  it("--port through the daemon replaces the stored port", async () => {
+    const daemon = await start();
+    await call(daemon, "POST", "/agents/run", body());
+    await call(daemon, "POST", "/agents/stop", body());
+    const port = await listen(false);
+    await call(daemon, "POST", "/agents/run", body({ port }));
+    expect(portOf(1)).toBe(port);
+    expect(await stored()).toBe(port);
+  });
+
+  it("a taken port through the daemon is never stored", async () => {
+    const daemon = await start();
+    const port = await listen(true);
+    const ran = await call(daemon, "POST", "/agents/run", body({ port }));
+    expect(ran.status).toBe(400);
+    expect(ran.body).toMatchObject({ error: { code: "port-in-use" } });
+    expect(starts()).toHaveLength(0);
+    expect(await stored()).toBeUndefined();
+  });
+
+  it("a restart that meets a taken port is a sync failure", async () => {
+    const runner = agentRunner({
+      home: s.home,
+      io: {
+        ...quietIo({ cwd: s.root, home: s.home, env: SECRETS }),
+        spawn,
+        probe,
+      },
+      emit: (e) => events.push(e),
+      log: async () => {},
+      now: Date.now,
+      syncAgent: async () => {
+        // The fake eve binds nothing, so the test takes the agent's port itself.
+        const server = createServer();
+        servers.push(server);
+        await new Promise<void>((r) =>
+          server.listen(portOf(0), "127.0.0.1", () => r()),
+        );
+        return { written: ["x"], removed: [] };
+      },
+    });
+    await runner.run(s.repo, "kody");
+    await runner.sync(s.repo, "kody");
+    await vi.waitFor(() =>
+      expect(runner.syncFailures()).toEqual([
+        { name: "kody", project: s.repo, code: "port-in-use" },
+      ]),
+    );
+    expect(events).toContainEqual({
+      type: "agent.sync-failed",
+      name: "kody",
+      project: s.repo,
+      code: "port-in-use",
+    });
+    expect(starts()).toHaveLength(1);
+    // Freed, and the agent run again: the failure is over.
+    await Promise.all(
+      servers.splice(0).map((v) => new Promise((r) => v.close(r))),
+    );
+    await runner.run(s.repo, "kody");
+    expect(starts()).toHaveLength(2);
+    expect(runner.syncFailures()).toEqual([]);
+    await runner.closeAll();
+  });
+
+  it("--port while a start of the same agent is pending is agent-running", async () => {
+    const runner = agentRunner({
+      home: s.home,
+      io: {
+        ...quietIo({ cwd: s.root, home: s.home, env: SECRETS }),
+        spawn,
+        probe,
+      },
+      emit: (e) => events.push(e),
+      log: async () => {},
+      now: Date.now,
+    });
+    const port = await listen(false);
+    const first = runner.run(s.repo, "kody");
+    await expect(runner.run(s.repo, "kody", { port })).rejects.toMatchObject({
+      code: "agent-running",
+      details: { fix: "donn agent stop kody" },
+    });
+    await first;
+    expect(starts()).toHaveLength(1);
+    await runner.closeAll();
+  });
+
+  it("a socket run with another port to a running agent is agent-running", async () => {
+    const daemon = await start();
+    await call(daemon, "POST", "/agents/run", body());
+    const port = await listen(false);
+    const ran = await call(daemon, "POST", "/agents/run", body({ port }));
+    expect(ran.status).toBe(400);
+    expect(ran.body).toMatchObject({
+      error: {
+        code: "agent-running",
+        details: { port: 61131, fix: "donn agent stop kody" },
+      },
+    });
+    expect(starts()).toHaveLength(1);
+  });
+
+  it("--dev next to a daemon-run agent is refused and spawns nothing", async () => {
+    await start();
+    await cli(["run", "kody", "--json"]);
+    const before = await stored();
+    const devSpawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await cli(["run", "kody", "--dev", "--json"], devSpawn);
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout || r.stderr).error).toMatchObject({
+      code: "agent-running",
+      message:
+        "kody is running under the daemon on port 61131; stop it to run it with --dev",
+      port: 61131,
+      fix: "donn agent stop kody",
+    });
+    expect(devSpawn.calls).toHaveLength(0);
+    expect(await stored()).toBe(before);
+  });
+
+  it("a different --port while running is agent-running", async () => {
+    await start();
+    await cli(["run", "kody", "--json"]);
+    const r = await cli(["run", "kody", "--port", "8787", "--json"]);
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout || r.stderr).error).toMatchObject({
+      code: "agent-running",
+      message: "kody is running on port 61131; stop it to change its port",
+      port: 61131,
+      fix: "donn agent stop kody",
+    });
+  });
+
+  it("the same port while running is already running", async () => {
+    await start();
+    await cli(["run", "kody", "--json"]);
+    const r = await cli(["run", "kody", "--port", "61131", "--json"]);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout).already).toBe(true);
+    expect(starts()).toHaveLength(1);
+  });
+
+  it("--port on a running self-host agent is port-local-only", async () => {
+    s.cleanup();
+    s = seed();
+    agentProject(s, "self-host");
+    await createAgent(s);
+    await start();
+    await cli(["run", "kody", "--json"]);
+    const r = await cli(["run", "kody", "--port", "8787", "--json"]);
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout || r.stderr).error.code).toBe("port-local-only");
+  });
+
+  it("POST /agents/run refuses port 80", async () => {
+    const daemon = await start();
+    for (const port of [80, 70000, 8787.5, "8787"]) {
+      const ran = await call(daemon, "POST", "/agents/run", body({ port }));
+      expect(ran.status).toBe(400);
+      expect(ran.body).toMatchObject({
+        error: {
+          code: "bad-request",
+          message: "port must be an integer from 1024 to 65535",
+        },
+      });
+    }
+    expect(starts()).toHaveLength(0);
+  });
+
+  it("warns when the daemon ignores --port", async () => {
+    const port = await listen(false);
+    const out = { stdout: "", stderr: "" };
+    const io = {
+      ...quietIo({ cwd: s.root, home: s.home, env: SECRETS }),
+      stdout: { write: (t: string) => ((out.stdout += t), true) },
+      stderr: { write: (t: string) => ((out.stderr += t), true) },
+      agents: {
+        list: async () => [],
+        stop: async () => ({ stopped: false }),
+        run: async () => ({
+          already: false,
+          agent: {
+            name: "kody",
+            project: s.repo,
+            url: `http://127.0.0.1:${port === 61131 ? 61132 : 61131}/`,
+            startedAt: new Date().toISOString(),
+            token: "t",
+          },
+        }),
+      },
+    };
+    const code = await run(io, "kody", { project: s.repo, port });
+    expect(code).toBe(0);
+    expect(out.stderr).toContain(
+      "warning: the daemon ignored --port (it runs an older donn); run donn daemon install again",
+    );
+  });
+
+  it("says the port is kept on a daemon run that picked one", async () => {
+    await start();
+    const r = await cli(["run", "kody"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain(keptNote((await stored())!, "kody"));
+    await cli(["stop", "kody"]);
+    const again = await cli(["run", "kody"]);
+    expect(again.stdout).not.toContain("is kept for");
   });
 });
