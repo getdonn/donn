@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/adapter-eve",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Compiles a persona into an eve agent: instructions, skills and connections in the agent directory",
   "license": "Apache-2.0",
   "repository": {

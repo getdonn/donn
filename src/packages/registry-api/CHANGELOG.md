@@ -1,5 +1,12 @@
 # @getdonn/registry-api
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [28bcda1]
+  - @getdonn/adapter-sdk@0.7.0
+
 ## 0.7.1
 
 ### Patch Changes

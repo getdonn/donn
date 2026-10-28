@@ -1,5 +1,11 @@
 # @getdonn/store-remote
 
+## 0.5.4
+
+### Patch Changes
+
+- @getdonn/registry-api@0.7.2
+
 ## 0.5.3
 
 ### Patch Changes

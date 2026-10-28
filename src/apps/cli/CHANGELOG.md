@@ -1,5 +1,22 @@
 # @getdonn/cli
 
+## 0.14.1
+
+### Patch Changes
+
+- 28bcda1: `donn agent run` (in the foreground and through the daemon) and `donn agent build` run `eve build` with the agent's plain env values from `agents.define.<name>.env`, so a template that reads one at module load builds. Secrets and `DONN_ROUTE_TOKEN` still never reach the build.
+- 28bcda1: With a gateway, `donn agent create` edits each subagent's `agent/subagents/<name>/agent.ts` once to spread its `donnSubagent` entry (recorded in the manifest's `edits`, as `agent/agent.ts` is), and `donn agent sync` (and the daemon's sync) edits a subagent it has not edited yet, one added later or a gateway added later; such an edit counts as written. A subagent already edited is never edited again: when it no longer routes, the report and a `donn doctor` warning say so. `eve build` no longer inherits `DONN_SECRET_<n>` or `DONN_ROUTE_TOKEN` from the caller's environment. `donn agent list`, `build` and `run` treat an agent with a subagent waiting for that edit as stale. The compile now reads each subagent's `agent.ts`.
+- bc3b43e: `donn status --watch --json` reads `state.json` again a second after it starts watching it. On macOS the watch went live late, so a switch made in its first moments printed no line until the next change.
+- Updated dependencies [28bcda1]
+  - @getdonn/adapter-eve@0.3.0
+  - @getdonn/adapter-sdk@0.7.0
+  - @getdonn/adapter-agents-md@0.4.2
+  - @getdonn/adapter-claude-code@0.4.2
+  - @getdonn/adapter-codex@0.4.2
+  - @getdonn/executor@0.3.5
+  - @getdonn/registry-api@0.7.2
+  - @getdonn/store-remote@0.5.4
+
 ## 0.14.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/store-remote",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "The registry client: a verified cache of published layers, mounted ahead of the local store, and bundling for publish",
   "license": "Apache-2.0",
   "repository": {

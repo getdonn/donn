@@ -1,6 +1,0 @@
----
-"@getdonn/adapter-eve": minor
-"@getdonn/adapter-sdk": minor
----
-
-Subagents go through the gateway. With `models.gateway`, `lib/donn/config.ts` exports `donnSubagent`, one entry per `agent/subagents/<name>/agent.ts` (`model` and `modelContextWindowTokens`, the keys eve takes on a subagent), and `patchSubagentTs` makes the edit that spreads it last in each subagent, keeping the subagent's own model for when there is no gateway. The report carries one advisory per routed subagent naming the model it replaces. `targets.eve.subagents.<name>.model` picks another model of the same gateway; an override for no subagent, or without a gateway, is reported. A subagent `agent.ts` the edit cannot recognise, or whose spread a later `model` overrides, is `agent-ts-unrecognised`, naming the file; one donn edited before (the new optional `project.edited`) that no longer routes is reported as bypassing the gateway instead, and nested or other subagent modules are reported as not routed. Without a gateway nothing changes. `AgentCompileInput.project` gains optional `texts`, the template-owned files whose content the compile reads. llm-council's subagent portability entry is no longer blocking when a gateway is set.
