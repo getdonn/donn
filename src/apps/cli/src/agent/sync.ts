@@ -19,10 +19,12 @@ import { compile, compileInputs } from "./inputs.js";
 import { withFileLock } from "../fs.js";
 import { loadCreatedAgent, projectContext, projectRoot } from "./load.js";
 import { agentLockPath } from "./registry.js";
+import { editSubagents, pendingSubagentEdits } from "./subagents.js";
 
 // `donn agent sync <name>`: recompile and rewrite donn's files in a created agent by the
 // manifest's rules (docs/planning/24-adapter-eve.md, section 4). It never touches agent.ts or
-// anything donn does not own. Also the shared lookups `list` uses.
+// anything else donn does not own, but for a subagent's agent.ts that a gateway needs edited and
+// that was not yet (see subagents.ts). Also the shared lookups `list` uses.
 // See docs/planning/25-agent-runner.md, section 3.
 
 export interface SyncOptions {
@@ -60,6 +62,24 @@ export function sameFiles(
 }
 
 /**
+ * Whether a recompile plans exactly the manifest's files and no subagent waits for its edit.
+ * A compile that stops throws.
+ */
+export async function upToDate(
+  ctx: Context,
+  result: ResolveResult,
+  name: string,
+  dir: string,
+  manifest: Manifest,
+): Promise<boolean> {
+  const { planned } = await recompile(ctx, result, name, dir, manifest);
+  return (
+    sameFiles(planned.files, manifest.files) &&
+    (await pendingSubagentEdits(dir, result.ir, manifest.edits)).length === 0
+  );
+}
+
+/**
  * Whether the agent's donn files are what its persona compiles to now. Under the agent's lock,
  * with the manifest read again there, so a sync in flight finishes first.
  */
@@ -76,14 +96,13 @@ export async function isSynced(
   const { result, root, dir } = agent;
   return withFileLock(agentLockPath(ctx.home, root, name), async () => {
     const manifest = (await readManifest(dir)) ?? agent.manifest;
-    const { planned } = await recompile(ctx, result, name, dir, manifest);
-    return sameFiles(planned.files, manifest.files);
+    return upToDate(ctx, result, name, dir, manifest);
   });
 }
 
 /** What `build`, `deploy` and a foreground `run` say of an agent older than its persona. */
 export const staleText = (name: string) =>
-  `${name}'s donn files are older than its persona; \`donn agent sync ${name}\` brings them up to date`;
+  `${name}'s donn files are older than its persona, or a subagent waits for its gateway edit; \`donn agent sync ${name}\` brings them up to date`;
 
 /** Refuses an agent whose donn files are older than its persona: they would ship as they are. */
 export async function assertSynced(
@@ -142,14 +161,32 @@ async function syncLocked(
   const { written, removed } = await pendingChanges(dir, planned, manifest);
   // A dry run stops where the real sync would; with --force it reports the overwrites.
   const edited = await checkOwned(dir, manifest, options.force === true);
+  // Subagent edits count as written: a running agent restarts on them as on donn's files.
+  let subagents = (
+    await pendingSubagentEdits(dir, result.ir, manifest.edits)
+  ).map((p) => p.path);
   if (options.dryRun !== true) {
     const files = await writeAgentFiles(dir, output, manifest, {
       force: options.force === true,
       store: ctx.store,
     });
+    // Recorded before the subagent edits: one that fails must not leave donn's new files
+    // unrecorded, which every later sync would read as hand edits.
     await writeManifest(dir, { ...manifest, files });
+    subagents = await editSubagents(dir, result.ir, manifest.edits);
+    if (subagents.length > 0) {
+      const edits = [...new Set([...manifest.edits, ...subagents])].sort();
+      await writeManifest(dir, { ...manifest, files, edits });
+    }
   }
-  return { root, dir, output, written, removed, edited };
+  return {
+    root,
+    dir,
+    output,
+    written: [...written, ...subagents],
+    removed,
+    edited,
+  };
 }
 
 export async function sync(

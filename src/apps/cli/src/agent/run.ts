@@ -12,6 +12,7 @@ import {
   agentEnvironment,
   envInputs,
   envSecrets,
+  plainEnv,
   type AgentEnvironment,
 } from "./env.js";
 import { eveEnv, packageManager, runEve } from "./eve.js";
@@ -61,6 +62,8 @@ export interface StartOptions {
   onLine?: (line: string, stream: "stdout" | "stderr") => void;
   /** Values (resolved secrets) replaced by `***` in every line passed on. */
   redact?: string[];
+  /** The agent's plain values, for `eve build` (see plainEnv); never a secret. */
+  buildEnv: Record<string, string>;
   /** Stops a start still waiting for eve to listen. */
   signal?: AbortSignal;
   startTimeoutMs?: number;
@@ -147,10 +150,10 @@ export async function startAgent(
     options.onLine?.(shown, stream);
   };
 
-  // The build evaluates the agent without its run-time env, so it gets no secret.
+  // The build evaluates the agent without its run-time env: its plain values, never a secret.
   const pm = await packageManager(dir);
   const build = await runEve(io, dir, ["build"], {
-    env: {},
+    env: options.buildEnv,
     onProgress: (line) => pass(line, "stdout"),
   });
   if (build.exitCode !== 0) {
@@ -296,6 +299,8 @@ export async function runEnvironment(
   dir: string;
   values: Record<string, string>;
   secrets: string[];
+  /** The plain values alone, for `eve build`. */
+  plain: Record<string, string>;
   /** What the env was made from, without a secret's value: see envInputs. */
   inputs: string;
   /** The created agent the env was read from. */
@@ -325,6 +330,7 @@ export async function runEnvironment(
     dir,
     values,
     secrets,
+    plain: plainEnv(entries),
     inputs: envInputs(entries),
     agent: env,
   };
@@ -485,6 +491,7 @@ async function foreground(
     dir,
     values,
     secrets,
+    plain,
     agent: created,
   } = await runEnvironment(ctx, io, name, { start: true });
   // Not refused: a local run is how one tries an edit out, but it runs the files as they are.
@@ -502,6 +509,7 @@ async function foreground(
         name,
         project: root,
         redact: secrets,
+        buildEnv: plain,
         signal: abort.signal,
         // Under --json, stdout carries only the JSON.
         onLine: (line, stream) =>

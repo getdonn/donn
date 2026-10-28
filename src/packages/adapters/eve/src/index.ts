@@ -10,8 +10,13 @@ export { connectionName, skillName } from "./names.js";
 export {
   createdAgentTs,
   patchAgentTs,
+  patchSubagentTs,
+  subagentFile,
   type AgentTsResult,
+  type SubagentModel,
+  type SubagentTsResult,
 } from "./agent-ts.js";
+export { subagentNames } from "./subagents.js";
 export { CHANNEL_FILE, ROUTE_AUTH_FILE, ROUTE_TOKEN_ENV } from "./channel.js";
 export { COPY_PENDING, manifestFiles } from "./manifest.js";
 export { TEMPLATES_AT };

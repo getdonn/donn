@@ -79,6 +79,12 @@ the binary from a terminal, as above, to see it).
 
 ## Using it
 
+- A project's line names the persona its sessions run; the first line of its
+  submenu is its switch (`switched: <ref>` or `default`), which the next launch
+  uses. Sessions outside any project share one `no project` line.
+- A daemon older than the CLI gets a line under the header with the fix,
+  `donn daemon install`, and the icon its dot: a service started before an
+  upgrade runs the old code until it is reinstalled.
 - **Quit** stops the app only. The daemon keeps running: it is a service of
   its own (`donn daemon install`, `docs/planning/16-daemon-service.md`).
 - **Start at login** is off by default; toggle it in the menu. On macOS it is

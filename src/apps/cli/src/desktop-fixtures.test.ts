@@ -16,6 +16,7 @@ import { cliVersion } from "./commands/daemon.js";
 import { createContext } from "./context.js";
 import { daemonRequest, type DaemonStatus } from "./daemon/client.js";
 import { startDaemon, type Daemon } from "./daemon/server.js";
+import { applyLive } from "./live-apply.js";
 import { selectPersona } from "./select.js";
 import { buildHash, createSession } from "./session.js";
 import { recordCreated } from "./agent/registry.js";
@@ -110,15 +111,16 @@ const readdirSafe = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
 let launches = 0;
 async function launch(
   project: string,
-  /** What the session records as its project, when that is not the folder. */
-  recorded = project,
-): Promise<void> {
+  /** What the session records as its project, when that is not the folder; null: none. */
+  recorded: string | null = project,
+  persona = "project/persona",
+): Promise<string> {
   // Distinct start times, so the daemon's session order is not left to the random folder names.
   const startedAt = new Date(Date.UTC(2026, 9, 21, 0, 0, launches++));
   const io = quietIo({ cwd: project, home: s.home });
   const ctx = await createContext(io);
   const build = await prepareBuild(ctx, io, {
-    selection: await selectPersona("project/persona", ctx),
+    selection: await selectPersona(persona, ctx),
     harness: "claude-code",
     overlay: true,
     passthrough: [],
@@ -127,15 +129,15 @@ async function launch(
     buildDir: build.buildDir,
     store: ctx.store,
   });
-  await createSession(
+  return createSession(
     s.home,
     join(build.buildDir, "plugin"),
     {
-      persona: "project/persona",
+      persona,
       source: "argument",
       overlay: true,
       harness: "claude-code",
-      project: recorded,
+      ...(recorded !== null && { project: recorded }),
       startedAt: startedAt.toISOString(),
       buildHash: buildHash(build.output),
       snapshot: {
@@ -393,6 +395,20 @@ describe("the desktop shell's fixtures", () => {
     }
     await start();
     check("same-name.json", normalise(await json(["status", "--json"])));
+  });
+
+  it("no-project.json: a session outside any project, beside one in a project", async () => {
+    await launch(s.repo);
+    await launch(s.root, null, "org/base");
+    await start();
+    check("no-project.json", normalise(await json(["status", "--json"])));
+  });
+
+  it("live.json: a session switched live from the persona it launched", async () => {
+    const dir = await launch(s.repo);
+    await applyLive(quietIo({ cwd: s.repo, home: s.home }), dir, "org/base");
+    await start();
+    check("live.json", normalise(await json(["status", "--json"])));
   });
 
   it("personas.json: donn list --json", async () => {

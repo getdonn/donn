@@ -1,0 +1,50 @@
+{
+  "daemon": true,
+  "version": "0.0.0",
+  "pid": 4242,
+  "startedAt": "2026-10-26T00:00:00.000Z",
+  "service": false,
+  "watching": [
+    "/fixture/home/agents/index.json",
+    "/fixture/home/cache/registry/index.json",
+    "/fixture/home/config.yaml",
+    "/fixture/home/overrides.yaml",
+    "/fixture/home/personas",
+    "/fixture/home/sessions",
+    "/fixture/personas",
+    "/fixture/repo/.donn"
+  ],
+  "sessions": [
+    {
+      "dir": "/fixture/home/sessions/s0",
+      "harness": "claude-code",
+      "project": "/fixture/repo",
+      "launched": "project/persona",
+      "startedAt": "2026-10-26T00:00:00.000Z",
+      "held": [],
+      "state": "current"
+    },
+    {
+      "dir": "/fixture/home/sessions/s1",
+      "harness": "claude-code",
+      "launched": "org/base",
+      "startedAt": "2026-10-26T00:00:00.000Z",
+      "held": [],
+      "state": "current"
+    }
+  ],
+  "agents": [],
+  "syncFailed": [],
+  "managed": {
+    "state": "missing",
+    "findings": [
+      {
+        "state": "missing",
+        "detail": "nothing installed in /tmp/donn-no-managed-root/ClaudeCode"
+      }
+    ]
+  },
+  "switched": {
+    "projects": {}
+  }
+}

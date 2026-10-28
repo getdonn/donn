@@ -12,6 +12,16 @@ export interface WatchOptions {
   debounceMs?: number;
   /** How often a daemon that is not running is looked for; 5 s. */
   pollMs?: number;
+  /**
+   * How long after arming the state.json watcher is taken to be live, when state.json is read
+   * again; 1 s. `fs.watch` arms late on macOS (FSEvents): a change in its first moments is lost.
+   */
+  settleMs?: number;
+  /** Test-only: the folder watch, `fs.watch` by default. */
+  watch?: (
+    dir: string,
+    listener: (event: string, name: string | null) => void,
+  ) => FSWatcher;
 }
 
 export const WATCH_NEEDS_JSON = "--watch prints JSON lines; add --json";
@@ -31,6 +41,8 @@ export async function watchStatus(
 ): Promise<number> {
   const debounceMs = options.debounceMs ?? 250;
   const pollMs = options.pollMs ?? 5_000;
+  const settleMs = options.settleMs ?? 1_000;
+  const watchDir = options.watch ?? ((dir, listener) => watch(dir, listener));
   const home = homeOf(io);
   // A warning (a daemon of another version) is said once, not with every line.
   const said = new Set<string>();
@@ -48,6 +60,7 @@ export async function watchStatus(
   let stopped = false;
   let debounce: NodeJS.Timeout | undefined;
   let ticker: NodeJS.Timeout | undefined;
+  let live: NodeJS.Timeout | undefined;
   let watcher: FSWatcher | undefined;
   let unfollow: (() => void) | undefined;
   /** Whether a daemon's events are followed; bumped per stream, so a late end is ignored. */
@@ -71,6 +84,7 @@ export async function watchStatus(
     stopped = true;
     clearTimeout(debounce);
     clearTimeout(ticker);
+    clearTimeout(live);
     unfollow?.();
     watcher?.close();
     signal.removeEventListener("abort", onAbort);
@@ -106,17 +120,21 @@ export async function watchStatus(
     debounce = setTimeout(() => void print(following), debounceMs);
   };
 
-  // `donn switch` replaces state.json by rename: watch the folder, not the file.
+  // `donn switch` replaces state.json by rename: watch the folder, not the file. FSEvents (macOS)
+  // starts a watch after `fs.watch` returns, and a change made before that is never reported: a
+  // switch just after the first line went unseen. Once the watcher is taken to be live, read again.
   const arm = () => {
     if (watcher || stopped) return;
     try {
-      watcher = watch(home, (_, name) => {
+      watcher = watchDir(home, (_, name) => {
         if (name === null || String(name) === "state.json") changed();
       });
       watcher.on("error", () => {
         watcher?.close();
         watcher = undefined;
       });
+      clearTimeout(live);
+      live = setTimeout(changed, settleMs);
     } catch {
       // No home yet: armed again on the next check.
     }

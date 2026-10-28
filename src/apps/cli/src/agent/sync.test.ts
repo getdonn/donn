@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -295,6 +296,173 @@ describe("donn agent sync", () => {
     const r = await run(["sync", "kody", "--json"]);
     expect(r.code).not.toBe(0);
     expect(r.stdout + r.stderr).toContain("agent-not-created");
+  });
+});
+
+// With a gateway, each subagent's agent.ts spreads its donnSubagent entry: create edits it once,
+// sync edits one it has not seen (a subagent added later, a gateway added later).
+// See docs/planning/24-adapter-eve.md, section 2.
+describe("subagents through the gateway", () => {
+  const RESEARCHER = `import { defineAgent } from "eve";
+
+export default defineAgent({
+  description: "Research a topic.",
+  model: "openai/gpt-5.6-terra",
+  tool: false,
+});
+`;
+  const IMPORT = 'import { donnSubagent } from "../../lib/donn/config";';
+  const SUB = "agent/subagents/researcher/agent.ts";
+  const template = (path: string, text: string) => {
+    mkdirSync(dirname(join(s.repo, ".donn/templates/kody", path)), {
+      recursive: true,
+    });
+    writeFileSync(join(s.repo, ".donn/templates/kody", path), text);
+  };
+  const manifest = () =>
+    JSON.parse(readFileSync(join(dir(), ".donn/agent.json"), "utf8"));
+  const config = () =>
+    readFileSync(join(dir(), "agent/lib/donn/config.ts"), "utf8");
+  const noGateway = () =>
+    writeFileSync(
+      persona(),
+      readFileSync(persona(), "utf8").replace(
+        /models:\n(?: {2}.*\n)+/,
+        "models:\n  default: openai/gpt-5\n",
+      ),
+    );
+
+  it("create edits each subagent once, records it, and reports the replaced model", async () => {
+    template(SUB, RESEARCHER);
+    const r = await run(["create", "kody"]);
+    expect(r.stderr).not.toContain("error");
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain(
+      "subagent researcher's own model openai/gpt-5.6-terra is replaced by the gateway's gpt-5",
+    );
+    const text = readFileSync(join(dir(), SUB), "utf8");
+    expect(text).toContain(IMPORT);
+    expect(text).toContain(
+      "  tool: false,\n  ...donnSubagent.researcher,\n});",
+    );
+    expect(text).toContain('model: "openai/gpt-5.6-terra"');
+    expect(config()).toContain("export const donnSubagent = {");
+    expect(manifest().edits).toContain(SUB);
+    expect(manifest().files[SUB]).toBeUndefined();
+    // The template is untouched.
+    expect(
+      readFileSync(join(s.repo, ".donn/templates/kody", SUB), "utf8"),
+    ).toBe(RESEARCHER);
+  });
+
+  it("a second sync changes nothing", async () => {
+    template(SUB, RESEARCHER);
+    await create();
+    const before = readFileSync(join(dir(), SUB), "utf8");
+    const r = await run(["sync", "kody", "--json"]);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ written: [], removed: [] });
+    expect(readFileSync(join(dir(), SUB), "utf8")).toBe(before);
+    expect((await rows())[0].current).toBe(true);
+  });
+
+  it("sync edits a subagent added after create, and list calls the agent stale until then", async () => {
+    await create();
+    mkdirSync(dirname(join(dir(), SUB)), { recursive: true });
+    writeFileSync(join(dir(), SUB), RESEARCHER);
+    expect((await rows())[0].current).toBe(false);
+    const dry = await run(["sync", "kody", "--dry-run", "--json"]);
+    expect(JSON.parse(dry.stdout).written).toContain(SUB);
+    expect(readFileSync(join(dir(), SUB), "utf8")).toBe(RESEARCHER);
+    const r = await run(["sync", "kody", "--json"]);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout).written).toEqual(
+      expect.arrayContaining([SUB, "agent/lib/donn/config.ts"]),
+    );
+    expect(readFileSync(join(dir(), SUB), "utf8")).toContain(
+      "...donnSubagent.researcher",
+    );
+    expect(manifest().edits).toContain(SUB);
+    expect((await rows())[0].current).toBe(true);
+  });
+
+  it("refuses a subagent it cannot edit, naming the file, before writing anything", async () => {
+    template(
+      SUB,
+      'import { defineDynamic } from "eve";\nexport default defineDynamic({ events: {} });\n',
+    );
+    const r = await run(["create", "kody", "--json"]);
+    expect(r.code).not.toBe(0);
+    expect(r.stdout + r.stderr).toContain("agent-ts-unrecognised");
+    expect(r.stdout + r.stderr).toContain(SUB);
+    expect(existsSync(dir())).toBe(false);
+  });
+
+  it("without a gateway nothing changes: no edit, no donnSubagent, no entry", async () => {
+    noGateway();
+    template(SUB, RESEARCHER);
+    const r = await run(["create", "kody"]);
+    expect(r.code).toBe(0);
+    expect(r.stderr).not.toContain("subagent researcher");
+    expect(readFileSync(join(dir(), SUB), "utf8")).toBe(RESEARCHER);
+    expect(config()).not.toContain("donnSubagent");
+    expect(manifest().edits).not.toContain(SUB);
+  });
+
+  it("never edits again a subagent the user un-edited; the report says it bypasses the gateway", async () => {
+    template(SUB, RESEARCHER);
+    await create();
+    writeFileSync(join(dir(), SUB), RESEARCHER);
+    const r = await run(["sync", "kody", "--json"]);
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.written).toEqual([]);
+    expect(out.report.entries).toContainEqual(
+      expect.objectContaining({
+        outcome: "dropped",
+        reason: expect.stringContaining(
+          "subagent researcher no longer spreads its donnSubagent entry, so its model bypasses the gateway",
+        ),
+      }),
+    );
+    expect(readFileSync(join(dir(), SUB), "utf8")).toBe(RESEARCHER);
+    expect(manifest().edits).toContain(SUB);
+  });
+
+  it("a subagent edit that fails leaves the manifest matching donn's files", async () => {
+    await create();
+    addSkill();
+    const sub = join(dir(), "agent/subagents/researcher");
+    mkdirSync(sub, { recursive: true });
+    writeFileSync(join(sub, "agent.ts"), RESEARCHER);
+    chmodSync(sub, 0o555);
+    try {
+      const failed = await run(["sync", "kody"]);
+      expect(failed.code).not.toBe(0);
+    } finally {
+      chmodSync(sub, 0o755);
+    }
+    // donn's new files are recorded: the next sync sees no hand edit and finishes the job.
+    expect(Object.keys(manifest().files)).toContain(SKILL_FILE);
+    const again = await run(["sync", "kody", "--json"]);
+    expect(again.stderr).not.toContain("owned-file-edited");
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.stdout).written).toEqual([SUB]);
+    expect(manifest().edits).toContain(SUB);
+  });
+
+  it("a gateway removed later keeps an edited subagent building on its own model", async () => {
+    template(SUB, RESEARCHER);
+    await create();
+    noGateway();
+    const r = await run(["sync", "kody"]);
+    expect(r.code).toBe(0);
+    expect(config()).toContain(
+      "export const donnSubagent = {\n  researcher: {},\n};",
+    );
+    expect(readFileSync(join(dir(), SUB), "utf8")).toContain(
+      "...donnSubagent.researcher",
+    );
   });
 });
 

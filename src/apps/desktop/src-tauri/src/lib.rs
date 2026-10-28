@@ -14,6 +14,11 @@ use tauri::{AppHandle, RunEvent, Wry};
 
 use crate::cli::CliProblem;
 
+/// The bundle identifier (`tauri.conf.json`), also the LaunchAgent's name.
+/// Used on macOS only, and checked by a test on every OS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) const APP_ID: &str = "dev.getdonn.desktop";
+
 pub fn run() {
     tauri::Builder::default()
         // First, as the plugin's docs require: a second launch lands here and
@@ -64,8 +69,9 @@ pub fn run() {
 /// or old CLI is all the tray shows, and nothing is watched (spec 28 §2).
 fn connect(app: AppHandle) {
     match usable_cli() {
-        Ok(donn) => {
-            tray::set_donn(&app, donn.clone());
+        Ok((donn, version)) => {
+            tray::set_donn(&app, donn.clone(), version);
+            tray::start_list_timer(&app);
             let handle = app.clone();
             watch::start(app, donn, move |s| {
                 tray::rebuild(&handle, &s);
@@ -76,9 +82,9 @@ fn connect(app: AppHandle) {
     }
 }
 
-/// The located CLI when `donn --version` is at least `MIN_CLI`. Why it is
-/// not goes to stderr (the menu has only the fix).
-fn usable_cli() -> Result<cli::Donn, CliProblem> {
+/// The located CLI and its version when `donn --version` is at least
+/// `MIN_CLI`. Why it is not goes to stderr (the menu has only the fix).
+fn usable_cli() -> Result<(cli::Donn, String), CliProblem> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let donn = cli::locate(std::env::var("DONN_BIN").ok().as_deref(), &shell).map_err(|e| {
         eprintln!("donn: CLI not found: {e}");
@@ -98,7 +104,7 @@ fn usable_cli() -> Result<cli::Donn, CliProblem> {
             eprintln!("donn: CLI {version} at {bin} is older than the app needs");
             Err(problem)
         }
-        None => Ok(donn),
+        None => Ok((donn, version)),
     }
 }
 
@@ -109,7 +115,7 @@ fn autostart() -> TauriPlugin<Wry> {
     #[cfg(target_os = "macos")]
     let builder = builder
         .macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent)
-        .app_name("dev.getdonn.desktop");
+        .app_name(APP_ID);
     builder.build()
 }
 

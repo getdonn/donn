@@ -168,7 +168,7 @@ describe("donn agent build", () => {
       if (e.source !== "plain") expect(e).not.toHaveProperty("value");
   });
 
-  it("builds on the host with no secret in eve's env", async () => {
+  it("builds on the host with the plain values and no secret in eve's env", async () => {
     await createSelfHost();
     const spawn = building();
     const probe = agentProbe();
@@ -176,6 +176,10 @@ describe("donn agent build", () => {
     const call = spawn.calls.find((c) => c.args.includes("build"))!;
     expect(call.args).toEqual(["exec", "eve", "build"]);
     expect(call.env.NODE_ENV).toBe("production");
+    // The agent's plain values reach the build; its secrets and the route token do not.
+    expect(call.env.GREETING).toBe("hello");
+    for (const name of ["DONN_SECRET_1", "DONN_ROUTE_TOKEN"])
+      expect(call.env[name]).toBeUndefined();
     expect(probe.dockerCalls[0]).toEqual(["info"]);
   });
 

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createdAgentTs, patchAgentTs } from "./agent-ts.js";
+import { createdAgentTs, patchAgentTs, patchSubagentTs } from "./agent-ts.js";
 
 const dir = new URL("../test/fixtures/agent-ts/", import.meta.url);
 const fixtures = readdirSync(dir).filter((f) => f.endsWith(".ts"));
@@ -180,4 +180,109 @@ describe("patchAgentTs refusals", () => {
       expect(result.hint).toContain("...donn");
     });
   }
+});
+
+describe("patchSubagentTs", () => {
+  const SUB_IMPORT = 'import { donnSubagent } from "../../lib/donn/config";';
+  const kody = readFileSync(
+    new URL("../test/fixtures/subagent-ts/kody-researcher.ts", import.meta.url),
+    "utf8",
+  );
+  const sub = (source: string, name = "researcher") => {
+    const result = patchSubagentTs(source, name);
+    if (!result.ok) throw new Error(`refused: ${result.hint}`);
+    return result;
+  };
+
+  it("kody's researcher: imports donnSubagent, spreads its entry last, keeps its model", () => {
+    const { text, model } = sub(kody);
+    expect(model).toEqual({ kind: "literal", id: "openai/gpt-5.6-terra" });
+    expect(text).toContain(
+      `import { defineAgent } from "eve";\n${SUB_IMPORT}\n`,
+    );
+    expect(text).toContain(
+      '  model: "openai/gpt-5.6-terra",\n  tool: false,\n  ...donnSubagent.researcher,\n});\n',
+    );
+    // Only the two spans change.
+    expect(
+      text
+        .replace(`${SUB_IMPORT}\n`, "")
+        .replace("  ...donnSubagent.researcher,\n", ""),
+    ).toBe(kody);
+  });
+
+  it("is idempotent, and reads the model of a patched file", () => {
+    const { text } = sub(kody);
+    const again = sub(text);
+    expect(again.text).toBe(text);
+    expect(again.model).toEqual({
+      kind: "literal",
+      id: "openai/gpt-5.6-terra",
+    });
+  });
+
+  it("uses a bracket for a name that is not an identifier", () => {
+    const { text } = sub(
+      'import { defineAgent } from "eve";\nexport default defineAgent({ description: "d" });\n',
+      "code-reviewer",
+    );
+    expect(text).toContain(
+      '{ description: "d", ...donnSubagent["code-reviewer"] }',
+    );
+    expect(sub(text, "code-reviewer").text).toBe(text);
+  });
+
+  it("says when the model is not a literal, or not there", () => {
+    expect(
+      sub(
+        'import { defineAgent } from "eve";\nimport { openai } from "eve/models/openai";\nexport default defineAgent({ description: "d", model: openai("x") });\n',
+      ).model,
+    ).toEqual({ kind: "expression" });
+    expect(
+      sub(
+        'import { defineAgent } from "eve";\nexport default defineAgent({ description: "d" });\n',
+      ).model,
+    ).toEqual({ kind: "none" });
+  });
+
+  it("refuses what patchAgentTs refuses, with the lines for the subagent", () => {
+    const result = patchSubagentTs(
+      'import { defineAgent, defineDynamic } from "eve";\nexport default defineDynamic({ events: {} });\n',
+      "researcher",
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("agent-ts-unrecognised");
+    expect(result.hint).toContain(SUB_IMPORT);
+    expect(result.hint).toContain("...donnSubagent.researcher");
+    expect(result.hint).toContain("agent/subagents/researcher/agent.ts");
+  });
+
+  it("says where the spread stood: missing, then last", () => {
+    expect(sub(kody).spread).toBe("missing");
+    expect(sub(sub(kody).text).spread).toBe("last");
+  });
+
+  it("leaves a spread that a later model or window overrides, as shadowed", () => {
+    for (const key of ['model: "openai/x"', "modelContextWindowTokens: 1"]) {
+      const source = `import { defineAgent } from "eve";\n${SUB_IMPORT}\nexport default defineAgent({ description: "d", ...donnSubagent.researcher, ${key} });\n`;
+      const result = sub(source);
+      expect(result.spread).toBe("shadowed");
+      expect(result.text).toBe(source);
+    }
+    // Any other key after the spread is fine.
+    expect(
+      sub(
+        `import { defineAgent } from "eve";\n${SUB_IMPORT}\nexport default defineAgent({ ...donnSubagent.researcher, tool: false });\n`,
+      ).spread,
+    ).toBe("last");
+  });
+
+  it("refuses another donnSubagent binding", () => {
+    const result = patchSubagentTs(
+      'import { defineAgent } from "eve";\nconst donnSubagent = {};\nexport default defineAgent({ description: "d" });\n',
+      "researcher",
+    );
+    expect(result.ok).toBe(false);
+  });
 });

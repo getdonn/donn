@@ -1,6 +1,6 @@
 {
   "name": "@getdonn/registry-api",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "The registry contract: schemas, routes, OpenAPI, a mock server and a conformance kit",
   "license": "Apache-2.0",
   "repository": {

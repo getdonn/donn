@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -25,12 +25,20 @@ const TRAY: &str = "donn";
 /// How long one `donn list` may take: a hung one must not hold up the menu.
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The tray's state: the CLI once located, what is drawn, the persona lists.
+/// How often the persona lists run again when nothing else asks: a persona
+/// added to the store shows with no session open.
+const LIST_EVERY: Duration = Duration::from_secs(60);
+
+/// The tray's state: the CLI once located and its `--version`, what is drawn,
+/// the persona lists.
 #[derive(Default)]
 struct Tray {
     donn: Mutex<Option<Donn>>,
+    cli_version: Mutex<Option<String>>,
     shown: Mutex<Shown>,
     lists: Mutex<Lists>,
+    /// The last snapshot; held while it is drawn, so draws never interleave.
+    last: Mutex<Option<Snapshot>>,
 }
 
 /// The menu and icon as last drawn; menu events resolve ids against `entries`.
@@ -43,9 +51,17 @@ struct Shown {
 /// `donn list` for the default and per session project, and what they were for.
 #[derive(Default)]
 struct Lists {
-    key: Option<ListKey>,
+    last: Option<Listed>,
+    /// Whether the last snapshot drawn had the daemon up.
+    daemon: bool,
     default: Personas,
     projects: BTreeMap<String, Personas>,
+}
+
+/// When the lists last ran, and for what.
+struct Listed {
+    key: ListKey,
+    at: Instant,
 }
 
 /// Adds the tray with `donn · connecting…` and Quit until a snapshot arrives.
@@ -61,9 +77,12 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The CLI was found: actions and lists run it.
-pub fn set_donn(app: &AppHandle, donn: Donn) {
-    *app.state::<Tray>().donn.lock().unwrap() = Some(donn);
+/// The CLI was found: actions and lists run it; its version (`--version`
+/// output) tells an outdated daemon.
+pub fn set_donn(app: &AppHandle, donn: Donn, version: String) {
+    let state = app.state::<Tray>();
+    *state.donn.lock().unwrap() = Some(donn);
+    *state.cli_version.lock().unwrap() = Some(version);
 }
 
 /// The located CLI, once `set_donn` has run.
@@ -79,15 +98,48 @@ pub fn cli_problem(app: &AppHandle, problem: &CliProblem) {
 /// Draws a snapshot. Runs on the watch thread: the lists may run `donn list`.
 pub fn rebuild(app: &AppHandle, s: &Snapshot) {
     let state = app.state::<Tray>();
+    let mut last = state.last.lock().unwrap();
+    *last = Some(s.clone());
+    draw_snapshot(app, s, false);
+}
+
+/// Starts the thread that runs the lists again each `LIST_EVERY` for the last
+/// snapshot, and draws the menu only when that changed it.
+pub fn start_list_timer(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        loop {
+            let state = app.state::<Tray>();
+            let wait = until_due(state.lists.lock().unwrap().last.as_ref(), Instant::now());
+            std::thread::sleep(wait);
+            if let Some(s) = state.last.lock().unwrap().as_ref() {
+                draw_snapshot(&app, s, true);
+            }
+        }
+    });
+}
+
+/// The menu for `s`; `quiet`: not drawn when it is what is shown.
+fn draw_snapshot(app: &AppHandle, s: &Snapshot, quiet: bool) {
+    let state = app.state::<Tray>();
     let Some(donn) = state.donn.lock().unwrap().clone() else {
         return;
     };
     let (default, projects) = lists(&state.lists, &donn, s);
-    let entries = menu_model(s, &default, &projects, canon, login(app));
-    show(app, entries, badge(s), tooltip(s));
+    let version = state.cli_version.lock().unwrap().clone();
+    let version = version.as_deref();
+    let entries = menu_model(s, &default, &projects, version, canon, login(app));
+    let badge = badge(s, version);
+    if quiet {
+        let shown = state.shown.lock().unwrap();
+        if shown.entries == entries && shown.badge == badge {
+            return;
+        }
+    }
+    show(app, entries, badge, tooltip(s));
 }
 
-/// The persona lists, run again only when the sessions' projects or states change.
+/// The persona lists, run again when `relist` says so.
 fn lists(
     lists: &Mutex<Lists>,
     donn: &Donn,
@@ -95,7 +147,7 @@ fn lists(
 ) -> (Personas, BTreeMap<String, Personas>) {
     let key = list_key(s);
     let mut l = lists.lock().unwrap();
-    if l.key.as_ref() != Some(&key) {
+    if relist(l.last.as_ref(), &key, l.daemon, s.daemon, Instant::now()) {
         l.default = list(donn, &home());
         let projects: BTreeSet<&str> = s
             .sessions
@@ -106,9 +158,29 @@ fn lists(
             .into_iter()
             .map(|p| (p.to_owned(), list(donn, &menu::root(p))))
             .collect();
-        l.key = Some(key);
+        l.last = Some(Listed {
+            key,
+            at: Instant::now(),
+        });
     }
+    l.daemon = s.daemon;
     (l.default.clone(), l.projects.clone())
+}
+
+/// Whether the lists run again: never run, their key changed, the daemon
+/// came back (`was_up` false, `up` true), or `LIST_EVERY` has passed.
+fn relist(last: Option<&Listed>, key: &ListKey, was_up: bool, up: bool, now: Instant) -> bool {
+    match last {
+        None => true,
+        Some(l) => l.key != *key || (up && !was_up) || now.duration_since(l.at) >= LIST_EVERY,
+    }
+}
+
+/// How long the list timer sleeps: until `LIST_EVERY` after the last run, at
+/// least a second (an overdue run is not a busy loop).
+fn until_due(last: Option<&Listed>, now: Instant) -> Duration {
+    let since = last.map_or(Duration::ZERO, |l| now.duration_since(l.at));
+    LIST_EVERY.saturating_sub(since).max(Duration::from_secs(1))
 }
 
 /// `donn list` in `cwd`, bounded by `LIST_TIMEOUT`; a failure or a timeout
@@ -247,7 +319,7 @@ fn toggle_login(app: &AppHandle) {
     let result = if login(app) {
         autolaunch.disable()
     } else {
-        autolaunch.enable()
+        autolaunch.enable().inspect(|()| name_login_item())
     };
     if let Err(e) = result {
         alert(app, format!("Could not change start at login: {e}"));
@@ -256,6 +328,65 @@ fn toggle_login(app: &AppHandle) {
     let mut shown = state.shown.lock().unwrap();
     menu::set_checked(&mut shown.entries, "login", login(app));
     draw(app, &shown.entries);
+}
+
+/// macOS: names the app in the LaunchAgent the plugin just wrote, so Login
+/// Items shows donn (spec 28 open question 3). The plugin writes an empty
+/// `AssociatedBundleIdentifiers` and cannot set it. A failure only goes to
+/// stderr: start at login works without it.
+fn name_login_item() {
+    #[cfg(target_os = "macos")]
+    {
+        let file = home()
+            .join("Library/LaunchAgents")
+            .join(format!("{}.plist", crate::APP_ID));
+        let rewrite = || -> std::io::Result<()> {
+            let text = std::fs::read_to_string(&file)?;
+            match with_bundle_id(&text, crate::APP_ID) {
+                Some(named) if named != text => {
+                    // Written aside and renamed: launchd never reads half a file.
+                    let tmp = file.with_extension("plist.tmp");
+                    std::fs::write(&tmp, named)?;
+                    std::fs::rename(&tmp, &file)
+                }
+                Some(_) => Ok(()),
+                None => Err(std::io::Error::other(
+                    "no AssociatedBundleIdentifiers array",
+                )),
+            }
+        };
+        if let Err(e) = rewrite() {
+            eprintln!(
+                "donn: could not name the login item in {}: {e}",
+                file.display()
+            );
+        }
+    }
+}
+
+/// The LaunchAgent plist with `AssociatedBundleIdentifiers` set to `[id]`;
+/// `None` when the key is not followed by one array.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn with_bundle_id(plist: &str, id: &str) -> Option<String> {
+    const KEY: &str = "<key>AssociatedBundleIdentifiers</key>";
+    let after = plist.find(KEY)? + KEY.len();
+    let start = after + plist[after..].len() - plist[after..].trim_start().len();
+    let tail = &plist[start..];
+    let len = if tail.starts_with("<array/>") {
+        "<array/>".len()
+    } else {
+        let inner = tail.strip_prefix("<array>")?;
+        let close = inner.find("</array>")?;
+        if inner[..close].contains("<array") {
+            return None;
+        }
+        "<array>".len() + close + "</array>".len()
+    };
+    Some(format!(
+        "{}<array><string>{id}</string></array>{}",
+        &plist[..start],
+        &tail[len..]
+    ))
 }
 
 /// Runs an action's `donn` call on its own thread; a failure is a dialog.
@@ -335,17 +466,25 @@ fn text(s: &str) -> String {
     s.replace('&', "&&")
 }
 
-/// What the persona lists depend on: each session's project and state.
-type ListKey = Vec<(Option<String>, Option<String>)>;
+/// What the persona lists depend on: each session's project and state, and
+/// the default switch.
+#[derive(Debug, Clone, PartialEq)]
+struct ListKey {
+    sessions: Vec<(Option<String>, Option<String>)>,
+    default: Option<String>,
+}
 
 fn list_key(s: &Snapshot) -> ListKey {
-    let mut key: ListKey = s
+    let mut sessions: Vec<_> = s
         .sessions
         .iter()
         .map(|x| (x.project.clone(), x.state.clone()))
         .collect();
-    key.sort();
-    key
+    sessions.sort();
+    ListKey {
+        sessions,
+        default: s.switched.default.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -417,16 +556,70 @@ mod tests {
         assert_eq!(home_from(None), PathBuf::from("/"));
     }
 
+    /// The LaunchAgent as tauri-plugin-autostart 2.7.0 (auto-launch 0.6.0) writes it.
+    const PLUGIN_PLIST: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+  <dict>
+  <key>Label</key>
+  <string>dev.getdonn.desktop</string>
+  <key>AssociatedBundleIdentifiers</key>
+  <array></array>
+  <key>ProgramArguments</key>
+  <array><string>/Applications/donn.app/Contents/MacOS/donn-desktop</string></array>
+  <key>RunAtLoad</key>
+  <true/>
+  </dict>
+</plist>";
+
     #[test]
-    fn lists_rerun_on_projects_or_state() {
+    fn login_item_names_the_app() {
+        let id = "dev.getdonn.desktop";
+        let named = with_bundle_id(PLUGIN_PLIST, id).unwrap();
+        assert_eq!(
+            named,
+            PLUGIN_PLIST.replace(
+                "<key>AssociatedBundleIdentifiers</key>\n  <array></array>",
+                "<key>AssociatedBundleIdentifiers</key>\n  \
+                 <array><string>dev.getdonn.desktop</string></array>",
+            )
+        );
+        assert!(named.contains("<array><string>/Applications/donn.app/"));
+        // Again: no change.
+        assert_eq!(with_bundle_id(&named, id).unwrap(), named);
+        // An empty `<array/>`, and another id, are replaced the same way.
+        let short = PLUGIN_PLIST.replace("<array></array>", "<array/>");
+        assert_eq!(with_bundle_id(&short, id).unwrap(), named);
+        let other = PLUGIN_PLIST.replace("<array></array>", "<array><string>x.y</string></array>");
+        assert_eq!(with_bundle_id(&other, id).unwrap(), named);
+        // Not the plugin's shape: left alone.
+        assert_eq!(with_bundle_id("<plist><dict/></plist>", id), None);
+        let open = PLUGIN_PLIST.replace("<array></array>", "<array>");
+        assert_eq!(with_bundle_id(&open, id), None, "an unclosed array");
+        let cut = &open[..open.find("<key>ProgramArguments").unwrap()];
+        assert_eq!(with_bundle_id(cut, id), None);
+        let odd = PLUGIN_PLIST.replace("<array></array>", "<string>x</string>");
+        assert_eq!(with_bundle_id(&odd, id), None);
+    }
+
+    #[test]
+    fn app_id_is_the_bundle_identifier() {
+        let conf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let conf: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(conf).unwrap()).unwrap();
+        assert_eq!(conf["identifier"], crate::APP_ID);
+    }
+
+    #[test]
+    fn list_key_follows_projects_state_and_default() {
         let s: Snapshot = read("two-projects.json");
         let key = list_key(&s);
-        assert!(!key.is_empty());
+        assert!(!key.sessions.is_empty());
 
         let mut reordered = s.clone();
         reordered.sessions.reverse();
         reordered.agents.clear();
-        reordered.switched.default = Some("other".into());
+        reordered.switched.projects.clear();
         assert_eq!(
             list_key(&reordered),
             key,
@@ -440,5 +633,61 @@ mod tests {
         let mut gone = s.clone();
         gone.sessions.retain(|x| x.project != s.sessions[0].project);
         assert_ne!(list_key(&gone), key, "a project leaving reruns");
+
+        let mut default = s.clone();
+        default.switched.default = Some("team/payments".into());
+        assert_ne!(list_key(&default), key, "a default switch reruns");
+        default.switched.default = None;
+        assert_ne!(list_key(&default), key, "a cleared default reruns");
+
+        // No sessions at all: the default still keys the lists.
+        let mut idle = s.clone();
+        idle.sessions.clear();
+        let mut other = idle.clone();
+        other.switched.default = Some("team/payments".into());
+        assert_ne!(list_key(&idle), list_key(&other));
+    }
+
+    #[test]
+    fn lists_rerun_on_change_daemon_back_or_every_minute() {
+        let s: Snapshot = read("agents.json");
+        let key = list_key(&s);
+        let t0 = Instant::now();
+        let last = Listed {
+            key: key.clone(),
+            at: t0,
+        };
+        let at = |secs| t0 + Duration::from_secs(secs);
+        // Never listed.
+        assert!(relist(None, &key, false, true, t0));
+        // Nothing changed within the minute.
+        assert!(!relist(Some(&last), &key, true, true, at(59)));
+        assert!(!relist(Some(&last), &key, false, false, at(59)));
+        // The key changed.
+        let mut moved = s.clone();
+        moved.switched.default = Some("org/base".into());
+        assert!(relist(Some(&last), &list_key(&moved), true, true, at(1)));
+        // The daemon came back; going away does not rerun.
+        assert!(relist(Some(&last), &key, false, true, at(1)));
+        assert!(!relist(Some(&last), &key, true, false, at(1)));
+        // A minute on: again, whatever else.
+        assert!(relist(Some(&last), &key, true, true, at(60)));
+        assert!(relist(Some(&last), &key, false, false, at(61)));
+    }
+
+    #[test]
+    fn list_timer_waits_for_the_next_minute() {
+        let t0 = Instant::now();
+        let last = Listed {
+            key: list_key(&read("agents.json")),
+            at: t0,
+        };
+        let at = |secs| t0 + Duration::from_secs(secs);
+        assert_eq!(until_due(None, t0), LIST_EVERY);
+        assert_eq!(until_due(Some(&last), t0), LIST_EVERY);
+        assert_eq!(until_due(Some(&last), at(10)), Duration::from_secs(50));
+        // Overdue (a list still running, or none drawn): not a busy loop.
+        assert_eq!(until_due(Some(&last), at(60)), Duration::from_secs(1));
+        assert_eq!(until_due(Some(&last), at(600)), Duration::from_secs(1));
     }
 }

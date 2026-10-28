@@ -5,8 +5,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::cli::CliProblem;
-use crate::snapshot::{Personas, Snapshot};
+use crate::cli::{self, CliProblem};
+use crate::snapshot::{Personas, Session, Snapshot};
 
 /// What a menu item does.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,14 +41,17 @@ pub enum Entry {
     },
 }
 
-/// The tray's menu. `project_personas` holds each project's `donn list`,
+/// The tray's menu. `cli_version` is `donn --version`'s output, to tell an
+/// outdated daemon (spec 28 open question 5). `project_personas` holds each project's `donn list`,
 /// keyed by a session's `project` exactly as the snapshot gives it; a session
 /// project and a `switched.projects` key match when `canon` (the tray passes
-/// realpath) of each has the same project root. `login`: start at login is on.
+/// realpath) of each has the same project root. A project's line names what its
+/// sessions run; its submenu ticks its switch. `login`: start at login is on.
 pub fn menu_model(
     s: &Snapshot,
     default_personas: &Personas,
     project_personas: &BTreeMap<String, Personas>,
+    cli_version: Option<&str>,
     canon: impl Fn(&str) -> String,
     login: bool,
 ) -> Vec<Entry> {
@@ -58,6 +61,11 @@ pub fn menu_model(
             Some(v) => format!("donn {v} · daemon running"),
             None => "donn · daemon running".into(),
         }));
+        if let Some((daemon, cli)) = outdated(s, cli_version) {
+            m.push(Entry::Label(format!(
+                "daemon {daemon} is older than the CLI {cli} — donn daemon install"
+            )));
+        }
     } else {
         m.push(Entry::Label("donn · daemon not running".into()));
         m.push(item(
@@ -79,6 +87,15 @@ pub fn menu_model(
             Action::ClearDefault,
         ),
     });
+    // Sessions outside a project: one line and no submenu, as the default
+    // persona above is their switch.
+    let loose: Vec<&Session> = s.sessions.iter().filter(|x| x.project.is_none()).collect();
+    if !loose.is_empty() {
+        let personas: BTreeSet<&str> = loose.iter().map(|x| running(x)).collect();
+        let harnesses: BTreeSet<&str> = loose.iter().map(|x| x.harness.as_str()).collect();
+        m.push(Entry::Label(format!("no project · {}", joined(&personas))));
+        m.push(Entry::Label(joined(&harnesses)));
+    }
     m.push(Entry::Separator);
 
     let projects = projects(s, &canon);
@@ -89,24 +106,28 @@ pub fn menu_model(
             .iter()
             .find(|(k, _)| root(&canon(k)) == *key)
             .map(|(_, r)| r.as_str());
-        let persona = switch.or(default).unwrap_or(NO_PERSONA);
         let listed = p.given.iter().find_map(|g| project_personas.get(*g));
         let cwd = root(p.given[0]);
+        // What the next launch gets, when it differs from what runs now.
+        let mut entries = vec![Entry::Label(format!(
+            "switched: {}",
+            switch.unwrap_or("default")
+        ))];
+        entries.extend(choices(
+            &format!("project:{}", key.display()),
+            listed,
+            switch,
+            |r| Action::SwitchProject {
+                cwd: cwd.clone(),
+                r#ref: r.into(),
+            },
+            Action::ClearProject { cwd: cwd.clone() },
+        ));
         m.push(Entry::Submenu {
-            label: format!("{} · {persona}", folder(key, &projects)),
-            entries: choices(
-                &format!("project:{}", key.display()),
-                listed,
-                switch,
-                |r| Action::SwitchProject {
-                    cwd: cwd.clone(),
-                    r#ref: r.into(),
-                },
-                Action::ClearProject { cwd: cwd.clone() },
-            ),
+            label: format!("{} · {}", folder(key, &projects), joined(&p.personas)),
+            entries,
         });
-        let harnesses: Vec<_> = p.harnesses.iter().copied().collect();
-        m.push(Entry::Label(harnesses.join(", ")));
+        m.push(Entry::Label(joined(&p.harnesses)));
     }
     if !projects.is_empty() {
         m.push(Entry::Separator);
@@ -214,23 +235,40 @@ pub fn action_args(a: &Action) -> (Vec<String>, Option<PathBuf>) {
     }
 }
 
-/// The icon's dot (spec 28 §3): a session `stale` or failed to refresh, or an
-/// agent whose sync failed.
-pub fn badge(s: &Snapshot) -> bool {
+/// The icon's dot (spec 28 §3): a session `stale` or failed to refresh, an
+/// agent whose sync failed, or a daemon older than the CLI.
+pub fn badge(s: &Snapshot, cli_version: Option<&str>) -> bool {
     s.sessions
         .iter()
         .any(|x| matches!(x.state.as_deref(), Some("stale" | "refresh-failed")))
         || s.agents.iter().any(|a| a.sync_failed.is_some())
+        || outdated(s, cli_version).is_some()
 }
 
-/// A project line's persona when it has no switch and there is no default.
-const NO_PERSONA: &str = "no persona";
+/// The daemon's and the CLI's versions, trimmed, when the daemon's is older:
+/// a service started before an upgrade runs the old code until reinstalled.
+fn outdated<'a>(s: &'a Snapshot, cli_version: Option<&'a str>) -> Option<(&'a str, &'a str)> {
+    let (daemon, cli) = (s.version.as_deref()?.trim(), cli_version?.trim());
+    (s.daemon && cli::older(daemon, cli)).then_some((daemon, cli))
+}
 
 /// The projects with a session, keyed by canonical root.
 struct Project<'a> {
     /// The session `project` strings, as the snapshot gives them.
     given: Vec<&'a str>,
     harnesses: BTreeSet<&'a str>,
+    /// What its sessions run (`running`).
+    personas: BTreeSet<&'a str>,
+}
+
+/// The persona a session runs: the one swapped in live, else the launched one.
+fn running(x: &Session) -> &str {
+    x.live.as_deref().unwrap_or(&x.launched)
+}
+
+/// Personas or harnesses for a line: distinct and sorted (a set), joined.
+fn joined(personas: &BTreeSet<&str>) -> String {
+    personas.iter().copied().collect::<Vec<_>>().join(", ")
 }
 
 fn projects<'a>(
@@ -245,11 +283,13 @@ fn projects<'a>(
         let p = out.entry(root(&canon(given))).or_insert(Project {
             given: Vec::new(),
             harnesses: BTreeSet::new(),
+            personas: BTreeSet::new(),
         });
         if !p.given.contains(&given) {
             p.given.push(given);
         }
         p.harnesses.insert(&x.harness);
+        p.personas.insert(running(x));
     }
     out
 }
@@ -322,7 +362,7 @@ fn item(id: &str, label: &str, action: Action, checked: Option<bool>) -> Entry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::snapshot::{Agent, Session};
+    use crate::snapshot::Agent;
     use serde::Deserialize;
     use std::path::Path;
 
@@ -339,7 +379,7 @@ mod tests {
     }
 
     fn model(s: &Snapshot, projects: &BTreeMap<String, Personas>) -> Vec<Entry> {
-        menu_model(s, &personas(), projects, |p| p.to_string(), false)
+        menu_model(s, &personas(), projects, None, |p| p.to_string(), false)
     }
 
     fn label(e: &Entry) -> &str {
@@ -447,18 +487,114 @@ mod tests {
     }
 
     #[test]
-    fn project_uses_switch_then_default() {
+    fn project_shows_what_its_sessions_run() {
         let s: Snapshot = read("two-projects.json");
         let m = model(&s, &BTreeMap::new());
-        // `repo` has a switch (keyed by its `.donn`); `repo2` falls back to the default.
-        assert!(labels(&m).contains(&"repo · team/payments"));
-        assert!(labels(&m).contains(&"repo2 · org/base"));
+        // `launched` when nothing was swapped in live; the switch does not count.
+        assert!(labels(&m).contains(&"repo · project/persona"));
+        assert!(labels(&m).contains(&"repo2 · project/persona"));
 
-        // No switch, no default.
+        // `live` over `launched`.
+        let live: Snapshot = read("live.json");
+        let m = model(&live, &BTreeMap::new());
+        assert!(labels(&m).contains(&"repo · org/base"));
+
+        // No daemon: still what each session launched.
         let none: Snapshot = read("no-daemon.json");
         let m = model(&none, &BTreeMap::new());
-        assert!(labels(&m).contains(&"repo · no persona"));
-        assert!(labels(&m).contains(&"other · no persona"));
+        assert!(labels(&m).contains(&"repo · team/payments"));
+        assert!(labels(&m).contains(&"other · org/base"));
+    }
+
+    #[test]
+    fn project_lists_mixed_personas_distinct_and_sorted() {
+        let mut s: Snapshot = read("live.json");
+        s.sessions
+            .push(session("/fixture/repo", "codex", "current"));
+        let mut swapped = session("/fixture/repo", "claude-code", "current");
+        swapped.live = Some("team/payments".into());
+        s.sessions.push(swapped);
+        s.sessions
+            .push(session("/fixture/repo", "codex", "current"));
+        let m = model(&s, &BTreeMap::new());
+        assert!(
+            labels(&m).contains(&"repo · org/base, team/payments"),
+            "{:?}",
+            labels(&m)
+        );
+    }
+
+    #[test]
+    fn project_submenu_names_its_switch() {
+        let s: Snapshot = read("two-projects.json");
+        let m = model(&s, &BTreeMap::new());
+        let repo = submenu(&m, "repo ·");
+        assert_eq!(repo[0], Entry::Label("switched: team/payments".into()));
+        let repo2 = submenu(&m, "repo2 ·");
+        assert_eq!(repo2[0], Entry::Label("switched: default".into()));
+        // No default either: still `default`, the persona a launch would use.
+        let none: Snapshot = read("no-daemon.json");
+        let m = model(&none, &BTreeMap::new());
+        assert_eq!(
+            submenu(&m, "repo ·")[0],
+            Entry::Label("switched: default".into())
+        );
+    }
+
+    #[test]
+    fn sessions_outside_a_project_follow_the_default() {
+        let s: Snapshot = read("no-project.json");
+        let m = model(&s, &BTreeMap::new());
+        let at = labels(&m)
+            .iter()
+            .position(|l| l.starts_with("Default persona:"))
+            .unwrap();
+        assert_eq!(
+            labels(&m[at + 1..at + 5]),
+            [
+                "no project · org/base",
+                "claude-code",
+                "─",
+                "repo · project/persona"
+            ]
+        );
+        assert!(matches!(m[at + 1], Entry::Label(_)), "no submenu");
+        assert!(matches!(m[at + 2], Entry::Label(_)));
+
+        // One line for all of them: personas and harnesses distinct and sorted.
+        let mut mixed = s.clone();
+        let mut codex = session("-", "codex", "current");
+        codex.project = None;
+        codex.live = Some("team/payments".into());
+        mixed.sessions.push(codex.clone());
+        codex.live = None;
+        mixed.sessions.push(codex);
+        let m = model(&mixed, &BTreeMap::new());
+        assert_eq!(
+            labels(&m[at + 1..at + 3]),
+            ["no project · org/base, team/payments", "claude-code, codex"]
+        );
+        assert_eq!(
+            labels(&m)
+                .iter()
+                .filter(|l| l.starts_with("no project"))
+                .count(),
+            1
+        );
+
+        // Only sessions outside a project: the line, then the separator.
+        let mut alone = s.clone();
+        alone.sessions.retain(|x| x.project.is_none());
+        let m = model(&alone, &BTreeMap::new());
+        assert_eq!(
+            labels(&m[at + 1..at + 4]),
+            ["no project · org/base", "claude-code", "─"]
+        );
+
+        // None: no line.
+        let two: Snapshot = read("two-projects.json");
+        let m = model(&two, &BTreeMap::new());
+        assert!(!labels(&m).iter().any(|l| l.starts_with("no project")));
     }
 
     #[test]
@@ -466,11 +602,15 @@ mod tests {
         let mut s: Snapshot = read("two-projects.json");
         s.sessions[0].project = Some("/link/repo/.donn".into());
         let canon = |p: &str| p.replace("/link/", "/fixture/");
-        let m = menu_model(&s, &personas(), &BTreeMap::new(), canon, false);
-        assert!(labels(&m).contains(&"repo · team/payments"));
+        let m = menu_model(&s, &personas(), &BTreeMap::new(), None, canon, false);
+        let switched = Entry::Label("switched: team/payments".into());
+        assert_eq!(submenu(&m, "repo ·")[0], switched);
         // Identity canon: the link does not match the switch.
         let m = model(&s, &BTreeMap::new());
-        assert!(labels(&m).contains(&"repo · org/base"));
+        assert_eq!(
+            submenu(&m, "repo ·")[0],
+            Entry::Label("switched: default".into())
+        );
     }
 
     #[test]
@@ -485,7 +625,14 @@ mod tests {
         let api = submenu(&m, "api (a)");
         assert_eq!(
             labels(api),
-            ["area/fintech", "org/base", "team/payments", "─", "Clear"]
+            [
+                "switched: org/base",
+                "area/fintech",
+                "org/base",
+                "team/payments",
+                "─",
+                "Clear"
+            ]
         );
         assert_eq!(
             item(api, "team/payments"),
@@ -508,7 +655,10 @@ mod tests {
         // listed yet, no switch to clear.
         let two: Snapshot = read("two-projects.json");
         let m = model(&two, &BTreeMap::new());
-        assert_eq!(labels(submenu(&m, "repo2 ·")), ["no personas"]);
+        assert_eq!(
+            labels(submenu(&m, "repo2 ·")),
+            ["switched: default", "no personas"]
+        );
     }
 
     #[test]
@@ -521,7 +671,7 @@ mod tests {
         let m = model(&s, &BTreeMap::new());
         let at = labels(&m)
             .iter()
-            .position(|l| *l == "repo · team/payments")
+            .position(|l| *l == "repo · org/base, project/persona")
             .unwrap();
         assert_eq!(m[at + 1], Entry::Label("claude-code, codex".into()));
         // One line per project, not per session.
@@ -618,14 +768,14 @@ mod tests {
     fn disambiguates_same_named_projects() {
         let s: Snapshot = read("same-name.json");
         let m = model(&s, &BTreeMap::new());
-        assert!(labels(&m).contains(&"api (a) · no persona"));
-        assert!(labels(&m).contains(&"api (b) · no persona"));
+        assert!(labels(&m).contains(&"api (a) · project/persona"));
+        assert!(labels(&m).contains(&"api (b) · project/persona"));
     }
 
     #[test]
     fn footer_and_login() {
         let s: Snapshot = read("two-projects.json");
-        let m = menu_model(&s, &personas(), &BTreeMap::new(), |p| p.into(), true);
+        let m = menu_model(&s, &personas(), &BTreeMap::new(), None, |p| p.into(), true);
         assert_eq!(
             labels(&m[m.len() - 4..]),
             ["─", "Open donn", "Start at login", "Quit"]
@@ -734,17 +884,78 @@ mod tests {
     #[test]
     fn badge_on_stale_or_sync_failed() {
         let stale: Snapshot = read("two-projects.json");
-        assert!(badge(&stale));
+        assert!(badge(&stale, None));
         let agents: Snapshot = read("agents.json");
-        assert!(badge(&agents));
+        assert!(badge(&agents, None));
 
         let mut quiet: Snapshot = read("same-name.json");
-        assert!(!badge(&quiet));
+        assert!(!badge(&quiet, None));
         quiet.sessions[1].state = Some("refresh-failed".into());
-        assert!(badge(&quiet));
+        assert!(badge(&quiet, None));
         quiet.sessions[1].state = Some("refreshed".into());
-        assert!(!badge(&quiet));
-        assert!(!badge(&read("no-daemon.json")));
+        assert!(!badge(&quiet, None));
+        assert!(!badge(&read("no-daemon.json"), None));
+    }
+
+    #[test]
+    fn outdated_daemon_line_and_badge() {
+        let line = |s: &Snapshot, cli: Option<&str>| {
+            let m = menu_model(s, &personas(), &BTreeMap::new(), cli, |p| p.into(), false);
+            m.iter().find_map(|e| match e {
+                Entry::Label(l) if l.starts_with("daemon ") => Some(l.clone()),
+                _ => None,
+            })
+        };
+        // The fixture's daemon reports 0.0.0.
+        let mut s: Snapshot = read("same-name.json");
+        let m = menu_model(
+            &s,
+            &personas(),
+            &BTreeMap::new(),
+            Some("0.14.0"),
+            |p| p.into(),
+            false,
+        );
+        assert_eq!(
+            labels(&m[..3]),
+            [
+                "donn 0.0.0 · daemon running",
+                "daemon 0.0.0 is older than the CLI 0.14.0 — donn daemon install",
+                "Default persona: none"
+            ]
+        );
+        assert!(matches!(m[1], Entry::Label(_)), "a disabled line");
+        assert!(badge(&s, Some("0.14.0")));
+        // `--version` output as the shell read it: trimmed, `v` kept as printed.
+        assert_eq!(
+            line(&s, Some(" v0.14.0\n")).as_deref(),
+            Some("daemon 0.0.0 is older than the CLI v0.14.0 — donn daemon install")
+        );
+
+        // A prerelease counts lower than its release.
+        s.version = Some("0.14.0-next.1".into());
+        assert!(line(&s, Some("0.14.0")).is_some());
+        assert!(badge(&s, Some("0.14.0")));
+
+        // Same, newer, or unknown on either side: nothing.
+        for (daemon, cli) in [
+            (Some("0.14.0"), Some("0.14.0")),
+            (Some("0.15.0"), Some("0.14.0")),
+            (Some("0.14.0"), Some("0.14.0-next.1")),
+            (Some("0.0.0"), None),
+            (Some("0.0.0"), Some("garbage")),
+            (Some("garbage"), Some("0.14.0")),
+            (None, Some("0.14.0")),
+        ] {
+            s.version = daemon.map(Into::into);
+            assert_eq!(line(&s, cli), None, "{daemon:?} {cli:?}");
+            assert!(!badge(&s, cli), "{daemon:?} {cli:?}");
+        }
+
+        // No daemon: no version to compare.
+        let down: Snapshot = read("no-daemon.json");
+        assert_eq!(line(&down, Some("0.14.0")), None);
+        assert!(!badge(&down, Some("0.14.0")));
     }
 
     #[test]

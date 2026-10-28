@@ -1,5 +1,12 @@
 # @getdonn/executor
 
+## 0.3.5
+
+### Patch Changes
+
+- Updated dependencies [28bcda1]
+  - @getdonn/adapter-sdk@0.7.0
+
 ## 0.3.4
 
 ### Patch Changes

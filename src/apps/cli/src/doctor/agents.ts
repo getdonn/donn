@@ -11,6 +11,7 @@ import { nodeSpawn } from "../agent/spawn.js";
 import { posixRelative, type Manifest } from "../agent/files.js";
 import { locateAgent, projectContext, resolveProject } from "../agent/load.js";
 import { listCreated, type CreatedAgent } from "../agent/registry.js";
+import { subagentStates } from "../agent/subagents.js";
 import { shellWord } from "../migrate/steps.js";
 
 // `donn doctor`'s lines per created agent (`~/.donn/agents/index.json`), after `secrets`. The
@@ -226,6 +227,40 @@ export async function agentChecks(
           SPREAD_FIX,
         );
       else add(id("agent-ts"), "ok", `${shown}/agent/agent.ts spreads donn`);
+    }
+
+    // subagents: with a gateway, each subagent's agent.ts spreads its donnSubagent entry last;
+    // the line is there only when the agent has subagents.
+    if (complete && found.kind === "ok") {
+      const states = await subagentStates(
+        dir,
+        found.result.ir,
+        complete.edits,
+      ).catch(() => []);
+      const off = (state: string) =>
+        states.filter((s) => s.state === state).map((s) => s.path);
+      const bypassed = [...off("bypassed"), ...off("unrecognised")];
+      const pending = off("pending");
+      if (bypassed.length > 0)
+        add(
+          id("subagents"),
+          "warn",
+          `${bypassed.map((p) => `${shown}/${p}`).join(", ")} no longer spread${bypassed.length === 1 ? "s" : ""} donnSubagent last, so ${bypassed.length === 1 ? "its model bypasses" : "their models bypass"} the gateway`,
+          "put `...donnSubagent.<name>` as the last property of each one's defineAgent({...}) call, importing donnSubagent from ../../lib/donn/config",
+        );
+      else if (pending.length > 0)
+        add(
+          id("subagents"),
+          "warn",
+          `${pending.map((p) => `${shown}/${p}`).join(", ")} not yet routed through the gateway`,
+          `donn agent sync ${name}${where}`,
+        );
+      else if (states.length > 0)
+        add(
+          id("subagents"),
+          "ok",
+          `${states.length} subagent(s) route through the gateway`,
+        );
     }
 
     // files: the manifest's files, and build's, are on disk.
