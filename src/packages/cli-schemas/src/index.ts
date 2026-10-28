@@ -11,6 +11,7 @@ import {
   AgentStopOutput,
   AgentSyncOutput,
   AgentTemplatesOutput,
+  AgentVendorOutput,
 } from "./agents.js";
 import { CapabilitiesOutput } from "./capabilities.js";
 import { DoctorOutput } from "./doctor.js";
@@ -79,6 +80,7 @@ export const COMMAND_OUTPUTS = {
   "agent logs": AgentLogsOutput,
   "agent add": AgentAddOutput,
   "agent templates": AgentTemplatesOutput,
+  "agent vendor": AgentVendorOutput,
 } satisfies Record<string, z.ZodType>;
 
 /** A command the UI runs, by its `COMMAND_OUTPUTS` key. */

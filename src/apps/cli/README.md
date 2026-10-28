@@ -30,6 +30,7 @@ A project persona can declare agents that run on it (eve is the first framework)
 
 ```sh
 donn agent create pr-bot --template eve:blank --target local
+donn agent vendor <folder|git-url>  # copy an eve template into .donn/templates and record its source
 donn agent run pr-bot            # local: eve build + start, through the daemon when it runs
 donn agent run pr-bot --port 8787  # keep a local agent on port 8787 (stored); point a tunnel at it
 donn agent build pr-bot          # self-host: eve build, deploy/donn/Dockerfile and env.json

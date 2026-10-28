@@ -17,6 +17,7 @@ import {
   agentStopCommand,
   agentSyncCommand,
   agentTemplatesCommand,
+  agentVendorCommand,
 } from "./commands/agent.js";
 import { capabilitiesCommand } from "./commands/capabilities.js";
 import { claudeCommand } from "./commands/claude.js";
@@ -538,7 +539,11 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .argument("<name>", "the agent, as in agents.define")
         .option(
           "--template <template>",
-          "eve:<slug>, eve:blank or a path; declares the agent when the persona does not",
+          "eve:<slug>, eve:blank, a path, or a folder or git URL outside the project (vendored); declares the agent when the persona does not",
+        )
+        .option(
+          "--template-name <name>",
+          "the name a vendored --template is kept under (default: from the source)",
         )
         .addOption(
           new Option("--target <target>", "where the agent runs").choices([
@@ -597,9 +602,24 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .description(
           "List the templates agent create takes, with the Vercel-only services each uses",
         )
-        .option("--json", "print { templates } as JSON")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { templates, vendored } as JSON")
         .action((options) =>
           handle(options.json, () => agentTemplatesCommand(io, options)),
+        );
+
+      agent
+        .command("vendor")
+        .description(
+          "Copy an eve template from a folder or git URL into .donn/templates and record its source",
+        )
+        .argument("<source>", "a folder, or a git URL with an optional #<ref>")
+        .option("--name <name>", "the template's name (default: from source)")
+        .option("--force", "refresh a copy that was edited by hand")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { template, added, changed, removed } as JSON")
+        .action((source: string, options) =>
+          handle(options.json, () => agentVendorCommand(io, source, options)),
         );
 
       agent
