@@ -632,6 +632,64 @@ describe("donn agent create", () => {
       ).toEqual([]);
     });
 
+    it("says so when a refreshed copy stays after the persona write fails", async () => {
+      const tpl = outside();
+      const first = await create(["kody", "--template", tpl, ...flags], {
+        probe: plain,
+      });
+      expect(first.code, first.stderr).toBe(0);
+      // A second agent from the same source refreshes the recorded copy.
+      const file = join(s.repo, ".donn/persona.yaml");
+      const before = read(file);
+      vi.spyOn(adapter, "compile").mockImplementation((...args) => {
+        writeFileSync(file, `${before}# edited\n`);
+        return realCompile(...args);
+      });
+      const { code, stdout, stderr } = await create(
+        ["kody2", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error.code).toBe("persona-changed");
+      expect(stderr).toContain(
+        ".donn/templates/kody-tpl was refreshed from",
+      );
+      expect(existsSync(join(vendored(), "kody-tpl/agent/agent.ts"))).toBe(
+        true,
+      );
+    });
+
+    it("names create's flags in the vendor-name-taken hint", async () => {
+      const tpl = outside();
+      mkdirSync(join(vendored(), "kody-tpl"), { recursive: true });
+      const { stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(JSON.parse(stdout).error.fix).toBe(
+        "--template-name <another-name>, or move the folder away",
+      );
+    });
+
+    it("names donn agent vendor in the vendor-local-edits hint", async () => {
+      const tpl = outside();
+      const first = await create(["kody", "--template", tpl, ...flags], {
+        probe: plain,
+      });
+      expect(first.code, first.stderr).toBe(0);
+      writeFileSync(join(vendored(), "kody-tpl/extra.txt"), "edited\n");
+      const { code, stdout } = await create(
+        ["kody2", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      const error = JSON.parse(stdout).error;
+      expect(error.code).toBe("vendor-local-edits");
+      expect(error.fix).toBe(
+        `donn agent vendor ${tpl} --name kody-tpl --force`,
+      );
+    });
+
     it("compares a declared agent's template with the vendored path", async () => {
       const tpl = outside();
       writeFileSync(

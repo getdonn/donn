@@ -482,12 +482,15 @@ export async function create(
       // The vendored copy goes in last, then the persona; a failed persona write takes a copy
       // this create added back out (a refreshed one stays, as the refresh already happened).
       let undo: (() => Promise<void>) | undefined;
+      let added = false;
       if (stagedVendor) {
-        const added = !(
-          stagedVendor.name in (await readVendored(ctx.projectDir!))
-        );
+        added = !(stagedVendor.name in (await readVendored(ctx.projectDir!)));
         await commitVendor(ctx.projectDir!, stagedVendor, {
           now: io.now ?? Date.now,
+          fixes: {
+            nameTaken: "--template-name <another-name>, or move the folder away",
+            localEdits: `donn agent vendor ${stagedVendor.source} --name ${stagedVendor.name} --force`,
+          },
         });
         if (added)
           undo = () => removeVendored(ctx.projectDir!, stagedVendor.name);
@@ -501,6 +504,10 @@ export async function create(
           await writeDeclaration(edit);
         } catch (error) {
           await undo?.();
+          if (stagedVendor && !added)
+            io.stderr.write(
+              `${vendoredPath(stagedVendor)} was refreshed from ${stagedVendor.source} and kept; the persona was not changed\n`,
+            );
           throw error;
         }
         if (!options.json)

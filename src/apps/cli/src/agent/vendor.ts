@@ -398,6 +398,8 @@ export async function commitVendor(
   options: {
     force?: boolean;
     now: () => number;
+    /** The hints for the two refusals, for a caller whose flags differ from `vendor`'s. */
+    fixes?: { nameTaken?: string; localEdits?: string };
     /** A test seam for the final move of the record into place. */
     rename?: typeof rename;
   },
@@ -415,7 +417,7 @@ export async function commitVendor(
       {
         name: staged.name,
         path: target,
-        fix: "--name <another-name>, or move the folder away",
+        fix: options.fixes?.nameTaken ?? "--name <another-name>, or move the folder away",
       },
     );
   }
@@ -428,7 +430,11 @@ export async function commitVendor(
     throw new CliError(
       "vendor-local-edits",
       `${shown} was edited since it was vendored; refreshing it would lose the edits`,
-      { name: staged.name, path: target, fix: "--force" },
+      {
+        name: staged.name,
+        path: target,
+        fix: options.fixes?.localEdits ?? "--force",
+      },
     );
   }
 
