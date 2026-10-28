@@ -244,21 +244,13 @@ have.
 
 1. **Signed downloads.** A later spec: a Developer ID certificate, notarisation in `release.yml`,
    artifacts on the GitHub Release, and then the updater. Decide when the app has users beyond the
-   maintainer.
-2. **Project lines.** A project line shows its switch or the default. Showing the persona the
-   session actually runs (`live` or `launched`) may read better.
-3. **Login Items name.** The LaunchAgent's `AssociatedBundleIdentifiers` is empty, so macOS Login
-   Items may not name the app.
-4. **fish.** fish joins `"$PATH"` with spaces, so the PATH capture is wrong for fish users.
-5. **An outdated daemon.** *(Added 2026-10-27, after 0.18.0.)* The header reads `donn <version> ·
-   daemon running` with the daemon's version and says nothing when it is older than the CLI,
-   which `donn status` reports (`daemon runs 0.11.0, CLI is 0.14.0; donn daemon install`). A
-   service started before an upgrade keeps the old code until it is reinstalled. The tray could
-   show that line, with its fix, under the header.
-6. **Sessions outside a project.** *(Added 2026-10-27.)* The tray lists only projects with a
-   running session, so a session started outside a project (`project` absent, `-` in `donn
-   status`) does not appear at all. It could get its own line under the default persona, which is
-   the persona such a session uses.
+   maintainer. *(2026-10-27)* Signing also names the app in Login Items: macOS honours the
+   LaunchAgent's `AssociatedBundleIdentifiers` only for an app with a Team ID (see the polish
+   amendment).
+
+*Amended 2026-10-27 (polish):* questions 2 to 6 (project lines, the Login Items name, fish, an
+outdated daemon, sessions outside a project) are closed by the polish pass; see the amendments.
+The Login Items name takes effect only with signing, so it continues under question 1.
 
 ## Amendments from the build (2026-10-26)
 
@@ -285,6 +277,48 @@ have.
   single-instance callback.
 - `donn status --json` reports `switched.error` when `state.json` cannot be read, and still
   exits 0.
+
+*Amended 2026-10-27 (polish):* the polish pass closed open questions 2 to 6. Shell only, no CLI
+change.
+
+- **Project lines** show what runs. A project's line reads `<folder> · <persona>`, where the
+  persona is what its sessions run: `live`, else `launched`. Sessions on different personas list
+  each one, distinct and sorted, joined with `, `. The submenu still ticks the project's switch.
+  It opens with a disabled `switched: <ref>` or `switched: default`, so a next launch that
+  differs from what runs shows. This replaces "its switched persona, or the default" in §3.
+- **An outdated daemon.** The shell keeps the `donn --version` it reads at start. When the
+  snapshot's `version` (the daemon's) is older than it, a disabled line goes under the header:
+  `daemon <x> is older than the CLI <y> — donn daemon install`. The icon gets its dot. A
+  prerelease counts lower than its release. Two prereleases of one release count as equal, and
+  an unreadable version on either side shows nothing.
+- **Sessions outside a project** (no `project`) share one disabled line, `no project ·
+  <persona(s)>`, with the same live-else-launched rule and their harnesses beneath. It sits right
+  after the default persona submenu, which is their switch, so it has no submenu.
+- **fish.** The login shell is now asked `command -v donn; printf 'PATH='; printenv PATH`, still
+  a fixed string. fish joins `"$PATH"` with spaces, but the exported PATH is colon-joined in every
+  shell. `printf` is a builtin in sh, bash, zsh and fish, and `printenv` is found on the login
+  shell's own PATH: no fixed `/usr/bin/grep` (NixOS, Guix and Debian 11 or older without usrmerge
+  have none), and no `env` output, where a multi-line value can hold a line starting `PATH=`. The
+  app still takes the last `PATH=` line.
+- **Login Items name.** tauri-plugin-autostart 2.7.0 (auto-launch 0.6.0) writes
+  `AssociatedBundleIdentifiers` as an empty array and has no setting for it. After `enable()` the
+  shell rewrites that array in `~/Library/LaunchAgents/dev.getdonn.desktop.plist` to
+  `["dev.getdonn.desktop"]`. It edits the plugin's XML with a pure, tested function, writes the
+  file aside and renames it. A plist of another shape is left alone, and a failure goes only to
+  stderr, since start at login works without it. A plist written by an earlier build is fixed
+  the next time start at login is turned on. *Smoke 2026-10-27:* the plist carries the
+  identifier, yet Login Items still lists `donn-desktop` with a generic icon: macOS uses the key
+  only for an app with a Team ID, and a from-source build is signed ad hoc. The rewrite stays and
+  takes effect once the app is signed (question 1). The plugin's AppleScript launcher would name
+  the app now, at the cost of an Automation permission prompt; not taken.
+- **The persona lists** (`donn list`) also run again when `switched.default` changes, when the
+  daemon comes back (down to up), and every 60 s while the app runs. Each run is still bounded at
+  10 s. The existing triggers stay: the sessions' projects or states change. The 60 s timer
+  redraws the menu only when the lists changed it, and draws are serialised on the last
+  snapshot.
+- Fixtures: `no-project.json` (a session with no project beside one in a project) and
+  `live.json` (a session whose live persona differs from the one it launched), written by the
+  CLI test like the others.
 
 ### Smoke run
 

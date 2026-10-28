@@ -88,7 +88,7 @@ mod tests {
             }
             seen += 1;
         }
-        assert!(seen >= 5, "expected the five fixtures, found {seen}");
+        assert!(seen >= 7, "expected the seven fixtures, found {seen}");
     }
 
     #[test]
@@ -120,5 +120,16 @@ mod tests {
             .collect();
         assert_eq!(projects.len(), 2);
         assert!(projects[0].ends_with("/a/api/.donn") && projects[1].ends_with("/b/api/.donn"));
+
+        let loose: Snapshot = read("no-project.json");
+        assert!(loose.sessions.iter().any(|s| s.project.is_none()));
+        assert!(loose.sessions.iter().any(|s| s.project.is_some()));
+
+        let live: Snapshot = read("live.json");
+        let s = &live.sessions[0];
+        assert_eq!(
+            (s.launched.as_str(), s.live.as_deref()),
+            ("project/persona", Some("org/base"))
+        );
     }
 }
