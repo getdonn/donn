@@ -515,6 +515,8 @@ time (network, pinning and provenance rules; left to the later spec of open ques
   (a git source, or a folder that is a git checkout), whether that folder had uncommitted changes,
   the digest of the vendored files (`§2`'s template digest scheme) and when it was vendored. It
   sits beside the template folders because `create` copies a template folder whole.
+  *Revised 2026-10-28:* a folder under the home folder is recorded as `~/…`, so the committed
+  record carries no user name; other paths are recorded as given.
 - Vendoring again under a recorded name refreshes it: the folder is replaced, the record updated,
   and the files added, changed and removed are reported. A vendored copy edited since (its digest
   no longer matches the record) is refused (`vendor-local-edits`, fix `--force`). A folder under
@@ -545,13 +547,22 @@ the persona already declares, `--template` is compared as before, a vendor sourc
 says `--template-name <another-name>`, and `vendor-local-edits` says `donn agent vendor <source>
 --name <name> --force`. A `create` whose persona write fails after vendoring removes a template it
 vendored newly; a refreshed one is kept and reported.
+*Revised 2026-10-28 (final review):* `create` refuses (`vendor-name-taken`, naming the recorded
+source) a vendor source whose recorded template of that name came from a different source, since
+another agent may be declared on it; `donn agent vendor` keeps re-pointing, being explicit. A
+refresh in `create` says `refreshed <name>: a added, c changed, r removed`. The source is checked
+(`package.json` with eve, an `agent/` folder) before anything is listed or copied. A link whose
+target is absolute or resolves outside the source is refused (`vendor-link-outside`); `.DS_Store`
+files are never template content; the local-edits digest of a vendored copy lists files as staging
+does (a checkout's ignore rules).
 
 **`donn agent templates`** adds the vendored templates: `--json` gains `vendored: [{ name,
 template, source, ref?, commit? }]` (`template` is `./templates/<name>`), so the GUI's agent
 builder can offer them; eve's own templates keep their rows.
 
 **Errors** (`CliError`, the usual `--json` envelope): `vendor-source-not-found`,
-`vendor-not-eve-template`, `vendor-source-inside`, `vendor-name-taken`, `vendor-local-edits` (fix
+`vendor-not-eve-template`, `vendor-source-inside`, `vendor-link-outside`, `vendor-name-taken`,
+`vendor-local-edits` (fix
 `--force`), `vendor-fetch-failed` (git's exit code and first stderr line; a URL's credentials are
 never printed), `git-not-installed`, `invalid-template-name`, `invalid-vendor-record` (an
 unreadable `sources.json`, naming the file).
