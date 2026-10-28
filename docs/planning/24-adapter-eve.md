@@ -13,6 +13,8 @@
 > `@getdonn/adapter-sdk`, `@getdonn/adapter-eve` (public from this release), the capability
 > matrix's "Agent adapters" section and an opt-in real-eve e2e (`DONN_E2E=1`). What the build
 > learned is in the `*Amended 2026-10-25 (build)*` notes in §1, §2 and §5.
+> *Amended 2026-10-27 (kody smoke):* with a gateway, subagents go through it too: each
+> `agent/subagents/<name>/agent.ts` spreads its `donnSubagent` entry (§2 "Subagents", §3–§5).
 
 ## Re-check 2026-10-25
 
@@ -234,6 +236,34 @@ default-exported `defineAgent` call with an object literal. eve 0.83 makes `agen
 manifest). Regeneration never touches `agent.ts` again; `donn doctor` warns when it no longer
 spreads `donn`, because the gateway is then no longer enforced for that agent.
 
+**Subagents.** *Amended 2026-10-27 (kody smoke).* eve gives a declared subagent
+(`agent/subagents/<name>/`) nothing of the root's, its model included, so the kody template's
+researcher called `openai/gpt-5.6-terra` past the gateway. With `models.gateway`:
+
+- The compile reads each `agent/subagents/<name>/agent.ts` (`AgentCompileInput.project.texts`,
+  an optional field added for this) and `lib/donn/config.ts` also exports `donnSubagent`, one
+  entry per subagent with only the keys eve takes on a subagent, `model` and
+  `modelContextWindowTokens` (`experimental.workflow.world` is root-only): the agent's gateway
+  model, or `targets.eve.subagents.<name>.model`, another model of the same gateway with the same
+  window (`targets.eve.contextWindow`).
+- `patchSubagentTs` makes the same one-time edit as `agent.ts`'s, with `import { donnSubagent }
+  from "../../lib/donn/config"` and `...donnSubagent.<name>` (`donnSubagent["<name>"]` for a name
+  that is not an identifier) as the last property. Unlike `agent.ts`, the subagent keeps its own
+  `model`: the spread wins with a gateway, and the file keeps building without one. The entry is
+  keyed by subagent rather than one shared object so the edit never depends on the persona: an
+  override added or removed later changes only `config.ts`.
+- The report carries one advisory per routed subagent: "subagent researcher's own model
+  openai/gpt-5.6-terra is replaced by the gateway's claude-sonnet-5-5" ("own model" alone when the
+  model is not a string literal; "which sets no model, gets …" when there is none), at the path
+  that chose the model.
+- A subagent `agent.ts` the edit does not recognise (a `defineDynamic` export, two calls, …) is
+  the compile error `agent-ts-unrecognised`, naming the file and the two lines to add by hand.
+- Without a gateway nothing changes: no edit, no entry, no `donnSubagent`; an override is
+  reported dropped. A subagent an earlier gateway's edit left spreading its entry gets an empty
+  one (`{}`), so it builds on its own model.
+- Only `agent/subagents/<name>/agent.ts` is read: nested subagents and `defineWorkspaceAgent`
+  peers (remote, no model) are not edited.
+
 **`lib/donn/config.ts`** exports `{ model, modelContextWindowTokens?, experimental? }`:
 
 | `models` | `model` |
@@ -307,7 +337,7 @@ with a `donn-` prefix in place of the `donn__` mount prefix, and collisions are 
 | `hooks.*` | — | none | "eve hooks are TypeScript modules; author them in the agent's hooks/" |
 | `policy` | — | none | "Managed policy is harness enforcement; eve has no managed surface" |
 | `models` | `lib/donn/config.ts` | native | — |
-| `targets.eve` | `contextWindow` (above); unknown keys are reported | native | The per-compiler escape hatch, as for other adapters |
+| `targets.eve` | `contextWindow` (above); `subagents.<name>.model` (§2 "Subagents", added 2026-10-27); unknown keys are reported | native | The per-compiler escape hatch, as for other adapters |
 
 - **Connection descriptions.** eve routes on a connection's `description`. A persona's MCP server
   has none, so donn writes "`<name>` MCP server from persona `<id>`" unless
@@ -369,6 +399,10 @@ template uses its gallery slug, and `agentTs` can be `created`.
   never touched; a new donn path that a template or user file already holds stops the sync with
   `slot-collision` (§3), and `--force` does not override it.
 - `agentTs` is `patched` (the template's file, edited once) or `created` (§2).
+- *Amended 2026-10-27:* a subagent's `agent.ts` edited for the gateway (§2 "Subagents") is
+  listed in `edits`, as `agent/agent.ts` is, never in `files`. `create` edits each subagent once;
+  `sync` edits one that does not spread its entry yet (a subagent added later, a gateway added
+  later), the one template-owned edit a regeneration makes (`25` §3).
 - The manifest holds no secrets and no resolved values beyond what is already in the files.
 
 ## 5. The portability report
@@ -386,6 +420,8 @@ is added.
   `agent/subagents/*/agent.ts` (`eve-llm-council-template`) keeps them: only the top agent's
   `agent.ts` is patched. Off Vercel that is a blocking `ai-gateway` entry asking for
   `AI_GATEWAY_API_KEY` or a model of your own in each subagent.
+  *Amended 2026-10-27:* with `models.gateway` the subagents are routed (§2 "Subagents") and the
+  entry is not blocking; without one it stays blocking and names `models.gateway` as the fix.
 - **The personal-agent advisory.** `personal-agent-template`'s `agent.ts` carries
   `modelOptions.providerOptions.anthropic` (thinking), which applies only to Anthropic models and
   stays in the file when donn replaces `model`; with a non-Anthropic gateway or model the compile

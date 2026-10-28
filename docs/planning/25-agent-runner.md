@@ -56,7 +56,8 @@
 >   the findings.
 > *Amended 2026-10-27 (kody smoke):* `eve build` gets the agent's plain env values (§5); a
 > template that reads one at module load (kody's `RESEND_FROM_ADDRESS`) failed to build without
-> them.
+> them. With a gateway, `create` and `sync` also edit each subagent's `agent.ts` (§2 step 6, §3;
+> `24` §2).
 
 ## Intent
 
@@ -161,6 +162,10 @@ this machine), `self-host` (a Node server and a container image the user operate
    recording both in the manifest as edits to a template-owned file. The first install is not
    frozen: the re-pin makes the template's lockfile stale.
 6. **Edit `agent.ts`** once (`24` §2) and write donn's files and the manifest.
+   *Amended 2026-10-27 (kody smoke):* with `models.gateway`, also each subagent's
+   `agent/subagents/<name>/agent.ts` (`24` §2, "Subagents"), each recorded in the manifest's
+   `edits` as `agent/agent.ts` is. The compile reads those files (`project.texts`), so a subagent
+   the edit refuses stops step 2, before anything is written.
 7. **Ignore what must not be committed:** `.env*`, `.output/`, `.vercel/`, `node_modules/` and
    (*2026-10-25*) `.eve/`, eve's build and local-world state, in
    the agent's `.gitignore` (added to the template's, never replacing it).
@@ -177,6 +182,11 @@ A failure after step 4 leaves the directory for inspection and says so; `donn ag
 ## 3. `sync` and the daemon
 
 - `donn agent sync <name>` recompiles and rewrites donn's files (`24` §4).
+  *Amended 2026-10-27 (kody smoke):* with a gateway it also edits a subagent's `agent.ts` that
+  does not spread its `donnSubagent` entry yet (a subagent added after `create`, or a gateway
+  added later), the one template-owned file a sync touches, and only to add the import and the
+  spread; it is added to `edits` and listed as written, so a running agent restarts. Until then
+  `list` marks the agent stale and `build`, `deploy` and `run` treat it so.
 - **The daemon keeps created agents current.** It watches the persona sources of every project
   with a created agent, as it watches them for live sessions (spec 14), and syncs on a change.
   A sync that stops (`owned-file-edited`) becomes an `agent.sync-failed` event and a `donn
