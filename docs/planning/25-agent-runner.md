@@ -127,6 +127,9 @@ this machine), `self-host` (a Node server and a container image the user operate
      re-pins `eve` and installs again. donn always passes `<path>`: a new directory in
      non-interactive mode needs an explicit name, and donn never asks eve to create one.
    - a path template: copy it.
+     *Revised 2026-10-28:* a template from outside the persona folder (a local clone, a git
+     repository) is vendored into `.donn/templates/<name>` first; see "Amendment: vendoring a
+     template" at the end.
    - Never a nested Git repository: a `.git` in the result is removed before anything else.
    *Amended 2026-10-25 (spike):*
    - **Fetch:** `https://codeload.github.com/vercel/eve/tar.gz/refs/tags/eve@<version>`, read
@@ -486,3 +489,73 @@ Smoke before the final review: kody behind a tunnel, restarted by a sync, still 
 webhook with no URL change.
 
 **Release.** `@getdonn/cli` minor (`--port`), `@getdonn/cli-schemas` minor (`port`).
+
+## Amendment: vendoring a template (2026-10-28)
+
+The kody smoke (stage 1) created kody from a local clone of `kody-eve-template`. A path template
+must sit inside the persona folder (`23`: relative to the persona file, no `..`, not absolute),
+so the clone had to be copied into `.donn/templates/` by hand (finding 3). The maintainer's
+decisions: the rule stays (a project's template is part of the repository, so teammates have it);
+donn vendors a template into `.donn/templates/<name>` from a local folder or a git URL and records
+where it came from; `create` vendors on the way when `--template` names such a source.
+*Rejected:* allowing `..` or absolute template paths in the project persona (the persona would
+depend on a folder teammates may not have); a `github:owner/repo#ref` template fetched at create
+time (network, pinning and provenance rules; left to the later spec of open question 2).
+
+**`donn agent vendor <source> [--name <name>] [--force] [--project <dir>] [--json]`.**
+
+- `<source>` is a folder (absolute, `~/`, or relative to the current folder) or a git URL
+  (`https://…`, `ssh://…`, `git@<host>:<path>`, `file://…`) with an optional `#<ref>` (a branch,
+  a tag or a commit).
+- `<name>` defaults to the source's last path segment without `.git`
+  (`~/Repos/kody-eve-template` → `kody-eve-template`); it must be an agent-name slug (`Id`),
+  else `invalid-template-name`.
+- The template lands in `.donn/templates/<name>/`, committed with the project. The record is
+  `.donn/templates/sources.json`, also committed: by name, the source as given, the ref, the commit
+  (a git source, or a folder that is a git checkout), whether that folder had uncommitted changes,
+  the digest of the vendored files (`§2`'s template digest scheme) and when it was vendored. It
+  sits beside the template folders because `create` copies a template folder whole.
+- Vendoring again under a recorded name refreshes it: the folder is replaced, the record updated,
+  and the files added, changed and removed are reported. A vendored copy edited since (its digest
+  no longer matches the record) is refused (`vendor-local-edits`, fix `--force`). A folder under
+  `.donn/templates/` that the record does not name is never replaced (`vendor-name-taken`).
+- Vendoring never edits the persona and never touches a created agent (its files were copied at
+  `create`); the output says that only agents created afterwards get the refreshed template.
+
+**What is copied.** The files `create` keeps from a path template (`files.ts`'s `notTemplate`: no
+`.git` or `node_modules` anywhere; no `.output`, `.eve`, `.donn` or `.vercel` at the top; no `.env`
+or `.env.*` but `.env.example`), links kept as links. A folder that is a git checkout also leaves
+out what its own ignore rules ignore (`git ls-files -co --exclude-standard`). The copy is staged
+in a temporary folder and moved into place last, so a failure leaves `.donn/templates/` as it
+was. A git URL is fetched with the user's `git` and credentials into a temporary folder (`git
+init`; `git fetch --depth 1 <url> <ref>`, the remote's default branch without a ref; `git checkout
+FETCH_HEAD`); donn never handles a token. The source must be an eve template, a `package.json`
+listing `eve` (dependencies or devDependencies) and an `agent/` folder, else
+`vendor-not-eve-template` before anything is written. A source inside `.donn/templates/` or an
+agent's folder of this project is refused (`vendor-source-inside`).
+
+**`create`.** When `create` declares an agent, `--template` is read as: `eve:<slug>` or
+`eve:blank` as before; a relative path inside the persona folder as before; anything else (an
+absolute, `~/` or `..` path, or a git URL) as a vendor source, resolved against the current
+folder, vendored under its default name (or `--template-name <name>`), then declared as
+`template: ./templates/<name>`. `--dry-run` shows the vendoring and writes nothing. An agent the
+persona already declares ignores `--template`, as before. The persona schema is unchanged.
+
+**`donn agent templates`** adds the vendored templates: `--json` gains `vendored: [{ name,
+template, source, ref?, commit? }]` (`template` is `./templates/<name>`), so the GUI's agent
+builder can offer them; eve's own templates keep their rows.
+
+**Errors** (`CliError`, the usual `--json` envelope): `vendor-source-not-found`,
+`vendor-not-eve-template`, `vendor-source-inside`, `vendor-name-taken`, `vendor-local-edits` (fix
+`--force`), `vendor-fetch-failed` (git's exit code and first stderr line; a URL's credentials are
+never printed), `git-not-installed`, `invalid-template-name`.
+
+**Tests** (no network, no real home): a folder, with and without a git checkout (ignored files and
+an `.env` left out); a git source from a local bare repository over `file://` at a branch, a tag
+and a commit; the record; a refresh, with and without edits and with `--force`; each error;
+`create --template <outside folder>` ending with `template: ./templates/<name>` and the agent
+created; `--dry-run` writing nothing; `agent templates` listing the vendored template. Smoke:
+kody created in a fresh scratch project from `~/Repos/kody-eve-template` with one `create`.
+
+**Release.** `@getdonn/cli` minor (`vendor`, `create`'s sources), `@getdonn/cli-schemas` minor
+(`vendored`).
