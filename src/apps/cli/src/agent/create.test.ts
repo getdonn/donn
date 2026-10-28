@@ -651,9 +651,7 @@ describe("donn agent create", () => {
       );
       expect(code).toBe(1);
       expect(JSON.parse(stdout).error.code).toBe("persona-changed");
-      expect(stderr).toContain(
-        ".donn/templates/kody-tpl was refreshed from",
-      );
+      expect(stderr).toContain(".donn/templates/kody-tpl was refreshed from");
       expect(existsSync(join(vendored(), "kody-tpl/agent/agent.ts"))).toBe(
         true,
       );

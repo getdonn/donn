@@ -417,7 +417,9 @@ export async function commitVendor(
       {
         name: staged.name,
         path: target,
-        fix: options.fixes?.nameTaken ?? "--name <another-name>, or move the folder away",
+        fix:
+          options.fixes?.nameTaken ??
+          "--name <another-name>, or move the folder away",
       },
     );
   }

@@ -488,7 +488,8 @@ export async function create(
         await commitVendor(ctx.projectDir!, stagedVendor, {
           now: io.now ?? Date.now,
           fixes: {
-            nameTaken: "--template-name <another-name>, or move the folder away",
+            nameTaken:
+              "--template-name <another-name>, or move the folder away",
             localEdits: `donn agent vendor ${stagedVendor.source} --name ${stagedVendor.name} --force`,
           },
         });

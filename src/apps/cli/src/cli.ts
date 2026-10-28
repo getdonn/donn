@@ -602,7 +602,8 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         .description(
           "List the templates agent create takes, with the Vercel-only services each uses",
         )
-        .option("--json", "print { templates } as JSON")
+        .option("--project <dir>", "the project folder (default: here)")
+        .option("--json", "print { templates, vendored } as JSON")
         .action((options) =>
           handle(options.json, () => agentTemplatesCommand(io, options)),
         );

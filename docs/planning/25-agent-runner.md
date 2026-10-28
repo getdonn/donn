@@ -538,8 +538,13 @@ agent's folder of this project is refused (`vendor-source-inside`).
 `eve:blank` as before; a relative path inside the persona folder as before; anything else (an
 absolute, `~/` or `..` path, or a git URL) as a vendor source, resolved against the current
 folder, vendored under its default name (or `--template-name <name>`), then declared as
-`template: ./templates/<name>`. `--dry-run` shows the vendoring and writes nothing. An agent the
-persona already declares ignores `--template`, as before. The persona schema is unchanged.
+`template: ./templates/<name>`. `--dry-run` shows the vendoring and writes nothing. For an agent
+the persona already declares, `--template` is compared as before, a vendor source counting as
+`./templates/<name>`; nothing is vendored. The persona schema is unchanged.
+*Revised 2026-10-28:* `create` names its own flags in the vendoring errors: `vendor-name-taken`
+says `--template-name <another-name>`, and `vendor-local-edits` says `donn agent vendor <source>
+--name <name> --force`. A `create` whose persona write fails after vendoring removes a template it
+vendored newly; a refreshed one is kept and reported.
 
 **`donn agent templates`** adds the vendored templates: `--json` gains `vendored: [{ name,
 template, source, ref?, commit? }]` (`template` is `./templates/<name>`), so the GUI's agent
@@ -548,7 +553,8 @@ builder can offer them; eve's own templates keep their rows.
 **Errors** (`CliError`, the usual `--json` envelope): `vendor-source-not-found`,
 `vendor-not-eve-template`, `vendor-source-inside`, `vendor-name-taken`, `vendor-local-edits` (fix
 `--force`), `vendor-fetch-failed` (git's exit code and first stderr line; a URL's credentials are
-never printed), `git-not-installed`, `invalid-template-name`.
+never printed), `git-not-installed`, `invalid-template-name`, `invalid-vendor-record` (an
+unreadable `sources.json`, naming the file).
 
 **Tests** (no network, no real home): a folder, with and without a git checkout (ignored files and
 an `.env` left out); a git source from a local bare repository over `file://` at a branch, a tag

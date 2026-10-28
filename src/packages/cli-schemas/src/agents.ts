@@ -239,6 +239,16 @@ export const AgentTemplatesOutput = z.strictObject({
       inRepo: z.boolean(),
     }),
   ),
+  /** Templates vendored into this project, by name; empty outside a project. */
+  vendored: z.array(
+    z.strictObject({
+      name: z.string(),
+      template: z.string(),
+      source: z.string(),
+      ref: z.string().optional(),
+      commit: z.string().optional(),
+    }),
+  ),
 });
 export type AgentTemplatesOutput = z.infer<typeof AgentTemplatesOutput>;
 

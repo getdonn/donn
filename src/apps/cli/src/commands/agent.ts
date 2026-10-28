@@ -154,14 +154,32 @@ export async function agentAddCommand(
   return add(io, name, item, options);
 }
 
-/** `donn agent templates`: the templates `create --template eve:<slug>` takes. */
+/**
+ * `donn agent templates`: the templates `create --template eve:<slug>` takes, and the ones
+ * vendored into this project (none outside a project).
+ */
 export async function agentTemplatesCommand(
   io: CliIo,
-  options: { json?: boolean },
+  options: { json?: boolean; project?: string },
 ): Promise<number> {
   const templates = templateRows();
+  const ctx = await projectContext(io, options.project);
+  if (ctx.projectDir === undefined && options.project !== undefined) {
+    throw noProjectPersona();
+  }
+  const records =
+    ctx.projectDir === undefined ? {} : await readVendored(ctx.projectDir);
+  const vendored = Object.entries(records)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, r]) => ({
+      name,
+      template: `./templates/${name}`,
+      source: r.source,
+      ...(r.ref !== undefined && { ref: r.ref }),
+      ...(r.commit !== undefined && { commit: r.commit }),
+    }));
   if (options.json) {
-    io.stdout.write(`${JSON.stringify({ templates }, null, 2)}\n`);
+    io.stdout.write(`${JSON.stringify({ templates, vendored }, null, 2)}\n`);
     return 0;
   }
   for (const t of templates) {
@@ -171,6 +189,11 @@ export async function agentTemplatesCommand(
     ].filter(Boolean);
     io.stdout.write(
       `eve:${t.slug}  ${t.title}${tags.length > 0 ? `  (${tags.join("; ")})` : ""}\n`,
+    );
+  }
+  for (const v of vendored) {
+    io.stdout.write(
+      `${v.template}  vendored from ${v.source}${v.ref !== undefined ? `#${v.ref}` : ""}${v.commit !== undefined ? ` (${v.commit.slice(0, 7)})` : ""}\n`,
     );
   }
   return 0;

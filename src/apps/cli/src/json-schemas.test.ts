@@ -661,11 +661,71 @@ describe("agent commands", () => {
     });
   });
 
-  it("templates", async () => {
-    const r = await zz(["agent", "templates", "--json"], here());
-    expect(r.code, r.stderr).toBe(0);
-    parses("agent templates", r.stdout);
-    expect(AgentTemplatesOutput).toBe(COMMAND_OUTPUTS["agent templates"]);
+  describe("templates", () => {
+    const vendorTwo = async () => {
+      agentProject(s);
+      for (const n of ["zeta-tpl", "alpha-tpl"]) {
+        const tpl = join(s.root, n);
+        mkdirSync(join(tpl, "agent"), { recursive: true });
+        writeFileSync(
+          join(tpl, "package.json"),
+          '{"dependencies":{"eve":"1"}}',
+        );
+        writeFileSync(join(tpl, "agent/a.ts"), "export {};\n");
+        const v = await zz(
+          ["agent", "vendor", tpl, "--project", s.repo, "--json"],
+          { cwd: s.root, home: s.home, probe: nodeProbe() },
+        );
+        expect(v.code, v.stderr).toBe(0);
+      }
+    };
+
+    it("lists the built-in templates; vendored is empty outside a project", async () => {
+      const r = await zz(["agent", "templates", "--json"], {
+        cwd: s.root,
+        home: s.home,
+      });
+      expect(r.code, r.stderr).toBe(0);
+      const out = parses("agent templates", r.stdout) as {
+        vendored: unknown[];
+      };
+      expect(out.vendored).toEqual([]);
+      expect(AgentTemplatesOutput).toBe(COMMAND_OUTPUTS["agent templates"]);
+    });
+
+    it("lists vendored templates sorted by name", async () => {
+      await vendorTwo();
+      const r = await zz(["agent", "templates", "--json"], here());
+      expect(r.code, r.stderr).toBe(0);
+      const out = parses("agent templates", r.stdout) as {
+        vendored: { name: string; template: string; source: string }[];
+      };
+      expect(out.vendored.map((v) => v.name)).toEqual([
+        "alpha-tpl",
+        "zeta-tpl",
+      ]);
+      expect(out.vendored[0]).toMatchObject({
+        template: "./templates/alpha-tpl",
+        source: join(s.root, "alpha-tpl"),
+      });
+    });
+
+    it("prints a line for each vendored template", async () => {
+      await vendorTwo();
+      const r = await zz(["agent", "templates"], here());
+      expect(r.code, r.stderr).toBe(0);
+      expect(r.stdout).toContain(
+        `./templates/alpha-tpl  vendored from ${join(s.root, "alpha-tpl")}\n`,
+      );
+    });
+
+    it("an explicit --project without a project is an error", async () => {
+      const r = await zz(
+        ["agent", "templates", "--project", s.root, "--json"],
+        { cwd: s.root, home: s.home },
+      );
+      expect(r.code).not.toBe(0);
+    });
   });
 
   it("vendor", async () => {
