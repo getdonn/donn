@@ -15,6 +15,8 @@ export interface CreatedAgent {
   name: string;
   /** The agent's folder, project-relative, as created (the persona can move it later). */
   path?: string;
+  /** The port a `local` agent keeps on this machine (spec 25, sticky port). */
+  port?: number;
 }
 
 const Index = z.object({
@@ -23,6 +25,7 @@ const Index = z.object({
       project: z.string(),
       name: z.string(),
       path: z.string().optional(),
+      port: z.number().int().min(1024).max(65535).optional().catch(undefined),
     }),
   ),
 });
@@ -95,4 +98,29 @@ export async function forgetCreated(
   entry: CreatedAgent,
 ): Promise<void> {
   await update(home, (agents) => agents.filter((a) => !same(a, entry)));
+}
+
+/** The port stored for an agent, if it has a valid one. */
+export async function storedPort(
+  home: string,
+  project: string,
+  name: string,
+): Promise<number | undefined> {
+  const entry = { project, name };
+  return (await listCreated(home)).find((a) => same(a, entry))?.port;
+}
+
+/** Store an agent's port, adding the agent to the index when it is missing. */
+export async function recordPort(
+  home: string,
+  project: string,
+  name: string,
+  port: number,
+): Promise<void> {
+  const entry = { project, name };
+  await update(home, (agents) =>
+    agents.some((a) => same(a, entry))
+      ? agents.map((a) => (same(a, entry) ? { ...a, port } : a))
+      : [...agents, { project, name, port }],
+  );
 }

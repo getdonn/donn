@@ -44,6 +44,7 @@ import {
 import { startMockRegistry } from "@getdonn/registry-api/mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
+import { listCreated, recordPort } from "./agent/registry.js";
 import { agentLogPath } from "./agent/run.js";
 import { createCli } from "./cli.js";
 import {
@@ -530,6 +531,29 @@ describe("agent commands", () => {
       const status = await zz(["status", "--json"], here());
       expect(JSON.parse(status.stdout).agents).toHaveLength(1);
       expect(StatusOutput.parse(JSON.parse(status.stdout))).toBeDefined();
+    });
+
+    it("list and status show the stored port of a stopped agent", async () => {
+      const [entry] = await listCreated(s.home);
+      await recordPort(s.home, entry!.project, "kody", 8787);
+      const r = await agent(["list"]);
+      expect(r.code, r.stderr).toBe(0);
+      const out = parses("agent list", r.stdout) as {
+        agents: { port?: number; url?: string }[];
+      };
+      expect(out.agents[0]).toMatchObject({ port: 8787 });
+      expect(out.agents[0]).not.toHaveProperty("url");
+      const status = await zz(["status", "--json"], here());
+      const parsed = StatusOutput.parse(JSON.parse(status.stdout));
+      expect(parsed.agents[0]).toMatchObject({ name: "kody", port: 8787 });
+    });
+
+    it("an agent with no stored port has no port field", async () => {
+      const r = await agent(["list"]);
+      const out = parses("agent list", r.stdout) as { agents: object[] };
+      expect(out.agents[0]).not.toHaveProperty("port");
+      const status = await zz(["status", "--json"], here());
+      expect(JSON.parse(status.stdout).agents[0]).not.toHaveProperty("port");
     });
 
     it("sync, and sync --dry-run with an edited file", async () => {

@@ -17,7 +17,8 @@ import {
 } from "./env.js";
 import { eveEnv, packageManager, runEve } from "./eve.js";
 import { projectContext, projectRoot } from "./load.js";
-import { agentStatePath } from "./registry.js";
+import { choosePort } from "./port.js";
+import { agentStatePath, storedPort } from "./registry.js";
 import { isSynced, staleText } from "./sync.js";
 import { nodeSpawn } from "./spawn.js";
 
@@ -68,6 +69,8 @@ export interface StartOptions {
   signal?: AbortSignal;
   startTimeoutMs?: number;
   killAfterMs?: number;
+  /** The port eve listens on (a `local` agent's sticky one); absent: any free port. */
+  port?: number;
 }
 
 /** What a run is started with besides the agent: see docs/planning/26-gui.md §2. */
@@ -76,6 +79,8 @@ export interface RunRequest {
   env?: Record<string, string>;
   /** `ui`: started from donn ui, which has no shell, so an env-provider ref not sent fails. */
   origin?: "ui";
+  /** Keep the agent on this port (a `local` agent; see docs/planning/25-agent-runner.md). */
+  port?: number;
 }
 
 /** The running agents and how to start and stop them: the daemon's, or its socket's. */
@@ -166,7 +171,15 @@ export async function startAgent(
   }
 
   tail.length = 0;
-  const args = ["exec", "eve", "start", "--host", "127.0.0.1", "--port", "0"];
+  const args = [
+    "exec",
+    "eve",
+    "start",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(options.port ?? 0),
+  ];
   const command = `${pm} ${args.join(" ")}`;
   let listening!: (url: string) => void;
   const url = new Promise<string>((resolve) => (listening = resolve));
@@ -240,6 +253,16 @@ export async function startAgent(
   }
   await stop();
   if ("code" in outcome) {
+    // Another process took the port between the check and eve's bind.
+    if (options.port !== undefined && tail.some((l) => /EADDRINUSE/.test(l)))
+      throw new CliError(
+        "port-in-use",
+        `port ${options.port} is in use by another process`,
+        {
+          port: options.port,
+          fix: `donn agent run ${options.name} --port <other>`,
+        },
+      );
     throw eveFailed(
       command,
       `eve start exited ${outcome.code} before it listened: ${tail.at(-1) ?? "no output"}`,
@@ -350,7 +373,7 @@ export async function agentControl(
   return {
     list: () => client.agents(),
     run: (project, name, request) =>
-      client.runAgent(project, name, request?.env),
+      client.runAgent(project, name, request?.env, request?.port),
     stop: (project, name) => client.stopAgent(project, name),
   };
 }
@@ -367,9 +390,45 @@ export async function runningAgents(
 
 export interface RunOptions {
   dev?: boolean;
+  /** `--port`: keep a local agent on this port (already parsed). */
+  port?: number;
   json?: boolean;
   project?: string;
 }
+
+/** `--port` is for `local` agents: the others keep eve's own port. */
+export function assertPortTarget(
+  name: string,
+  target: string,
+  port?: number,
+): void {
+  if (port === undefined || target === "local") return;
+  throw new CliError(
+    "port-local-only",
+    `${name} targets ${target}: --port applies to local agents only`,
+    { target },
+  );
+}
+
+/**
+ * The port a start of `name` runs on: only a `local` agent keeps one (`--port`, else the stored
+ * one, else a fresh pick); the others keep eve's own and get `--port` refused.
+ */
+export async function localPort(
+  home: string,
+  root: string,
+  name: string,
+  target: string,
+  port?: number,
+): Promise<{ port?: number; picked: boolean }> {
+  assertPortTarget(name, target, port);
+  if (target !== "local") return { picked: false };
+  return choosePort(home, root, name, port);
+}
+
+/** The note printed when donn picked a port for the first time. */
+export const keptNote = (port: number, name: string): string =>
+  `port ${port} is kept for ${name}; a tunnel can point at it`;
 
 /** What stop says of the sandbox containers; empty when there are none. */
 export function sandboxNote({ leftovers, exited }: Partial<Sandboxes>): string {
@@ -448,18 +507,35 @@ export async function run(
   options: RunOptions,
 ): Promise<number> {
   const ctx = await projectContext(io, options.project);
-  if (options.dev) return dev(ctx, io, name);
+  if (options.dev) return dev(ctx, io, name, options);
   const control = await agentControl(io, ctx.home);
   if (control !== undefined) {
+    // --port is for local agents, whether or not one runs: the persona says which this is.
+    if (options.port !== undefined) {
+      const created = await agentEnvironment(ctx, io, name, { resolve: false });
+      assertPortTarget(
+        name,
+        created.result.ir.agents[name]?.target ?? "local",
+        options.port,
+      );
+    }
     // Already running: nothing to resolve, so a shell without the exports can say so too.
     const root = rootOf(projectRoot(ctx));
     const on = (await control.list()).find(
       (a) => a.name === name && rootOf(a.project) === root,
     );
     if (on !== undefined) {
+      const current = Number(new URL(on.url).port);
+      if (options.port !== undefined && options.port !== current)
+        throw new CliError(
+          "agent-running",
+          `${name} is running on port ${current}; stop it to change its port`,
+          { port: current, fix: `donn agent stop ${name}` },
+        );
       printStarted(io, on, options, { already: true });
       return 0;
     }
+    const before = await storedPort(ctx.home, root, name);
     // Over the socket: the daemon has none of this shell's exports, so the env-provider
     // secrets go with the request (spec 26 §2). In-process (`io.agents`) there is no shell.
     const env =
@@ -468,12 +544,23 @@ export async function run(
             assertRunnable(name, target),
           )
         : {};
-    const { agent, already } = await control.run(
-      projectRoot(ctx),
-      name,
-      Object.keys(env).length > 0 ? { env } : {},
-    );
+    const { agent, already } = await control.run(projectRoot(ctx), name, {
+      ...(Object.keys(env).length > 0 && { env }),
+      ...(options.port !== undefined && { port: options.port }),
+    });
     printStarted(io, agent, options, { already });
+    const listening = Number(new URL(agent.url).port);
+    if (!already && options.port !== undefined && listening !== options.port)
+      io.stderr.write(
+        "warning: the daemon ignored --port (it runs an older donn); run donn daemon install again\n",
+      );
+    else if (before === undefined && options.port === undefined && !already) {
+      const after = await storedPort(ctx.home, root, name);
+      if (after !== undefined)
+        (options.json ? io.stderr : io.stdout).write(
+          `${keptNote(after, name)}\n`,
+        );
+    }
     return 0;
   }
   return foreground(ctx, io, name, options);
@@ -494,6 +581,8 @@ async function foreground(
     plain,
     agent: created,
   } = await runEnvironment(ctx, io, name, { start: true });
+  const target = created.result.ir.agents[name]?.target ?? "local";
+  const chosen = await localPort(ctx.home, root, name, target, options.port);
   // Not refused: a local run is how one tries an edit out, but it runs the files as they are.
   if (!(await isSynced(ctx, created, name)))
     io.stderr.write(`warning: ${staleText(name)}\n`);
@@ -510,6 +599,7 @@ async function foreground(
         project: root,
         redact: secrets,
         buildEnv: plain,
+        ...(chosen.port !== undefined && { port: chosen.port }),
         signal: abort.signal,
         // Under --json, stdout carries only the JSON.
         onLine: (line, stream) =>
@@ -518,6 +608,10 @@ async function foreground(
           ),
       });
       printStarted(io, agent, options, { foreground: true });
+      if (chosen.picked)
+        (options.json ? io.stderr : io.stdout).write(
+          `${keptNote(chosen.port!, name)}\n`,
+        );
       if (abort.signal.aborted) void agent.stop();
       const code = await agent.exited;
       const sandboxes = await agent.stop();
@@ -531,18 +625,51 @@ async function foreground(
 }
 
 /** `--dev`: `eve dev` with eve's terminal UI, in the foreground, never through the daemon. */
-async function dev(ctx: Context, io: CliIo, name: string): Promise<number> {
-  const { dir, values } = await runEnvironment(ctx, io, name, {
+async function dev(
+  ctx: Context,
+  io: CliIo,
+  name: string,
+  options: RunOptions,
+): Promise<number> {
+  const { root, dir, values, agent } = await runEnvironment(ctx, io, name, {
     start: false,
   });
+  const target = agent.result.ir.agents[name]?.target ?? "local";
+  // The daemon's own run of this agent holds its port: --dev beside it would break the tunnel.
+  const control = await agentControl(io, ctx.home);
+  const on = (await control?.list())?.find(
+    (a) => a.name === name && rootOf(a.project) === root,
+  );
+  if (on !== undefined) {
+    const current = Number(new URL(on.url).port);
+    throw new CliError(
+      "agent-running",
+      `${name} is running under the daemon on port ${current}; stop it to run it with --dev`,
+      { port: current, fix: `donn agent stop ${name}` },
+    );
+  }
+  const chosen = await localPort(ctx.home, root, name, target, options.port);
+  if (chosen.picked)
+    (options.json ? io.stderr : io.stdout).write(
+      `${keptNote(chosen.port!, name)}\n`,
+    );
   const pm = await packageManager(dir);
   // The model route is proved under eve dev with development, not production (spec 24 §2).
   const env = { ...eveEnv(io.env, values), NODE_ENV: "development" };
-  const child = (io.spawn ?? nodeSpawn)(pm, ["exec", "eve", "dev"], {
-    cwd: dir,
-    env,
-    inherit: true,
-  });
+  const child = (io.spawn ?? nodeSpawn)(
+    pm,
+    [
+      "exec",
+      "eve",
+      "dev",
+      ...(chosen.port !== undefined ? ["--port", String(chosen.port)] : []),
+    ],
+    {
+      cwd: dir,
+      env,
+      inherit: true,
+    },
+  );
   // The terminal's Ctrl-C reaches eve dev itself; pass on only what is sent to donn alone.
   return withSignals(
     (signal) => signal !== "SIGINT" && child.kill(signal),

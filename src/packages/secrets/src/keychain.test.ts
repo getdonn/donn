@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteKeychainItem,
+  getKeychainItem,
   hasKeychainItem,
   keychainParts,
   keychainSupported,
@@ -30,6 +31,13 @@ function fake(platform: string, reply: Reply) {
   return { ctx, calls };
 }
 
+/** A `security find-generic-password -g` answer: the password line goes to stderr. */
+const found = (value: string): Reply => ({
+  exitCode: 0,
+  stdout: 'keychain: "login.keychain-db"\nclass: "genp"\n',
+  stderr: `password: ${value}\n`,
+});
+
 const failureFor = async (ref: string, ctx: SecretContext) => {
   const error = await resolveSecrets([ref], {}, ctx).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(SecretResolutionError);
@@ -46,7 +54,7 @@ describe("keychain", () => {
   });
 
   it("reads from the macOS keychain", async () => {
-    const { ctx, calls } = fake("darwin", { exitCode: 0, stdout: "s3cret\n" });
+    const { ctx, calls } = fake("darwin", found('"s3cret"'));
     expect(
       await resolveSecrets(["secret://keychain/acme/github/token"], {}, ctx),
     ).toEqual({ "secret://keychain/acme/github/token": "s3cret" });
@@ -58,13 +66,54 @@ describe("keychain", () => {
         "acme/github",
         "-a",
         "token",
-        "-w",
+        "-g",
       ],
     ]);
   });
 
-  it("strips exactly one trailing newline", async () => {
-    const { ctx } = fake("darwin", { exitCode: 0, stdout: "a  \n\n" });
+  // `security -g` output captured from a real keychain (macOS 27): anything but printable ASCII
+  // without a quote or backslash comes as 0x<hex>, which `-w` would have printed as bare hex.
+  it.each([
+    [
+      "a newline",
+      '0x4C494E45310A4C494E4532  "LINE1\\012LINE2"',
+      "LINE1\nLINE2",
+    ],
+    ["non-ASCII text", '0x636166C3A9  "caf\\303\\251"', "café"],
+    ["a quote and a backslash", '0x6122625C63  "a"b\\134c"', 'a"b\\c'],
+    ["a value that is itself hex", '"4c494e4531"', "4c494e4531"],
+    ["spaces around it", '" x "', " x "],
+  ])("reads a macOS value with %s", async (_, line, value) => {
+    const { ctx } = fake("darwin", found(line));
+    expect(await resolveSecrets(["secret://keychain/s/a"], {}, ctx)).toEqual({
+      "secret://keychain/s/a": value,
+    });
+  });
+
+  it("reads a multi-line PEM from the macOS keychain whole", async () => {
+    const pem = "-----BEGIN KEY-----\nAbC=\n-----END KEY-----\n";
+    const hex = Buffer.from(pem).toString("hex").toUpperCase();
+    const { ctx } = fake("darwin", found(`0x${hex}  "ignored"`));
+    expect(await getKeychainItem(ctx, "s", "a")).toBe(pem);
+  });
+
+  it("reads an empty macOS value as empty", async () => {
+    expect(await getKeychainItem(fake("darwin", found("")).ctx, "s", "a")).toBe(
+      "",
+    );
+  });
+
+  it("refuses a macOS value that is not text, or output it cannot read", async () => {
+    await expect(
+      getKeychainItem(fake("darwin", found("0xFF00FE")).ctx, "s", "a"),
+    ).rejects.toThrow("the keychain value is not UTF-8 text");
+    await expect(
+      getKeychainItem(fake("darwin", { exitCode: 0 }).ctx, "s", "a"),
+    ).rejects.toThrow("security printed no password line");
+  });
+
+  it("strips exactly one trailing newline from secret-tool", async () => {
+    const { ctx } = fake("linux", { exitCode: 0, stdout: "a  \n\n" });
     expect(await resolveSecrets(["secret://keychain/s/a"], {}, ctx)).toEqual({
       "secret://keychain/s/a": "a  \n",
     });
@@ -98,10 +147,7 @@ describe("keychain", () => {
       ),
     ).toBe("not found in the keychain");
     expect(
-      await failureFor(
-        "secret://keychain/s/a",
-        fake("darwin", { exitCode: 0, stdout: "" }).ctx,
-      ),
+      await failureFor("secret://keychain/s/a", fake("darwin", found("")).ctx),
     ).toBe("not found in the keychain");
   });
 
@@ -133,13 +179,13 @@ describe("keychain", () => {
     expect(
       await failureFor(
         "secret://keychain/only-one",
-        fake("darwin", { exitCode: 0, stdout: "x" }).ctx,
+        fake("darwin", found('"x"')).ctx,
       ),
     ).toBe("keychain refs are secret://<provider>/<service>/<account>");
   });
 
   it("works undeclared, or declared under another name", async () => {
-    const { ctx } = fake("darwin", { exitCode: 0, stdout: "x\n" });
+    const { ctx } = fake("darwin", found('"x"'));
     expect(
       await resolveSecrets(
         ["secret://mine/a/b"],
@@ -307,7 +353,7 @@ describe("keychain writes", () => {
   });
 
   it("the existing secret:// resolve still works", async () => {
-    const { ctx, calls } = fake("darwin", { exitCode: 0, stdout: "val\n" });
+    const { ctx, calls } = fake("darwin", found('"val"'));
     const out = await resolveSecrets(["secret://keychain/s/a"], {}, ctx);
     expect(JSON.stringify(out)).toContain("val");
     expect(calls[0]).toEqual([
@@ -317,7 +363,7 @@ describe("keychain writes", () => {
       "s",
       "-a",
       "a",
-      "-w",
+      "-g",
     ]);
   });
 });

@@ -279,6 +279,21 @@ describe.skipIf(!ENABLED)("e2e: donn agent with real eve", () => {
     };
     expect(stopped.stopped).toBe(true);
     expect(stopped.exited).toBeGreaterThanOrEqual(1);
+
+    // The port is sticky: run again and it is the same one, the one the index stores.
+    const portOf = (url: string) => Number(new URL(url).port);
+    const index = JSON.parse(
+      readFileSync(join(home, "agents/index.json"), "utf8"),
+    ) as { agents: { name: string; port?: number }[] };
+    const stored = index.agents.find((a) => a.name === "blank")?.port;
+    expect(stored).toBe(portOf(ran.agent.url));
+    const again = json(donn(["agent", "run", "blank", "--json"])) as {
+      agent: { url: string };
+    };
+    expect(portOf(again.agent.url)).toBe(stored);
+    expect(json(donn(["agent", "stop", "blank", "--json"]))).toMatchObject({
+      stopped: true,
+    });
     expect(donn(["daemon", "stop"], 60_000).status).toBe(0);
   }, 900_000);
 

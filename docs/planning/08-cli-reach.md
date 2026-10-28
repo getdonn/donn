@@ -250,3 +250,24 @@ review. Each overrides the section it names.
 - **§5 testing:** the macOS keychain e2e resolves through `doctor`, since `claude --dry-run`
   resolves no secrets.
 
+
+## Amendment: multi-line and non-ASCII keychain values (2026-10-28)
+
+On macOS, §2 read values with `security find-generic-password -w`. For a value holding anything
+but printable ASCII (a newline, a non-ASCII character), `-w` prints the value hex-encoded
+(`LINE1\nLINE2` → `4c494e45310a4c494e4532`), and the resolver passed that hex on as the secret:
+a GitHub App's PEM key reached the agent as hex, with no error. The hex alone cannot be told from
+a value that is itself hex (a webhook secret).
+
+The macOS read is now `security find-generic-password -s <service> -a <account> -g`, which prints
+the value on stderr as `password: "<text>"` when it is printable ASCII without a quote or
+backslash, else as `password: 0x<HEX>  "<escaped>"`. The resolver takes the text between the
+quotes, or decodes the hex as UTF-8 (`the keychain value is not UTF-8 text` when it is not); a
+bare `password: ` is an empty value (so not found, as before). The value is taken whole: no
+trailing newline is stripped on macOS. Not found is still exit 44, and it is still one read, so
+at most one "allow access" dialog. Linux (`secret-tool lookup` prints the value as stored) is
+unchanged. Found in the kody smoke, stage 2 (`25`).
+
+`doctor`'s fix (`-w` with no value, so a prompt) reads one line. A multi-line value is stored with
+`security add-generic-password -s <service> -a <account> -w "$(cat <file>)"`, which puts the value
+on the command line for that moment.

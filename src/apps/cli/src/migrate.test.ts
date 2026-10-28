@@ -267,12 +267,13 @@ function machine(
     const flag = (name: string) => args[args.indexOf(name) + 1]!;
     const key = `${flag("-s")} ${flag("-a")}`;
     if (args[0] === "find-generic-password") {
-      // With -w the secret is read (and could prompt); without, only the attributes.
-      const secret = args.includes("-w");
+      // With -g the secret is read (and could prompt) onto stderr; without, only the attributes.
+      const secret = args.includes("-g");
       log.push(`security ${secret ? "read" : "find"} ${key}`);
       const value = keychain.get(key);
       if (value === undefined) return no(44, "could not be found");
-      return ok(secret ? `${value}\n` : 'keychain: "login.keychain-db"\n');
+      const found = ok('keychain: "login.keychain-db"\n');
+      return secret ? { ...found, stderr: `password: "${value}"\n` } : found;
     }
     if (args[0] === "delete-generic-password") {
       log.push(`security delete ${key}`);

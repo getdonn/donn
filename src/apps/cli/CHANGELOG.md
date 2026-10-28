@@ -1,5 +1,16 @@
 # @getdonn/cli
 
+## 0.15.0
+
+### Minor Changes
+
+- d61adc5: A `local` agent now keeps one port per machine, stored on its entry in `~/.donn/agents/index.json`, so a tunnel or a webhook can point at it and still work after a restart or a sync. `donn agent run <name> --port <n>` picks the port (1024 to 65535; checked free before it is stored), and the daemon, the foreground run and `--dev` all reuse it. `donn agent list --json` and `donn status --json` now show the stored `port` of each agent, running or not. A local run now reads `~/.donn/agents/index.json`, and stops with `invalid-agents-index` (and its fix) when that file is corrupt.
+
+### Patch Changes
+
+- Updated dependencies [1334030]
+  - @getdonn/secrets@0.3.4
+
 ## 0.14.1
 
 ### Patch Changes

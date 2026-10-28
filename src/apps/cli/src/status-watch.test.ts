@@ -212,18 +212,25 @@ describe("donn status --watch", () => {
     await w.quiet();
     expect(w.lines.length - before).toBeGreaterThanOrEqual(1);
     expect(w.lines.length - before).toBeLessThanOrEqual(2);
-    // Ten switches 20 ms apart, each a different state.json.
+    // Ten switches 20 ms apart, each a different state.json. A busy runner can stretch a gap
+    // past the debounce, and a line per such gap is fair: count the slow ones (half the debounce,
+    // to leave room for the file events' own jitter).
     const switched = w.lines.length;
+    let slow = 0;
+    let wrote = performance.now();
     for (let i = 0; i < 10; i++) {
       await writeState(s.home, {
         version: 1,
         projects: { [`/p${i}`]: "team/payments" },
       });
+      const at = performance.now();
+      if (i > 0 && at - wrote >= 75) slow++;
+      wrote = at;
       await new Promise((r) => setTimeout(r, 20));
     }
     await w.next((l) => l.switched.projects["/p9"] !== undefined, switched);
     await w.quiet();
-    expect(w.lines.length - switched).toBeLessThanOrEqual(2);
+    expect(w.lines.length - switched).toBeLessThanOrEqual(2 + slow);
     // The same time again: the daemon says so, and the line would be the same.
     const seen = events.length;
     const after = w.lines.length;

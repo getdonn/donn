@@ -17,7 +17,9 @@ import {
 } from "../test/created-agent.js";
 import { fakeEve, type FakeEve, type FakeEveReply } from "../test/fake-eve.js";
 import { quietIo, seed, zz, type Seeded } from "../test/seed.js";
-import { agentLogPath, startAgent } from "./run.js";
+import { createServer } from "node:net";
+import { agentLogPath, keptNote, startAgent } from "./run.js";
+import { storedPort } from "./registry.js";
 
 // `donn agent run|stop|logs` without a daemon, and startAgent itself: eve build, then eve start
 // in its own process group, the URL from its `[START]` line. See
@@ -273,6 +275,43 @@ describe("startAgent", () => {
     expect(await agent.stop()).toEqual({ leftovers: 0, exited: 0 });
   });
 
+  it("starts eve on the given port", async () => {
+    const spawn = serving();
+    const agent = await startAgent(
+      io(spawn),
+      dir,
+      {},
+      { ...options, port: 8787 },
+    );
+    expect(startCall(spawn)!.args).toEqual([
+      ...START_ARGS.slice(0, -1),
+      "8787",
+    ]);
+    await agent.stop();
+  });
+
+  it("maps eve's EADDRINUSE before it listens to port-in-use", async () => {
+    const spawn = fakeEve({
+      replies: [
+        { eve: ["build"] },
+        {
+          eve: ["start"],
+          lines: [
+            "Error: listen EADDRINUSE: address already in use 127.0.0.1:8787",
+          ],
+          exitCode: 1,
+        },
+      ],
+    });
+    await expect(
+      startAgent(io(spawn), dir, {}, { ...options, port: 8787 }),
+    ).rejects.toMatchObject({
+      code: "port-in-use",
+      message: "port 8787 is in use by another process",
+      details: { port: 8787, fix: "donn agent run kody --port <other>" },
+    });
+  });
+
   it("a failed build is eve-failed and nothing starts", async () => {
     const spawn = fakeEve({
       replies: [{ eve: ["build"], lines: ["boom"], exitCode: 1 }],
@@ -445,7 +484,9 @@ describe("donn agent run|stop|logs without a daemon", () => {
       VITEST: "true",
     });
     expect(r.code).toBe(4);
-    expect(spawn.calls.map((c) => c.args)).toEqual([["exec", "eve", "dev"]]);
+    expect(spawn.calls.map((c) => c.args)).toEqual([
+      ["exec", "eve", "dev", "--port", expect.stringMatching(/^\d+$/)],
+    ]);
     const dev = spawn.calls[0]!;
     expect(dev.env.API_TOKEN).toBe("tok-SECRET");
     expect(dev.env.NODE_ENV).toBe("development");
@@ -546,5 +587,170 @@ describe("donn agent run of a vercel agent", () => {
     });
     expect(r.code).toBe(0);
     expect(spawn.calls.map((c) => c.args)).toEqual([["exec", "eve", "dev"]]);
+  });
+});
+
+describe("donn agent run --port and the sticky port", () => {
+  let s: Seeded;
+  const setup = async (target?: string) => {
+    s = seed();
+    agentProject(s, target);
+    await createAgent(s);
+  };
+  afterEach(() => s.cleanup());
+
+  const go = (argv: string[], spawn: FakeEve) =>
+    zz(["agent", ...argv, "--project", s.repo], {
+      cwd: s.root,
+      home: s.home,
+      env: SECRETS,
+      probe: agentProbe(),
+      spawn,
+    });
+  const portOf = (spawn: FakeEve) => {
+    const args = startCall(spawn)!.args;
+    return Number(args[args.indexOf("--port") + 1]);
+  };
+  /** A run that is stopped at once by a SIGINT once eve listens. */
+  const stopped = async (argv: string[], spawn: FakeEve) => {
+    const before = process.listenerCount("SIGINT");
+    const pending = go(argv, spawn);
+    await vi.waitFor(() => expect(startCall(spawn)).toBeDefined());
+    await vi.waitFor(() =>
+      expect(process.listenerCount("SIGINT")).toBe(before + 1),
+    );
+    process.emit("SIGINT");
+    return pending;
+  };
+  const stored = () => storedPort(s.home, s.repo, "kody");
+
+  it("a foreground local run stores a picked port and says so once", async () => {
+    await setup();
+    const first = serving();
+    const a = await stopped(["run", "kody"], first);
+    const port = portOf(first);
+    expect(port).toBeGreaterThanOrEqual(1024);
+    expect(await stored()).toBe(port);
+    expect(a.stdout).toContain(keptNote(port, "kody"));
+    const second = serving();
+    const b = await stopped(["run", "kody"], second);
+    expect(portOf(second)).toBe(port);
+    expect(b.stdout).not.toContain("is kept for");
+  });
+
+  it("keptNote reads as the spec says", () => {
+    expect(keptNote(8787, "kody")).toBe(
+      "port 8787 is kept for kody; a tunnel can point at it",
+    );
+  });
+
+  it("a foreground --port replaces the stored port", async () => {
+    await setup();
+    await stopped(["run", "kody"], serving());
+    const spawn = serving();
+    const probe = createServer();
+    await new Promise<void>((r) => probe.listen(0, "127.0.0.1", () => r()));
+    const free = (probe.address() as { port: number }).port;
+    await new Promise((r) => probe.close(r));
+    await stopped(["run", "kody", "--port", String(free)], spawn);
+    expect(portOf(spawn)).toBe(free);
+    expect(await stored()).toBe(free);
+  });
+
+  it("a port in use is refused and nothing is stored", async () => {
+    await setup();
+    const busy = createServer();
+    await new Promise<void>((r) => busy.listen(0, "127.0.0.1", () => r()));
+    const port = (busy.address() as { port: number }).port;
+    try {
+      const spawn = serving();
+      const r = await go(
+        ["run", "kody", "--port", String(port), "--json"],
+        spawn,
+      );
+      expect(r.code).not.toBe(0);
+      expect(JSON.parse(r.stdout || r.stderr).error.code).toBe("port-in-use");
+      expect(spawn.calls).toHaveLength(0);
+      expect(await stored()).toBeUndefined();
+    } finally {
+      await new Promise((r) => busy.close(r));
+    }
+  });
+
+  it("--dev passes the stored port to eve dev", async () => {
+    await setup();
+    const first = serving();
+    await stopped(["run", "kody"], first);
+    const port = portOf(first);
+    const spawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await go(["run", "kody", "--dev"], spawn);
+    expect(r.code).toBe(0);
+    expect(spawn.calls.map((c) => c.args)).toEqual([
+      ["exec", "eve", "dev", "--port", String(port)],
+    ]);
+  });
+
+  it("--dev says so when it picks a port for the first time", async () => {
+    await setup();
+    const spawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await go(["run", "kody", "--dev"], spawn);
+    const port = (await stored())!;
+    expect(r.stdout).toContain(keptNote(port, "kody"));
+    const again = await go(
+      ["run", "kody", "--dev"],
+      fakeEve({ replies: [{ eve: ["dev"] }] }),
+    );
+    expect(again.stdout).not.toContain("is kept for");
+  });
+
+  it("--port is refused for a self-host agent", async () => {
+    await setup("self-host");
+    const spawn = serving();
+    const r = await go(["run", "kody", "--port", "8787", "--json"], spawn);
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout || r.stderr).error).toMatchObject({
+      code: "port-local-only",
+      message: "kody targets self-host: --port applies to local agents only",
+      target: "self-host",
+    });
+    expect(spawn.calls).toHaveLength(0);
+  });
+
+  it("--port is refused for a vercel agent under --dev", async () => {
+    await setup("vercel");
+    const spawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    const r = await go(
+      ["run", "kody", "--dev", "--port", "8787", "--json"],
+      spawn,
+    );
+    expect(JSON.parse(r.stdout || r.stderr).error.code).toBe("port-local-only");
+    expect(spawn.calls).toHaveLength(0);
+  });
+
+  it("a vercel --dev run without --port passes none", async () => {
+    await setup("vercel");
+    const spawn = fakeEve({ replies: [{ eve: ["dev"] }] });
+    await go(["run", "kody", "--dev"], spawn);
+    expect(spawn.calls.map((c) => c.args)).toEqual([["exec", "eve", "dev"]]);
+  });
+
+  it("a self-host run keeps --port 0 and stores nothing", async () => {
+    await setup("self-host");
+    const spawn = serving();
+    await stopped(["run", "kody"], spawn);
+    expect(startCall(spawn)!.args).toEqual(START_ARGS);
+    expect(await stored()).toBeUndefined();
+  });
+
+  it("the CLI refuses --port 80", async () => {
+    await setup();
+    const spawn = serving();
+    const r = await go(["run", "kody", "--port", "80", "--json"], spawn);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout || r.stderr).error).toMatchObject({
+      code: "invalid-port",
+      message: "--port must be an integer from 1024 to 65535",
+    });
+    expect(spawn.calls).toHaveLength(0);
   });
 });

@@ -1,6 +1,7 @@
 import type { Probe } from "@getdonn/adapter-sdk";
 import type { runPlan } from "@getdonn/executor";
 import { Command, CommanderError, Option } from "commander";
+import { parsePort } from "./agent/port.js";
 import type { AgentControl } from "./agent/run.js";
 import type { Spawn } from "./agent/spawn.js";
 import {
@@ -691,13 +692,23 @@ export function createCli(io: CliIo): { run(argv: string[]): Promise<number> } {
         )
         .argument("<name>", "the agent, as in agents.define")
         .option("--dev", "run eve dev in the foreground, with its terminal UI")
+        .option(
+          "--port <n>",
+          "keep the agent on this port (local agents; 1024-65535)",
+        )
         .option("--project <dir>", "the project folder (default: here)")
         .option(
           "--json",
           "print { agent } as JSON (with its url and route token)",
         )
         .action((name: string, options) =>
-          handle(options.json, () => agentRunCommand(io, name, options)),
+          handle(options.json, () => {
+            const { port, ...rest } = options;
+            return agentRunCommand(io, name, {
+              ...rest,
+              ...(port !== undefined && { port: parsePort(port) }),
+            });
+          }),
         );
 
       agent

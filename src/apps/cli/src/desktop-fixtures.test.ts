@@ -164,6 +164,8 @@ function normalise(value: unknown): unknown {
   const roots = [realpathSync(s.root), s.root];
   const text = JSON.stringify(value, (key, v: unknown) => {
     if (key === "pid" && typeof v === "number") return 4242;
+    // An agent's stored port is picked at random on its first run.
+    if (key === "port" && typeof v === "number") return 51228;
     if (key === "version" && v === cliVersion()) return "0.0.0";
     if (["startedAt", "at"].includes(key) && typeof v === "string")
       return "2026-10-26T00:00:00.000Z";

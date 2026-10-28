@@ -23,6 +23,8 @@ const CreatedAgent = z.strictObject({
   state: z.enum(["created", "running", "built", "deployed", "unknown"]),
   current: z.boolean(),
   url: z.string().optional(),
+  /** The port stored for it, whether or not it runs. */
+  port: z.number().int().optional(),
   recreate: RecreateField.optional(),
   /** The code the daemon's last sync of it stopped with. */
   syncFailed: z.string().optional(),
