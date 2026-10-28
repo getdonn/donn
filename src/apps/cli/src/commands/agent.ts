@@ -228,7 +228,6 @@ export async function agentVendorCommand(
     changes = await commitVendor(donnDir, staged, {
       ...(options.force !== undefined && { force: options.force }),
       now: io.now ?? Date.now,
-      io,
     });
   } finally {
     await rm(staged.dir, { recursive: true, force: true });

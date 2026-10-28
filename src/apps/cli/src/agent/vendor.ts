@@ -456,8 +456,6 @@ export async function commitVendor(
     fixes?: { nameTaken?: string; localEdits?: string; otherSource?: string };
     /** Refuse to replace a recorded template that came from a different source. */
     sameSource?: boolean;
-    /** Lists a copy inside a git checkout by its ignore rules, as staging does. */
-    io?: CliIo;
     /** A test seam for the final move of the record into place. */
     rename?: typeof rename;
   },

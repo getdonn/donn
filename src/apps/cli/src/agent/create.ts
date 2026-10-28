@@ -492,7 +492,6 @@ export async function create(
         );
         const changes = await commitVendor(ctx.projectDir!, stagedVendor, {
           now: io.now ?? Date.now,
-          io,
           sameSource: true,
           fixes: {
             otherSource: `--template-name <another-name>, or donn agent vendor ${stagedVendor.source} --name ${stagedVendor.name} to replace it`,
