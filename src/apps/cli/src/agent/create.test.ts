@@ -87,6 +87,7 @@ const TEMPLATE: TarEntry[] = [
   { name: "sub/.git/HEAD", data: "ref: refs/heads/main\n" },
 ];
 
+const realCompile = adapter.compile.bind(adapter);
 const repoPath = (slug: string) => `apps/templates/${slug}`;
 const archive = (slug: string, entries = TEMPLATE) =>
   tarball({
@@ -193,6 +194,7 @@ async function create(
     spawn?: ReturnType<typeof fakeEve>;
     slug?: string;
     cwd?: string;
+    probe?: Probe;
   } = {},
 ) {
   const spawn =
@@ -202,7 +204,7 @@ async function create(
     cwd: options.cwd ?? s.repo,
     home: s.home,
     env: { GATEWAY_KEY: SECRET },
-    probe,
+    probe: options.probe ?? probe,
     spawn,
     fetch: fetchStub(options.slug ?? "eve-voice-template"),
   });
@@ -453,6 +455,325 @@ describe("donn agent create", () => {
     expect(stderr).toContain("portability-unknown");
     // The template itself is untouched.
     expect(existsSync(join(tpl, ".git/HEAD"))).toBe(true);
+  });
+
+  describe("a template from outside the project", () => {
+    // The source is a plain folder, not a git checkout.
+    const plain: Probe = {
+      ...probe,
+      run: async (command, args) =>
+        command === "git" && args[0] === "-C"
+          ? { exitCode: 128, stdout: "", stderr: "not a git repository" }
+          : probe.run(command, args),
+    };
+    const outside = (name = "kody-tpl") => {
+      const dir = join(s.root, name);
+      for (const [file, text] of [
+        [
+          "package.json",
+          '{ "name": "kody", "dependencies": { "eve": "^0.83.2" } }\n',
+        ],
+        ["agent/agent.ts", AGENT_TS],
+      ] as const) {
+        mkdirSync(dirname(join(dir, file)), { recursive: true });
+        writeFileSync(join(dir, file), text);
+      }
+      return dir;
+    };
+    const vendored = () => join(s.repo, ".donn/templates");
+    const flags = ["--target", "local"];
+
+    it("creates an agent from a folder outside the project", async () => {
+      const tpl = outside();
+      const { code, stderr } = await create(
+        ["kody", "--template", tpl, ...flags],
+        { probe: plain },
+      );
+      expect(stderr).not.toContain("error:");
+      expect(code).toBe(0);
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toContain(
+        "template: ./templates/kody-tpl",
+      );
+      expect(existsSync(join(vendored(), "kody-tpl/agent/agent.ts"))).toBe(
+        true,
+      );
+      const record = JSON.parse(read(join(vendored(), "sources.json")));
+      expect(record.templates["kody-tpl"].source).toBe(tpl);
+      expect(read(join(agentDir("kody"), "agent/agent.ts"))).toContain(
+        "...donn",
+      );
+      expect(manifest("kody").template).toBe("project/templates/kody-tpl");
+      // Staging folders are gone and the source is untouched.
+      expect(existsSync(join(tpl, "agent/agent.ts"))).toBe(true);
+    });
+
+    it("names the vendored template with --template-name", async () => {
+      const tpl = outside();
+      const { code } = await create(
+        ["kody", "--template", tpl, "--template-name", "mine", ...flags],
+        { probe: plain },
+      );
+      expect(code).toBe(0);
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toContain(
+        "template: ./templates/mine",
+      );
+      expect(existsSync(join(vendored(), "mine/package.json"))).toBe(true);
+      expect(existsSync(join(vendored(), "kody-tpl"))).toBe(false);
+    });
+
+    it("a dry run vendors nothing and says what it would", async () => {
+      const tpl = outside();
+      const before = read(join(s.repo, ".donn/persona.yaml"));
+      const { code, stdout, stderr } = await create(
+        ["kody", "--template", tpl, ...flags, "--dry-run"],
+        { probe: plain },
+      );
+      expect(stderr).not.toContain("error:");
+      expect(code).toBe(0);
+      expect(stdout).toContain(
+        `would vendor ${tpl} into .donn/templates/kody-tpl`,
+      );
+      expect(stdout).toContain("+       template: ./templates/kody-tpl");
+      expect(existsSync(vendored())).toBe(false);
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(before);
+      expect(existsSync(agentDir("kody"))).toBe(false);
+    });
+
+    it("a dry run reports the vendoring in --json", async () => {
+      const tpl = outside();
+      const { stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--dry-run", "--json"],
+        { probe: plain },
+      );
+      expect(JSON.parse(stdout).vendored).toEqual({
+        name: "kody-tpl",
+        path: ".donn/templates/kody-tpl",
+        source: tpl,
+      });
+      expect(existsSync(vendored())).toBe(false);
+    });
+
+    it("a stopped create vendors nothing", async () => {
+      const tpl = outside();
+      // The template's channel uses route auth: a blocking entry on a path template.
+      vi.spyOn(adapter, "compile").mockImplementation((...args) => {
+        const out = realCompile(...args);
+        return {
+          ...out,
+          portability: [
+            {
+              service: "connect",
+              target: "local",
+              instead: "x",
+              blocking: true,
+            },
+          ],
+        } as typeof out;
+      });
+      const before = read(join(s.repo, ".donn/persona.yaml"));
+      const { code, stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error.code).toBe("portability-blocking");
+      expect(existsSync(vendored())).toBe(false);
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(before);
+      expect(existsSync(agentDir("kody"))).toBe(false);
+    });
+
+    it("a name taken by an unvendored folder leaves the persona alone", async () => {
+      const tpl = outside();
+      mkdirSync(join(vendored(), "kody-tpl"), { recursive: true });
+      const before = read(join(s.repo, ".donn/persona.yaml"));
+      const { code, stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error.code).toBe("vendor-name-taken");
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(before);
+      expect(existsSync(agentDir("kody"))).toBe(false);
+    });
+
+    it("refuses a source inside the project's templates", async () => {
+      const tpl = join(vendored(), "inner");
+      mkdirSync(join(tpl, "agent"), { recursive: true });
+      writeFileSync(join(tpl, "package.json"), '{"dependencies":{"eve":"1"}}');
+      const { code, stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error.code).toBe("vendor-source-inside");
+    });
+
+    it("removes a newly vendored template when the persona write fails", async () => {
+      const tpl = outside();
+      const file = join(s.repo, ".donn/persona.yaml");
+      const before = read(file);
+      // The persona changes after it was read: writeDeclaration refuses.
+      vi.spyOn(adapter, "compile").mockImplementation((...args) => {
+        writeFileSync(file, `${before}# edited\n`);
+        return realCompile(...args);
+      });
+      const { code, stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error.code).toBe("persona-changed");
+      expect(existsSync(join(vendored(), "kody-tpl"))).toBe(false);
+      const sources = join(vendored(), "sources.json");
+      expect(
+        existsSync(sources)
+          ? Object.keys(JSON.parse(read(sources)).templates)
+          : [],
+      ).toEqual([]);
+    });
+
+    it("says so when a refreshed copy stays after the persona write fails", async () => {
+      const tpl = outside();
+      const first = await create(["kody", "--template", tpl, ...flags], {
+        probe: plain,
+      });
+      expect(first.code, first.stderr).toBe(0);
+      // A second agent from the same source refreshes the recorded copy.
+      const file = join(s.repo, ".donn/persona.yaml");
+      const before = read(file);
+      vi.spyOn(adapter, "compile").mockImplementation((...args) => {
+        writeFileSync(file, `${before}# edited\n`);
+        return realCompile(...args);
+      });
+      const { code, stdout, stderr } = await create(
+        ["kody2", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error.code).toBe("persona-changed");
+      expect(stderr).toContain(".donn/templates/kody-tpl was refreshed from");
+      expect(existsSync(join(vendored(), "kody-tpl/agent/agent.ts"))).toBe(
+        true,
+      );
+    });
+
+    it("refuses a different source for a name already vendored", async () => {
+      const first = outside();
+      const second = outside("other/kody-tpl");
+      writeFileSync(join(second, "agent/extra.ts"), "export {};\n");
+      const one = await create(["kody", "--template", first, ...flags], {
+        probe: plain,
+      });
+      expect(one.code, one.stderr).toBe(0);
+      const before = read(join(s.repo, ".donn/persona.yaml"));
+      const { code, stdout } = await create(
+        ["kody2", "--template", second, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      const error = JSON.parse(stdout).error;
+      expect(error.code).toBe("vendor-name-taken");
+      expect(error.message).toContain(first);
+      expect(error.fix).toBe(
+        "--template-name <another-name>, or donn agent vendor " +
+          `${second} --name kody-tpl to replace it`,
+      );
+      expect(read(join(s.repo, ".donn/persona.yaml"))).toBe(before);
+      expect(existsSync(join(vendored(), "kody-tpl/agent/extra.ts"))).toBe(
+        false,
+      );
+      const record = JSON.parse(read(join(vendored(), "sources.json")));
+      expect(record.templates["kody-tpl"].source).toBe(first);
+      expect(existsSync(agentDir("kody2"))).toBe(false);
+    });
+
+    it("says refreshed when the same source is vendored again", async () => {
+      const tpl = outside();
+      await create(["kody", "--template", tpl, ...flags], { probe: plain });
+      const { code, stderr } = await create(
+        ["kody2", "--template", tpl, ...flags],
+        { probe: plain },
+      );
+      expect(code, stderr).toBe(0);
+      expect(stderr).toContain(
+        "refreshed kody-tpl: 0 added, 0 changed, 0 removed",
+      );
+    });
+
+    it("a dry run says the template was staged, not that it was not fetched", async () => {
+      const tpl = outside();
+      const { stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--dry-run"],
+        { probe: plain },
+      );
+      expect(stdout).not.toContain("does not fetch");
+      expect(stdout).toContain("staged to check it");
+    });
+
+    it("names create's flags in the vendor-name-taken hint", async () => {
+      const tpl = outside();
+      mkdirSync(join(vendored(), "kody-tpl"), { recursive: true });
+      const { stdout } = await create(
+        ["kody", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(JSON.parse(stdout).error.fix).toBe(
+        "--template-name <another-name>, or move the folder away",
+      );
+    });
+
+    it("names donn agent vendor in the vendor-local-edits hint", async () => {
+      const tpl = outside();
+      const first = await create(["kody", "--template", tpl, ...flags], {
+        probe: plain,
+      });
+      expect(first.code, first.stderr).toBe(0);
+      writeFileSync(join(vendored(), "kody-tpl/extra.txt"), "edited\n");
+      const { code, stdout } = await create(
+        ["kody2", "--template", tpl, ...flags, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      const error = JSON.parse(stdout).error;
+      expect(error.code).toBe("vendor-local-edits");
+      expect(error.fix).toBe(
+        `donn agent vendor ${tpl} --name kody-tpl --force`,
+      );
+    });
+
+    it("compares a declared agent's template with the vendored path", async () => {
+      const tpl = outside();
+      writeFileSync(
+        join(s.repo, ".donn/persona.yaml"),
+        `${PERSONA}\nagents:\n  define:\n    kody:\n      template: ./templates/kody-tpl\n      target: local\n`,
+      );
+      mkdirSync(join(vendored(), "kody-tpl/agent"), { recursive: true });
+      writeFileSync(join(vendored(), "kody-tpl/agent/agent.ts"), AGENT_TS);
+      writeFileSync(join(vendored(), "kody-tpl/package.json"), "{}\n");
+      const same = await create(["kody", "--template", tpl, "--json"], {
+        probe: plain,
+      });
+      expect(same.code, same.stderr).toBe(0);
+      expect(existsSync(join(vendored(), "sources.json"))).toBe(false);
+    });
+
+    it("a declared agent with a different vendor source is agent-declared", async () => {
+      const other = outside("other");
+      writeFileSync(
+        join(s.repo, ".donn/persona.yaml"),
+        `${PERSONA}\nagents:\n  define:\n    kody:\n      template: ./templates/kody-tpl\n      target: local\n`,
+      );
+      const { code, stdout } = await create(
+        ["kody", "--template", other, "--json"],
+        { probe: plain },
+      );
+      expect(code).toBe(1);
+      expect(JSON.parse(stdout).error).toMatchObject({
+        code: "agent-declared",
+        flags: ["--template"],
+      });
+      expect(existsSync(vendored())).toBe(false);
+    });
   });
 
   it("leaves a failed create incomplete, refuses to reuse it, and recovers with --force", async () => {

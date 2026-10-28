@@ -47,10 +47,17 @@ const Portability = z.strictObject({
   blocking: z.boolean(),
 });
 
+/** The template `create --template <source>` vendors (or, with `--dry-run`, would). */
+const VendoredTemplate = z.strictObject({
+  name: z.string(),
+  path: z.string(),
+  source: z.string(),
+});
+
 /**
  * `donn agent create --json`, two shapes: `--dry-run` (`dryRun: true`; the files donn would
  * own, without the template's; `declared` when the agent had to be declared in the persona) and
- * the created agent. `files` maps an agent-folder path to its `sha256:` digest.
+ * the created agent; `vendored` when `--template` named a source outside the project. `files` maps an agent-folder path to its `sha256:` digest.
  */
 export const AgentCreateOutput = z.union([
   z.strictObject({
@@ -64,6 +71,7 @@ export const AgentCreateOutput = z.union([
     declared: z
       .strictObject({ file: z.string(), after: z.string() })
       .optional(),
+    vendored: VendoredTemplate.optional(),
   }),
   z.strictObject({
     agent: z.string(),
@@ -72,6 +80,7 @@ export const AgentCreateOutput = z.union([
     files: z.record(z.string(), z.string()),
     report: CompileReport,
     portability: z.array(Portability),
+    vendored: VendoredTemplate.optional(),
   }),
 ]);
 export type AgentCreateOutput = z.infer<typeof AgentCreateOutput>;
@@ -230,8 +239,37 @@ export const AgentTemplatesOutput = z.strictObject({
       inRepo: z.boolean(),
     }),
   ),
+  /** Templates vendored into this project, by name; empty outside a project. */
+  vendored: z.array(
+    z.strictObject({
+      name: z.string(),
+      template: z.string(),
+      source: z.string(),
+      ref: z.string().optional(),
+      commit: z.string().optional(),
+    }),
+  ),
 });
 export type AgentTemplatesOutput = z.infer<typeof AgentTemplatesOutput>;
+
+/**
+ * `donn agent vendor --json`: the template copied into `.donn/templates/<name>` and what a
+ * refresh changed in it (every file is `added` the first time).
+ */
+export const AgentVendorOutput = z.strictObject({
+  template: z.strictObject({
+    name: z.string(),
+    path: z.string(),
+    source: z.string(),
+    ref: z.string().optional(),
+    commit: z.string().optional(),
+    digest: z.string(),
+  }),
+  added: z.array(z.string()),
+  changed: z.array(z.string()),
+  removed: z.array(z.string()),
+});
+export type AgentVendorOutput = z.infer<typeof AgentVendorOutput>;
 
 /**
  * One of eve's setup questions, in eve's wire shape (`setup-question-wire.ts`, eve 0.83.2). A
